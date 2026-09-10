@@ -119,6 +119,12 @@ fn descriptors(
     Some(pins.into_iter().filter(Descriptor::supported).collect())
 }
 
+/// Mirrors Mesh `TeamConfig::member_is_current` (src/types.rs, pending lock bump); also honors legacy removedAt.
+fn member_present(config: &Value, member: &Value) -> bool {
+    member.get("removedAt").is_none()
+        && (config["messaging_format"] == 2 || member["isActive"] != false)
+}
+
 /// Only exact runtime session identity can authorize a drain. The compaction
 /// resolver's historical unique-cwd fallback is deliberately insufficient here.
 fn candidate(teams: &Path, payload: &CompactHookInput) -> Option<(HookMemberMatch, Value, Value)> {
@@ -179,7 +185,7 @@ fn candidate(teams: &Path, payload: &CompactHookInput) -> Option<(HookMemberMatc
         .as_array()?
         .iter()
         .find(|m| m["name"] == matched.member.name)?;
-    if member["isActive"] == false {
+    if !member_present(&config, member) {
         return None;
     }
     let member_id = member["agentId"].as_str()?;
@@ -601,7 +607,7 @@ pub fn reconcile_home(
             if !config["members"].as_array().is_some_and(|members| {
                 members
                     .iter()
-                    .any(|m| m["name"] == *member && m["isActive"] != false)
+                    .any(|m| m["name"] == *member && member_present(&config, m))
             }) {
                 continue;
             }
@@ -782,4 +788,38 @@ pub fn reconcile_home(
         }
     }
     Ok(changed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn activity_flag_membership_preserves_legacy_removal_rule() {
+        // Regression: 026627bb, L1 run 3: format-2 activity is not removal.
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("config.json");
+        for format in [Value::Null, json!(1), json!(2)] {
+            for active in [Value::Null, json!(false), json!(true)] {
+                for removed in [false, true] {
+                    let mut config = json!({"members":[{"name":"lead"}]});
+                    if !format.is_null() {
+                        config["messaging_format"] = format.clone();
+                    }
+                    if !active.is_null() {
+                        config["members"][0]["isActive"] = active.clone();
+                    }
+                    if removed {
+                        config["members"][0]["removedAt"] = json!("2026-09-10T12:44:00Z");
+                    }
+                    fs::write(&path, config.to_string()).unwrap();
+                    let config = read_json(&path, 4096).unwrap();
+                    assert_eq!(
+                        member_present(&config, &config["members"][0]),
+                        !removed && (format == 2 || active != false)
+                    );
+                }
+            }
+        }
+    }
 }

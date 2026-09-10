@@ -3801,6 +3801,44 @@ else: print(json.dumps({'protocol':protocol,'status':'recorded','text':'','deliv
 
     #[cfg(unix)]
     #[test]
+    fn hook_drain_membership_ignores_activity_but_honors_removal() {
+        // Regression: 026627bb, L1 run 3: Claude activity was mistaken for membership.
+        for removed in [false, true] {
+            let (fake, payload, teams) = hook_drain_fixture();
+            let root = fake.dir.path();
+            let path = teams.join("drain-team/config.json");
+            let mut config: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+            config["members"][0]["isActive"] = json!(removed);
+            config["members"][0]["lastActivityReason"] = json!("message_sent");
+            if removed {
+                config["members"][0]["removedAt"] = json!("2026-09-10T12:44:00Z");
+            }
+            fs::write(path, config.to_string()).unwrap();
+            let mut output = Vec::new();
+            run_compact_hook_cli(payload.to_string().as_bytes(), &mut output, &teams).unwrap();
+            let response: Value = serde_json::from_slice(&output).unwrap();
+            assert_eq!(
+                response["hookSpecificOutput"]["additionalContext"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .contains("fixture marker"),
+                !removed
+            );
+            assert_eq!(
+                hook_drain_calls(&fake)
+                    .iter()
+                    .any(|c| c["argv"][7] == "drain"),
+                !removed
+            );
+            let bindings = vec![(teams, "drain-team".into(), "architect".into())];
+            drain::reconcile_home(root, CliTool::Codex, &bindings, &root.join("mesh")).unwrap();
+            let settings = fs::read_to_string(root.join("hooks.json")).unwrap_or_default();
+            assert_eq!(settings.contains("taurhaus-delivery-drain"), !removed);
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn hook_drain_managed_boundary_round_trip() {
         let (fake, payload, teams) = hook_drain_fixture();
         let root = fake.dir.path();

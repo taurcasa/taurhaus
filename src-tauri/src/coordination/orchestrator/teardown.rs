@@ -21,6 +21,8 @@ static TEAM_DAEMON_SKIP_EVENTS: OnceLock<Mutex<HashMap<PathBuf, String>>> = Once
 const MISSING_LEAD_CREDENTIAL_REASON: &str = "missing_lead_control_credential";
 const MISSING_LEAD_CONFIG_HASH_REASON: &str = "missing_lead_control_auth_token_hash";
 const INACTIVE_LEAD_REASON: &str = "inactive_lead_control_identity";
+const MISSING_LEAD_RUNTIME_RECORD_REASON: &str = "missing_lead_runtime_record";
+const UNREADABLE_LEAD_RUNTIME_RECORD_REASON: &str = "unreadable_lead_runtime_record";
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(crate) struct TeardownDiagnostics {
@@ -539,9 +541,9 @@ impl CoordinationOrchestrator {
                     format!("lead controlAuthTokenHash is missing for '{operator_name}'")
                 }
                 INACTIVE_LEAD_REASON => {
-                    format!("lead control identity is inactive for '{operator_name}'")
+                    format!("lead runtime session is not live for '{operator_name}'")
                 }
-                _ => format!("lead authentication is unavailable for '{operator_name}'"),
+                _ => format!("lead control identity unavailable for '{operator_name}': {reason}"),
             };
             return Ok((false, Some(format!("team daemon skipped: {detail}"))));
         }
@@ -720,7 +722,16 @@ impl CoordinationOrchestrator {
         if !has_hash {
             return Ok(Some(MISSING_LEAD_CONFIG_HASH_REASON));
         }
-        if lead.extra.get("isActive").and_then(Value::as_bool) == Some(false) {
+        // Runtime health is maintained by launch/liveness reconciliation. Claude
+        // Code's isActive flag describes activity, never control-identity liveness.
+        let live = match MemberRuntimeStore::load(&self.teams_dir, team_name, operator_name) {
+            Ok(record) => record.health != HealthState::SessionDead,
+            Err(CoordinationError::NotFound(_)) => {
+                return Ok(Some(MISSING_LEAD_RUNTIME_RECORD_REASON));
+            }
+            Err(_) => return Ok(Some(UNREADABLE_LEAD_RUNTIME_RECORD_REASON)),
+        };
+        if !live {
             return Ok(Some(INACTIVE_LEAD_REASON));
         }
         Ok(None)

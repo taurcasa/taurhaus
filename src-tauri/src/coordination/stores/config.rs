@@ -1,9 +1,10 @@
 //! Team configuration store.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
 
@@ -19,6 +20,8 @@ use crate::coordination::stores::runtime::MemberRuntimeRecord;
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::launch::ModelSpec;
 use crate::templates::types::{BehavioralContract, RuntimeCompactSummary};
+
+static ACTIVITY_OBSERVATIONS: OnceLock<Mutex<HashSet<(PathBuf, String, String)>>> = OnceLock::new();
 
 const CONFIG_FILENAME: &str = "config.json";
 const CONFIG_TMP_FILENAME: &str = "config.json.tmp";
@@ -400,7 +403,7 @@ impl TeamConfigStore {
             }
             Err(err) => return Err(err),
         }
-        let mut wire = mesh_compatible_wire(&normalized, &runtime_by_member);
+        let mut wire = mesh_compatible_wire(&target_path, &normalized, &runtime_by_member);
         if original_lead_session.is_some() {
             wire.lead_session_id = original_lead_session;
         }
@@ -900,6 +903,7 @@ fn canonical_member_id(config: &TeamConfig, member: &Member) -> String {
 }
 
 fn mesh_compatible_wire(
+    config_path: &Path,
     config: &TeamConfig,
     runtime_by_member: &HashMap<String, MemberRuntimeRecord>,
 ) -> MeshCompatibleTeamConfigWire {
@@ -928,7 +932,11 @@ fn mesh_compatible_wire(
             } else {
                 Some("external".to_string())
             };
-            let is_active = if member.role == MemberRole::Lead {
+            // Format 2: Claude Code owns activity for every member. Format 1
+            // retains the non-lead repair required by legacy member daemons.
+            let is_active = if config.extra.get("messaging_format") == Some(&Value::from(2))
+                || member.role == MemberRole::Lead
+            {
                 None
             } else {
                 Some(true)
@@ -940,18 +948,40 @@ fn mesh_compatible_wire(
             if backend_type.is_some() {
                 extra.remove("backendType");
             }
-            if is_active.is_some() {
-                // Tripwire for the fastbreak broadcast incident: something
-                // outside taurhaus and mesh flipped a member inactive (both
-                // only write true for live non-leads). This save repairs it,
-                // but the flip must be visible with a timestamp so the
-                // external writer can be caught in the act next time.
-                if extra.remove("isActive").and_then(|value| value.as_bool()) == Some(false) {
-                    tracing::warn!(
-                        member = %member.name,
-                        "member was marked inactive by an external writer; repairing to active on save"
-                    );
+            let observation =
+                serde_json::json!([extra.get("lastActivityReason"), is_active.is_some()]);
+            let path = config_path.to_path_buf();
+            let key = (path, member.name.clone(), observation.to_string());
+            if extra.get("isActive") == Some(&Value::Bool(false))
+                && ACTIVITY_OBSERVATIONS
+                    .get_or_init(|| Mutex::new(HashSet::new()))
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .insert(key)
+            {
+                let mut fields = serde_json::Map::new();
+                if let Some(team) = config_path
+                    .parent()
+                    .and_then(|dir| dir.file_name())
+                    .and_then(|name| name.to_str())
+                {
+                    fields.insert("team".into(), Value::String(team.to_string()));
                 }
+                fields.insert("member".into(), Value::String(member.name.clone()));
+                fields.insert("repaired".into(), Value::Bool(is_active.is_some()));
+                if let Some(reason) = extra.get("lastActivityReason") {
+                    fields.insert("lastActivityReason".into(), reason.clone());
+                }
+                emit_global(
+                    "debug",
+                    "coordination",
+                    "coordination.member.activity_flag_observed",
+                    Some("Member activity flag observed".into()),
+                    fields,
+                );
+            }
+            if is_active.is_some() {
+                extra.remove("isActive");
             }
             MeshCompatibleMemberWire {
                 name: member.name.clone(),
@@ -986,7 +1016,8 @@ fn mesh_compatible_wire(
                 account_id: member.account_id.clone(),
                 joined_at_millis: (config.extra.get("messaging_format") == Some(&Value::from(2)))
                     .then(|| member.extra.get("joinedAt").and_then(Value::as_i64))
-                    .flatten().unwrap_or(created_at_millis),
+                    .flatten()
+                    .unwrap_or(created_at_millis),
                 project_path_camel: project_path.clone(),
                 cwd: project_path,
                 tmux_pane_id: runtime.and_then(|state| state.pane_id.clone()),
@@ -1660,6 +1691,109 @@ mod tests {
             loaded.members[0].account_id.as_deref(),
             Some("work-account")
         );
+    }
+
+    #[test]
+    fn activity_flag_observation_is_debug_with_optional_reason() {
+        // Regression: 8de267bb, L1 run 3 fix: repeated saves flooded activity logs and hid legacy repairs.
+        let _guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("events.jsonl");
+        let sink = taurhaus_lib::logging::LogFileState::new(path.clone()).unwrap();
+        taurhaus_lib::logging::install_global_sink(&sink);
+        for (team, reason, format) in [
+            ("without-reason", None, 2),
+            ("with-reason", Some("message_sent"), 1),
+        ] {
+            let mut config = sample_config(team);
+            config.members[0].role = MemberRole::Agent;
+            config.members[0].project_path = tmp.path().to_path_buf();
+            config
+                .extra
+                .insert("messaging_format".into(), Value::from(format));
+            let extra = &mut config.members[0].extra;
+            extra.insert("isActive".into(), Value::Bool(false));
+            if let Some(reason) = reason {
+                extra.insert("lastActivityReason".into(), Value::from(reason));
+            }
+            for _ in 0..3 {
+                TeamConfigStore::save(tmp.path(), team, &config).unwrap();
+            }
+        }
+        sink.flush_for_test().unwrap();
+        let log = fs::read_to_string(path).unwrap();
+        // Sibling tests share the process-global sink; keep only this test's teams.
+        let records: Vec<Value> = log
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .filter(|record| {
+                matches!(
+                    record["team"].as_str(),
+                    Some("without-reason") | Some("with-reason")
+                )
+            })
+            .collect();
+        assert_eq!(records.len(), 2, "{log}");
+        for record in &records {
+            assert_eq!(
+                record["event"],
+                "coordination.member.activity_flag_observed"
+            );
+            assert_eq!(record["level"], "DEBUG");
+            assert_eq!(record["member"], "team-lead");
+        }
+        assert!(records[0].get("lastActivityReason").is_none());
+        assert_eq!(records[1]["lastActivityReason"], "message_sent");
+        assert_eq!(records[0]["repaired"], false);
+        assert_eq!(records[1]["repaired"], true);
+    }
+
+    #[test]
+    fn save_activity_flags_preserves_format_two_and_repairs_legacy() {
+        let _guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+        // Regression: 5cebfef8, L1 run 3: repair-on-save overwrote Claude activity.
+        for format in [1, 2] {
+            for flag in [None, Some(false), Some(true)] {
+                let tmp = TempDir::new().unwrap();
+                let team = "activity-flags";
+                let mut config = sample_config(team);
+                config.members[0].project_path = tmp.path().to_path_buf();
+                let mut agent = config.members[0].clone();
+                agent.name = "agent".into();
+                agent.role = MemberRole::Agent;
+                config.members.push(agent);
+                config
+                    .extra
+                    .insert("messaging_format".into(), Value::from(format));
+                TeamConfigStore::save(tmp.path(), team, &config).unwrap();
+                let path = config_path(tmp.path(), team);
+                let mut wire: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+                for member in wire["members"].as_array_mut().unwrap() {
+                    member.as_object_mut().unwrap().remove("isActive");
+                    if let Some(flag) = flag {
+                        member["isActive"] = Value::Bool(flag);
+                    }
+                    member["lastActivityReason"] = Value::from("message_sent");
+                }
+                fs::write(&path, wire.to_string()).unwrap();
+                let config = TeamConfigStore::load(tmp.path(), team).unwrap();
+                TeamConfigStore::save(tmp.path(), team, &config).unwrap();
+                let saved: Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+                for i in 0..2 {
+                    let expected = if format == 1 && i == 1 {
+                        Some(true)
+                    } else {
+                        flag
+                    };
+                    assert_eq!(
+                        saved["members"][i]["isActive"].as_bool(),
+                        expected,
+                        "format {format}, member {i}"
+                    );
+                    assert_eq!(saved["members"][i]["lastActivityReason"], "message_sent");
+                }
+            }
+        }
     }
 
     #[test]

@@ -1695,6 +1695,11 @@ mod tests {
             })
             .expect("seed team");
         write_lead_credential(tmp.path(), "architecture-final");
+        MemberRuntimeStore::update(tmp.path(), "architecture-final", "team-lead", |record| {
+            record.health = HealthState::Healthy;
+            record.pane_id = Some("%lead".into());
+        })
+        .unwrap();
 
         let mut runtime_record =
             MemberRuntimeStore::load(tmp.path(), "architecture-final", "existing-dev")
@@ -3362,6 +3367,11 @@ mod tests {
             })
             .expect("seed team");
         write_lead_credential(tmp.path(), "architecture-final");
+        MemberRuntimeStore::update(tmp.path(), "architecture-final", "team-lead", |record| {
+            record.health = HealthState::Healthy;
+            record.pane_id = Some("%lead".into());
+        })
+        .unwrap();
 
         let mut runtime_record =
             MemberRuntimeStore::load(tmp.path(), "architecture-final", "existing-dev")
@@ -3455,6 +3465,11 @@ mod tests {
             })
             .expect("seed team");
         write_lead_credential(tmp.path(), "architecture-final");
+        MemberRuntimeStore::update(tmp.path(), "architecture-final", "team-lead", |record| {
+            record.health = HealthState::Healthy;
+            record.pane_id = Some("%lead".into());
+        })
+        .unwrap();
 
         let mut runtime_record =
             MemberRuntimeStore::load(tmp.path(), "architecture-final", "existing-dev")
@@ -3559,6 +3574,11 @@ mod tests {
             })
             .expect("seed team");
         write_lead_credential(tmp.path(), "architecture-final");
+        MemberRuntimeStore::update(tmp.path(), "architecture-final", "team-lead", |record| {
+            record.health = HealthState::Healthy;
+            record.pane_id = Some("%lead".into());
+        })
+        .unwrap();
 
         let mut runtime_record =
             MemberRuntimeStore::load(tmp.path(), "architecture-final", "existing-dev")
