@@ -1,4 +1,5 @@
 <script>
+  import { memberDelivery } from './meshTabUtils.js'
   import MemberDeliverySelect from './MemberDeliverySelect.svelte'
   import { normalizeTool } from '../meshDefaults.js'
   import { getModelCatalogContext } from '../context/ModelCatalogContext.js'
@@ -17,6 +18,8 @@ import MeshNodeDetail from './MeshNodeDetail.svelte'
     dark = false,
     teamName = '',
     teamConfig = null,
+    meshStatus = null,
+    canonicalMessaging = undefined,
     selectedNode = null,
     selectedNodeId = null,
     teamRuntimeState = 'none',
@@ -722,7 +725,7 @@ import MeshNodeDetail from './MeshNodeDetail.svelte'
           </div>
         </div>
 
-        <MemberDeliverySelect tool={addAgentDraft?.tool ?? 'codex'} delivery={addAgentDraft?.delivery}
+        <MemberDeliverySelect tool={addAgentDraft?.tool ?? 'codex'} delivery={memberDelivery(addAgentDraft, meshStatus, canonicalMessaging)}
           {dark} disabled={Boolean(addAgentDraft?.submitting)}
           onchange={(next) => onUpdateAddAgentField('delivery', next.delivery)} />
 

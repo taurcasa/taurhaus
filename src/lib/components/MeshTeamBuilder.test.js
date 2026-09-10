@@ -1252,7 +1252,7 @@ describe('seat delivery choice', () => {
     if (hostingSupported === true) {
       expect(select).toHaveValue('tmux')
       expect(Array.from(select.options).map(option => option.textContent)).toEqual([
-        'tmux pane', 'app-server (native, attached TUI)',
+        'tmux pane (fallback)', 'app-server (native; TUI attached in tmux)',
       ])
       await fireEvent.change(select, { target: { value: 'app_server' } })
       expect(onUpdateAgent).toHaveBeenCalledWith('agent-codex-1', { delivery: 'app_server' })
@@ -1260,4 +1260,27 @@ describe('seat delivery choice', () => {
       expect(select).not.toBeInTheDocument()
     }
   })
+})
+
+// Regression: 6398bfa3 always displayed tmux for seats without an operator choice.
+it.each([true, false])('derives the displayed delivery and retains choices with support=%s', async (supported) => {
+  configureToolRegistry(FALLBACK_TOOLS.map(tool => ({ ...tool, hostingSupported: tool.id === 'codex' })))
+  try {
+    const teamConfig = sampleRosterConfig()
+    const meshStatus = { canonical_messaging_supported: true, hosted_delivery_supported: supported }
+    const onInitialize = vi.fn()
+    const view = renderBuilder({ teamConfig, meshStatus, onInitialize })
+    await fireEvent.click(screen.getByLabelText('Edit builder-1 details'))
+    for (const canonicalOptOut of [false, true]) {
+      for (const delivery of [undefined, 'tmux', 'app_server']) {
+        const config = { ...teamConfig, agents: teamConfig.agents.map(agent => ({ ...agent, delivery })) }
+        await view.rerender(builderProps({ teamConfig: config, meshStatus, canonicalOptOut, onInitialize }))
+        const expected = delivery ?? (supported && !canonicalOptOut ? 'app_server' : 'tmux')
+        expect(screen.getByRole('combobox', { name: 'Delivery' })).toHaveValue(expected)
+        await fireEvent.click(screen.getByTestId('mesh-action-initialize'))
+        const payload = meshTabUtils.buildInitializationRequest({ ...config, meshStatus, ...onInitialize.mock.lastCall[0] }, 'trial')
+        expect(payload.agents[0].delivery).toBe(expected)
+      }
+    }
+  } finally { configureToolRegistry(null) }
 })

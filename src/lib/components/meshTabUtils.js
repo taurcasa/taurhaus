@@ -1,3 +1,4 @@
+import { toolDescriptor } from '../toolRegistry.js'
 import { activityLevel, withActivityFreshness } from '../activitySignal.js'
 import {
   toolOptions,
@@ -529,6 +530,13 @@ export function canonicalMessagingSupported(status) {
   return status?.canonical_messaging_supported === true
 }
 
+// Unset delivery follows capability/toggle changes; only operator choices persist.
+export function memberDelivery(member, status, canonical = canonicalMessagingSupported(status)) {
+  if (member?.delivery) return member.delivery
+  if (!toolDescriptor(member?.tool)?.hostingSupported) return undefined
+  return status?.hosted_delivery_supported === true && canonical ? 'app_server' : 'tmux'
+}
+
 // Keep this literal valid JSON: the Rust Mesh contract reads this same policy.
 export const DEFAULT_CANONICAL_POLICY = Object.freeze({
   "capture_scope": "mesh-producers-only",
@@ -552,7 +560,12 @@ export function buildInitializationRequest(
   projectPath = '',
   catalog = EMPTY_MODEL_CATALOG
 ) {
-  const messaging = !(config?.canonicalMessaging ?? canonicalMessagingSupported(config?.meshStatus))
+  const canonical = config?.canonicalMessaging ?? canonicalMessagingSupported(config?.meshStatus)
+  const deliveryFields = member => {
+    const delivery = memberDelivery(member, config?.meshStatus, canonical)
+    return delivery ? { delivery } : {}
+  }
+  const messaging = !canonical
     ? {}
     : { messaging: { mode: 'canonical', retentionPolicy: DEFAULT_CANONICAL_POLICY } }
   const lead = config?.lead
@@ -583,7 +596,7 @@ export function buildInitializationRequest(
         capabilities: null,
       },
       agents: agents.map((agent, index) => ({
-        ...(agent?.delivery ? { delivery: agent.delivery } : {}),
+        ...deliveryFields(agent),
         name: agent?.name || `agent-${index + 1}`,
         cliTool: '',
         model: '',
@@ -631,7 +644,7 @@ export function buildInitializationRequest(
     agents: agents.map((agent, index) => {
       const agentModel = resolveMemberModel(agent, null, catalog)
       return {
-        ...(agent?.delivery ? { delivery: agent.delivery } : {}),
+        ...deliveryFields(agent),
         name: agent?.name || `agent-${index + 1}`,
         cliTool: normalizeTool(agent?.tool),
         model: agentModel.model,

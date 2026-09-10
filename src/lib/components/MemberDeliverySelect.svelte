@@ -17,8 +17,8 @@
       {disabled}
       onchange={(event) => onchange({ delivery: event.currentTarget.value })}
     >
-      <option value="tmux">tmux pane</option>
-      <option value="app_server">app-server (native, attached TUI)</option>
+      <option value="tmux">tmux pane (fallback)</option>
+      <option value="app_server">app-server (native; TUI attached in tmux)</option>
     </select>
   </label>
 {/if}
