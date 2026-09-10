@@ -1942,7 +1942,7 @@ No observer socket connection and no fault injection.
 | 1. Hosted startup | PASS | initialize-result.json; step1-runtime.json; step1-identities.json; generated-config-0.toml; step1-final-pane-2.txt; step1-status.txt. Startup card displayed and answered; config selects app_server; instructionSources names scratch AGENTS.md. |
 | 2. Idle delivery/read | PASS | step2-after-status.txt selects app_server from config; pane/input/reply carry the marker; native_enqueued turn/start receipt; step2-journal-before-read.json has no consumed_by_read, explicit read alone creates it in step2-journal-after-read.json. |
 | 3. Active deferral | PASS | step3-pending.json records pending/thread_active; step3-receipts.json records eventual native_enqueued turn/start; step3-exposure.json proves one user item and one reply; step3-final-pane-2.txt. |
-| 4. Typed input/passive locks | NOT RUN | Pending ordered execution. |
+| 4. Typed input/passive locks | PASS | step4-pending.json; step4-exposure.json shows one user and reply per marker, typed reply before socket reply; step4-final-pane-2.txt; step4-locks.jsonl has real daemon and Mesh flock/fdinfo holders on one inode. |
 | 5. Compaction recovery | NOT RUN | Pending ordered execution. |
 | 6. Daemon restart | NOT RUN | Pending ordered execution. |
 | 7. Operational rollback | NOT RUN | Pending ordered execution. |
@@ -1976,3 +1976,6 @@ turns **$0.00208528**, conservative **$0.0271836**.
 
 Step 3 cumulative: four protocol turns; **$0.00383412** API-equivalent,
 **$0.057096** conservative.
+
+Step 4 cumulative: six protocol turns / seven response generations (typed steer
+shares a turn); **$0.00589996** API-equivalent, **$0.1042908** conservative.

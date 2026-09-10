@@ -1,13 +1,13 @@
 [
   {
     "obligation": {
-      "message_id": "40065c2a-14b0-4afd-bff5-8456cf8b36d6",
-      "delivery_id": "ac7980b7-79d5-4724-896b-307f57eb664c",
+      "message_id": "4d316750-d440-487d-abe9-2ad2bffeeb82",
+      "delivery_id": "abbb1e11-edb3-4a8e-92df-97b65dfccf26",
       "recipient": "seat",
       "source_generation": "62ba3364-4843-4b3e-a8e9-3872b9dcb7a0",
-      "source_position": 8,
-      "body": "ACTION REQUIRED: Reply exactly junipere4b692. Do not execute tools."
+      "source_position": 23,
+      "body": "ACTION REQUIRED: Reply exactly cedar16bd04. Do not execute tools."
     },
-    "since": "2026-09-10T09:08:36.428044158+00:00"
+    "since": "2026-09-10T09:09:12.943863201+00:00"
   }
 ]
