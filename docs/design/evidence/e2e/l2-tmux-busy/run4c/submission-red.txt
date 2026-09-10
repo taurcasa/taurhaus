@@ -1,0 +1,71 @@
+EEEEEE
+======================================================================
+ERROR: test_composer_parser_ignores_old_transcript_input (submission_test.SubmissionTests.test_composer_parser_ignores_old_transcript_input)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run4c/submission_test.py", line 47, in test_composer_parser_ignores_old_transcript_input
+    self.assertEqual(support.composer_text('› old input\nanswer\n› Ask Codex to do anything\nfooter'),'Ask Codex to do anything')
+                     ^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'support' has no attribute 'composer_text'
+
+======================================================================
+ERROR: test_confirms_only_after_visible_paste_and_new_turn (submission_test.SubmissionTests.test_confirms_only_after_visible_paste_and_new_turn)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run4c/submission_test.py", line 22, in test_confirms_only_after_visible_paste_and_new_turn
+    result,keys,captures=self.exercise()
+                         ^^^^^^^^^^^^^^^
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run4c/submission_test.py", line 18, in exercise
+    result=support.confirm_submission('Print sixty lines',keys.append,read,lambda:clock[0],sleep,set())
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'support' has no attribute 'confirm_submission'
+
+======================================================================
+ERROR: test_empty_composer_without_new_turn_is_not_confirmed (submission_test.SubmissionTests.test_empty_composer_without_new_turn_is_not_confirmed)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run4c/submission_test.py", line 40, in test_empty_composer_without_new_turn_is_not_confirmed
+    self.exercise(starts=False)
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run4c/submission_test.py", line 18, in exercise
+    result=support.confirm_submission('Print sixty lines',keys.append,read,lambda:clock[0],sleep,set())
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'support' has no attribute 'confirm_submission'
+
+======================================================================
+ERROR: test_never_confirms_a_turn_with_text_still_in_composer (submission_test.SubmissionTests.test_never_confirms_a_turn_with_text_still_in_composer)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run4c/submission_test.py", line 36, in test_never_confirms_a_turn_with_text_still_in_composer
+    self.exercise(clears=False)
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run4c/submission_test.py", line 18, in exercise
+    result=support.confirm_submission('Print sixty lines',keys.append,read,lambda:clock[0],sleep,set())
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'support' has no attribute 'confirm_submission'
+
+======================================================================
+ERROR: test_no_enter_until_paste_is_visible (submission_test.SubmissionTests.test_no_enter_until_paste_is_visible)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run4c/submission_test.py", line 44, in test_no_enter_until_paste_is_visible
+    self.exercise(visible=False)
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run4c/submission_test.py", line 18, in exercise
+    result=support.confirm_submission('Print sixty lines',keys.append,read,lambda:clock[0],sleep,set())
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'support' has no attribute 'confirm_submission'
+
+======================================================================
+ERROR: test_one_extra_enter_for_paste_that_remains_in_composer (submission_test.SubmissionTests.test_one_extra_enter_for_paste_that_remains_in_composer)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run4c/submission_test.py", line 29, in test_one_extra_enter_for_paste_that_remains_in_composer
+    result,keys,_=self.exercise(required_enters=2)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run4c/submission_test.py", line 18, in exercise
+    result=support.confirm_submission('Print sixty lines',keys.append,read,lambda:clock[0],sleep,set())
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'support' has no attribute 'confirm_submission'
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.003s
+
+FAILED (errors=6)
