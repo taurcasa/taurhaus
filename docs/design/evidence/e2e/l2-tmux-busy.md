@@ -110,6 +110,23 @@ were copied; none needed removal. An independent Opus lens has not run in this
 implementer session and remains with the surrounding workflow; this packet
 grants no review approval.
 
+## Requested continuation
+
+The continuation started from a clean tree at `924f0e01`; all completed
+preflight work was already committed. No disposable authentication source was
+supplied with the continuation, so the six runtime steps remain NOT RUN under
+the same harness prerequisite failure. The required source path was requested
+again; no credential fallback or paid runtime retry was attempted.
+
+All three requested gates were rerun from the checkout root using the existing
+`checks.py` command runner. [Continuation results](l2-tmux-busy/continuation-gates.json)
+retain their exact commands, local target paths, durations and bounded excerpts:
+`just check-quick` **0**, `just lint` **0**, `just test-contracts` **0**.
+No source implementation changed, so there is no new red/green logic cycle or
+conditional Rust-unit gate. Cumulative seat spend remains **$0**, with **zero
+Codex inputs and zero Claude turns**. This commit records gate evidence, not a
+green numbered runtime step.
+
 ## Deviations
 
 - Required scratch authentication was not supplied. Execution stopped before
