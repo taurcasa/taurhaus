@@ -123,7 +123,6 @@ export function createMeshTabController({
       contractHasRules,
       coordinationAddAgent,
       getMeshStatus: () => capability.status,
-      getCanonicalMessaging: () => capability.optOut ? false : undefined,
       composeTeam,
       createAgentFromRole,
       createLeadFromRole,

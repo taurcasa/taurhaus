@@ -376,7 +376,8 @@ export function createMeshTabSetup({ state, refs, deps, gate }) {
     state.slideOverContext = { ...draft, submitting: true, error: '' }
 
     try {
-      const delivery = memberDelivery(draft, deps.getMeshStatus?.(), deps.getCanonicalMessaging?.())
+      // Runtime snapshots do not attest the target team's canonical messaging mode.
+      const delivery = memberDelivery(draft, deps.getMeshStatus?.(), false)
       const report = await deps.coordinationAddAgent({
         teamName: state.teamName,
         agent: {

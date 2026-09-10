@@ -793,7 +793,8 @@ it.each([true, false])('resolves explicit initialize/add delivery with support=%
           normalizeTool: tool => tool, coordinationAddAgent: async request => { payload = request }, onAddAgent: () => {},
         } })
         await setup.submitAddAgent()
-        expect(payload.agent.delivery).toBe(expected)
+        // Regression: 90f89257 treated the builder toggle as authority for runtime adds.
+        expect(payload.agent.delivery).toBe(delivery ?? 'tmux')
       }
     }
   } finally { configureToolRegistry(null) }

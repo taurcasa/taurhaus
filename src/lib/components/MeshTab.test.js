@@ -2493,6 +2493,27 @@ describe('MeshTab', () => {
     })
   })
 
+  // Regression: 90f89257 used builder capability as the existing team's messaging authority.
+  it.each([undefined, 'tmux', 'app_server'])('keeps runtime add delivery explicit and conservative for choice=%s', async (delivery) => {
+    checkMeshInstallStatus.mockResolvedValue({ canonical_messaging_supported: true, hosted_delivery_supported: true })
+    coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(buildRuntimeSnapshot())
+    configureToolRegistry(FALLBACK_TOOLS.map(tool => ({ ...tool, hostingSupported: tool.id === 'codex' })))
+    render(MeshTab, { props: { modelCatalog: TEST_MODEL_CATALOG, projectPath: '/projects/taurhaus',
+      availableProjects: [{ id: 'proj-api', name: 'API' }] } })
+    await screen.findByTestId('mesh-mode-runtime')
+    await fireEvent.click(screen.getByTestId('mesh-runtime-primary-action'))
+    await fireEvent.click(await screen.findByTestId('mesh-add-agent-role-card-agent-default'))
+    const select = await screen.findByRole('combobox', { name: 'Delivery' })
+    expect(select).toHaveValue('tmux')
+    if (delivery) await fireEvent.change(select, { target: { value: delivery } })
+    await fireEvent.input(screen.getByTestId('mesh-add-agent-name-input'), { target: { value: 'backend-dev' } })
+    await fireEvent.change(screen.getByTestId('mesh-add-agent-project-select'), { target: { value: 'proj-api' } })
+    await fireEvent.click(screen.getByTestId('mesh-add-agent-submit'))
+    await waitFor(() => expect(coordinationAddAgent).toHaveBeenCalledWith(expect.objectContaining({
+      teamName: 'architecture-final', agent: expect.objectContaining({ delivery: delivery ?? 'tmux' }),
+    })))
+  })
+
   // Regression: 19b405a7 removed the out-of-scope re-onboard notice without
   // moving delivery warnings onto the existing add-agent success sentence.
   // Regression: 7fdad577 also half-translated backend pane diagnostics.

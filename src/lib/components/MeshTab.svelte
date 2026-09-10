@@ -166,7 +166,7 @@
   {#if mode === 'runtime'}
     <MeshRuntimeView
       meshStatus={controller.capability.status}
-      canonicalMessaging={controller.capability.optOut ? false : undefined}
+      canonicalMessaging={false}
       {dark}
       modelCatalog={catalog}
       teamName={resolvedTeamName}
