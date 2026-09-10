@@ -1,0 +1,183 @@
+[
+  {
+    "pid": 1148681,
+    "start_ticks": "23013753",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-int-3r8tuw4q",
+      "/tmp/th-int-3r8tuw4q",
+      "--chdir",
+      "/tmp/th-int-3r8tuw4q/project",
+      "/bin/bash",
+      "/tmp/th-int-3r8tuw4q/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 1148682,
+    "start_ticks": "23013753",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-int-3r8tuw4q",
+      "/tmp/th-int-3r8tuw4q",
+      "--chdir",
+      "/tmp/th-int-3r8tuw4q/project",
+      "/bin/bash",
+      "/tmp/th-int-3r8tuw4q/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 1148683,
+    "start_ticks": "23013754",
+    "argv": [
+      "/tmp/th-int-3r8tuw4q<operator-path-redacted>",
+      "--port",
+      "25925",
+      "--data-dir",
+      "/tmp/th-int-3r8tuw4q/data",
+      ""
+    ]
+  },
+  {
+    "pid": 1148684,
+    "start_ticks": "23013754",
+    "argv": [
+      "tmux",
+      "-D",
+      "-f",
+      "/dev/null",
+      ""
+    ]
+  },
+  {
+    "pid": 1148690,
+    "start_ticks": "23013764",
+    "argv": [
+      "/bin/bash",
+      ""
+    ]
+  },
+  {
+    "pid": 1148798,
+    "start_ticks": "23013825",
+    "argv": [
+      "/bin/bash",
+      "-ic",
+      "cd '/tmp/th-int-3r8tuw4q/project' && CLAUDE_DIR='/tmp/th-int-3r8tuw4q/claude' CLAUDE_CONFIG_DIR='/tmp/th-int-3r8tuw4q/claude' CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions --model 'claude-haiku-4-5' --team-name 'integration' --agent-name 'lead' --agent-id 'lead@integration' --agent-type 'orchestrator' -n 'lead'; exec \"$SHELL\"",
+      ""
+    ]
+  },
+  {
+    "pid": 1148801,
+    "start_ticks": "23013825",
+    "argv": [
+      "claude",
+      "--dangerously-skip-permissions",
+      "--model",
+      "claude-haiku-4-5",
+      "--team-name",
+      "integration",
+      "--agent-name",
+      "lead",
+      "--agent-id",
+      "lead@integration",
+      "--agent-type",
+      "orchestrator",
+      "-n",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 1148807,
+    "start_ticks": "23013826",
+    "argv": [
+      "codex",
+      "-c",
+      "sandbox_mode=\"read-only\"",
+      "-c",
+      "approval_policy=\"never\"",
+      "-c",
+      "notify=[\"/tmp/th-int-3r8tuw4q<operator-path-redacted>\",\"codex-notify\"]",
+      "-c",
+      "model=\"gpt-5.6-luna\"",
+      "-c",
+      "model_reasoning_effort=\"low\"",
+      "app-server",
+      "--listen",
+      "unix:///tmp/th-int-3r8tuw4q/tmp/th-host-4970fb14df004efd914f0507f54b03ab/rpc.sock",
+      ""
+    ]
+  },
+  {
+    "pid": 1149460,
+    "start_ticks": "23013904",
+    "argv": [
+      "-bash",
+      ""
+    ]
+  },
+  {
+    "pid": 1149540,
+    "start_ticks": "23013941",
+    "argv": [
+      "codex",
+      "--remote",
+      "unix:///tmp/th-int-3r8tuw4q/tmp/th-host-4970fb14df004efd914f0507f54b03ab/rpc.sock",
+      "resume",
+      "01a08948-2281-74c0-8bba-67bb9da54f94",
+      "--no-alt-screen",
+      "--strict-config",
+      ""
+    ]
+  },
+  {
+    "pid": 1150346,
+    "start_ticks": "23014064",
+    "argv": [
+      "/tmp/th-int-3r8tuw4q<operator-path-redacted>",
+      "team-daemon",
+      "start",
+      "--team",
+      "integration",
+      "--name",
+      "lead",
+      "--claude-dir",
+      "/tmp/th-int-3r8tuw4q/claude",
+      ""
+    ]
+  }
+]

@@ -1,0 +1,17 @@
+.F.
+======================================================================
+FAIL: test_missing_metering_is_not_zero_spend (__main__.TrialGuards.test_missing_metering_is_not_zero_spend)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt10_test.py", line 34, in test_missing_metering_is_not_zero_spend
+    finalize = helper('attempt10_support.py', 'finalize_metering')
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt10_test.py", line 13, in helper
+    assert node is not None, 'missing helper: ' + name
+           ^^^^^^^^^^^^^^^^
+AssertionError: missing helper: finalize_metering
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.009s
+
+FAILED (failures=1)

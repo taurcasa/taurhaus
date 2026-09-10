@@ -1,0 +1,101 @@
+[
+  {
+    "pid": 2725698,
+    "start_ticks": "20360457",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-int-ssxg881f",
+      "/tmp/th-int-ssxg881f",
+      "--chdir",
+      "/tmp/th-int-ssxg881f/project",
+      "/bin/bash",
+      "/tmp/th-int-ssxg881f/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 2725699,
+    "start_ticks": "20360457",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-int-ssxg881f",
+      "/tmp/th-int-ssxg881f",
+      "--chdir",
+      "/tmp/th-int-ssxg881f/project",
+      "/bin/bash",
+      "/tmp/th-int-ssxg881f/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 2725700,
+    "start_ticks": "20360458",
+    "argv": [
+      "/tmp/th-int-ssxg881f/home/.local/bin/taurhaus-daemon",
+      "--port",
+      "26417",
+      "--data-dir",
+      "/tmp/th-int-ssxg881f/data",
+      ""
+    ]
+  },
+  {
+    "pid": 2725701,
+    "start_ticks": "20360458",
+    "argv": [
+      "tmux",
+      "-D",
+      "-f",
+      "/dev/null",
+      ""
+    ]
+  },
+  {
+    "pid": 2725707,
+    "start_ticks": "20360469",
+    "argv": [
+      "/bin/bash",
+      ""
+    ]
+  },
+  {
+    "pid": 2725730,
+    "start_ticks": "20360507",
+    "argv": [
+      "/bin/bash",
+      ""
+    ]
+  }
+]

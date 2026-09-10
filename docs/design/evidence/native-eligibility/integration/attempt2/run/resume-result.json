@@ -1,0 +1,44 @@
+{
+  "outcome": {
+    "report": {
+      "failed_step": "load_member",
+      "member_name": "seat",
+      "message": "Conflict: member 'seat' in team 'integration' is not offline",
+      "pane_id": null,
+      "resumed": false,
+      "retryable": true,
+      "reused_pane": false,
+      "steps": [
+        {
+          "message": "request validated",
+          "status": "succeeded",
+          "step": "validate"
+        },
+        {
+          "message": "Conflict: member 'seat' in team 'integration' is not offline",
+          "status": "failed",
+          "step": "load_member"
+        }
+      ],
+      "succeeded_steps": [
+        "validate"
+      ],
+      "team_name": "integration",
+      "warnings": []
+    },
+    "status": "completed"
+  },
+  "run_id": "resume_e48c1ef9a1e949cfb4ae14e6548d380c",
+  "steps": [
+    {
+      "message": null,
+      "status": "running",
+      "step": "prepare_member"
+    },
+    {
+      "message": "Conflict: member 'seat' in team 'integration' is not offline",
+      "status": "failed",
+      "step": "prepare_member"
+    }
+  ]
+}

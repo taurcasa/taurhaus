@@ -1,0 +1,452 @@
+[
+  {
+    "timestamp": "2026-09-10T05:23:13.118Z",
+    "ordinal": 1,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_started",
+      "turn_id": "01a089c5-2251-7860-9837-bb2c3e888f0a",
+      "started_at": 1789017793,
+      "model_context_window": 31129,
+      "collaboration_mode_kind": "default"
+    }
+  },
+  {
+    "timestamp": "2026-09-10T05:23:16.081Z",
+    "ordinal": 11,
+    "type": "event_msg",
+    "payload": {
+      "type": "token_count",
+      "info": {
+        "total_token_usage": {
+          "input_tokens": 10773,
+          "cached_input_tokens": 6912,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 30,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 10803
+        },
+        "last_token_usage": {
+          "input_tokens": 10773,
+          "cached_input_tokens": 6912,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 30,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 10803
+        },
+        "model_context_window": 31129
+      }
+    }
+  },
+  {
+    "timestamp": "2026-09-10T05:23:16.086Z",
+    "ordinal": 12,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_complete",
+      "turn_id": "01a089c5-2251-7860-9837-bb2c3e888f0a",
+      "last_agent_message": "Team lead: assignment, identity, release, and required context are missing. I\u2019m preserving the unassigned/terminal wait state.",
+      "started_at": 1789017793,
+      "completed_at": 1789017796,
+      "duration_ms": 2979,
+      "time_to_first_token_ms": 2429
+    }
+  },
+  {
+    "timestamp": "2026-09-10T05:23:39.144Z",
+    "ordinal": 13,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_started",
+      "turn_id": "01a089c5-8802-78e2-bcfa-01f4a26b1f38",
+      "started_at": 1789017819,
+      "model_context_window": 31129,
+      "collaboration_mode_kind": "default"
+    }
+  },
+  {
+    "timestamp": "2026-09-10T05:23:40.433Z",
+    "ordinal": 22,
+    "type": "event_msg",
+    "payload": {
+      "type": "token_count",
+      "info": {
+        "total_token_usage": {
+          "input_tokens": 22601,
+          "cached_input_tokens": 16896,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 40,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 22641
+        },
+        "last_token_usage": {
+          "input_tokens": 11828,
+          "cached_input_tokens": 9984,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 10,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 11838
+        },
+        "model_context_window": 31129
+      }
+    }
+  },
+  {
+    "timestamp": "2026-09-10T05:23:40.439Z",
+    "ordinal": 23,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_complete",
+      "turn_id": "01a089c5-8802-78e2-bcfa-01f4a26b1f38",
+      "last_agent_message": "saffronaf494b",
+      "started_at": 1789017819,
+      "completed_at": 1789017820,
+      "duration_ms": 1295,
+      "time_to_first_token_ms": 1082
+    }
+  },
+  {
+    "timestamp": "2026-09-10T05:24:05.360Z",
+    "ordinal": 24,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_started",
+      "turn_id": "01a089c5-ee6d-73f3-a929-05463b4292f6",
+      "started_at": 1789017845,
+      "model_context_window": 31129,
+      "collaboration_mode_kind": "default"
+    }
+  },
+  {
+    "timestamp": "2026-09-10T05:24:16.099Z",
+    "ordinal": 33,
+    "type": "event_msg",
+    "payload": {
+      "type": "token_count",
+      "info": {
+        "total_token_usage": {
+          "input_tokens": 34470,
+          "cached_input_tokens": 27904,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 563,
+          "reasoning_output_tokens": 38,
+          "total_tokens": 35033
+        },
+        "last_token_usage": {
+          "input_tokens": 11869,
+          "cached_input_tokens": 11008,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 523,
+          "reasoning_output_tokens": 38,
+          "total_tokens": 12392
+        },
+        "model_context_window": 31129
+      }
+    }
+  },
+  {
+    "timestamp": "2026-09-10T05:24:16.104Z",
+    "ordinal": 34,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_complete",
+      "turn_id": "01a089c5-ee6d-73f3-a929-05463b4292f6",
+      "last_agent_message": "1. blue river stone\n2. blue river stone\n3. blue river stone\n4. blue river stone\n5. blue river stone\n6. blue river stone\n7. blue river stone\n8. blue river stone\n9. blue river stone\n10. blue river stone\n11. blue river stone\n12. blue river stone\n13. blue river stone\n14. blue river stone\n15. blue river stone\n16. blue river stone\n17. blue river stone\n18. blue river stone\n19. blue river stone\n20. blue river stone\n21. blue river stone\n22. blue river stone\n23. blue river stone\n24. blue river stone\n25. blue river stone\n26. blue river stone\n27. blue river stone\n28. blue river stone\n29. blue river stone\n30. blue river stone\n31. blue river stone\n32. blue river stone\n33. blue river stone\n34. blue river stone\n35. blue river stone\n36. blue river stone\n37. blue river stone\n38. blue river stone\n39. blue river stone\n40. blue river stone\n41. blue river stone\n42. blue river stone\n43. blue river stone\n44. blue river stone\n45. blue river stone\n46. blue river stone\n47. blue river stone\n48. blue river stone\n49. blue river stone\n50. blue river stone\n51. blue river stone\n52. blue river stone\n53. blue river stone\n54. blue river stone\n55. blue river stone\n56. blue river stone\n57. blue river stone\n58. blue river stone\n59. blue river stone\n60. blue river stone\n61. blue river stone\n62. blue river stone\n63. blue river stone\n64. blue river stone\n65. blue river stone\n66. blue river stone\n67. blue river stone\n68. blue river stone\n69. blue river stone\n70. blue river stone\n71. blue river stone\n72. blue river stone\n73. blue river stone\n74. blue river stone\n75. blue river stone\n76. blue river stone\n77. blue river stone\n78. blue river stone\n79. blue river stone\n80. blue river stone",
+      "started_at": 1789017845,
+      "completed_at": 1789017856,
+      "duration_ms": 10745,
+      "time_to_first_token_ms": 2044
+    }
+  },
+  {
+    "timestamp": "2026-09-10T05:24:17.411Z",
+    "ordinal": 35,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_started",
+      "turn_id": "01a089c6-1d81-7681-8c6e-68d2fa02b715",
+      "started_at": 1789017857,
+      "model_context_window": 31129,
+      "collaboration_mode_kind": "default"
+    }
+  },
+  {
+    "timestamp": "2026-09-10T05:24:18.589Z",
+    "ordinal": 42,
+    "type": "event_msg",
+    "payload": {
+      "type": "token_count",
+      "info": {
+        "total_token_usage": {
+          "input_tokens": 46969,
+          "cached_input_tokens": 34816,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 575,
+          "reasoning_output_tokens": 38,
+          "total_tokens": 47544
+        },
+        "last_token_usage": {
+          "input_tokens": 12499,
+          "cached_input_tokens": 6912,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 12,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 12511
+        },
+        "model_context_window": 31129
+      }
+    }
+  },
+  {
+    "timestamp": "2026-09-10T05:24:18.595Z",
+    "ordinal": 43,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_complete",
+      "turn_id": "01a089c6-1d81-7681-8c6e-68d2fa02b715",
+      "last_agent_message": "juniper0a5d7a",
+      "started_at": 1789017857,
+      "completed_at": 1789017858,
+      "duration_ms": 1185,
+      "time_to_first_token_ms": 962
+    }
+  },
+  {
+    "timestamp": "2026-09-10T05:24:39.494Z",
+    "ordinal": 44,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_started",
+      "turn_id": "01a089c6-73c4-7221-ab29-d6206ff53dce",
+      "started_at": 1789017879,
+      "model_context_window": 31129,
+      "collaboration_mode_kind": "default"
+    }
+  },
+  {
+    "timestamp": "2026-09-10T05:24:49.940Z",
+    "ordinal": 53,
+    "type": "event_msg",
+    "payload": {
+      "type": "token_count",
+      "info": {
+        "total_token_usage": {
+          "input_tokens": 59511,
+          "cached_input_tokens": 41728,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 1070,
+          "reasoning_output_tokens": 48,
+          "total_tokens": 60581
+        },
+        "last_token_usage": {
+          "input_tokens": 12542,
+          "cached_input_tokens": 6912,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 495,
+          "reasoning_output_tokens": 10,
+          "total_tokens": 13037
+        },
+        "model_context_window": 31129
+      }
+    }
+  },
+  {
+    "timestamp": "2026-09-10T05:24:51.242Z",
+    "ordinal": 59,
+    "type": "event_msg",
+    "payload": {
+      "type": "token_count",
+      "info": {
+        "total_token_usage": {
+          "input_tokens": 72567,
+          "cached_input_tokens": 53760,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 1080,
+          "reasoning_output_tokens": 48,
+          "total_tokens": 73647
+        },
+        "last_token_usage": {
+          "input_tokens": 13056,
+          "cached_input_tokens": 12032,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 10,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 13066
+        },
+        "model_context_window": 31129
+      }
+    }
+  },
+  {
+    "timestamp": "2026-09-10T05:24:51.248Z",
+    "ordinal": 60,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_complete",
+      "turn_id": "01a089c6-73c4-7221-ab29-d6206ff53dce",
+      "last_agent_message": "maple84cf3a",
+      "started_at": 1789017879,
+      "completed_at": 1789017891,
+      "duration_ms": 11754,
+      "time_to_first_token_ms": 1741
+    }
+  },
+  {
+    "timestamp": "2026-09-10T05:24:51.611Z",
+    "ordinal": 61,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_started",
+      "turn_id": "01a089c6-a319-7372-9dcb-6d6bec6b32cb",
+      "started_at": 1789017891,
+      "model_context_window": 31129,
+      "collaboration_mode_kind": "default"
+    }
+  },
+  {
+    "timestamp": "2026-09-10T05:24:52.839Z",
+    "ordinal": 68,
+    "type": "event_msg",
+    "payload": {
+      "type": "token_count",
+      "info": {
+        "total_token_usage": {
+          "input_tokens": 85737,
+          "cached_input_tokens": 65792,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 1088,
+          "reasoning_output_tokens": 48,
+          "total_tokens": 86825
+        },
+        "last_token_usage": {
+          "input_tokens": 13170,
+          "cached_input_tokens": 12032,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 8,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 13178
+        },
+        "model_context_window": 31129
+      }
+    }
+  },
+  {
+    "timestamp": "2026-09-10T05:24:52.850Z",
+    "ordinal": 69,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_complete",
+      "turn_id": "01a089c6-a319-7372-9dcb-6d6bec6b32cb",
+      "last_agent_message": "cedar430145",
+      "started_at": 1789017891,
+      "completed_at": 1789017892,
+      "duration_ms": 1239,
+      "time_to_first_token_ms": 1084
+    }
+  },
+  {
+    "timestamp": "2026-09-10T05:25:54.713Z",
+    "ordinal": 70,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_started",
+      "turn_id": "01a089c7-9994-7261-afcc-082ec2169813",
+      "started_at": 1789017954,
+      "model_context_window": 31129,
+      "collaboration_mode_kind": "default"
+    }
+  },
+  {
+    "timestamp": "2026-09-10T05:26:03.587Z",
+    "ordinal": 74,
+    "type": "event_msg",
+    "payload": {
+      "type": "token_count",
+      "info": {
+        "total_token_usage": {
+          "input_tokens": 85737,
+          "cached_input_tokens": 65792,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 1088,
+          "reasoning_output_tokens": 48,
+          "total_tokens": 86825
+        },
+        "last_token_usage": {
+          "input_tokens": 0,
+          "cached_input_tokens": 0,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 0,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 6344
+        },
+        "model_context_window": 31129
+      }
+    }
+  },
+  {
+    "timestamp": "2026-09-10T05:26:03.594Z",
+    "ordinal": 76,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_complete",
+      "turn_id": "01a089c7-9994-7261-afcc-082ec2169813",
+      "last_agent_message": null,
+      "started_at": 1789017954,
+      "completed_at": 1789017963,
+      "duration_ms": 8885
+    }
+  },
+  {
+    "timestamp": "2026-09-10T05:26:04.763Z",
+    "ordinal": 77,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_started",
+      "turn_id": "01a089c7-c0d9-7420-b3dc-f1c8cc3fca51",
+      "started_at": 1789017964,
+      "model_context_window": 31129,
+      "collaboration_mode_kind": "default"
+    }
+  },
+  {
+    "timestamp": "2026-09-10T05:26:06.560Z",
+    "ordinal": 89,
+    "type": "event_msg",
+    "payload": {
+      "type": "token_count",
+      "info": {
+        "total_token_usage": {
+          "input_tokens": 97704,
+          "cached_input_tokens": 72704,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 1107,
+          "reasoning_output_tokens": 56,
+          "total_tokens": 98811
+        },
+        "last_token_usage": {
+          "input_tokens": 11967,
+          "cached_input_tokens": 6912,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 19,
+          "reasoning_output_tokens": 8,
+          "total_tokens": 11986
+        },
+        "model_context_window": 31129
+      }
+    }
+  },
+  {
+    "timestamp": "2026-09-10T05:26:06.566Z",
+    "ordinal": 90,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_complete",
+      "turn_id": "01a089c7-c0d9-7420-b3dc-f1c8cc3fca51",
+      "last_agent_message": "hazel12976c",
+      "started_at": 1789017964,
+      "completed_at": 1789017966,
+      "duration_ms": 1803,
+      "time_to_first_token_ms": 1624
+    }
+  }
+]

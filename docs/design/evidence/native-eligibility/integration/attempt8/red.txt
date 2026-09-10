@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt8_test.py", line 5, in <module>
+    from attempt8_passive import sample
+ModuleNotFoundError: No module named 'attempt8_passive'

@@ -1,0 +1,192 @@
+[
+  {
+    "pid": 1845037,
+    "start_ticks": "23751304",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-int-1ppvr92f",
+      "/tmp/th-int-1ppvr92f",
+      "--chdir",
+      "/tmp/th-int-1ppvr92f/project",
+      "/bin/bash",
+      "/tmp/th-int-1ppvr92f/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 1845038,
+    "start_ticks": "23751304",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-int-1ppvr92f",
+      "/tmp/th-int-1ppvr92f",
+      "--chdir",
+      "/tmp/th-int-1ppvr92f/project",
+      "/bin/bash",
+      "/tmp/th-int-1ppvr92f/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 1845039,
+    "start_ticks": "23751304",
+    "argv": [
+      "/bin/bash",
+      "/tmp/th-int-1ppvr92f/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 1845040,
+    "start_ticks": "23751304",
+    "argv": [
+      "tmux",
+      "-D",
+      "-f",
+      "/dev/null",
+      ""
+    ]
+  },
+  {
+    "pid": 1845046,
+    "start_ticks": "23751315",
+    "argv": [
+      "/bin/bash",
+      ""
+    ]
+  },
+  {
+    "pid": 1845048,
+    "start_ticks": "23751315",
+    "argv": [
+      "/tmp/th-int-1ppvr92f/home/.local/bin/taurhaus-daemon",
+      "--port",
+      "30008",
+      "--data-dir",
+      "/tmp/th-int-1ppvr92f/data",
+      ""
+    ]
+  },
+  {
+    "pid": 1845436,
+    "start_ticks": "23751375",
+    "argv": [
+      "/bin/bash",
+      "-ic",
+      "cd '/tmp/th-int-1ppvr92f/project' && CLAUDE_DIR='/tmp/th-int-1ppvr92f/claude' CLAUDE_CONFIG_DIR='/tmp/th-int-1ppvr92f/claude' CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions --model 'claude-haiku-4-5' --team-name 'integration' --agent-name 'lead' --agent-id 'lead@integration' --agent-type 'orchestrator' -n 'lead'; exec \"$SHELL\"",
+      ""
+    ]
+  },
+  {
+    "pid": 1845439,
+    "start_ticks": "23751375",
+    "argv": [
+      "claude",
+      "--dangerously-skip-permissions",
+      "--model",
+      "claude-haiku-4-5",
+      "--team-name",
+      "integration",
+      "--agent-name",
+      "lead",
+      "--agent-id",
+      "lead@integration",
+      "--agent-type",
+      "orchestrator",
+      "-n",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 1845445,
+    "start_ticks": "23751377",
+    "argv": [
+      "codex",
+      "-c",
+      "sandbox_mode=\"read-only\"",
+      "-c",
+      "approval_policy=\"never\"",
+      "-c",
+      "notify=[\"/tmp/th-int-1ppvr92f/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]",
+      "-c",
+      "model=\"gpt-5.6-luna\"",
+      "-c",
+      "model_reasoning_effort=\"low\"",
+      "app-server",
+      "--listen",
+      "unix:///tmp/th-int-1ppvr92f/tmp/th-host-3e4aa4c6aa6c49bbbc7cabbe1ace0107/rpc.sock",
+      ""
+    ]
+  },
+  {
+    "pid": 1846096,
+    "start_ticks": "23751458",
+    "argv": [
+      "-bash",
+      ""
+    ]
+  },
+  {
+    "pid": 1846139,
+    "start_ticks": "23751495",
+    "argv": [
+      "codex",
+      "--remote",
+      "unix:///tmp/th-int-1ppvr92f/tmp/th-host-3e4aa4c6aa6c49bbbc7cabbe1ace0107/rpc.sock",
+      "resume",
+      "01a089b8-ad39-7870-8d03-84bb4e729314",
+      "--no-alt-screen",
+      "--strict-config",
+      ""
+    ]
+  },
+  {
+    "pid": 1846881,
+    "start_ticks": "23751618",
+    "argv": [
+      "/tmp/th-int-1ppvr92f/home/.local/bin/mesh",
+      "team-daemon",
+      "start",
+      "--team",
+      "integration",
+      "--name",
+      "lead",
+      "--claude-dir",
+      "/tmp/th-int-1ppvr92f/claude",
+      ""
+    ]
+  }
+]

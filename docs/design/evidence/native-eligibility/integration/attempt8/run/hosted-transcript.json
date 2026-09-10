@@ -1,0 +1,65 @@
+{
+  "attachmentGeneration": 1,
+  "eventsTruncated": true,
+  "outcomeUnknown": false,
+  "requests": [],
+  "thread": {
+    "agentNickname": null,
+    "agentRole": null,
+    "canAcceptDirectInput": true,
+    "cliVersion": "0.153.4",
+    "createdAt": 1789016976,
+    "cwd": "/tmp/th-int-1ppvr92f/project",
+    "ephemeral": false,
+    "extra": null,
+    "forkedFromId": null,
+    "gitInfo": {
+      "branch": "master",
+      "originUrl": null,
+      "sha": "47bb47939ab709962192b1606d407be289382ef7"
+    },
+    "historyMode": "paginated",
+    "id": "01a089b8-ad39-7870-8d03-84bb4e729314",
+    "model": "gpt-5.6-luna",
+    "modelProvider": "openai",
+    "name": "Recover integration card",
+    "parentThreadId": null,
+    "path": "/tmp/th-int-1ppvr92f/codex/sessions/2026/09/10/rollout-2026-09-10T07-09-36-01a089b8-ad39-7870-8d03-84bb4e729314.jsonl",
+    "preview": "[taurhaus] recovery_card\nIdentity: seat on integration; key={\"card_schema\":1,\"recipient\":[\"cf6ad52510233e724ae4d5e4547496200802748b71eb5b7534793bd0eb89dfff\",\"703342ac-1195-49d9-8129-02c7853ceb72\"],\"context\":[1,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-int-1ppvr92f/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-int-1ppvr92f/claude\",\"harness_account_root\":\"/tmp/th-int-1ppvr92f/codex\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-int-1ppvr92f/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"44ffdd9316a9efc3856d18e4f0ea7e4df04ee03f8316f4a311fada3863b419bf\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: 516afed121df7f7d44179e9d9c990be60421a2d83c20b248bff90149da1fd9f5; source=682540e4a3f9cfbca660a5add5db7fa379ff474f5fe7c2f18798f74d7e72c755; audience=unavailable\nProject cwd: /tmp/th-int-1ppvr92f/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: low; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-10 05:09:36.720759628 UTC\nCurrent task: # \u2014 \nOperational constraints: unavailable\nFocal files: unavailable\nRole: unavailable\nPurpose: Isolated transport trial. Reply briefly. Never execute tools or commands.\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.",
+    "projectId": null,
+    "reasoningEffort": "low",
+    "recencyAt": 1789017131,
+    "section": null,
+    "sectionEnteredAt": null,
+    "sessionId": "01a089b8-ad39-7870-8d03-84bb4e729314",
+    "source": "vscode",
+    "status": {
+      "type": "idle"
+    },
+    "threadSource": null,
+    "turns": [
+      {
+        "completedAt": 1789017142,
+        "durationMs": 10413,
+        "error": null,
+        "id": "01a089bb-0b09-7c10-a86d-2c9c847ab562",
+        "items": [
+          {
+            "delivery": null,
+            "id": "msg_05ef2e270b6df373016aa23c2979a887d2821cc85c0107cb59",
+            "memoryCitation": null,
+            "phase": "final_answer",
+            "questions": null,
+            "text": "1. blue river stone\n2. blue river stone\n3. blue river stone\n4. blue river stone\n5. blue river stone\n6. blue river stone\n7. blue river stone\n8. blue river stone\n9. blue river stone\n10. blue river stone\n11. blue river stone\n12. blue river stone\n13. blue river stone\n14. blue river stone\n15. blue river stone\n16. blue river stone\n17. blue river stone\n18. blue river stone\n19. blue river stone\n20. blue river stone\n21. blue river stone\n22. blue river stone\n23. blue river stone\n24. blue river stone\n25. blue river stone\n26. blue river stone\n27. blue river stone\n28. blue river stone\n29. blue river stone\n30. blue river stone\n31. blue river stone\n32. blue river stone\n33. blue river stone\n34. blue river stone\n35. blue river stone\n36. blue river stone\n37. blue river stone\n38. blue river stone\n39. blue river stone\n40. blue river stone\n41. blue river stone\n42. blue river stone\n43. blue river stone\n44. blue river stone\n45. blue river stone\n46. blue river stone\n47. blue river stone\n48. blue river stone\n49. blue river stone\n50. blue river stone\n51. blue river stone\n52. blue river stone\n53. blue river stone\n54. blue river stone\n55. blue river stone\n56. blue river stone\n57. blue river stone\n58. blue river stone\n59. blue river stone\n60. blue river stone\n61. blue river stone\n62. blue river stone\n63. blue river stone\n64. blue river stone\n65. blue river stone\n66. blue river stone\n67. blue river stone\n68. blue river stone\n69. blue river stone\n70. blue river stone\n71. blue river stone\n72. blue river stone\n73. blue river stone\n74. blue river stone\n75. blue river stone\n76. blue river stone\n77. blue river stone\n78. blue river stone\n79. blue river stone\n80. blue river stone",
+            "type": "agentMessage"
+          }
+        ],
+        "itemsView": "summary",
+        "startedAt": 1789017131,
+        "status": "completed"
+      }
+    ],
+    "updatedAt": 1789017142
+  },
+  "evidenceEvents": "host-events.jsonl"
+}

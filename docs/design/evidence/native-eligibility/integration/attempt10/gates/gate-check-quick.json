@@ -1,0 +1,74 @@
+{
+  "command": [
+    "just",
+    "check-quick"
+  ],
+  "exit": 0,
+  "seconds": 46.236461410997435,
+  "cargo_preflight": [
+    {
+      "exit": 0,
+      "output": "1133947 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo build --release --bin taurhaus-daemon\n"
+    },
+    {
+      "exit": 0,
+      "output": "1133947 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo build --release --bin taurhaus-daemon\n1141552 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo check --tests\n"
+    },
+    {
+      "exit": 0,
+      "output": "1133947 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo build --release --bin taurhaus-daemon\n1149721 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo check --all-targets\n"
+    },
+    {
+      "exit": 0,
+      "output": "1149721 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo check --all-targets\n"
+    },
+    {
+      "exit": 0,
+      "output": "1152194 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo build --release --bin taurhaus-daemon\n1162299 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --test cli_renderers --test module_boundary_assertions --test harness_conformance -- --test-threads=1\n"
+    },
+    {
+      "exit": 0,
+      "output": "1152194 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo build --release --bin taurhaus-daemon\n1162299 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --test cli_renderers --test module_boundary_assertions --test harness_conformance -- --test-threads=1\n"
+    },
+    {
+      "exit": 0,
+      "output": "1152194 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo build --release --bin taurhaus-daemon\n"
+    },
+    {
+      "exit": 0,
+      "output": "1185957 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo build --bin mesh\n"
+    },
+    {
+      "exit": 0,
+      "output": "1187633 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo check --tests\n"
+    },
+    {
+      "exit": 0,
+      "output": "1187633 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo check --tests\n1212056 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo check --tests\n"
+    },
+    {
+      "exit": 0,
+      "output": "1212056 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo check --tests\n"
+    },
+    {
+      "exit": 0,
+      "output": "1248748 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo check --all-targets\n"
+    },
+    {
+      "exit": 0,
+      "output": "1251611 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo check --all-targets\n"
+    },
+    {
+      "exit": 0,
+      "output": "1259499 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --test cli_renderers --test module_boundary_assertions --test harness_conformance -- --test-threads=1\n"
+    },
+    {
+      "exit": 0,
+      "output": "1259499 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --test cli_renderers --test module_boundary_assertions --test harness_conformance -- --test-threads=1\n"
+    },
+    {
+      "exit": 1,
+      "output": ""
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+ [32m✓[39m src/lib/pathUtils.test.js [2m([22m[2m13 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/lib/shell/projectSelectionController.test.js [2m([22m[2m2 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/lib/windowsNsisPayloadHash.test.js [2m([22m[2m4 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/lib/sidebarBridge.test.js [2m([22m[2m15 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+[90mstdout[2m | src/lib/SidebarAccounts.test.js[2m > [22m[2mSidebar account submenus[2m > [22m[2mreopening the chooser from the menu[2m > [22m[2mopens the chooser on a project whose account is already settled
+[22m[39m[cmd-center] fresh claude session: project-0 taurhaus
+
+ [32m✓[39m src/lib/ipc/coordinationResponses.test.js [2m([22m[2m9 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/lib/shell/sessionLifecycleController.test.js [2m([22m[2m6 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/lib/toolLogos.test.js [2m([22m[2m7 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+[90mstdout[2m | src/lib/SidebarAccounts.test.js[2m > [22m[2mSidebar account submenus[2m > [22m[2mreopening the chooser from the menu[2m > [22m[2mleaves the plain launch row launching straight away
+[22m[39m[cmd-center] fresh claude session: project-0 taurhaus
+
+[90mstdout[2m | src/lib/SidebarAccounts.test.js[2m > [22m[2mSidebar account submenus[2m > [22m[2mreopening the chooser from the menu[2m > [22m[2mleaves the plain launch row launching straight away
+[22m[39m[cmd-center] launch OK: { ok: [33mtrue[39m }
+
+ [32m✓[39m src/lib/components/templateBrowserUtils.test.js [2m([22m[2m13 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/visual-host/query.test.js [2m([22m[2m6 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/lib/shell/daemonStatusController.test.js [2m([22m[2m2 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m src/lib/assetCache.test.js [2m([22m[2m11 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/lib/daemonStatus.test.js [2m([22m[2m8 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/lib/fileClassifier.test.js [2m([22m[2m11 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/lib/ipc/templateResponses.test.js [2m([22m[2m11 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/lib/fileChange.test.js [2m([22m[2m12 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/lib/shell/shortcuts.test.js [2m([22m[2m4 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/lib/components/roleVersioning.test.js [2m([22m[2m4 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/lib/ipc/normalize.test.js [2m([22m[2m6 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m src/lib/format.test.js [2m([22m[2m8 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m src/lib/meshDefaults.test.js [2m([22m[2m5 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m src/lib/projectOptions.test.js [2m([22m[2m3 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m src/app.css.test.js [2m([22m[2m2 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m src/lib/SidebarAccounts.test.js [2m([22m[2m19 tests[22m[2m)[22m[33m 3390[2mms[22m[39m
+     [33m[2m✓[22m[39m ticks the account a fresh launch uses, and none on the history rows [33m 361[2mms[22m[39m
+     [33m[2m✓[22m[39m pins from the Claude account submenu without launching, and clears it again [33m 384[2mms[22m[39m
+     [33m[2m✓[22m[39m offers no usable account on a resume the team runtime would take over [33m 349[2mms[22m[39m
+ [32m✓[39m src/lib/batchRegistrationProgress.test.js [2m([22m[2m3 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m src/smoke.test.js [2m([22m[2m1 test[22m[2m)[22m[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/errorCopy.test.js [2m([22m[2m8 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m src/lib/ipc/system.test.js [2m([22m[2m2 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m e2e/helpers/meshTiming.test.js [2m([22m[2m2 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m src/lib/components/meshBuilderUtils.test.js [2m([22m[2m1 test[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m src/lib/components/meshTabRuntime.warnings.test.js [2m([22m[2m2 tests[22m[2m)[22m[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/ipc/templates.test.js [2m([22m[2m1 test[22m[2m)[22m[32m 1[2mms[22m[39m
+ [32m✓[39m src/test/visual/ipcMockCoverage.test.js [2m([22m[2m2 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m src/visual-host/registry.test.js [2m([22m[2m4 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m scripts/workflow-procedures.test.mjs [2m([22m[2m226 tests[22m[2m)[22m[33m 8407[2mms[22m[39m
+     [33m[2m✓[22m[39m kills the whole detached group when its owner stops refreshing the lease [33m 2228[2mms[22m[39m
+     [33m[2m✓[22m[39m leaves a run alone while its owner keeps the lease fresh [33m 6035[2mms[22m[39m
+[90mstderr[2m | src/lib/components/MeshTab.test.js[2m > [22m[2mMeshTab[2m > [22m[2msuppresses skipped team folder discovery warnings from the inline availability banner
+[22m[39m[mesh] suppressed internal discovery warning: skipped team folder 'taureval-1773711699719' because config is missing or invalid
+
+ [32m✓[39m src/lib/components/MeshTab.test.js [2m([22m[2m72 tests[22m[2m)[22m[33m 7450[2mms[22m[39m
+     [33m[2m✓[22m[39m auto-collapses the resume progress tray after completion [33m 5261[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m150 passed[39m[22m[90m (150)[39m
+[2m      Tests [22m [1m[32m2495 passed[39m[22m[90m (2495)[39m
+[2m   Start at [22m 06:53:48
+[2m   Duration [22m 11.27s[2m (transform 41.97s, setup 0ms, import 90.43s, tests 50.10s, environment 46.48s)[22m
+
+Quick check passed.

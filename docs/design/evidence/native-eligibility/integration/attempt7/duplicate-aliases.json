@@ -1,0 +1,20 @@
+{
+  "run/step2-pane-0.txt": "run/step-1-pane-0.txt",
+  "run/step2-pane-1.txt": "run/step-1-pane-1.txt",
+  "run/step3-active-pane-0.txt": "run/step-1-pane-0.txt",
+  "run/step3-active-pane-1.txt": "run/step-1-pane-1.txt",
+  "run/step3-final-pane-0.txt": "run/step-1-pane-0.txt",
+  "run/step3-final-pane-1.txt": "run/step-1-pane-1.txt",
+  "run/step4-final-pane-0.txt": "run/step-1-pane-0.txt",
+  "run/step4-final-pane-1.txt": "run/step-1-pane-1.txt",
+  "run/step4-pending-pane-0.txt": "run/step-1-pane-0.txt",
+  "run/step4-pending-pane-1.txt": "run/step-1-pane-1.txt",
+  "run/step4-typed-pane-0.txt": "run/step-1-pane-0.txt",
+  "run/step4-typed-pane-1.txt": "run/step-1-pane-1.txt",
+  "run/identities.json": "run/step1-identities.json",
+  "run/initialize-pane-0.txt": "run/step-1-pane-0.txt",
+  "run/initialize-pane-1.txt": "run/step-1-pane-1.txt",
+  "run/team/runtime/seat.json": "run/step1-runtime.json",
+  "run/team/state/delivery/handoff.lock": "run/codex-notify.jsonl",
+  "run/team/state/delivery/owner.lock": "run/codex-notify.jsonl"
+}

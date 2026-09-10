@@ -1,0 +1,24 @@
+{
+  "trial_verdict": "INCONCLUSIVE: observer initialization confounded step 1",
+  "runtime_refusal": "Conflict: unsupported app-server handshake",
+  "hosted_rpc_rejected_present": false,
+  "host_error_object_present": false,
+  "steps_2_through_7": "NOT RUN",
+  "turns": 0,
+  "observed_usd": 0,
+  "recorded_identities_absent": 5,
+  "survivors": [],
+  "port_closed": 30683,
+  "private_tmux_socket_absent": true,
+  "root_and_auth_removed": true,
+  "descriptor_restored": true,
+  "mesh_worktree_clean": true,
+  "gates": {
+    "check-quick": 0,
+    "lint": 0,
+    "test-contracts": 0
+  },
+  "product_diff": [],
+  "artifact_hygiene": "passed",
+  "review": "local read-only audit; Opus model unavailable"
+}

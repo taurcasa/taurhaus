@@ -1,0 +1,20 @@
+{
+  "command": [
+    "cargo",
+    "build",
+    "--bin",
+    "mesh"
+  ],
+  "cwd": "<operator-path-redacted>",
+  "target": "<operator-path-redacted>",
+  "exit": 0,
+  "cargo_preflight": [
+    {
+      "at": 1789031174.4783583,
+      "exit": 1,
+      "output": ""
+    }
+  ],
+  "mesh_worktree": "/home/mstie/projects/mesh-trial",
+  "mesh_worktree_provenance": "Review reconstruction: attempt9-build.py MESH pin and target/debug/mesh SHA-256 matched the retained binary event; original cwd/target were over-redacted."
+}

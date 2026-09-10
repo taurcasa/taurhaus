@@ -1,0 +1,63 @@
+{
+  "command": [
+    "cargo",
+    "build",
+    "--bin",
+    "taurhaus-daemon"
+  ],
+  "cwd": "/home/mstie/projects/taurhaus-trial/src-tauri",
+  "target": "/home/mstie/projects/taurhaus-trial/src-tauri/target",
+  "exit": 0,
+  "cargo_preflight": [
+    {
+      "at": 1789030880.9981072,
+      "exit": 0,
+      "output": "3694992 <operator-path-redacted> check --tests\n"
+    },
+    {
+      "at": 1789030911.00701,
+      "exit": 0,
+      "output": "3699303 <operator-path-redacted> check --all-targets\n"
+    },
+    {
+      "at": 1789030941.0188425,
+      "exit": 0,
+      "output": "3704589 <operator-path-redacted> test --test cli_renderers --test module_boundary_assertions --test harness_conformance -- --test-threads=1\n"
+    },
+    {
+      "at": 1789030971.027676,
+      "exit": 0,
+      "output": "3707923 <operator-path-redacted> check --tests\n"
+    },
+    {
+      "at": 1789031001.0366313,
+      "exit": 0,
+      "output": "3707923 <operator-path-redacted> check --tests\n"
+    },
+    {
+      "at": 1789031031.069799,
+      "exit": 0,
+      "output": "3724273 <operator-path-redacted> check --all-targets\n3724332 <operator-path-redacted> check --all-targets\n"
+    },
+    {
+      "at": 1789031061.0789654,
+      "exit": 0,
+      "output": "3724273 <operator-path-redacted> check --all-targets\n3724332 <operator-path-redacted> check --all-targets\n"
+    },
+    {
+      "at": 1789031091.0872688,
+      "exit": 0,
+      "output": "3750582 <operator-path-redacted> check --all-targets\n"
+    },
+    {
+      "at": 1789031121.0958312,
+      "exit": 0,
+      "output": "3754569 <operator-path-redacted> test --test cli_renderers --test module_boundary_assertions --test harness_conformance -- --test-threads=1\n"
+    },
+    {
+      "at": 1789031151.1060932,
+      "exit": 1,
+      "output": ""
+    }
+  ]
+}

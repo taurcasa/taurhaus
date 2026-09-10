@@ -1,0 +1,14 @@
+{
+  "command": [
+    "just",
+    "check-quick"
+  ],
+  "exit": 0,
+  "seconds": 17.849732711008983,
+  "cargo_preflight": [
+    {
+      "exit": 1,
+      "output": ""
+    }
+  ]
+}

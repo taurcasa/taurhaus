@@ -1,0 +1,48 @@
+CLAUDE_DIR='/tmp/th-int-4fvqnzt5/claude' CODEX_HOME='/tmp/th-int-4fvqnzt5/codex' codex --sandbox read-only --ask-for-approval never -c 'noti
+fy=["/tmp/th-int-4fvqnzt5/home/.local/bin/taurhaus-daemon","codex-notify"]' -m 'gpt-5.6-luna' -c 'model_reasoning_effort="low"'mstie@whocare
+s:/tmp/th-int-4fvqnzt5/project$ CLAUDE_DIR='/tmp/th-int-4fvqnzt5/claude' CODEX_HOME='/tmp/th-int-4fvqnzt5/codex' codex --sandbox read-only -
+-ask-for-approval never -c 'notify=["/tmp/th-int-4fvqnzt5/home/.local/bin/taurhaus-daemon","codex-notify"]' -m 'gpt-5.6-luna' -c 'model_reas
+oning_effort="low"'
+╭────────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.153.4)                     │
+│                                                │
+│ model:     gpt-5.6-luna low   /model to change │
+│ directory: /tmp/th-int-4fvqnzt5/project        │
+╰────────────────────────────────────────────────╯
+
+  Tip: This is GPT-6, a new generation of intelligence. Astra is state-of-the-art in coding, computer use, science, and professional work.
+  Give it a hard problem, a half-formed idea, or anything you've been meaning to build. See where it takes you.
+
+⚠ Heads up, you have less than 25% of your weekly limit left. Run /status for a breakdown.
+
+
+› [mesh] You are "seat" on team "integration". Inbox update from lead. Check inbox and act if the message requests it: mesh read --unread
+  --mark-read --team integration --name seat
+
+
+• Working (0s • esc to interrupt)
+
+
+› Ask Codex to do anything
+
+  gpt-5.6-luna low · /tmp/th-int-4fvqnzt5/project
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,3 @@
+preflight exit 1
+   Compiling mesh v0.2.29 (/home/mstie/projects/mesh-push)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.63s

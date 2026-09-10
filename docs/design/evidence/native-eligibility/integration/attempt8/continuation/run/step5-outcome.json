@@ -1,0 +1,5 @@
+{
+  "step": 5,
+  "outcome": "FAIL",
+  "error": "no recovery card at compaction boundary or first following input"
+}

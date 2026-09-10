@@ -1,0 +1,22 @@
+{
+  "command": [
+    "just",
+    "lint"
+  ],
+  "exit": 0,
+  "seconds": 37.26512056798674,
+  "cargo_preflight": [
+    {
+      "exit": 0,
+      "output": "1275042 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --test cli_renderers --test module_boundary_assertions --test harness_conformance -- --test-threads=1\n"
+    },
+    {
+      "exit": 0,
+      "output": "1291255 cargo fmt\n"
+    },
+    {
+      "exit": 1,
+      "output": ""
+    }
+  ]
+}

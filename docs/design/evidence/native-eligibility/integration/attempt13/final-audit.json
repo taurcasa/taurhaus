@@ -1,0 +1,298 @@
+{
+  "verdict": "INCONCLUSIVE: step 7 controller FAIL; tmux notice submitted, full-body marker absent",
+  "controller_exit": 1,
+  "steps": {
+    "1": {
+      "step": 1,
+      "outcome": "PASS",
+      "at": 1789064292.4127362
+    },
+    "2": {
+      "step": 2,
+      "outcome": "PASS",
+      "at": 1789064319.5330617
+    },
+    "3": {
+      "step": 3,
+      "outcome": "PASS",
+      "at": 1789064354.781434
+    },
+    "4": {
+      "step": 4,
+      "outcome": "PASS",
+      "at": 1789064408.353976
+    },
+    "5": {
+      "step": 5,
+      "outcome": "PASS",
+      "at": 1789064461.3054569
+    },
+    "6": {
+      "step": 6,
+      "outcome": "PASS",
+      "at": 1789064518.0459032
+    },
+    "7": {
+      "step": 7,
+      "outcome": "FAIL",
+      "error": "plain tmux delivery stalled"
+    }
+  },
+  "hosted_thread": "01a08c8a-29ea-7cc2-8a4e-b000b9317bbd",
+  "tmux_session": "01a08c8e-72a8-75b0-b8cb-2c9cf88f8167",
+  "tmux_receipt": {
+    "adapter": "tmux/1",
+    "attachment": {
+      "attachment_generation": 1,
+      "context_generation": "0",
+      "generation": "1",
+      "harness": "codex",
+      "launch_root": {
+        "claudeDir": "/tmp/th-int-4fvqnzt5/claude",
+        "rootAuthorityRevision": 0,
+        "teamIncarnationId": "6ce0ea5943d9884fcecd5d9335633e6d3d0bfa0f62282fdc4e47fa2440732461",
+        "teamsDir": "/tmp/th-int-4fvqnzt5/claude/teams"
+      },
+      "member": "seat",
+      "pane": "%18",
+      "pane_pid": 6115,
+      "pane_start": "28507788",
+      "root": "/tmp/th-int-4fvqnzt5/claude",
+      "session": "$0",
+      "socket": "/tmp/th-int-4fvqnzt5/tmux/tmux-1000/default",
+      "team_incarnation": "6ce0ea5943d9884fcecd5d9335633e6d3d0bfa0f62282fdc4e47fa2440732461",
+      "tmux_session": "$0"
+    },
+    "attempt_id": "cdf38dbc-5863-4992-847e-7ddaac366215",
+    "delivery_id": "d6e0a22c-1491-4947-a9ba-36ee3ea077d0",
+    "event_type": "receipt",
+    "evidence": "literal paste and harness submit exited 0; model uptake unobserved",
+    "message_id": "375dc86e-d519-4f38-ad2b-695995ec3d99",
+    "observed_at": "2026-09-10T18:22:27.615149594+00:00",
+    "origin": "tmux_send_keys",
+    "owner_epoch": 2,
+    "recipient": "seat",
+    "source_generation": "5439888c-dc23-42b5-815a-ede5bfd6fc13",
+    "source_position": 39,
+    "stage": "submitted",
+    "team_incarnation": "6ce0ea5943d9884fcecd5d9335633e6d3d0bfa0f62282fdc4e47fa2440732461"
+  },
+  "private_port": 25438,
+  "cleanup": {
+    "survivors": [],
+    "port_closed": true,
+    "root": "/tmp/th-int-4fvqnzt5",
+    "descriptor_restore_exit": 0,
+    "root_removed": true,
+    "mesh_trial_artifact_removed": true
+  },
+  "verified_pid_start_identities": 21,
+  "daemon_jsonl_rows": 1037,
+  "daemon_jsonl_event_families": [
+    "activity.state.changed",
+    "codex.notify.appended",
+    "compaction.codex_hook.degraded",
+    "compaction.codex_host.deferred",
+    "compaction.codex_host.delivered",
+    "compaction.codex_host.received",
+    "compaction.injected",
+    "compaction.skipped",
+    "coordination.step.completed",
+    "coordination.step.started",
+    "deadline.pass.completed",
+    "effort.sweep.awaiting_settings",
+    "hosted.instruction_sources.loaded",
+    "inotify.telemetry",
+    "launch.command.rendered",
+    "onboarding.delivery.observed",
+    "self_heal.pass.completed",
+    "self_heal.team.skipped_initializing",
+    "session_scanner.scan.completed"
+  ],
+  "daemon_jsonl_sha256": "f632312a12291e24af08a8f7a47dcc0e19e54ef94fc3a6701444b49479155cf8",
+  "host_poll_deferrals": [],
+  "descriptor_flip_commit": null,
+  "mesh_clean": true,
+  "gate_exits": {
+    "check-quick": 0,
+    "lint": 0,
+    "test-contracts": 0
+  },
+  "spend": {
+    "model": "gpt-5.6-luna",
+    "effort": "low",
+    "turn_ids": [
+      "01a08c8a-2f67-7b32-a217-3d490219e47f",
+      "01a08c8b-0443-72d2-8119-c1f95642d21f",
+      "01a08c8b-5bad-7853-ab10-b5e414b99e03",
+      "01a08c8b-8ca9-7fd2-b54b-b28d3a16f997",
+      "01a08c8c-2558-70f1-a01d-b428d5c1e3cb",
+      "01a08c8c-5f39-7951-b860-20f4b0a4766c",
+      "01a08c8d-01a3-7083-a23f-7b7ee19ee125",
+      "01a08c8d-2834-7713-bc9f-10ac77a01c98",
+      "01a08c8d-eecf-7323-97eb-f6ea033c783c",
+      "01a08c8e-06e8-70f0-af52-26feae71257f",
+      "01a08c8e-784e-7a53-aa58-1b7caae5e7ea",
+      "01a08c8e-8d1d-7732-8b35-5807b577e7d6"
+    ],
+    "paid_turns": 12,
+    "generation_slots_including_steer_and_compaction": 13,
+    "generations": [
+      {
+        "thread_id": "01a08c8a-29ea-7cc2-8a4e-b000b9317bbd",
+        "turn_id": "01a08c8a-2f67-7b32-a217-3d490219e47f",
+        "input": 11114,
+        "cached_input": 6912,
+        "output": 27,
+        "reasoning_output": 0,
+        "api_equivalent_usd": 0.00101104,
+        "conservative_usd": 0.0133692,
+        "source": "host tokenUsage.last"
+      },
+      {
+        "thread_id": "01a08c8a-29ea-7cc2-8a4e-b000b9317bbd",
+        "turn_id": "01a08c8b-0443-72d2-8119-c1f95642d21f",
+        "input": 11241,
+        "cached_input": 9984,
+        "output": 10,
+        "reasoning_output": 0,
+        "api_equivalent_usd": 0.00046308,
+        "conservative_usd": 0.0135012,
+        "source": "host tokenUsage.last"
+      },
+      {
+        "thread_id": "01a08c8a-29ea-7cc2-8a4e-b000b9317bbd",
+        "turn_id": "01a08c8b-5bad-7853-ab10-b5e414b99e03",
+        "input": 11282,
+        "cached_input": 6912,
+        "output": 516,
+        "reasoning_output": 31,
+        "api_equivalent_usd": 0.00163144,
+        "conservative_usd": 0.0141576,
+        "source": "host tokenUsage.last"
+      },
+      {
+        "thread_id": "01a08c8a-29ea-7cc2-8a4e-b000b9317bbd",
+        "turn_id": "01a08c8b-8ca9-7fd2-b54b-b28d3a16f997",
+        "input": 11905,
+        "cached_input": 11008,
+        "output": 19,
+        "reasoning_output": 7,
+        "api_equivalent_usd": 0.00042236,
+        "conservative_usd": 0.0143088,
+        "source": "host tokenUsage.last"
+      },
+      {
+        "thread_id": "01a08c8a-29ea-7cc2-8a4e-b000b9317bbd",
+        "turn_id": "01a08c8c-2558-70f1-a01d-b428d5c1e3cb",
+        "input": 11955,
+        "cached_input": 11008,
+        "output": 497,
+        "reasoning_output": 12,
+        "api_equivalent_usd": 0.00100596,
+        "conservative_usd": 0.0149424,
+        "source": "host tokenUsage.last"
+      },
+      {
+        "thread_id": "01a08c8a-29ea-7cc2-8a4e-b000b9317bbd",
+        "turn_id": "01a08c8c-2558-70f1-a01d-b428d5c1e3cb",
+        "input": 12471,
+        "cached_input": 11008,
+        "output": 10,
+        "reasoning_output": 0,
+        "api_equivalent_usd": 0.00052476,
+        "conservative_usd": 0.0149772,
+        "source": "host tokenUsage.last"
+      },
+      {
+        "thread_id": "01a08c8a-29ea-7cc2-8a4e-b000b9317bbd",
+        "turn_id": "01a08c8c-5f39-7951-b860-20f4b0a4766c",
+        "input": 12585,
+        "cached_input": 12032,
+        "output": 11,
+        "reasoning_output": 0,
+        "api_equivalent_usd": 0.00036444,
+        "conservative_usd": 0.0151152,
+        "source": "host tokenUsage.last"
+      },
+      {
+        "thread_id": "01a08c8a-29ea-7cc2-8a4e-b000b9317bbd",
+        "turn_id": "01a08c8d-01a3-7083-a23f-7b7ee19ee125",
+        "input": 0,
+        "cached_input": 0,
+        "output": 0,
+        "reasoning_output": 0,
+        "api_equivalent_usd": null,
+        "conservative_usd": null,
+        "source": "host tokenUsage.last",
+        "limitation": "Compaction reports totalTokens=6262 but zero billable token classes; not zero cost."
+      },
+      {
+        "thread_id": "01a08c8a-29ea-7cc2-8a4e-b000b9317bbd",
+        "turn_id": "01a08c8d-2834-7713-bc9f-10ac77a01c98",
+        "input": 12537,
+        "cached_input": 6912,
+        "output": 46,
+        "reasoning_output": 21,
+        "api_equivalent_usd": 0.00131844,
+        "conservative_usd": 0.0150996,
+        "source": "host tokenUsage.last"
+      },
+      {
+        "thread_id": "01a08c8a-29ea-7cc2-8a4e-b000b9317bbd",
+        "turn_id": "01a08c8d-eecf-7323-97eb-f6ea033c783c",
+        "input": 13234,
+        "cached_input": 12032,
+        "output": 23,
+        "reasoning_output": 0,
+        "api_equivalent_usd": 0.00050864,
+        "conservative_usd": 0.0159084,
+        "source": "host tokenUsage.last"
+      },
+      {
+        "thread_id": "01a08c8a-29ea-7cc2-8a4e-b000b9317bbd",
+        "turn_id": "01a08c8e-06e8-70f0-af52-26feae71257f",
+        "input": 13365,
+        "cached_input": 13056,
+        "output": 19,
+        "reasoning_output": 8,
+        "api_equivalent_usd": 0.00034572,
+        "conservative_usd": 0.0160608,
+        "source": "host tokenUsage.last"
+      },
+      {
+        "thread_id": "01a08c8e-72a8-75b0-b8cb-2c9cf88f8167",
+        "turn_id": "01a08c8e-784e-7a53-aa58-1b7caae5e7ea",
+        "input": 9253,
+        "cached_input": 6912,
+        "output": 49,
+        "reasoning_output": 33,
+        "api_equivalent_usd": 0.00066524,
+        "conservative_usd": 0.0111624,
+        "source": "usage-events.json[32] (tmux rollout, preceding task_started)"
+      },
+      {
+        "thread_id": "01a08c8e-72a8-75b0-b8cb-2c9cf88f8167",
+        "turn_id": "01a08c8e-8d1d-7732-8b35-5807b577e7d6",
+        "input": 9355,
+        "cached_input": 8960,
+        "output": 14,
+        "reasoning_output": 0,
+        "api_equivalent_usd": 0.000275,
+        "conservative_usd": 0.0112428,
+        "source": "usage-events.json[35] (tmux rollout, preceding task_started)"
+      }
+    ],
+    "measured_api_equivalent_subtotal_usd": 0.00853612,
+    "measured_conservative_subtotal_usd": 0.1698456,
+    "api_equivalent_usd": null,
+    "actual_billed_usd": null,
+    "metering_complete": false,
+    "compaction_metering_gaps": [
+      "01a08c8d-01a3-7083-a23f-7b7ee19ee125"
+    ],
+    "unjoined_turn_ids": [],
+    "basis": "Host tokenUsage.last via daemon hosted_transcript; packet rates $0.20/$0.02/$1.20 per million input/cached/output. Estimate, not invoice. Plain tmux usage is supplemented from the isolated rollout.",
+    "limitation": "Compaction billable classes and actual subscription debit unreported. Full billed USD/cap unverified; no invented zero or metering-based step failure."
+  }
+}

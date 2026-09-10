@@ -1,0 +1,5 @@
+{
+  "step": 3,
+  "outcome": "FAIL",
+  "error": "no active-thread deferral"
+}

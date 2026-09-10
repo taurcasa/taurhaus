@@ -1,0 +1,18 @@
+{
+  "command": [
+    "cargo",
+    "build",
+    "--bin",
+    "mesh"
+  ],
+  "cwd": "/home/mstie/projects/mesh-trial",
+  "target": "/home/mstie/projects/mesh-trial/target",
+  "exit": 0,
+  "cargo_preflight": [
+    {
+      "at": 1789043904.2863371,
+      "exit": 1,
+      "output": ""
+    }
+  ]
+}

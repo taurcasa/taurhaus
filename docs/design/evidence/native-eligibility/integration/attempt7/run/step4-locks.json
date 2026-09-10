@@ -1,0 +1,258 @@
+[
+  {
+    "at": 1789015982.4494593,
+    "kind": "pause_owned",
+    "pid": 1744349,
+    "start_ticks": "23616732"
+  },
+  {
+    "at": 1789015982.4498022,
+    "kind": "daemon_request",
+    "request": {
+      "id": "trial-lock-1789015982449799618",
+      "method": "coordination.hosted_transcript",
+      "params": {
+        "team_name": "integration",
+        "member_name": "seat"
+      }
+    }
+  },
+  {
+    "at": 1789015982.501984,
+    "kind": "pause_owned",
+    "pid": 1744225,
+    "start_ticks": "23616659"
+  },
+  {
+    "at": 1789015982.5025878,
+    "kind": "kernel_holder",
+    "pid": 1744225,
+    "argv": [
+      "/tmp/th-int-9n5s3dud/home/.local/bin/taurhaus-daemon",
+      "--port",
+      "23640",
+      "--data-dir",
+      "/tmp/th-int-9n5s3dud/data"
+    ],
+    "lock": "/tmp/th-int-9n5s3dud/claude/teams/integration/state/app-server/seat.lock",
+    "inode": 1155236,
+    "proc_lock": "2: FLOCK  ADVISORY  WRITE 1744225 08:30:1155236 0 EOF",
+    "fdinfo": [
+      "pos:\t0\nflags:\t02100002\nmnt_id:\t643\nino:\t1155236\nlock:\t1: FLOCK  ADVISORY  WRITE 1744225 08:30:1155236 0 EOF\n"
+    ]
+  },
+  {
+    "at": 1789015982.5034099,
+    "kind": "resume_owned",
+    "pid": 1744349
+  },
+  {
+    "at": 1789015982.5035741,
+    "kind": "tmux_command",
+    "argv": [
+      "new-window",
+      "-d",
+      "-t",
+      "taurhaus",
+      "/bin/bash -c '/tmp/th-int-9n5s3dud/home/.local/bin/mesh send seat '\"'\"'ACTION REQUIRED: Reply exactly willow4f83ad. Do not execute tools.'\"'\"' --team integration --name lead --summary '\"'\"'lock exclusion marker'\"'\"' >/tmp/th-int-9n5s3dud/lock-send.out 2>&1'"
+    ]
+  },
+  {
+    "at": 1789015982.507133,
+    "kind": "tmux_result",
+    "exit": 0,
+    "output": "",
+    "stderr": ""
+  },
+  {
+    "at": 1789015983.6079545,
+    "kind": "mesh_deferral_while_daemon_holds",
+    "pending": [
+      {
+        "member": "seat",
+        "root": "/tmp/th-int-9n5s3dud/claude",
+        "incarnation": "6be64971ac7ff295d2e30075431390218adb8bf9403646739d433a1fa759fd8c",
+        "epoch": 2,
+        "heartbeat": "2026-09-10T04:53:02.986157723+00:00",
+        "pending_since": "2026-09-10T04:53:02.986157723+00:00",
+        "error": null,
+        "last_defer_reason": "IO error: delivery: pending: {\"class\":\"pending: pre_input_failure: IO error: delivery: host_operation_busy\",\"expected_turn_id\":null,\"method\":null,\"reconciliation_required\":false,\"request_id\":null,\"thread_id\":\"01a089a4-2183-70a1-b1c6-566c00026910\",\"turn_id\":null}",
+        "failures": 18,
+        "completed": 3
+      },
+      {
+        "obligation": {
+          "message_id": "63dc0eca-8cbd-457b-82c3-79d14807fd01",
+          "delivery_id": "4d26396f-66bb-4929-9f91-efd2533f3f08",
+          "recipient": "seat",
+          "source_generation": "508ec372-714d-485d-b5fa-4569063b3fe6",
+          "source_position": 33,
+          "body": "ACTION REQUIRED: Reply exactly willow4f83ad. Do not execute tools."
+        },
+        "attempts": [
+          {
+            "claim": {
+              "obligation": {
+                "message_id": "63dc0eca-8cbd-457b-82c3-79d14807fd01",
+                "delivery_id": "4d26396f-66bb-4929-9f91-efd2533f3f08",
+                "recipient": "seat",
+                "source_generation": "508ec372-714d-485d-b5fa-4569063b3fe6",
+                "source_position": 33,
+                "body": "ACTION REQUIRED: Reply exactly willow4f83ad. Do not execute tools."
+              },
+              "attachment": {
+                "app_server": {
+                  "contract": 1,
+                  "socketPath": "/tmp/th-int-9n5s3dud/tmp/th-host-0a27f76d06814a0fb870793873155696/rpc.sock",
+                  "threadId": "01a089a4-2183-70a1-b1c6-566c00026910",
+                  "memberId": "seat@integration",
+                  "accountRoot": "/tmp/th-int-9n5s3dud/codex",
+                  "processId": 124,
+                  "processStart": "23616732",
+                  "hostGeneration": "c90b2359-d422-4f89-8256-bbfeec1192e3",
+                  "build": "0.153.4",
+                  "host": "taurhaus-daemon-owned-thread/1",
+                  "configuration": "strict-config/1",
+                  "trust": "daemon-owned/1",
+                  "transport": "unix-websocket"
+                },
+                "launch_root": {
+                  "claudeDir": "/tmp/th-int-9n5s3dud/claude",
+                  "rootAuthorityRevision": 0,
+                  "teamsDir": "/tmp/th-int-9n5s3dud/claude/teams",
+                  "teamIncarnationId": "6be64971ac7ff295d2e30075431390218adb8bf9403646739d433a1fa759fd8c"
+                },
+                "attachment_generation": 1,
+                "root": "/tmp/th-int-9n5s3dud/claude",
+                "team_incarnation": "6be64971ac7ff295d2e30075431390218adb8bf9403646739d433a1fa759fd8c",
+                "member": "seat",
+                "session": "01a089a4-2183-70a1-b1c6-566c00026910",
+                "context_generation": "0",
+                "generation": "1",
+                "socket": "",
+                "pane": "",
+                "pane_pid": 0,
+                "pane_start": "",
+                "tmux_session": "",
+                "harness": "codex"
+              },
+              "epoch": 2,
+              "adapter": "app_server",
+              "attempt_id": "3db4a287-fc47-43b6-94bd-eeba09a2f901"
+            },
+            "receipts": [
+              {
+                "stage": "accepted",
+                "origin": "legacy_mapping",
+                "evidence": "source obligation",
+                "observed_at": "2026-09-10T04:53:03.022120272+00:00"
+              },
+              {
+                "stage": "attempt_started",
+                "origin": "adapter",
+                "evidence": "durable claim",
+                "observed_at": "2026-09-10T04:53:03.022128492+00:00"
+              },
+              {
+                "stage": "pending",
+                "origin": "app_server",
+                "evidence": "{\"class\":\"pending: pre_input_failure: IO error: delivery: host_operation_busy\",\"expected_turn_id\":null,\"method\":null,\"reconciliation_required\":false,\"request_id\":null,\"thread_id\":\"01a089a4-2183-70a1-b1c6-566c00026910\",\"turn_id\":null}",
+                "observed_at": "2026-09-10T04:53:03.071400487+00:00"
+              }
+            ],
+            "presentation_started": false
+          }
+        ]
+      }
+    ],
+    "send_output": "[mesh] warning: actionable message missing required fields: task_id, first_step, deliverable, completion_signal\n{\"message_id\":\"63dc0eca-8cbd-457b-82c3-79d14807fd01\",\"sequence\":33,\"status\":\"accepted\",\"projection\":\"pending\",\"delivery_targets\":[{\"delivery_id\":\"4d26396f-66bb-4929-9f91-efd2533f3f08\",\"legacy_acceptance\":\"unknown\",\"legacy_id\":\"437fbb94-abc5-4f20-a2c2-a8c257a7364e\",\"member_id\":\"seat@integration\",\"read_audience\":[{\"member_id\":\"0ab8a2d3-b90b-4184-8f09-1b123798d41d\",\"name\":\"lead\"},{\"member_id\":\"seat@integration\",\"name\":\"seat\"}],\"recipient\":\"seat\",\"source_path\":\"inboxes/seat.json\"}]}\n"
+  },
+  {
+    "at": 1789015983.6085894,
+    "kind": "resume_owned",
+    "pid": 1744225
+  },
+  {
+    "at": 1789015983.6091065,
+    "kind": "daemon_read_result",
+    "id": "trial-lock-1789015982449799618",
+    "error": {
+      "code": "HOST_OPERATION_FAILED",
+      "message": "host read failed; outcome may be unknown"
+    },
+    "success": false
+  },
+  {
+    "at": 1789015985.2277205,
+    "kind": "pause_owned",
+    "pid": 1745865,
+    "start_ticks": "23616970"
+  },
+  {
+    "at": 1789015985.2280636,
+    "kind": "kernel_holder",
+    "pid": 1745865,
+    "argv": [
+      "/tmp/th-int-9n5s3dud/home/.local/bin/mesh",
+      "team-daemon",
+      "start",
+      "--team",
+      "integration",
+      "--name",
+      "lead",
+      "--claude-dir",
+      "/tmp/th-int-9n5s3dud/claude"
+    ],
+    "lock": "/tmp/th-int-9n5s3dud/claude/teams/integration/state/app-server/seat.lock",
+    "inode": 1155236,
+    "proc_lock": "8: FLOCK  ADVISORY  WRITE 1745865 08:30:1155236 0 EOF",
+    "fdinfo": [
+      "pos:\t0\nflags:\t02100002\nmnt_id:\t643\nino:\t1155236\nlock:\t1: FLOCK  ADVISORY  WRITE 1745865 08:30:1155236 0 EOF\n"
+    ]
+  },
+  {
+    "at": 1789015985.228193,
+    "kind": "daemon_request",
+    "request": {
+      "id": "trial-lock-1789015985228190826",
+      "method": "coordination.hosted_transcript",
+      "params": {
+        "team_name": "integration",
+        "member_name": "seat"
+      }
+    }
+  },
+  {
+    "at": 1789015987.2640107,
+    "kind": "daemon_read_result",
+    "id": "trial-lock-1789015985228190826",
+    "error": {
+      "code": "HOST_OPERATION_FAILED",
+      "message": "Conflict: host operation deferred: lock busy"
+    },
+    "success": false
+  },
+  {
+    "at": 1789015987.2643824,
+    "kind": "daemon_deferral_while_mesh_holds",
+    "error": {
+      "code": "HOST_OPERATION_FAILED",
+      "message": "Conflict: host operation deferred: lock busy"
+    }
+  },
+  {
+    "at": 1789015987.2648885,
+    "kind": "resume_owned",
+    "pid": 1745865
+  },
+  {
+    "at": 1789015987.2652915,
+    "kind": "outcome",
+    "status": "PASS"
+  },
+  {
+    "at": 1789015987.2654982,
+    "kind": "cleanup",
+    "resumed_all": true
+  }
+]

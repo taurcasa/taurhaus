@@ -1,0 +1,39 @@
+{
+  "name": "integration",
+  "createdAt": 1788983067285,
+  "leadAgentId": "036a904f-5221-49e7-a756-82415a4e9ec1",
+  "leadSessionId": "70667266-95dc-4114-8af7-0f823ffb7be6",
+  "members": [
+    {
+      "agentId": "036a904f-5221-49e7-a756-82415a4e9ec1",
+      "name": "lead",
+      "agentType": "lead",
+      "model": "external",
+      "joinedAt": 1788983067285,
+      "cwd": "/tmp/th-int-ssxg881f/project",
+      "backendType": "external",
+      "isActive": true,
+      "controlAuthTokenHash": "<redacted credential hash>"
+    }
+  ],
+  "delivery_owner": "team",
+  "messaging_activation": "disposable-mesh-only",
+  "messaging_format": 2,
+  "messaging_policy": {
+    "approved_by": "orchestrator",
+    "archive_access": "captured-audience",
+    "archive_owner": "lead",
+    "canonical_writers": "mesh-only",
+    "capture_scope": "mesh-producers-only",
+    "closure": "manual-disposal-after-evidence-export",
+    "dm_horizon_days": 7,
+    "inactive_horizon_days": 14,
+    "purge_implemented": false,
+    "retry_horizon_days": 30,
+    "review_horizon_days": 30,
+    "synthetic_disposable": true,
+    "task_horizon_days": 30
+  },
+  "minimum_writer": "mesh-journal/2",
+  "team_incarnation_id": "4d7d1c2aeaa832a131697fc0e5cdd5ad971b25f98b3e27e90773fdc115d94e2b"
+}

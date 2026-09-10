@@ -1,0 +1,14 @@
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt8-steps.py", line 61, in <module>
+    assert 'thread_active' in json.dumps(receipt_rows()), 'no active-thread deferral'
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: no active-thread deferral
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt8-steps.py", line 88, in <module>
+    action({'op':'fail','reason':'step '+str(step)+': '+str(e)})
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt8-actions.py", line 19, in action
+    raise RuntimeError(rows[-1])
+RuntimeError: {'at': 1789017132.9115682, 'kind': 'stopped', 'step': 3, 'error': 'step 3: no active-thread deferral', 'type': 'RuntimeError'}

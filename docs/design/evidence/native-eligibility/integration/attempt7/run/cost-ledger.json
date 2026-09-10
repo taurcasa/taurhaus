@@ -1,0 +1,104 @@
+{
+  "model": "gpt-5.6-luna",
+  "effort": "low",
+  "turn_ids": [
+    "01a089a4-21b1-7660-9d59-c37505975bd3",
+    "01a089a5-2174-76c1-a7d4-3ee845098b65",
+    "01a089a5-c1e8-7c13-880d-2662be2ba50e",
+    "01a089a5-edd8-7021-ba5d-cd7452e0ba50",
+    "01a089a7-310b-7a93-b7ae-7cef13d84fb9",
+    "01a089a7-6204-76e0-aea4-2e38a79c9075",
+    "01a089a9-946d-7ca3-8b43-17d518b961f1"
+  ],
+  "paid_inputs": 7,
+  "generations": [
+    {
+      "thread_id": "01a089a4-2183-70a1-b1c6-566c00026910",
+      "turn_id": "01a089a4-21b1-7660-9d59-c37505975bd3",
+      "input": 10773,
+      "cached_input": 6912,
+      "output": 30,
+      "reasoning_output": 0,
+      "api_equivalent_usd": 0.00094644,
+      "conservative_usd": 0.0129636
+    },
+    {
+      "thread_id": "01a089a4-2183-70a1-b1c6-566c00026910",
+      "turn_id": "01a089a5-2174-76c1-a7d4-3ee845098b65",
+      "input": 11838,
+      "cached_input": 9984,
+      "output": 11,
+      "reasoning_output": 0,
+      "api_equivalent_usd": 0.00058368,
+      "conservative_usd": 0.0142188
+    },
+    {
+      "thread_id": "01a089a4-2183-70a1-b1c6-566c00026910",
+      "turn_id": "01a089a5-c1e8-7c13-880d-2662be2ba50e",
+      "input": 11880,
+      "cached_input": 11008,
+      "output": 517,
+      "reasoning_output": 32,
+      "api_equivalent_usd": 0.00101496,
+      "conservative_usd": 0.0148764
+    },
+    {
+      "thread_id": "01a089a4-2183-70a1-b1c6-566c00026910",
+      "turn_id": "01a089a5-edd8-7021-ba5d-cd7452e0ba50",
+      "input": 12505,
+      "cached_input": 11008,
+      "output": 19,
+      "reasoning_output": 7,
+      "api_equivalent_usd": 0.00054236,
+      "conservative_usd": 0.0150288
+    },
+    {
+      "thread_id": "01a089a4-2183-70a1-b1c6-566c00026910",
+      "turn_id": "01a089a7-310b-7a93-b7ae-7cef13d84fb9",
+      "input": 12555,
+      "cached_input": 12032,
+      "output": 495,
+      "reasoning_output": 10,
+      "api_equivalent_usd": 0.00093924,
+      "conservative_usd": 0.01566
+    },
+    {
+      "thread_id": "01a089a4-2183-70a1-b1c6-566c00026910",
+      "turn_id": "01a089a7-310b-7a93-b7ae-7cef13d84fb9",
+      "input": 13069,
+      "cached_input": 12032,
+      "output": 10,
+      "reasoning_output": 0,
+      "api_equivalent_usd": 0.00046004,
+      "conservative_usd": 0.0156948
+    },
+    {
+      "thread_id": "01a089a4-2183-70a1-b1c6-566c00026910",
+      "turn_id": "01a089a7-6204-76e0-aea4-2e38a79c9075",
+      "input": 13182,
+      "cached_input": 12032,
+      "output": 10,
+      "reasoning_output": 0,
+      "api_equivalent_usd": 0.00048264,
+      "conservative_usd": 0.0158304
+    }
+  ],
+  "api_equivalent_usd": 0.00496936,
+  "conservative_usd": 0.1042728,
+  "metering_complete": false,
+  "unmetered_turn_ids": [
+    "01a089a9-946d-7ca3-8b43-17d518b961f1"
+  ],
+  "basis": "Host tokenUsage.last via daemon hosted_transcript; packet rates $0.20/$0.02/$1.20 per million input/cached/output. Estimate, not invoice.",
+  "completed_generations_metered": 7,
+  "protocol_turns_started": 7,
+  "paid_inputs_including_tui_steer": 8,
+  "api_equivalent_usd_scope": "metered subtotal only; excludes the interrupted final turn",
+  "total_usd": "UNREPORTED: final turn started during teardown; no tokenUsage event emitted",
+  "final_turn": {
+    "turn_id": "01a089a9-946d-7ca3-8b43-17d518b961f1",
+    "cost_usd": "UNREPORTED",
+    "usage": "No tokenUsage or rollout token_count before owned namespace teardown"
+  },
+  "budget_verification": "8 paid inputs <= 16. Metered conservative subtotal $0.1042728; full-run dollar total cannot be verified."
+}

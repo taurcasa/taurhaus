@@ -1,0 +1,5 @@
+{
+  "step": 6,
+  "outcome": "NOT RUN",
+  "reason": "Stopped at step 1; no paid retry."
+}

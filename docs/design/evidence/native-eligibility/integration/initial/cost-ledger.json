@@ -1,0 +1,13 @@
+{
+  "paid_inputs": 0,
+  "model_turns": 0,
+  "generations": 0,
+  "compactions": 0,
+  "usd": 0,
+  "entries": [],
+  "basis": "Only codex --version ran. Canonical setup failed before coordination.add_member or coordination.resume_member; no model session or thread existed.",
+  "cap": {
+    "model_turns": 8,
+    "usd": 3
+  }
+}

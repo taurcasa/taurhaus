@@ -1,0 +1,5 @@
+[2m2026-09-09T19:44:26.902343Z[0m [32m INFO[0m [2mtaurhaus_daemon[0m[2m:[0m Auth token written [3mpath[0m[2m=[0m/tmp/th-int-ssxg881f/data/daemon.token
+[2m2026-09-09T19:44:26.902383Z[0m [32m INFO[0m [2mtaurhaus_daemon[0m[2m:[0m taurhaus-daemon starting [3mport[0m[2m=[0m26417 [3mbind[0m[2m=[0m127.0.0.1 [3midle_timeout[0m[2m=[0mSome(600) [3mdata_root[0m[2m=[0m/tmp/th-int-ssxg881f/data [3mauth[0m[2m=[0mtrue
+[2m2026-09-09T19:44:26.917658Z[0m [32m INFO[0m [2mtaurhaus_lib::daemon::server[0m[2m:[0m daemon listening [3mport[0m[2m=[0m26417
+[2m2026-09-09T19:44:27.219007Z[0m [32m INFO[0m [2mtaurhaus_lib::daemon::server[0m[2m:[0m client connected [3maddr[0m[2m=[0m127.0.0.1:45802
+[2m2026-09-09T19:44:27.269372Z[0m [32m INFO[0m [2mtaurhaus_lib::daemon::server[0m[2m:[0m client connected [3maddr[0m[2m=[0m127.0.0.1:45806

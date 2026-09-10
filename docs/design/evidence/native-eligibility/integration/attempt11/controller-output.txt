@@ -1,0 +1,71 @@
+{"kind": "binary"}
+{"kind": "binary"}
+{"kind": "binary"}
+{"kind": "binary"}
+{"kind": "binary"}
+{"kind": "command"}
+{"kind": "command_result"}
+{"kind": "command"}
+{"kind": "command_result"}
+{"kind": "command"}
+{"kind": "command_result"}
+{"kind": "isolation"}
+{"kind": "command"}
+{"kind": "command_result"}
+{"kind": "bootstrap_script"}
+{"kind": "daemon_spawn"}
+{"kind": "daemon_request"}
+{"kind": "daemon_response"}
+{"kind": "daemon_request"}
+{"kind": "daemon_response"}
+{"kind": "daemon_request"}
+{"kind": "daemon_response"}
+{"kind": "daemon_request"}
+{"kind": "daemon_response"}
+{"kind": "daemon_request"}
+{"kind": "daemon_response"}
+{"kind": "daemon_request"}
+{"kind": "daemon_response"}
+{"kind": "daemon_request"}
+{"kind": "daemon_response"}
+{"kind": "daemon_request"}
+{"kind": "daemon_response"}
+{"kind": "daemon_request"}
+{"kind": "daemon_response"}
+{"kind": "daemon_request"}
+{"kind": "daemon_response"}
+{"kind": "daemon_request"}
+{"kind": "daemon_response"}
+{"kind": "daemon_request"}
+{"kind": "daemon_response"}
+{"kind": "daemon_request"}
+{"kind": "daemon_response"}
+{"kind": "daemon_request"}
+{"kind": "daemon_response"}
+{"kind": "daemon_request"}
+{"kind": "daemon_response"}
+{"kind": "command"}
+{"kind": "command_result"}
+{"kind": "command"}
+{"kind": "command_result"}
+{"kind": "command"}
+{"kind": "command_result"}
+{"kind": "command"}
+{"kind": "command_result"}
+{"kind": "command"}
+{"kind": "command_result"}
+{"kind": "command"}
+{"kind": "command_result"}
+{"kind": "stopped", "error": "{'code': 'HOST_OPERATION_FAILED', 'message': 'host member busy'}"}
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt11-controller.py", line 343, in <module>
+    poll_host(force=True)
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt11-controller.py", line 216, in poll_host
+    value = rpc("coordination.hosted_transcript", {"team_name":TEAM, "member_name":MEMBER})
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt11-controller.py", line 127, in rpc
+    raise RuntimeError(str(response["error"]))
+RuntimeError: {'code': 'HOST_OPERATION_FAILED', 'message': 'host member busy'}
+{"kind": "final_host_read_error", "error": "{'code': 'HOST_OPERATION_FAILED', 'message': 'host member busy'}"}
+{"kind": "cleanup"}
+{"kind": "descriptor_restored"}

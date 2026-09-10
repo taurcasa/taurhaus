@@ -1,0 +1,48 @@
+env -u TMUX 'CLAUDE_DIR=/tmp/th-int-yzuf3uvh/claude' 'CODEX_HOME=/tmp/th-int-yzuf3uvh/tmp/th-host-2f4b1b5868c04fda9f0757653a9dd73b/tui' 'cod
+ex' '--remote' 'unix:///tmp/th-int-yzuf3uvh/tmp/th-host-2f4b1b5868c04fda9f0757653a9dd73b/rpc.sock' 'resume' '01a08b54-1471-77a2-899b-f608bf0
+8a8dd' '--no-alt-screen' '--strict-config'mstie@whocares:/tmp/th-int-yzuf3uvh/project$ env -u TMUX 'CLAUDE_DIR=/tmp/th-int-yzuf3uvh/claude'
+'CODEX_HOME=/tmp/th-int-yzuf3uvh/tmp/th-host-2f4b1b5868c04fda9f0757653a9dd73b/tui' 'codex' '--remote' 'unix:///tmp/th-int-yzuf3uvh/tmp/th-ho
+st-2f4b1b5868c04fda9f0757653a9dd73b/rpc.sock' 'resume' '01a08b54-1471-77a2-899b-f608bf08a8dd' '--no-alt-screen' '--strict-config'
+WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir "/tmp/th-int-yzuf3
+uvh/tmp" (codex_home: AbsolutePathBuf("/tmp/th-int-yzuf3uvh/tmp/th-host-2f4b1b5868c04fda9f0757653a9dd73b/tui"))
+╭───────────────────────────────────────────────────────────────╮
+│ ✨ Update available! 0.153.4 -> 0.154.0                       │
+│ See https://github.com/openai/codex for installation options. │
+│                                                               │
+│ See full release notes:                                       │
+│ https://github.com/openai/codex/releases/latest               │
+╰───────────────────────────────────────────────────────────────╯
+
+╭────────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.153.4)                     │
+│                                                │
+│ model:     gpt-5.6-luna low   /model to change │
+│ directory: /tmp/th-int-yzuf3uvh/project        │
+╰────────────────────────────────────────────────╯
+
+  To get started, describe a task or try one of these commands:
+
+  /init - create an AGENTS.md file with instructions for Codex
+  /status - show current session configuration
+  /permissions - choose what Codex is allowed to do
+  /model - choose what model and reasoning effort to use
+  /review - review any changes and find issues
+
+• Working (1s • esc to interrupt)
+
+
+› Ask Codex to do anything
+
+  gpt-5.6-luna low · /tmp/th-int-yzuf3uvh/project
+
+
+
+
+
+
+
+
+
+
+
+

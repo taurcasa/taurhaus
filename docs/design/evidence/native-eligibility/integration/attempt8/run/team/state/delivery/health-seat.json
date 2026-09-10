@@ -1,0 +1,12 @@
+{
+  "member": "seat",
+  "root": "/tmp/th-int-1ppvr92f/claude",
+  "incarnation": "cf6ad52510233e724ae4d5e4547496200802748b71eb5b7534793bd0eb89dfff",
+  "epoch": 2,
+  "heartbeat": "2026-09-10T05:12:12.287303285+00:00",
+  "pending_since": null,
+  "error": "failed to acquire lock: delivery mirror busy",
+  "last_defer_reason": null,
+  "failures": 22,
+  "completed": 1
+}

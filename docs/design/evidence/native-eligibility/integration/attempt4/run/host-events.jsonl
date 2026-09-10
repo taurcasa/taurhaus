@@ -1,0 +1,6 @@
+{"at": 1789008811.2061098, "kind": "handshake", "socket": "/tmp/th-int-02qek9op/tmp/th-host-1664150b03054b0897ebc61543aed4c9/rpc.sock", "request": "GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: yvQ4YKiemKBXo8zM1NIdQw==\r\nSec-WebSocket-Version: 13\r\n\r\n", "response": "HTTP/1.1 101 Switching Protocols\r\nconnection: Upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: vCc8eb6IBguaaQ02rKN/DBP0qSQ=\r\n\r\n"}
+{"at": 1789008811.2063239, "kind": "observer_request", "message": {"id": "observer-init", "method": "initialize", "params": {"clientInfo": {"name": "trial_observer", "version": "4"}, "capabilities": {"experimentalApi": true}}}}
+{"at": 1789008811.271827, "kind": "initialized", "codexHome": "/tmp/th-int-02qek9op/codex"}
+{"at": 1789008811.2720294, "kind": "observer_request", "message": {"method": "initialized"}}
+{"at": 1789008811.2721252, "kind": "host_event", "message": {"method": "remoteControl/status/changed", "params": {"status": "disabled", "serverName": "whocares", "installationId": "<redacted>", "environmentId": null}, "emittedAtMs": 1789008811271}}
+{"at": 1789008811.2895486, "kind": "observer_closed", "error": "host closed"}

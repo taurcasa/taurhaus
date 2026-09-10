@@ -1,0 +1,16 @@
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt13-steps.py", line 181, in <module>
+    try:wait_for(delivered, 'plain tmux delivery stalled', timeout=120)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt13-steps.py", line 28, in wait_for
+    raise AssertionError(why)
+AssertionError: plain tmux delivery stalled
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt13-steps.py", line 190, in <module>
+    action({'op':'fail','reason':'step '+str(step)+': '+str(e)})
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt13-actions.py", line 20, in action
+    raise RuntimeError(rows[-1])
+RuntimeError: {'at': 1789064666.7877858, 'kind': 'stopped', 'step': 7, 'error': 'step 7: plain tmux delivery stalled', 'type': 'RuntimeError'}

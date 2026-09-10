@@ -1,0 +1,132 @@
+{
+  "outcome": {
+    "report": {
+      "failed_step": null,
+      "member_name": "seat",
+      "message": "agent added",
+      "retryable": false,
+      "steps": [
+        {
+          "message": "request validated",
+          "status": "succeeded",
+          "step": "validate"
+        },
+        {
+          "message": "pane opened and session started",
+          "status": "succeeded",
+          "step": "create_pane"
+        },
+        {
+          "message": "launched session verified",
+          "status": "succeeded",
+          "step": "launch_session"
+        },
+        {
+          "message": "mesh joined",
+          "status": "succeeded",
+          "step": "join_mesh"
+        },
+        {
+          "message": "mesh daemon started",
+          "status": "succeeded",
+          "step": "start_daemon"
+        },
+        {
+          "message": "team roster updated",
+          "status": "succeeded",
+          "step": "update_roster"
+        },
+        {
+          "message": "onboarding delivered",
+          "status": "succeeded",
+          "step": "send_onboarding"
+        }
+      ],
+      "succeeded_steps": [
+        "validate",
+        "create_pane",
+        "launch_session",
+        "join_mesh",
+        "start_daemon",
+        "update_roster",
+        "send_onboarding"
+      ],
+      "team_name": "integration",
+      "warnings": []
+    },
+    "status": "completed"
+  },
+  "run_id": "add_fc71e2d32c024f139100e9a9aede41a7",
+  "steps": [
+    {
+      "message": null,
+      "status": "running",
+      "step": "validate"
+    },
+    {
+      "message": "request validated",
+      "status": "succeeded",
+      "step": "validate"
+    },
+    {
+      "message": null,
+      "status": "running",
+      "step": "create_pane"
+    },
+    {
+      "message": "pane opened and session started",
+      "status": "succeeded",
+      "step": "create_pane"
+    },
+    {
+      "message": null,
+      "status": "running",
+      "step": "launch_session"
+    },
+    {
+      "message": "launched session verified",
+      "status": "succeeded",
+      "step": "launch_session"
+    },
+    {
+      "message": null,
+      "status": "running",
+      "step": "join_mesh"
+    },
+    {
+      "message": "mesh joined",
+      "status": "succeeded",
+      "step": "join_mesh"
+    },
+    {
+      "message": null,
+      "status": "running",
+      "step": "start_daemon"
+    },
+    {
+      "message": "mesh daemon started",
+      "status": "succeeded",
+      "step": "start_daemon"
+    },
+    {
+      "message": null,
+      "status": "running",
+      "step": "update_roster"
+    },
+    {
+      "message": "team roster updated",
+      "status": "succeeded",
+      "step": "update_roster"
+    },
+    {
+      "message": null,
+      "status": "running",
+      "step": "send_onboarding"
+    },
+    {
+      "message": "onboarding delivered",
+      "status": "succeeded",
+      "step": "send_onboarding"
+    }
+  ]
+}

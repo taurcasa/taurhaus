@@ -1,0 +1,60 @@
+⚠ Heads up, you have less than 25% of your weekly limit left. Run /status for a breakdown.
+
+
+› [taurhaus] recovery_card
+  Identity: seat on integration; key={"card_schema":1,"recipient":
+  ["6ce0ea5943d9884fcecd5d9335633e6d3d0bfa0f62282fdc4e47fa2440732461","fd8b886d-51a8-4959-94fc-7f2335417036"],"context":[1,0],"roots":
+  {"root_authority_revision":"0","resolved_teams_root":"/tmp/th-int-4fvqnzt5/claude/teams","resolved_mesh_config_root":"/tmp/th-int-
+  4fvqnzt5/claude","harness_account_root":"/tmp/th-int-4fvqnzt5/codex","launch_namespace":"native","resolved_project_root":"/tmp/th-int-
+  4fvqnzt5/project"},"contract":
+  {"role_id":"","effective_role_revision":"44ffdd9316a9efc3856d18e4f0ea7e4df04ee03f8316f4a311fada3863b419bf","instruction_contract_revision
+  ":"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f","packet_revision":""}}
+  Coverage: b1a151eced3dd42450081397dbb619f2dfc02b786390d0fb698724780b56aed4;
+  source=682540e4a3f9cfbca660a5add5db7fa379ff474f5fe7c2f18798f74d7e72c755; audience=unavailable
+  Project cwd: /tmp/th-int-4fvqnzt5/project
+  Assignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned
+  Objective: unavailable
+  Deliverable: unavailable
+  First action: unavailable
+  Completion signal: unavailable
+  Review route: unavailable
+  Wait/release: unavailable
+  Candidate: unavailable
+  Rubric: unavailable
+  Restart cursor: unavailable
+  Requested effort: unavailable; effective effort: low; hold: none recorded
+  File boundary: unavailable
+  Evidence/handoff retention: unavailable; references do not prove archival preservation.
+  Generated: 2026-09-10 18:17:41.202935899 UTC
+  Current task: # —
+  Operational constraints: unavailable
+  Focal files: unavailable
+  Role: unavailable
+  Purpose: Isolated transport trial. Reply briefly. Never execute tools or commands.
+  work_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution
+  cannot begin. Report through its completion signal; no pure acknowledgment.
+  Corrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.
+  Next action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required
+  context.
+
+
+• No assignment or completion signal is available. Team lead, please provide the missing identity, release, and required context.
+
+
+› [mesh message data] {"assignment":null,"author":"lead","body":"ACTION REQUIRED: Reply exactly saffroncefb22. Do not execute
+  tools.","delivery_id":"250b78d1-2949-407c-b794-8e1ec348fa86","expectation":null,"message_id":"112e7596-051d-40cd-b166-
+  b1a359d492b6","metadata":{},"task":null}
+
+
+• saffroncefb22
+
+
+› For this bounded transport timing probe, write exactly 80 numbered lines, each saying blue river stone. Do not execute tools.
+
+
+◦ Working (0s • esc to interrupt)
+
+
+› Ask Codex to do anything
+
+  gpt-5.6-luna low · /tmp/th-int-4fvqnzt5/project

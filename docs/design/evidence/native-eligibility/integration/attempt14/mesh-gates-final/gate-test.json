@@ -1,0 +1,30 @@
+{
+  "command": [
+    "just",
+    "test"
+  ],
+  "exit": 101,
+  "seconds": 74.42447854700731,
+  "cargo_preflight": [
+    {
+      "exit": 0,
+      "output": "781053 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --test delivery_adapter sd4_sd10_unresponsive_scratch_socket_times_out_and_releases_child_lock\n"
+    },
+    {
+      "exit": 0,
+      "output": "784579 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test\n"
+    },
+    {
+      "exit": 0,
+      "output": "784579 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test\n"
+    },
+    {
+      "exit": 0,
+      "output": "784579 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test\n"
+    },
+    {
+      "exit": 1,
+      "output": ""
+    }
+  ]
+}

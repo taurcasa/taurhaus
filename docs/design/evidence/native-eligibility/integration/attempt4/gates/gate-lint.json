@@ -1,0 +1,14 @@
+{
+  "command": [
+    "just",
+    "lint"
+  ],
+  "exit": 0,
+  "seconds": 21.522592938010348,
+  "cargo_preflight": [
+    {
+      "exit": 1,
+      "output": ""
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+FF
+======================================================================
+FAIL: test_complete_native_runtime (__main__.TrialGuards.test_complete_native_runtime)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt10_test.py", line 21, in test_complete_native_runtime
+    copy = helper('attempt10-controller.py', 'copy_native_runtime')
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt10_test.py", line 13, in helper
+    assert node is not None, 'missing helper: ' + name
+           ^^^^^^^^^^^^^^^^
+AssertionError: missing helper: copy_native_runtime
+
+======================================================================
+FAIL: test_rollback_requires_attributed_idle (__main__.TrialGuards.test_rollback_requires_attributed_idle)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt10_test.py", line 34, in test_rollback_requires_attributed_idle
+    check = helper('attempt10_support.py', 'validate_tmux_activity')
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt10_test.py", line 13, in helper
+    assert node is not None, 'missing helper: ' + name
+           ^^^^^^^^^^^^^^^^
+AssertionError: missing helper: validate_tmux_activity
+
+----------------------------------------------------------------------
+Ran 2 tests in 0.004s
+
+FAILED (failures=2)

@@ -1,0 +1,18 @@
+{
+  "command": [
+    "cargo",
+    "build",
+    "--bin",
+    "mesh"
+  ],
+  "cwd": "/home/mstie/projects/mesh-push",
+  "target": "/home/mstie/projects/mesh-push/target",
+  "exit": 0,
+  "cargo_preflight": [
+    {
+      "at": 1789014060.9236772,
+      "exit": 1,
+      "output": ""
+    }
+  ]
+}

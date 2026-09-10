@@ -1,0 +1,93 @@
+[
+  {
+    "pid": 1088268,
+    "start_ticks": "22934795",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-int-02qek9op",
+      "/tmp/th-int-02qek9op",
+      "--chdir",
+      "/tmp/th-int-02qek9op/project",
+      "/bin/bash",
+      "/tmp/th-int-02qek9op/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 1088269,
+    "start_ticks": "22934795",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-int-02qek9op",
+      "/tmp/th-int-02qek9op",
+      "--chdir",
+      "/tmp/th-int-02qek9op/project",
+      "/bin/bash",
+      "/tmp/th-int-02qek9op/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 1088270,
+    "start_ticks": "22934795",
+    "argv": [
+      "/tmp/th-int-02qek9op/home/.local/bin/taurhaus-daemon",
+      "--port",
+      "30683",
+      "--data-dir",
+      "/tmp/th-int-02qek9op/data",
+      ""
+    ]
+  },
+  {
+    "pid": 1088271,
+    "start_ticks": "22934795",
+    "argv": [
+      "tmux",
+      "-D",
+      "-f",
+      "/dev/null",
+      ""
+    ]
+  },
+  {
+    "pid": 1088277,
+    "start_ticks": "22934806",
+    "argv": [
+      "/bin/bash",
+      ""
+    ]
+  }
+]

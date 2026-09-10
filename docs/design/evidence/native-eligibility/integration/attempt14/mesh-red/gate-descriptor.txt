@@ -1,0 +1,24 @@
+   Compiling mesh v0.2.29 (/home/mstie/projects/mesh-trial)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.46s
+     Running tests/native_push.rs (target/debug/deps/native_push-3a7cd2917b651354)
+
+running 1 test
+test sd11_sd12_sd13_only_verified_native_descriptor_is_enabled ... FAILED
+
+failures:
+
+---- sd11_sd12_sd13_only_verified_native_descriptor_is_enabled stdout ----
+
+thread 'sd11_sd12_sd13_only_verified_native_descriptor_is_enabled' (531) panicked at tests/native_push.rs:29:9:
+assertion `left == right` failed
+  left: Bool(false)
+ right: true
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    sd11_sd12_sd13_only_verified_native_descriptor_is_enabled
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--test native_push`

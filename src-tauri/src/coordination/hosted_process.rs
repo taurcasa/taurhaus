@@ -423,6 +423,24 @@ impl HostProcess {
         Ok(host)
     }
 
+    pub fn stop(&mut self) -> Result<String, String> {
+        if self.child.try_wait().map_err(|e| e.to_string())?.is_none() {
+            self.child.kill().map_err(|e| e.to_string())?;
+        }
+        let deadline = Instant::now() + Duration::from_secs(1);
+        loop {
+            if let Some(status) = self.child.try_wait().map_err(|e| e.to_string())? {
+                return Ok(status
+                    .code()
+                    .map_or_else(|| status.to_string(), |code| code.to_string()));
+            }
+            if Instant::now() >= deadline {
+                return Err("owned host did not exit".into());
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
     #[cfg(test)]
     pub fn disconnect_for_test(&mut self) {
         self.rpc.as_mut().unwrap().socket = None;
@@ -765,13 +783,7 @@ impl HostProcess {
 
 impl Drop for HostProcess {
     fn drop(&mut self) {
-        if self.child.try_wait().ok().flatten().is_none() {
-            let _ = self.child.kill();
-            let deadline = Instant::now() + Duration::from_secs(1);
-            while self.child.try_wait().ok().flatten().is_none() && Instant::now() < deadline {
-                std::thread::sleep(Duration::from_millis(5));
-            }
-        }
+        let _ = self.stop();
         if let Some(stderr) = &mut self.stderr {
             stderr.finish();
         }

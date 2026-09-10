@@ -1,0 +1,16 @@
+{
+  "mesh_commit": "99c97256e33900c3ee0cb89ad579678a12244255",
+  "mesh_branch": "feat/descriptor-flip",
+  "mesh_clean": true,
+  "taurhaus_branch": "feat/integration-trial",
+  "taurhaus_product_diff": [],
+  "attempt13_steps_unchanged": true,
+  "mesh_inserted_lines": 83,
+  "mesh_tests_passed": 1077,
+  "mesh_tests_ignored": 3,
+  "offline_tests": {
+    "attempt13": 16,
+    "attempt14": 17
+  },
+  "runtime_audit_exit": 0
+}

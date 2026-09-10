@@ -1,0 +1,11 @@
+{
+  "daemon_build_exit": 0,
+  "mesh_build_exit": 0,
+  "runtime_controller_exit": 1,
+  "runtime_reason": "step 3: evidence reserve reached",
+  "gate_controller_exit": 0,
+  "offline_regression_exit": 0,
+  "offline_audit_exit": 0,
+  "mesh_descriptor_restored": true,
+  "product_lines_changed": 0
+}

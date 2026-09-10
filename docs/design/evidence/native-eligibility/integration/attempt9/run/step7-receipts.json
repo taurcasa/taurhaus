@@ -1,0 +1,111 @@
+[
+  {
+    "checksum": "42187a1c13178a6483c5dc6e25f6e700a55f8baf8b337530a12260d72724cc91",
+    "committed_at": "2026-09-10T09:11:28.060042497+00:00",
+    "event_id": "30669755-1776-41de-a80f-b8b085fcffae",
+    "event_type": "message_accepted",
+    "log_epoch": "62ba3364-4843-4b3e-a8e9-3872b9dcb7a0",
+    "payload": {
+      "acceptance": "canonical",
+      "archive_outcome": "retained",
+      "audience_proof": {
+        "kind": "captured-members",
+        "members": [
+          {
+            "member_id": "b0b29eb5-e550-49d2-8396-39445c07b3da",
+            "name": "lead"
+          },
+          {
+            "member_id": "seat@integration",
+            "name": "seat"
+          }
+        ],
+        "team_id": "b28aea0be5d1fa87b1cbafa5ab4b57c6b844c4f50d040d040fbb46544e26b420"
+      },
+      "author": {
+        "member_id": "b0b29eb5-e550-49d2-8396-39445c07b3da",
+        "name": "lead",
+        "verified": true
+      },
+      "body": "ACTION REQUIRED: Reply exactly aspenf319f6. Do not execute tools.",
+      "body_bytes": 65,
+      "body_format": "text/plain",
+      "body_hash": "109a482d4539e8c9c3f1b6e3d5efa87f6744cfd378d2e21bb533a7ab40c8cead",
+      "conversation_id": "116e742a065774b9f79da271a74571fef683d639ed5852f0d8beeeac07e60881",
+      "conversation_kind": "dm",
+      "correction_reason": null,
+      "delivery_targets": [
+        {
+          "delivery_id": "6623623c-b713-4783-b852-aa56cf4b9c6f",
+          "legacy_acceptance": "unknown",
+          "legacy_id": "ed7a1584-b3b8-4671-9b9c-59b51498a8cb",
+          "member_id": "seat@integration",
+          "read_audience": [
+            {
+              "member_id": "b0b29eb5-e550-49d2-8396-39445c07b3da",
+              "name": "lead"
+            },
+            {
+              "member_id": "seat@integration",
+              "name": "seat"
+            }
+          ],
+          "recipient": "seat",
+          "source_path": "inboxes/seat.json"
+        }
+      ],
+      "dispatch_decision": {
+        "expectation": "action",
+        "policy_revision": 1,
+        "provenance": "prefix",
+        "wake_eligible": true
+      },
+      "envelope": {
+        "from": "lead",
+        "id": "ed7a1584-b3b8-4671-9b9c-59b51498a8cb",
+        "read": false,
+        "summary": "step7",
+        "text": null,
+        "timestamp": "2026-09-10T09:11:28.043Z"
+      },
+      "idempotency_key": "ed7a1584-b3b8-4671-9b9c-59b51498a8cb",
+      "legacy_acceptance": "unknown",
+      "link": null,
+      "message_id": "cceed77e-bb20-42a4-96f6-da7d28f95d34",
+      "origin": "authored",
+      "producer": "mesh-send:b0b29eb5-e550-49d2-8396-39445c07b3da",
+      "read_audience": [
+        {
+          "member_id": "b0b29eb5-e550-49d2-8396-39445c07b3da",
+          "name": "lead"
+        },
+        {
+          "member_id": "seat@integration",
+          "name": "seat"
+        }
+      ],
+      "reply_to_message_id": null,
+      "request_digest": "a786e19c2ba9601481f3dfc941bfc5a218fe2e08f4c0ed2ed936b0bd69d22f98",
+      "response_expectation": {
+        "basis": "producer",
+        "expectation": "action",
+        "kind": "action",
+        "policy_revision": 1,
+        "provenance": "prefix",
+        "wake_eligible": true
+      },
+      "retention_class": "dm",
+      "source_authority": null,
+      "source_event_refs": [],
+      "summary": "step7",
+      "supersedes_message_ids": [],
+      "task_links": [],
+      "visibility_policy_id": "captured-members",
+      "visibility_policy_revision": 1,
+      "wake_priority": "urgent"
+    },
+    "schema_version": 1,
+    "sequence": 41,
+    "team_id": "b28aea0be5d1fa87b1cbafa5ab4b57c6b844c4f50d040d040fbb46544e26b420"
+  }
+]

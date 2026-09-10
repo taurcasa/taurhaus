@@ -1,0 +1,23 @@
+[
+  {
+    "clientId": null,
+    "content": [
+      {
+        "text": "[mesh message data] {\"assignment\":null,\"author\":\"lead\",\"body\":\"ACTION REQUIRED: Reply exactly juniper8e21cd. Do not execute tools.\",\"delivery_id\":\"2dff59dd-a87c-49d0-a720-6e6ea3cc9c72\",\"expectation\":null,\"message_id\":\"052292df-27e8-4cc9-b5c0-18ac2b05b4bc\",\"metadata\":{},\"task\":null}\n",
+        "text_elements": [],
+        "type": "text"
+      }
+    ],
+    "id": "01a089a5-edf0-7f21-bdb9-0a5f380c9e40",
+    "type": "userMessage"
+  },
+  {
+    "delivery": null,
+    "id": "msg_0016b9b1e1891769016aa236c2c82087d2885ee23391abecc3",
+    "memoryCitation": null,
+    "phase": "final_answer",
+    "questions": null,
+    "text": "juniper8e21cd",
+    "type": "agentMessage"
+  }
+]

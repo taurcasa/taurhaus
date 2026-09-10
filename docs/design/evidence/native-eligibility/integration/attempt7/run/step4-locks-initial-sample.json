@@ -1,0 +1,32 @@
+[
+  {
+    "at": 1789015916.0802648,
+    "kind": "daemon_request",
+    "request": {
+      "id": "trial-lock-1789015916080260760",
+      "method": "coordination.hosted_transcript",
+      "params": {
+        "team_name": "integration",
+        "member_name": "seat"
+      }
+    }
+  },
+  {
+    "at": 1789015916.1049085,
+    "kind": "daemon_read_result",
+    "id": "trial-lock-1789015916080260760",
+    "error": null,
+    "success": true
+  },
+  {
+    "at": 1789015919.0811229,
+    "kind": "outcome",
+    "status": "INCONCLUSIVE",
+    "error": "did not capture taurhaus-daemon host lock"
+  },
+  {
+    "at": 1789015919.0813513,
+    "kind": "cleanup",
+    "resumed_all": true
+  }
+]

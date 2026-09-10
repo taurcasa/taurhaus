@@ -1,0 +1,13 @@
+{
+  "attachmentGeneration": 1,
+  "turn": {
+    "completedAt": null,
+    "durationMs": null,
+    "error": null,
+    "id": "01a089c6-73c4-7221-ab29-d6206ff53dce",
+    "items": [],
+    "itemsView": "notLoaded",
+    "startedAt": null,
+    "status": "inProgress"
+  }
+}

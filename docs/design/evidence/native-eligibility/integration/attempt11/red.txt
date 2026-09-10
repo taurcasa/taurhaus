@@ -1,0 +1,107 @@
+Readiness guard red recaptured with the current test (TrialGuards only).
+Mutation: remove only the no-native-idle-readiness-source assertion from attempt11_support.py.
+Exit: 1
+..F
+======================================================================
+FAIL: test_rollback_requires_attributed_idle (__main__.TrialGuards.test_rollback_requires_attributed_idle)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt11_test.py", line 53, in test_rollback_requires_attributed_idle
+    with self.assertRaises(AssertionError): check(good, '%18', {'source':'none'})
+AssertionError: AssertionError not raised
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.007s
+
+FAILED (failures=1)
+
+Controller review red against scripts from 15633a94 and the current test.
+Command: python3 docs/design/evidence/native-eligibility/integration/attempt11_test.py
+Exit: 1
+EEEF.E...
+======================================================================
+ERROR: test_busy_poll_defers_without_losing_or_duplicating_events (__main__.ControllerRaces.test_busy_poll_defers_without_losing_or_duplicating_events)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt11_test.py", line 87, in test_busy_poll_defers_without_losing_or_duplicating_events
+    self.assertFalse(poll(force=True))
+                     ^^^^^^^^^^^^^^^^
+  File "attempt11-controller.py", line 216, in poll_host
+    value = rpc("coordination.hosted_transcript", {"team_name":TEAM, "member_name":MEMBER})
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1134, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1138, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1199, in _execute_mock_call
+    result = effect(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt11_test.py", line 71, in rpc
+    if 'error' in response: raise RuntimeError(str(response['error']))
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: {'code': 'HOST_OPERATION_FAILED', 'message': 'host member busy'}
+
+======================================================================
+ERROR: test_cleanup_verdict_precedes_sanitize_and_binary_files_are_skipped (__main__.ControllerRaces.test_cleanup_verdict_precedes_sanitize_and_binary_files_are_skipped)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt11_test.py", line 193, in test_cleanup_verdict_precedes_sanitize_and_binary_files_are_skipped
+    exec(code, scope)
+  File "sanitize", line 498, in <module>
+  File "/usr/lib/python3.12/pathlib.py", line 1030, in read_text
+    return f.read()
+           ^^^^^^^^
+  File "<frozen codecs>", line 322, in decode
+UnicodeDecodeError: 'utf-8' codec can't decode byte 0xff in position 0: invalid start byte
+
+======================================================================
+ERROR: test_final_drain_retries_busy_without_reading_absent_transcript (__main__.ControllerRaces.test_final_drain_retries_busy_without_reading_absent_transcript)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt11_test.py", line 137, in test_final_drain_retries_busy_without_reading_absent_transcript
+    exec(compile(ast.Module(body=[loop], type_ignores=[]), 'final-drain', 'exec'),
+  File "final-drain", line 454, in <module>
+  File "/usr/lib/python3.12/pathlib.py", line 1029, in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/pathlib.py", line 1015, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/tmp/tmp4k25kk2t/hosted-transcript.json'
+
+======================================================================
+ERROR: test_rollback_refreshes_null_and_missing_activity_until_ready (__main__.ControllerRaces.test_rollback_refreshes_null_and_missing_activity_until_ready)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt11_test.py", line 176, in test_rollback_refreshes_null_and_missing_activity_until_ready
+    result = scope['readiness']()
+             ^^^^^^^^^^^^^^^^^^^^
+  File "rollback-readiness", line 163, in readiness
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt11_test.py", line 163, in wait_for
+    attempts.append(predicate())
+                    ^^^^^^^^^^^
+  File "rollback-readiness", line 160, in attributed
+  File "/usr/lib/python3.12/pathlib.py", line 1164, in __init__
+    super().__init__(*args)
+  File "/usr/lib/python3.12/pathlib.py", line 373, in __init__
+    raise TypeError(
+TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'NoneType'
+
+======================================================================
+FAIL: test_forced_startup_wait_retries_and_has_a_deadline (__main__.ControllerRaces.test_forced_startup_wait_retries_and_has_a_deadline)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt11_test.py", line 112, in test_forced_startup_wait_retries_and_has_a_deadline
+    wait = helper('attempt11-controller.py', 'wait_host_poll', scope)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt11_test.py", line 16, in helper
+    assert node is not None, 'missing helper: ' + name
+           ^^^^^^^^^^^^^^^^
+AssertionError: missing helper: wait_host_poll
+
+----------------------------------------------------------------------
+Ran 9 tests in 0.045s
+
+FAILED (failures=1, errors=4)

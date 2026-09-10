@@ -1,0 +1,190 @@
+[
+  {
+    "pid": 3371960,
+    "start_ticks": "27835471",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-int-br35nrtx",
+      "/tmp/th-int-br35nrtx",
+      "--chdir",
+      "/tmp/th-int-br35nrtx/project",
+      "/bin/bash",
+      "/tmp/th-int-br35nrtx/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 3371961,
+    "start_ticks": "27835471",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-int-br35nrtx",
+      "/tmp/th-int-br35nrtx",
+      "--chdir",
+      "/tmp/th-int-br35nrtx/project",
+      "/bin/bash",
+      "/tmp/th-int-br35nrtx/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 3371962,
+    "start_ticks": "27835471",
+    "argv": [
+      "/bin/bash",
+      "/tmp/th-int-br35nrtx/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 3371963,
+    "start_ticks": "27835471",
+    "argv": [
+      "tmux",
+      "-D",
+      "-f",
+      "/dev/null",
+      ""
+    ]
+  },
+  {
+    "pid": 3371976,
+    "start_ticks": "27835482",
+    "argv": [
+      "/bin/bash",
+      ""
+    ]
+  },
+  {
+    "pid": 3371978,
+    "start_ticks": "27835485",
+    "argv": [
+      "/tmp/th-int-br35nrtx/home/.local/bin/taurhaus-daemon",
+      "--port",
+      "26452",
+      "--data-dir",
+      "/tmp/th-int-br35nrtx/data",
+      ""
+    ]
+  },
+  {
+    "pid": 3372193,
+    "start_ticks": "27835971",
+    "argv": [
+      "/bin/bash",
+      "-ic",
+      "cd '/tmp/th-int-br35nrtx/project' && CLAUDE_DIR='/tmp/th-int-br35nrtx/claude' CLAUDE_CONFIG_DIR='/tmp/th-int-br35nrtx/claude' CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions --model 'claude-haiku-4-5' --team-name 'integration' --agent-name 'lead' --agent-id 'lead@integration' --agent-type 'orchestrator' -n 'lead'; exec \"$SHELL\"",
+      ""
+    ]
+  },
+  {
+    "pid": 3372196,
+    "start_ticks": "27835971",
+    "argv": [
+      "claude",
+      "--dangerously-skip-permissions",
+      "--model",
+      "claude-haiku-4-5",
+      "--team-name",
+      "integration",
+      "--agent-name",
+      "lead",
+      "--agent-id",
+      "lead@integration",
+      "--agent-type",
+      "orchestrator",
+      "-n",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 3372278,
+    "start_ticks": "27835987",
+    "argv": [
+      "codex",
+      "-c",
+      "sandbox_mode=\"read-only\"",
+      "-c",
+      "approval_policy=\"never\"",
+      "-c",
+      "model=\"gpt-5.6-luna\"",
+      "-c",
+      "model_reasoning_effort=\"low\"",
+      "app-server",
+      "--listen",
+      "unix:///tmp/th-int-br35nrtx/tmp/th-host-da63f853c40c436db3420947ea4b26ad/rpc.sock",
+      ""
+    ]
+  },
+  {
+    "pid": 3373607,
+    "start_ticks": "27836620",
+    "argv": [
+      "-bash",
+      ""
+    ]
+  },
+  {
+    "pid": 3373682,
+    "start_ticks": "27836657",
+    "argv": [
+      "codex",
+      "--remote",
+      "unix:///tmp/th-int-br35nrtx/tmp/th-host-da63f853c40c436db3420947ea4b26ad/rpc.sock",
+      "resume",
+      "01a08c27-ffe9-7951-bc69-8b445d0e6163",
+      "--no-alt-screen",
+      "--strict-config",
+      ""
+    ]
+  },
+  {
+    "pid": 3373963,
+    "start_ticks": "27836772",
+    "argv": [
+      "/tmp/th-int-br35nrtx/home/.local/bin/mesh",
+      "team-daemon",
+      "start",
+      "--team",
+      "integration",
+      "--name",
+      "lead",
+      "--claude-dir",
+      "/tmp/th-int-br35nrtx/claude",
+      ""
+    ]
+  }
+]

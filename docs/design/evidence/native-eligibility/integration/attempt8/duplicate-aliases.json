@@ -1,0 +1,19 @@
+{
+  "run/step2-pane-0.txt": "run/step-1-pane-0.txt",
+  "run/step2-pane-1.txt": "run/step-1-pane-1.txt",
+  "run/step3-active-pane-0.txt": "run/step-1-pane-0.txt",
+  "run/step3-active-pane-1.txt": "run/step-1-pane-1.txt",
+  "setup-collector-abort/step-1-pane-1.txt": "run/step-1-pane-1.txt",
+  "run/identities.json": "run/step1-identities.json",
+  "run/initialize-pane-0.txt": "run/step-1-pane-0.txt",
+  "run/initialize-pane-1.txt": "run/step-1-pane-1.txt",
+  "run/team/runtime/seat.json": "run/step1-runtime.json",
+  "run/team/state/delivery/handoff.lock": "run/codex-notify.jsonl",
+  "run/team/state/delivery/owner.lock": "run/codex-notify.jsonl",
+  "setup-collector-abort/codex-notify.jsonl": "run/codex-notify.jsonl",
+  "setup-collector-abort/initialize-pane-0.txt": "setup-collector-abort/step-1-pane-0.txt",
+  "setup-collector-abort/initialize-pane-1.txt": "run/step-1-pane-1.txt",
+  "setup-collector-abort/policy.json": "run/policy.json",
+  "setup-collector-abort/team/state/delivery/handoff.lock": "run/codex-notify.jsonl",
+  "setup-collector-abort/team/state/delivery/owner.lock": "run/codex-notify.jsonl"
+}

@@ -1,0 +1,74 @@
+{
+  "command": [
+    "just",
+    "test-contracts"
+  ],
+  "exit": 0,
+  "seconds": 6.642165231984109,
+  "cargo_preflight": [
+    {
+      "exit": 0,
+      "output": "344813 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib -- native_mailbox daemon::tests::sd2_member_terminal_child_retains_admission_after_parent_drop\n"
+    },
+    {
+      "exit": 0,
+      "output": "346889 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --manifest-path src-tauri/Cargo.toml --lib hosted_stop_session_ -- --test-threads=1\n347502 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib -- --skip native_mailbox\n"
+    },
+    {
+      "exit": 0,
+      "output": "353459 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib -- --skip native_mailbox\n"
+    },
+    {
+      "exit": 0,
+      "output": "356857 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib -- --skip native_mailbox\n"
+    },
+    {
+      "exit": 0,
+      "output": "360571 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib -- --skip native_mailbox\n"
+    },
+    {
+      "exit": 0,
+      "output": "368494 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib -- --skip native_mailbox\n"
+    },
+    {
+      "exit": 0,
+      "output": "368494 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib -- --skip native_mailbox\n"
+    },
+    {
+      "exit": 0,
+      "output": "374831 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib\n"
+    },
+    {
+      "exit": 0,
+      "output": "380480 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib\n"
+    },
+    {
+      "exit": 0,
+      "output": "380480 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib\n"
+    },
+    {
+      "exit": 0,
+      "output": "385488 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib\n"
+    },
+    {
+      "exit": 0,
+      "output": "389293 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib\n"
+    },
+    {
+      "exit": 0,
+      "output": "392224 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib\n"
+    },
+    {
+      "exit": 0,
+      "output": "399885 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --manifest-path src-tauri/Cargo.toml --lib codex_resume_run4f -- --test-threads=1 --nocapture\n"
+    },
+    {
+      "exit": 0,
+      "output": "399885 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --manifest-path src-tauri/Cargo.toml --lib codex_resume_run4f -- --test-threads=1 --nocapture\n"
+    },
+    {
+      "exit": 1,
+      "output": ""
+    }
+  ]
+}
