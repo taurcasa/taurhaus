@@ -1,4 +1,4 @@
-# INCOMPLETE — Run 4e: prepared; runtime verification pending
+# FAIL — Run 4e: step 1 Taurhaus attribution/onboarding failure; steps 2–6 NOT RUN
 
 ## Historical run 2 — FAIL at step 1: idle Codex prompt, onboarding permanently pending
 
@@ -1042,11 +1042,106 @@ restarted and no additional seat spend occurred. Steps 1–4 remain **PASS**,
 step 5 **FAIL — harness**, step 6 **NOT RUN**. Complete metering and independent
 Opus review remain unresolved; the headline verdict remains **UNAVAILABLE**.
 
-#### Run 4e — interrupted-turn ruling and fresh execution
+#### Run 4e — FAIL at step 1; Taurhaus attribution/onboarding
 
-Fresh attempt on unchanged product 1db4f9bf / Mesh ed59187, protocol 27.
-Three synthetic interrupted-turn regressions failed before the harness change;
-all 35 offline tests passed afterwards. Missing usage is recorded, never a
-lifecycle or observation gate. Both pinned builds exited 0. Six ordered runtime
-steps follow with immediate evidence commits and a fresh 10-input/$0.20 cap.
-Sidecars: [run4e](l2-tmux-busy/run4e/). Runtime verdict pending.
+**Latest verdict: FAIL — Taurhaus product, step 1.** The fresh run initialized
+successfully, but alpha remained unattributed for the entire **90.037-second**
+readiness observation. Its native pane displayed the ready **gpt-5.6-luna low**
+prompt, while `session_id` and `jsonl_path` remained null and the production
+activity file remained `uncertain`. Mesh correctly kept the onboarding card
+pending: `IO error: delivery: pending: activity not freshly idle`.
+This is the explicit step-1 product-failure classification required by the spec;
+the deeper cause is unproved. Prior run-4d success does not establish this run.
+[Diagnosis](l2-tmux-busy/run4e/diagnosis.json),
+[final pane](l2-tmux-busy/run4e/run/final-pane-2.txt),
+[activity](l2-tmux-busy/run4e/run/final-activity.json).
+
+| Step | Outcome and classification | Evidence |
+|---|---|---|
+| 1 — initialize, attribute, deliver onboarding | **FAIL — Taurhaus product.** Initialize completed; terminal contract and pane identity published; no attributed session or onboarding receipt. | [operation](l2-tmux-busy/run4e/run/step1-operation.json), [outcome](l2-tmux-busy/run4e/run/step1-outcome.json), [runtime snapshot](l2-tmux-busy/run4e/run/final-runtime-sessions.json) |
+| 2 — ordinary busy response and Q | **NOT RUN**, blocked by step 1; no Q accepted. | [outcome](l2-tmux-busy/run4e/run/step2-outcome.json) |
+| 3 — Q deferral, idle delivery and reply | **NOT RUN**, blocked by step 1. | [outcome](l2-tmux-busy/run4e/run/step3-outcome.json) |
+| 4 — second response, Q2 pending, managed stop | **NOT RUN**, blocked by step 1; no stop_session RPC. | [outcome](l2-tmux-busy/run4e/run/step4-outcome.json) |
+| 5 — resume, new attachment and Q2 once | **NOT RUN**, blocked by step 1; zero resume_member calls. | [outcome](l2-tmux-busy/run4e/run/step5-outcome.json) |
+| 6 — explicit Q2 read/mark and reconciliation | **NOT RUN**, blocked by step 1. Failure export and owned-process teardown completed separately. | [outcome](l2-tmux-busy/run4e/run/step6-outcome.json), [cleanup](l2-tmux-busy/run4e/run/cleanup.json) |
+
+The runtime record carries `terminalContract: 1`, attachment **1**, context
+`"0"`, root revision **0**, session **$0**, pane **%2**, namespace pane PID
+**134**, start ticks **28290301**, and private socket beneath the scratch root.
+The live runtime snapshot lists alpha at PID **175**, `tty: /dev/null`,
+`tmux_pane: null`, `state: idle`, and `activity_attribution: none`; that state
+is not an attributed idle-delivery authorization. Its scratch account inventory
+contains a thread-writer lock and shell snapshot for
+`01a08c6d-44bb-7e20-90fc-98221d301603`, but **no rollout file**.
+[Record](l2-tmux-busy/run4e/run/final-runtime.json),
+[pane probe](l2-tmux-busy/run4e/run/step1-pane-identity.json),
+[native inventory](l2-tmux-busy/run4e/run/codex-session-inventory.json).
+
+Onboarding message **30a22a98-0b9b-4886-a700-a672a40c5c02**, delivery
+**e7bf8ef0-62fc-4bf2-a529-f17b7036d7d3**, sequence **2**, was accepted with
+projection pending. There are **zero** receipt rows for it: no submission,
+explicit read, or model action. Passive samples captured Taurhaus holding the
+terminal FLOCK during launch on inode **1827119**, followed by release. This
+proves launch exclusion only; stop/resume contention remains untested.
+[Journal](l2-tmux-busy/run4e/run/team/state/messaging-v2/segments/000001.jsonl),
+[locks](l2-tmux-busy/run4e/run/terminal-locks.jsonl).
+
+#### Run 4e spend, build, checks and cleanup
+
+| Spend category | Inputs/turns | Metered USD |
+|---|---:|---:|
+| Controller-issued Codex inputs | 0 | 0 |
+| Mesh terminal deliveries to alpha | 0 | 0 |
+| Native model turns / token-usage rows | 0 / 0 | 0 |
+| Login-only Claude lead model turns | 0 | 0 |
+| **Attempt total** | **0 of 10 inputs** | **$0 of $0.20** |
+
+One real Codex seat and one login-only Claude seat were started. The initial
+onboarding reservation is retained as intent, not a submitted input. There
+were no interrupted or notify-only turns in this attempt. Earlier attempts'
+spend is historical; implementer/reviewer spend is outside the seat ledger.
+[Complete cost ledger](l2-tmux-busy/run4e/run/cost-ledger.json).
+
+The controller's run-4e changes were red-first: **three synthetic regressions
+failed** against the inherited interrupted-turn classification and metering
+checks; **35 offline tests passed** after the correction. An aborted unmetered
+turn is `interrupted, cost unknown`, counts toward the input cap, and never
+blocks lifecycle or observation. The inherited test expecting a metering wait
+was updated to assert a separate metering observation. These corrected later
+paths were **not exercised live**, because step 1 failed first.
+[Red](l2-tmux-busy/run4e/interrupted-red.txt),
+[green](l2-tmux-busy/run4e/green.txt),
+[controller](l2-tmux-busy/run4e/controller.py).
+
+- **Builds:** `just build-daemon` **0**, `cargo build --bin mesh` in the explicitly
+  designated Mesh worktree **0**, after Cargo polling. Checkout-local targets;
+  unchanged Taurhaus product **1db4f9bf**, protocol **27**, Mesh detached at
+  **ed59187**; descriptor unchanged. Actual scratch Codex **0.153.4** and both
+  native siblings retained. [Build records](l2-tmux-busy/run4e/builds.json),
+  [binary digests](l2-tmux-busy/run4e/checks-result.json).
+- **Exact gates:** `just check-quick` **0** (150 frontend files / 2,518 tests),
+  `just lint` **0**, `just test-contracts` initially **101**, then **0**.
+  The initial contract failure scanned an ignored run-4d JSON log and matched
+  a passing test name as a forbidden source literal. That historical log was
+  preserved byte-for-byte as `.log` within the same checkout; the exact gate
+  then passed. No product test or source was changed.
+  [Initial exits](l2-tmux-busy/run4e/initial-checks-result.json),
+  [final exits](l2-tmux-busy/run4e/checks-result.json),
+  [relocation and hashes](l2-tmux-busy/run4e/gate-log-relocation.json).
+- **Runtime controller:** exit **1**, **94.051 seconds**, one attempt, no paid
+  retry. Export, frozen-evidence reconciliation and cleanup/privacy audit each
+  exited **0**. All **206 complete daemon JSONL rows** retained with privacy
+  sanitization; four byte-identical exported aliases mapped. Pane captures are
+  at most 60 lines. No owned daemon, tmux server or Codex survives; private port
+  **46299** closed; auth copy and scratch root removed.
+  [Daemon JSONL](l2-tmux-busy/run4e/run/taurhaus.log.jsonl),
+  [export aliases](l2-tmux-busy/run4e/export-manifest.json),
+  [audit](l2-tmux-busy/run4e/final-audit.json).
+- **Scope/deviations:** stopped at step 1 as required by the binding failure
+  rule, so there are no green runtime-step commits. The three regression tests
+  and green preparation were committed as **7a5bf570**. No product or descriptor
+  edit, install/release, fault injection, artificial idle wait, stress run,
+  or plan-ledger edit. No `src-tauri/` diff; `just test-rust-unit` is inapplicable.
+  The required independent Opus evidence lens is unavailable in this session
+  (no callable Opus reviewer/Workflow API); it remains on the orchestrator's
+  review route. No full-lane PASS or review approval is claimed.

@@ -1,0 +1,8 @@
+{
+  "reason": "Contract source scanner includes ignored .check-logs JSON and flags a passing test name from run 4d; retain bytes as log rather than source.",
+  "from": ".check-logs/l2-tmux-busy-run4d-continuation/checks-result.json",
+  "to": ".check-logs/l2-tmux-busy-run4d-continuation/checks-result.log",
+  "sha256_before": "4d69ee8567c8de64ab757146b0dd8e612d2f240cf23a2d3fa3428963002b5902",
+  "sha256_after": "4d69ee8567c8de64ab757146b0dd8e612d2f240cf23a2d3fa3428963002b5902",
+  "product_changed": false
+}
