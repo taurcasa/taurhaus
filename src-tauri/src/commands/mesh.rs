@@ -61,11 +61,25 @@ fn mesh_install_required(status: &MeshInstallStatus) -> bool {
 
 fn read_mesh_install_status(app: &tauri::AppHandle) -> Result<MeshInstallStatus, String> {
     let bundled_contract = read_bundled_mesh_contract(app)?;
-    if is_native_daemon() {
-        check_mesh_install_native(&bundled_contract)
+    let status = if is_native_daemon() {
+        check_mesh_install_native(&bundled_contract)?
     } else {
-        check_mesh_install_wsl(&bundled_contract)
-    }
+        check_mesh_install_wsl(&bundled_contract)?
+    };
+    let codex = crate::models::CliVersions::current().codex.as_deref();
+    let capabilities = if status.environment_available
+        && status.canonical_messaging_supported
+        && codex.is_some()
+    {
+        read_hosted_capabilities(app, &status).unwrap_or_else(|reason| {
+            // Reasons are fixed labels: never log CLI stdout, stderr or credentials.
+            tracing::debug!(event = "mesh.hosted_capabilities.unavailable", reason);
+            serde_json::Value::Null
+        })
+    } else {
+        serde_json::Value::Null
+    };
+    Ok(with_hosted_delivery(status, codex, &capabilities))
 }
 
 fn install_bundled_mesh(app: &tauri::AppHandle) -> Result<OperationResult, String> {
@@ -352,12 +366,108 @@ fn canonical_messaging_supported(version: &str) -> bool {
     parts.next().is_none() && numbers >= [0, 3, 0]
 }
 
+// Mesh exposes compiled admission evidence via `delivery capabilities`, not version JSON.
+fn hosted_delivery_supported(
+    version: &str,
+    codex: Option<&str>,
+    capabilities: &serde_json::Value,
+) -> bool {
+    use crate::session_scanner::launch::HostedDescriptor;
+    let paired = HostedDescriptor::codex();
+    canonical_messaging_supported(version)
+        && codex == Some(paired.build.as_str())
+        && capabilities["native_descriptors"]
+            .as_array()
+            .is_some_and(|descriptors| {
+                descriptors.iter().any(|d| {
+                    d["enabled"] == true
+                        && d["adapter"] == "app_server"
+                        && d["harness"] == "codex"
+                        && d["build"] == paired.build
+                        && d["host"] == HostedDescriptor::HOST
+                        && d["configuration"] == HostedDescriptor::CONFIGURATION
+                        && d["trust"] == HostedDescriptor::TRUST
+                        && d["transport"] == paired.transport
+                })
+            })
+}
+
+// All three status constructions share this finalization at the IPC boundary.
+fn with_hosted_delivery(
+    mut status: MeshInstallStatus,
+    codex: Option<&str>,
+    capabilities: &serde_json::Value,
+) -> MeshInstallStatus {
+    let contract = status
+        .installed_contract
+        .as_ref()
+        .unwrap_or(&status.bundled_contract);
+    status.hosted_delivery_supported =
+        hosted_delivery_supported(&contract.version, codex, capabilities);
+    status
+}
+
+fn read_hosted_capabilities(
+    app: &tauri::AppHandle,
+    status: &MeshInstallStatus,
+) -> Result<serde_json::Value, &'static str> {
+    let installed = status.installed_contract.is_some();
+    let mut command = if is_native_daemon() {
+        let binary = if installed {
+            native_mesh_binary_path().map_err(|_| "home_unavailable")?
+        } else {
+            resolve_bundled_mesh_assets(app)
+                .map_err(|_| "bundled_assets_unavailable")?
+                .0
+        };
+        let mut command = std::process::Command::new(binary);
+        command.args(["delivery", "capabilities"]);
+        command
+    } else {
+        let distro = detect_default_distro()
+            .map_err(|_| "distro_probe_failed")?
+            .ok_or("no_default_distro")?;
+        validate_wsl_distro(&distro).map_err(|_| "invalid_distro")?;
+        let mut command = wsl_command();
+        if installed {
+            command.args(crate::daemon::launcher::wsl_shell_args(
+                &distro,
+                "-lc",
+                &format!("\"{WSL_MESH_BINARY_PATH}\" delivery capabilities"),
+            ));
+        } else {
+            let binary = resolve_bundled_mesh_assets(app)
+                .map_err(|_| "bundled_assets_unavailable")?
+                .0;
+            let linux = crate::provider::path::to_linux(&binary.to_string_lossy())
+                .ok_or("bundled_path_unavailable")?;
+            command.args(["-d", &distro, "--exec", &linux, "delivery", "capabilities"]);
+        }
+        command
+    };
+    command.stdin(std::process::Stdio::null());
+    let output = crate::process_utils::run_command_with_timeout(
+        &mut command,
+        INSTALL_STATUS_TIMEOUT,
+        "mesh delivery capabilities",
+    )
+    .map_err(|error| match error.kind() {
+        std::io::ErrorKind::TimedOut => "timeout",
+        _ => "command_failed",
+    })?;
+    if !output.status.success() {
+        return Err("nonzero_exit");
+    }
+    serde_json::from_slice(&output.stdout).map_err(|_| "invalid_json")
+}
+
 fn mesh_status_not_installed(
     bundled_contract: &MeshCompatibilityContract,
     environment_available: bool,
     error: Option<String>,
 ) -> MeshInstallStatus {
     MeshInstallStatus {
+        hosted_delivery_supported: false,
         // Deliberate bundled fallback: no readable installed contract exists yet.
         canonical_messaging_supported: canonical_messaging_supported(&bundled_contract.version),
         installed: false,
@@ -380,6 +490,7 @@ fn mesh_status_from_contract(
     error: Option<String>,
 ) -> MeshInstallStatus {
     MeshInstallStatus {
+        hosted_delivery_supported: false,
         canonical_messaging_supported: canonical_messaging_supported(
             &installed_contract
                 .as_ref()
@@ -412,6 +523,7 @@ fn mesh_status_unrunnable(
     read_error: String,
 ) -> MeshInstallStatus {
     MeshInstallStatus {
+        hosted_delivery_supported: false,
         // Deliberate bundled fallback: no readable installed contract exists yet.
         canonical_messaging_supported: canonical_messaging_supported(&bundled_contract.version),
         installed: false,
@@ -451,13 +563,18 @@ fn mesh_status_for_native_binary(
     }
 }
 
+fn native_mesh_binary_path() -> Result<PathBuf, String> {
+    Ok(dirs::home_dir()
+        .ok_or("Could not determine home directory")?
+        .join(".local/bin/mesh"))
+}
+
 fn check_mesh_install_native(
     bundled_contract: &MeshCompatibilityContract,
 ) -> Result<MeshInstallStatus, String> {
-    let home = dirs::home_dir().ok_or("Could not determine home directory")?;
     Ok(mesh_status_for_native_binary(
         bundled_contract,
-        &home.join(".local/bin/mesh"),
+        &native_mesh_binary_path()?,
     ))
 }
 
@@ -1847,6 +1964,7 @@ exit 0
     #[test]
     fn mesh_install_required_when_binary_missing() {
         let status = MeshInstallStatus {
+            hosted_delivery_supported: false,
             canonical_messaging_supported: false,
             installed: false,
             version: None,
@@ -1870,6 +1988,7 @@ exit 0
     #[test]
     fn mesh_install_required_when_contract_drifts() {
         let status = MeshInstallStatus {
+            hosted_delivery_supported: false,
             canonical_messaging_supported: false,
             installed: true,
             version: Some("0.2.12".to_string()),
@@ -1903,6 +2022,7 @@ exit 0
     #[test]
     fn mesh_install_required_skips_when_environment_unavailable() {
         let status = MeshInstallStatus {
+            hosted_delivery_supported: false,
             canonical_messaging_supported: false,
             installed: false,
             version: None,

@@ -122,6 +122,7 @@ export function createMeshTabController({
       buildTeamConfigFromPreset,
       contractHasRules,
       coordinationAddAgent,
+      getMeshStatus: () => capability.status,
       composeTeam,
       createAgentFromRole,
       createLeadFromRole,

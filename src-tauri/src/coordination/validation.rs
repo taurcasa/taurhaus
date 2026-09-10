@@ -84,6 +84,28 @@ pub(crate) fn validate_member_configuration(
     Ok(())
 }
 
+/// Runtime additions must use the target config, never the builder's mode.
+pub(crate) fn validate_member_configuration_for_team(
+    member: &crate::coordination::domain::Member,
+    template_root: &std::path::Path,
+    config: &crate::coordination::stores::TeamConfig,
+) -> Result<(), CoordinationError> {
+    validate_member_configuration(member, template_root)?;
+    if member
+        .extra
+        .get("adapter_mode")
+        .and_then(serde_json::Value::as_str)
+        == Some("app_server")
+        && config.extra.get("messaging_format") != Some(&serde_json::json!(2))
+    {
+        return Err(CoordinationError::Validation(format!(
+            "member '{}' field 'delivery': app_server_requires_canonical_messaging: target team must use messaging_format 2",
+            member.name
+        )));
+    }
+    Ok(())
+}
+
 pub(crate) fn validate_team_name(name: &str) -> Result<(), CoordinationError> {
     validate_non_empty("team name", name)?;
     if has_path_separator(name) || is_reserved_path_component(name) {

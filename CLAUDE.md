@@ -110,6 +110,7 @@ Unified structured logging pipeline:
 - `src-tauri/src/commands/terminal_settings.rs` (`compaction.codex_hook.unsupported/version_unknown/reconciled`); `compaction.codex_hook.degraded` also comes from `coordination/compact_hook.rs` and `commands/coordination.rs`
 - `src-tauri/src/bin/taurhaus-daemon.rs` (`codex.notify.appended`)
 - `src-tauri/src/startup/daemon.rs` (`startup.daemon_protocol.checked`)
+- `src-tauri/src/commands/mesh.rs` (`mesh.hosted_capabilities.unavailable` debug with `reason` when the installed mesh cannot report its app-server descriptors, so the builder's hosted default stays off)
 
 **Tauri frontend events**: `sessions-updated` and `tmux-focus-changed` are emitted from `src-tauri/src/daemon_lifecycle.rs`.
 
@@ -300,7 +301,7 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | `src/lib/components/MeshTab.svelte` | Mesh orchestration state machine (gate/setup/init/runtime) |
 | `src/lib/components/meshTabController.svelte.js` | Controller state/actions for `MeshTab.svelte`. |
 | `src/lib/components/MeshSetupView.svelte` | Gate/empty/setup/initializing shell that hosts the primary team-builder surface. |
-| `src/lib/components/MeshTeamBuilder.svelte` | Primary team setup UI with quick presets, role filters, drag-and-drop roster composition, and inline validation. |
+| `src/lib/components/MeshTeamBuilder.svelte` | Primary team setup UI with quick presets, role filters, drag-and-drop roster composition, and inline validation; defaults admissible Codex seats to app-server delivery when canonical messaging is on. |
 | `src/lib/components/MeshCanvas.svelte` | Runtime node canvas that consumes `meshLayout.js` output. |
 | `src/lib/components/meshLayout.js` | Pure mesh canvas layout engine for node boxes, explicit connection routes, and the run-tree child box (`RUN_TREE_METRICS`). |
 | `src/lib/components/WorkflowRunTree.svelte` | A node's workflow runs drawn into the child box `meshLayout` placed: phase and agent rows while live, one line once finished. |

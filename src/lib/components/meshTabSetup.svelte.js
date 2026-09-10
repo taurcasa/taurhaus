@@ -1,3 +1,4 @@
+import { memberDelivery } from './meshTabUtils.js'
 import { buildMemberActionMessage } from './meshTabRuntime.svelte.js'
 
 export function createMeshTabSetup({ state, refs, deps, gate }) {
@@ -375,6 +376,8 @@ export function createMeshTabSetup({ state, refs, deps, gate }) {
     state.slideOverContext = { ...draft, submitting: true, error: '' }
 
     try {
+      // Runtime snapshots do not attest the target team's canonical messaging mode.
+      const delivery = memberDelivery(draft, deps.getMeshStatus?.(), false)
       const report = await deps.coordinationAddAgent({
         teamName: state.teamName,
         agent: {
@@ -382,7 +385,7 @@ export function createMeshTabSetup({ state, refs, deps, gate }) {
           cliTool: deps.normalizeTool(draft.tool),
           model: String(draft.model || '').trim(),
           reasoningEffort: draft.reasoningEffort ?? null,
-          ...(draft.delivery ? { delivery: draft.delivery } : {}),
+          ...(delivery ? { delivery } : {}),
           projectId: String(draft.projectId || '').trim(),
           description: String(draft.description || '').trim() || null,
           roleId: String(draft.roleId || '').trim() || null,

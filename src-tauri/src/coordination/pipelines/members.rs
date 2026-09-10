@@ -177,7 +177,7 @@ impl CoordinationOrchestrator {
         .run_resume()
     }
 
-    fn validate_add_agent_request(
+    pub(super) fn validate_add_agent_request(
         &self,
         request: &AddAgentRequest,
     ) -> Result<(), CoordinationError> {
@@ -186,11 +186,12 @@ impl CoordinationOrchestrator {
         validate_non_empty("agent project id", &request.agent.project_id)?;
         validate_non_empty("agent cli tool", &request.agent.cli_tool)?;
         let member = member_from_agent_setup(&request.agent, MemberRole::Agent)?;
-        crate::coordination::validation::validate_member_configuration(
+        let config = TeamConfigStore::load(&self.teams_dir, &request.team_name)?;
+        crate::coordination::validation::validate_member_configuration_for_team(
             &member,
             &self.template_root,
+            &config,
         )?;
-        let config = TeamConfigStore::load(&self.teams_dir, &request.team_name)?;
         if config
             .members
             .iter()

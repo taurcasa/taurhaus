@@ -770,3 +770,32 @@ it('preserves per-seat delivery through normalization and initialization', () =>
   const plain = buildInitializationRequest({ lead: createLead({}, '/project'), agents: [createAgent(0, {}, '/project')] }, 'team', '/project', CATALOG)
   expect(plain.agents[0]).not.toHaveProperty('delivery')
 })
+
+// Regression: 6398bfa3 omitted delivery for unchosen, admissible hosted seats.
+it.each([true, false])('resolves explicit initialize/add delivery with support=%s', async (supported) => {
+  const { configureToolRegistry, FALLBACK_TOOLS } = await import('../toolRegistry.js')
+  const { createMeshTabSetup } = await import('./meshTabSetup.svelte.js')
+  configureToolRegistry(FALLBACK_TOOLS.map(tool => ({ ...tool, hostingSupported: tool.id === 'codex' })))
+  try {
+    for (const canonicalMessaging of [true, false]) {
+      for (const delivery of [undefined, 'tmux', 'app_server']) {
+        const meshStatus = { hosted_delivery_supported: supported, canonical_messaging_supported: true }
+        const agent = { name: 'seat', tool: 'codex', delivery }
+        const expected = delivery ?? (supported && canonicalMessaging ? 'app_server' : 'tmux')
+        for (const initializationMode of ['custom', 'preset']) {
+          const request = buildInitializationRequest({ agents: [agent], meshStatus, canonicalMessaging, initializationMode, presetId: 'trial' }, 'trial')
+          expect(request.agents[0].delivery).toBe(expected)
+          expect(request.lead).not.toHaveProperty('delivery')
+        }
+        let payload
+        const setup = createMeshTabSetup({ state: { addAgentDraft: agent, canSubmitAddAgent: true }, refs: { discoverySequence: 0 }, gate: { refreshProjectMeshSnapshot: async () => {} }, deps: {
+          getMeshStatus: () => meshStatus, getCanonicalMessaging: () => canonicalMessaging,
+          normalizeTool: tool => tool, coordinationAddAgent: async request => { payload = request }, onAddAgent: () => {},
+        } })
+        await setup.submitAddAgent()
+        // Regression: 90f89257 treated the builder toggle as authority for runtime adds.
+        expect(payload.agent.delivery).toBe(delivery ?? 'tmux')
+      }
+    }
+  } finally { configureToolRegistry(null) }
+})

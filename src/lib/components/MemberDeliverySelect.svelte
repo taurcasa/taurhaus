@@ -17,8 +17,12 @@
       {disabled}
       onchange={(event) => onchange({ delivery: event.currentTarget.value })}
     >
-      <option value="tmux">tmux pane</option>
-      <option value="app_server">app-server (native, attached TUI)</option>
+      <option value="tmux">typed into the pane (fallback)</option>
+      <option value="app_server">native (app-server; TUI in tmux)</option>
     </select>
   </label>
+  <p class="text-xs {t.textMuted}">
+    Both run the Codex TUI in the team's tmux pane. Native delivers messages over the
+    app-server socket and reads idle from Codex itself; the fallback types messages into the pane.
+  </p>
 {/if}

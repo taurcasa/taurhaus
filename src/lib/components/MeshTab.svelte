@@ -165,6 +165,8 @@
 
   {#if mode === 'runtime'}
     <MeshRuntimeView
+      meshStatus={controller.capability.status}
+      canonicalMessaging={false}
       {dark}
       modelCatalog={catalog}
       teamName={resolvedTeamName}

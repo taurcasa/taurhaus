@@ -32,7 +32,7 @@
     toolLabel,
     tools,
   } from '../toolRegistry.js'
-  import { canonicalMessagingSupported, projectNameFromPath } from './meshTabUtils.js'
+  import { canonicalMessagingSupported, memberDelivery, projectNameFromPath } from './meshTabUtils.js'
   import ConfirmDialog from './ConfirmDialog.svelte'
   import MeshNodeDetail from './MeshNodeDetail.svelte'
   import MemberAccountPicker from './MemberAccountPicker.svelte'
@@ -2524,7 +2524,7 @@
                           onchange={(next) => onUpdateAgent(agent.id, next)}
                         />
                       </div>
-                      <MemberDeliverySelect tool={normalizeTool(agent.tool)} delivery={agent.delivery}
+                      <MemberDeliverySelect tool={normalizeTool(agent.tool)} delivery={memberDelivery(agent, meshStatus, canonicalMessaging)}
                         {dark} onchange={(next) => onUpdateAgent(agent.id, next)} />
                       <MemberAccountPicker
                         memberId={agent.id}
