@@ -182,10 +182,9 @@ pub(super) fn refresh(
     } else {
         launch
     };
-    let completion = crate::daemon::codex_notify::latest_record_for_session_after(
+    let completion = crate::daemon::codex_notify::latest_activity_record_for_session_after(
         notify_path,
         id,
-        "agent-turn-complete",
         notify_since.into(),
     )
     .filter(|record| record.ts <= now);

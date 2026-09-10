@@ -19,7 +19,7 @@
 //! Empirically confirmed (Feb 2026):
 //! - Claude idle: 0-240 bytes/500ms keepalive in rchar
 //! - Claude thinking: 900+ bytes/500ms sustained in rchar
-
+//!
 //! Codex 0.153.4 (2026-09-10, isolated zero-turn pane, 500 ms samples):
 //! loaded-prompt background startup peaked at 779,043 B; after 11 s, median
 //! 416 B, isolated peak 123,392 B and a 46,848/22,784 B adjacent pair.
@@ -186,14 +186,14 @@ thread_local! {
     pub(super) static CODEX_TEST_SAMPLE: std::cell::Cell<Option<(u32, u64, Instant)>> = const { std::cell::Cell::new(None) };
 }
 pub fn is_codex_process_active_hysteresis(pid: u32) -> bool {
+    #[cfg(not(test))]
+    let (current, now) = (read_rchar(pid), Instant::now());
     #[cfg(test)]
-    let reading = CODEX_TEST_SAMPLE
+    let (current, now) = CODEX_TEST_SAMPLE
         .get()
         .filter(|(sample_pid, _, _)| *sample_pid == pid)
-        .map(|(_, value, at)| (Some(value), at));
-    #[cfg(not(test))]
-    let reading: Option<(Option<u64>, Instant)> = None;
-    let (current, now) = reading.unwrap_or_else(|| (read_rchar(pid), Instant::now()));
+        .map(|(_, value, at)| (Some(value), at))
+        .unwrap_or_else(|| (read_rchar(pid), Instant::now()));
     CODEX_IO_STATE
         .lock()
         .unwrap_or_else(|e| e.into_inner())
