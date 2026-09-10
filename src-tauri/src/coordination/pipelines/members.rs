@@ -696,11 +696,9 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                 let mut commands = self.cli_commands.clone();
                 commands.codex_bypass_hook_trust = false;
                 commands.codex_notify_executable = None;
-                let mut context = prepared.activation_context.clone();
-                context.resume_session_id = prepared
-                    .previous_runtime
-                    .as_ref()
-                    .and_then(|r| r.session_id.clone());
+                // `prepare_resume` already chose the recorded session id (trimmed,
+                // empty dropped); the hosted launch names the same thread.
+                let context = prepared.activation_context.clone();
                 let launch = build_member_activation_launch_command(
                     &self.orchestrator.teams_dir,
                     &context,

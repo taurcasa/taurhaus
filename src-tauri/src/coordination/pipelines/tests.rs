@@ -4043,19 +4043,25 @@ fn operator_resume_renders_recorded_session_for_capturing_harnesses() {
                 })
                 .unwrap();
             let expected = match tool {
-                CliTool::Codex => "codex resume 'recorded-session' --yolo",
+                CliTool::Codex => Some("codex resume 'recorded-session' --yolo"),
                 CliTool::Claude => {
-                    "claude --dangerously-skip-permissions --resume 'recorded-session'"
+                    Some("claude --dangerously-skip-permissions --resume 'recorded-session'")
                 }
-                CliTool::Grok => "grok --always-approve --resume 'recorded-session'",
-                CliTool::Agy => "agy --dangerously-skip-permissions --model",
+                CliTool::Grok => Some("grok --always-approve --resume 'recorded-session'"),
+                // Antigravity has no resume base: every resume launches fresh.
+                CliTool::Agy => None,
                 _ => unreachable!(),
             };
-            let resumes =
-                tool != CliTool::Agy && session_id.is_some_and(|id| !id.trim().is_empty());
+            let resumes = expected.is_some() && session_id.is_some_and(|id| !id.trim().is_empty());
             if resumes {
-                assert!(launch.contains(expected), "{tool}: {launch}");
+                assert!(launch.contains(expected.unwrap()), "{tool}: {launch}");
             } else {
+                if tool == CliTool::Agy {
+                    assert!(
+                        launch.contains("agy --dangerously-skip-permissions --model"),
+                        "{launch}"
+                    );
+                }
                 assert!(!launch.contains("recorded-session"), "{launch}");
                 assert!(
                     !launch.contains(" resume ")

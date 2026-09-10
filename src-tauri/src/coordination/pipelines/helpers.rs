@@ -907,7 +907,17 @@ pub(super) fn render_team_launch(
     fields.insert("team".to_string(), Value::String(team_name.to_string()));
     fields.insert("member".to_string(), Value::String(agent_name.to_string()));
     fields.insert("tool".to_string(), Value::String(cli_tool.to_string()));
-    fields.insert("mode".to_string(), Value::String("fresh".to_string()));
+    fields.insert(
+        "mode".to_string(),
+        Value::String(
+            match mode {
+                LaunchMode::Continue => "continue",
+                LaunchMode::Fresh => "fresh",
+                LaunchMode::Resume => "resume",
+            }
+            .to_string(),
+        ),
+    );
     fields.insert(
         "model".to_string(),
         model.model.map(Value::String).unwrap_or(Value::Null),
