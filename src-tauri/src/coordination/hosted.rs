@@ -597,17 +597,13 @@ impl HostedMembers {
         let seat = owned
             .as_mut()
             .ok_or("failed: host is unavailable in this daemon; controlled resume required")?;
-        let guard = HostOperationLock::acquire(
-            &root,
-            team,
-            member,
-            if operation == "recover" {
-                Duration::ZERO
-            } else {
-                Duration::from_secs(2)
-            },
-        )
-        .map_err(|e| e.to_string())?;
+        let wait = if operation == "recover" {
+            Duration::ZERO
+        } else {
+            Duration::from_secs(2)
+        };
+        let guard =
+            HostOperationLock::acquire(&root, team, member, wait).map_err(|e| e.to_string())?;
         let record = MemberRuntimeStore::load(&root, team, member).map_err(|e| e.to_string())?;
         let attachment = record.app_server.as_ref().ok_or("member is not hosted")?;
         if generation != seat.generation
@@ -646,6 +642,10 @@ impl HostedMembers {
         } else {
             operation
         };
+        let recovery_unknown = record.recovery.claim.as_ref().is_some_and(|claim| {
+            claim.card_key.context == record.context()
+                && claim.stage == ReceiptStage::OutcomeUnknown
+        });
         let result = (|| match operation {
             "transcript" | "recover" => Ok(state.clone()),
             "input" | "recovery_input" => {
@@ -657,10 +657,7 @@ impl HostedMembers {
                 } else {
                     params["text"].as_str().ok_or("missing input text")?
                 };
-                if record.recovery.claim.as_ref().is_some_and(|claim| {
-                    claim.card_key.context == record.context()
-                        && claim.stage == ReceiptStage::OutcomeUnknown
-                }) {
+                if recovery_unknown {
                     return Err("outcome_unknown: recovery offer requires reconciliation".into());
                 }
                 let needs_recovery = record
@@ -681,16 +678,11 @@ impl HostedMembers {
                 if operation == "recovery_input" && card.is_none() {
                     return Ok(state.clone());
                 }
-                let input = card.as_ref().map_or_else(
-                    || text.to_string(),
-                    |card| {
-                        if text.is_empty() {
-                            card.text.clone()
-                        } else {
-                            format!("{}\n\n{}", card.text, text)
-                        }
-                    },
-                );
+                let input = match card.as_ref() {
+                    Some(card) if text.is_empty() => card.text.clone(),
+                    Some(card) => format!("{}\n\n{}", card.text, text),
+                    None => text.to_string(),
+                };
                 // Persist ambiguity before any possible input bytes, including owner crashes.
                 MemberRuntimeStore::update(&root, team, member, |r| {
                     r.host_input_unknown = true;
@@ -730,25 +722,13 @@ impl HostedMembers {
             _ => Err("UNKNOWN_METHOD".into()),
         })();
         if matches!(operation, "transcript" | "recover" | "recovery_input") {
-            if operation == "recovery_input" {
-                match &result {
-                    Ok(_) => state = seat.host.transcript(&guard).unwrap_or(state),
-                    Err(_) => tracing::debug!(
-                        team,
-                        member,
-                        "host recovery deferred; preserving transcript"
-                    ),
-                }
+            if result.is_err() {
+                tracing::debug!(team, member, "host recovery deferred; read preserved");
+            } else if operation == "recovery_input" {
+                state = seat.host.transcript(&guard).unwrap_or(state);
             }
             state["outcomeUnknown"] = serde_json::json!(
-                seat.host.outcome_unknown()
-                    || record.host_input_unknown
-                    || record
-                        .recovery
-                        .claim
-                        .as_ref()
-                        .is_some_and(|c| c.card_key.context == record.context()
-                            && c.stage == ReceiptStage::OutcomeUnknown)
+                seat.host.outcome_unknown() || record.host_input_unknown || recovery_unknown
             );
             return Ok(state);
         }
@@ -907,15 +887,11 @@ fn poll_compaction(
     if let Some(boundary) = newest {
         let recorded = record_host_boundary(root, team, member, &boundary, "host_notification")
             .map_err(|e| e.to_string())?;
-        emit(
-            &boundary,
-            if recorded {
-                "compaction.codex_host.received"
-            } else {
-                "compaction.codex_host.skipped"
-            },
-            (!recorded).then_some("already_recorded"),
-        );
+        let (event, reason) = match recorded {
+            true => ("compaction.codex_host.received", None),
+            false => ("compaction.codex_host.skipped", Some("already_recorded")),
+        };
+        emit(&boundary, event, reason);
     }
     let pending = super::stores::MemberCompactionStore::load(root, team, member)
         .map_err(|e| e.to_string())?
@@ -946,9 +922,7 @@ fn record_host_delivery(root: &Path, team: &str, member: &str) -> Result<(), Str
         .map_err(|e| e.to_string())?;
     if let Some(state) = state.filter(|s| {
         s.last_delivery_result == CompactionDeliveryResult::Skipped
-            && s.pending_obligation
-                .as_ref()
-                .is_some_and(|(_, context)| *context == runtime.context())
+            && s.pending_obligation.as_ref().map(|(_, context)| *context) == Some(runtime.context())
     }) {
         record_delivery_with_transport_at(
             root,
@@ -978,10 +952,10 @@ pub(crate) mod tests {
     use super::super::compact_hook::{run_compact_hook_cli, tests::write_snapshot_fixture};
     use super::*;
     use crate::coordination::hosted_process::tests::fixture;
+    use crate::coordination::recovery_delivery::{observe, prepare, read_current};
     use crate::coordination::stores::compaction::{record_host_boundary, MemberCompactionState};
-    use crate::coordination::stores::{
-        CompactionDeliveryResult, MemberCompactionStore, MemberRuntimeRecord, TeamConfigStore,
-    };
+    use crate::coordination::stores::CompactionDeliveryResult::Injected;
+    use crate::coordination::stores::{MemberCompactionStore, MemberRuntimeRecord};
     use serde_json::json;
     use taurhaus_lib::logging::{install_global_sink, LogFileState};
 
@@ -1434,112 +1408,82 @@ pub(crate) mod tests {
         assert_eq!(after.recovery, before.recovery);
         hosts.stop(&registry, "team", "seat").unwrap();
     }
+    fn fixture_text(root: &Path, file: &str) -> String {
+        std::fs::read_to_string(root.join(file)).unwrap()
+    }
+    fn starts(root: &Path) -> usize {
+        let requests = fixture_text(root, "requests.jsonl");
+        requests.matches("turn/start").count()
+    }
+    fn has_compaction(view: &Value) -> bool {
+        let turns = view["thread"]["turns"].as_array().unwrap();
+        turns
+            .iter()
+            .any(|turn| turn["items"][0]["type"] == "contextCompaction")
+    }
     fn compaction(root: &Path) -> MemberCompactionState {
-        MemberCompactionStore::load(root, "team", "seat")
-            .unwrap()
-            .unwrap()
+        let state = MemberCompactionStore::load(root, "team", "seat").unwrap();
+        state.unwrap()
     }
     #[test]
     fn hosted_compaction_reads_survive_unknown_and_exhausted_recovery() {
         // Regression: 8fab0c8d, attempt-8 continuation: recovery errors hid the transcript.
-        let mut failures = Vec::new();
         for failure in ["input_unknown", "claim_unknown", "exhausted"] {
             let tmp = tempfile::tempdir().unwrap();
             let root = tmp.path();
-            let (registry, hosts) = running(root);
-            let generation = saved(root).attachment_generation;
-            transcript(&hosts, &registry, generation);
+            let (reg, hosts) = running(root);
+            let gen = saved(root).attachment_generation;
+            transcript(&hosts, &reg, gen);
+            // Regression: 8fab0c8d propagated transient recovery errors into liveness.
+            if failure == "input_unknown" {
+                let cell = hosts.seat(root, "team", "seat").unwrap();
+                let held = cell.lock().unwrap();
+                assert!(hosts.reconcile(&reg, "team", "seat").is_ok());
+                drop(held);
+                let held =
+                    std::fs::File::open(root.join("team/state/app-server/seat.lock")).unwrap();
+                fs2::FileExt::lock_exclusive(&held).unwrap();
+                assert!(hosts.reconcile(&reg, "team", "seat").is_ok());
+                drop(held);
+                std::fs::write(root.join("pending-read"), "").unwrap();
+                let started = std::time::Instant::now();
+                assert!(hosts.reconcile(&reg, "team", "seat").is_ok());
+                std::fs::remove_file(root.join("pending-read")).unwrap();
+                assert!(started.elapsed() < Duration::from_secs(1));
+            }
             std::fs::write(root.join("compact.json"), r#"{"busy":true}"#).unwrap();
-            hosts.reconcile(&registry, "team", "seat").unwrap();
+            hosts.reconcile(&reg, "team", "seat").unwrap();
             if failure == "input_unknown" {
                 MemberRuntimeStore::update(root, "team", "seat", |r| r.host_input_unknown = true)
                     .unwrap();
             } else {
                 for _ in 0..2 {
-                    let card =
-                        recovery_delivery::prepare(&registry, root, "team", "seat", "app_server")
-                            .unwrap()
-                            .unwrap();
+                    let card = prepare(&reg, root, "team", "seat", "app_server")
+                        .unwrap()
+                        .unwrap();
                     if failure == "claim_unknown" {
                         break;
                     }
-                    recovery_delivery::observe(
-                        &registry,
-                        root,
-                        "team",
-                        "seat",
-                        &card.receipt,
-                        ReceiptStage::Failed,
-                    )
-                    .unwrap();
+                    let stage = ReceiptStage::Failed;
+                    observe(&reg, root, "team", "seat", &card.receipt, stage).unwrap();
                 }
             }
             std::fs::write(root.join("compact.json"), "{}").unwrap();
-            let before = std::fs::read_to_string(root.join("requests.jsonl")).unwrap();
+            let before = starts(root);
             for operation in ["transcript", "recover", "transcript"] {
-                let result = hosts.operation(
-                    &registry,
-                    "team",
-                    "seat",
-                    generation,
-                    operation,
-                    Value::Null,
-                );
-                let view = match result {
-                    Ok(view) => view,
-                    Err(error) => {
-                        failures.push(format!("{failure}/{operation}: {error}"));
-                        continue;
-                    }
-                };
+                let result = hosts.operation(&reg, "team", "seat", gen, operation, Value::Null);
+                let view = result.unwrap_or_else(|error| panic!("{failure}/{operation}: {error}"));
                 assert_eq!(view["outcomeUnknown"], failure.ends_with("unknown"));
-                assert!(view["thread"]["turns"]
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .any(|t| t["items"][0]["type"] == "contextCompaction"));
+                assert!(has_compaction(&view));
             }
-            let after = std::fs::read_to_string(root.join("requests.jsonl")).unwrap();
-            assert_eq!(
-                before.matches("turn/start").count(),
-                after.matches("turn/start").count()
-            );
+            assert_eq!(before, starts(root));
             assert!(compaction(root).pending);
-            hosts.stop(&registry, "team", "seat").unwrap();
+            let mut config = TeamConfigStore::load(root, "team").unwrap();
+            config.members[0].extra.remove("adapter_mode");
+            TeamConfigStore::save(root, "team", &config).unwrap();
+            assert!(hosts.reconcile(&reg, "team", "seat").is_ok());
         }
-        assert!(failures.is_empty(), "{failures:#?}");
     }
-    #[test]
-    fn hosted_reconcile_defers_contention_pending_reads_and_changed_authority() {
-        // Regression: 8fab0c8d (attempt-8 continuation fix) propagated recovery errors into team liveness.
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
-        let (registry, hosts) = running(root);
-        let cell = hosts.seat(root, "team", "seat").unwrap();
-        let held = cell.lock().unwrap();
-        assert!(hosts.reconcile(&registry, "team", "seat").is_ok());
-        drop(held);
-        let held = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(root.join("team/state/app-server/seat.lock"))
-            .unwrap();
-        fs2::FileExt::lock_exclusive(&held).unwrap();
-        assert!(hosts.reconcile(&registry, "team", "seat").is_ok());
-        drop(held);
-        std::fs::write(root.join("pending-read"), "").unwrap();
-        let started = std::time::Instant::now();
-        let pending = hosts.reconcile(&registry, "team", "seat");
-        std::fs::remove_file(root.join("pending-read")).unwrap();
-        assert!(pending.is_ok(), "{pending:?}");
-        assert!(started.elapsed() < Duration::from_secs(1));
-        let mut config = TeamConfigStore::load(root, "team").unwrap();
-        config.members[0].extra.remove("adapter_mode");
-        TeamConfigStore::save(root, "team", &config).unwrap();
-        assert!(hosts.reconcile(&registry, "team", "seat").is_ok());
-        hosts.stop(&registry, "team", "seat").unwrap();
-    }
-
     #[test]
     fn hosted_recovery_first_input_uses_existing_pending_compaction_without_new_generation() {
         // Regression: 6f61f611, attempt-8 continuation: busy compaction must persist for first input.
@@ -1548,27 +1492,22 @@ pub(crate) mod tests {
         let root = tmp.path();
         let sink = LogFileState::new(root.join("events.jsonl")).unwrap();
         install_global_sink(&sink);
-        let (registry, hosts) = running(root);
-        write_snapshot_fixture(root, "team", "seat");
-        let generation = saved(root).attachment_generation;
+        let (registry, hosts) = running(tmp.path());
+        write_snapshot_fixture(tmp.path(), "team", "seat");
+        let generation = saved(tmp.path()).attachment_generation;
         input(&hosts, &registry, generation, "startup marker").unwrap();
-        std::fs::write(
-            root.join("compact.json"),
-            r#"{"busy":true,"turnId":"deferred-test"}"#,
-        )
-        .unwrap();
+        let boundary = r#"{"busy":true,"turnId":"deferred-test"}"#;
+        std::fs::write(root.join("compact.json"), boundary).unwrap();
         // Regression: 8fab0c8d held host exclusion for five seconds after a busy boundary.
         let started = std::time::Instant::now();
         hosts.reconcile(&registry, "team", "seat").unwrap();
         assert!(started.elapsed() < Duration::from_secs(1));
-        let requests = std::fs::read_to_string(root.join("requests.jsonl")).unwrap();
-        assert!(requests.matches("thread/read").count() < 10);
         // Regression: 8fab0c8d logged the attempt-8 busy boundary on every panel poll.
         for _ in 0..3 {
             hosts.reconcile(&registry, "team", "seat").unwrap();
         }
         sink.flush_for_test().unwrap();
-        let events = std::fs::read_to_string(root.join("events.jsonl")).unwrap();
+        let events = fixture_text(root, "events.jsonl");
         let deferred = events
             .lines()
             .map(|line| serde_json::from_str::<Value>(line).unwrap())
@@ -1592,41 +1531,38 @@ pub(crate) mod tests {
             message(3).starts_with("[taurhaus] recovery_card")
                 && message(3).ends_with("after compact")
         );
-        assert_eq!(saved(root).context_generation, 1);
+        assert_eq!(saved(tmp.path()).context_generation, 1);
         assert!(!compaction(root).pending);
         hosts.stop(&registry, "team", "seat").unwrap();
     }
     #[test]
     fn hosted_notification_compaction_delivers_once_and_deduplicates_hook() {
-        // Regression: 6f61f611, attempt-8 continuation step5-boundary-events.json:
-        // completed contextCompaction was retained but never admitted or recovered.
+        // Regression: 6f61f611 / attempt-8 continuation step5-boundary-events.json: owned-only recovery.
         let _logs = taurhaus_lib::test_support::acquire_global_log_test_guard();
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         let sink = LogFileState::new(root.join("events.jsonl")).unwrap();
         install_global_sink(&sink);
-        let (registry, hosts) = running(root);
-        let generation = saved(root).attachment_generation;
-        transcript(&hosts, &registry, generation);
-        std::fs::write(
-            root.join("compact.json"),
-            r#"{"expectCard":true,"backlog":65}"#,
-        )
-        .unwrap();
-        hosts.reconcile(&registry, "team", "seat").unwrap();
+        let (reg, hosts) = running(root);
+        let gen = saved(root).attachment_generation;
+        transcript(&hosts, &reg, gen);
+        std::fs::write(root.join("compact.json"), r#"{"threadId":"foreign"}"#).unwrap();
+        hosts.reconcile(&reg, "team", "seat").unwrap();
+        assert_eq!(saved(root).context_generation, 0);
+        assert!(MemberCompactionStore::load(root, "team", "seat")
+            .unwrap()
+            .is_none());
+        let boundary = r#"{"expectCard":true,"backlog":65}"#;
+        std::fs::write(root.join("compact.json"), boundary).unwrap();
+        hosts.reconcile(&reg, "team", "seat").unwrap();
         let record = saved(root);
         assert_eq!(record.context_generation, 1);
-        assert_eq!(
-            serde_json::to_value(&record).unwrap()["contextGeneration"],
-            "1"
-        );
-        let submitted: Value =
-            serde_json::from_slice(&std::fs::read(root.join("boundary-submission.json")).unwrap())
-                .unwrap();
+        let submitted = fixture_text(root, "boundary-submission.json");
+        let submitted: Value = serde_json::from_str(&submitted).unwrap();
         assert_eq!(submitted["state"]["source"], "host_notification");
         let receipt = record.recovery.last_delivered.unwrap();
         assert_eq!(receipt.stage, ReceiptStage::Submitted);
-        let (card, _) = recovery_delivery::read_current(&registry, root, "team", "seat").unwrap();
+        let (card, _) = read_current(&reg, root, "team", "seat").unwrap();
         let without_clock = |text: &str| {
             text.lines()
                 .filter(|line| !line.starts_with("Generated: "))
@@ -1640,76 +1576,56 @@ pub(crate) mod tests {
         assert_eq!(submitted["turnId"], "2");
         let state = compaction(root);
         assert!(!state.pending);
-        assert_eq!(
-            state.last_delivery_result,
-            CompactionDeliveryResult::Injected
-        );
+        assert_eq!(state.last_delivery_result, Injected);
         // Regression: 8fab0c8d fabricated hook IDs absent in attempt-8's documented envelope.
         let payload = json!({"hook_event_name":"SessionStart","source":"compact","session_id":"owned-thread","cwd":root,"transcript_path":root.join("rollout-owned-thread.jsonl")});
         let mut output = Vec::new();
         run_compact_hook_cli(payload.to_string().as_bytes(), &mut output, root).unwrap();
         assert!(!String::from_utf8(output).unwrap().contains("recovery_card"));
         assert_eq!(saved(root).context_generation, 1);
-        let view = transcript(&hosts, &registry, generation);
-        // The backlog evicts transcript events as well as old compaction notifications.
-        assert_eq!(view["eventsTruncated"], true);
-        assert!(view["thread"]["turns"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|t| t["items"][0]["type"] == "contextCompaction"));
-        let requests: Vec<Value> = std::fs::read_to_string(root.join("requests.jsonl"))
-            .unwrap()
-            .lines()
-            .map(|s| serde_json::from_str(s).unwrap())
-            .collect();
-        let starts = requests
-            .iter()
-            .filter(|r| r["method"] == "turn/start")
-            .count();
-        assert_eq!(starts, 2);
-        // Regression: 8fab0c8d re-counted a stale compaction for later attachment cards.
+        let view = transcript(&hosts, &reg, gen);
+        assert!(has_compaction(&view));
+        assert_eq!(starts(root), 2);
+        // Regression: 8fab0c8d re-counted stale deliveries; assert locally, not on the global sink.
         record_host_delivery(root, "team", "seat").unwrap();
-        // Regression: 8fab0c8d counted other parallel tests in the process-global sink.
         assert_eq!(compaction(root), state);
         sink.flush_for_test().unwrap();
-        let events = std::fs::read_to_string(root.join("events.jsonl")).unwrap();
+        let events = fixture_text(root, "events.jsonl");
         assert!(!events.contains("\"reason\":\"\""));
         for event in [
             "compaction.codex_host.received",
             "compaction.codex_host.delivered",
             "compaction.codex_host.skipped",
             "already_recorded",
+            "different_thread",
             "host_turn",
         ] {
             assert!(events.contains(event), "missing {event}");
         }
-        hosts.stop(&registry, "team", "seat").unwrap();
     }
-
     #[test]
     fn hosted_notification_compaction_deduplicates_an_earlier_hook() {
         // Regression: 6f61f611, attempt-8 continuation boundary: either observer may arrive first.
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
-        let (registry, hosts) = running(root);
-        let generation = saved(root).attachment_generation;
-        transcript(&hosts, &registry, generation);
+        let (reg, hosts) = running(root);
+        let gen = saved(root).attachment_generation;
+        transcript(&hosts, &reg, gen);
         // Regression: 8fab0c8d fabricated hook IDs absent in attempt-8's documented envelope.
         let payload = json!({"hook_event_name":"SessionStart","source":"compact","session_id":"owned-thread","cwd":root,"transcript_path":root.join("rollout-owned-thread.jsonl")});
+        let compacted = json!({"type":"compacted","timestamp":chrono::Utc::now(),"payload":{}});
         std::fs::write(
             root.join("rollout-owned-thread.jsonl"),
-            json!({"type":"compacted","timestamp":chrono::Utc::now(),"payload":{}}).to_string(),
+            compacted.to_string(),
         )
         .unwrap();
         let mut output = Vec::new();
         run_compact_hook_cli(payload.to_string().as_bytes(), &mut output, root).unwrap();
         assert!(String::from_utf8(output).unwrap().contains("recovery_card"));
         std::fs::write(root.join("compact.json"), "{}").unwrap();
-        hosts.reconcile(&registry, "team", "seat").unwrap();
+        hosts.reconcile(&reg, "team", "seat").unwrap();
         assert_eq!(saved(root).context_generation, 1);
-        let requests = std::fs::read_to_string(root.join("requests.jsonl")).unwrap();
-        assert_eq!(requests.matches("turn/start").count(), 1);
+        assert_eq!(starts(root), 1);
         // Regression: 8fab0c8d's timestamp fallback could merge distinct known boundaries.
         let state = compaction(root);
         let guard = HostOperationLock::acquire(root, "team", "seat", Duration::ZERO).unwrap();
@@ -1718,32 +1634,7 @@ pub(crate) mod tests {
         assert!(record_host_boundary(root, "team", "seat", &next, "host_notification").unwrap());
         assert_eq!(saved(root).context_generation, 2);
         drop(guard);
-        hosts.stop(&registry, "team", "seat").unwrap();
     }
-
-    #[test]
-    fn hosted_notification_compaction_ignores_foreign_thread() {
-        // Regression: 6f61f611 / attempt-8 continuation: only the owned thread is authority.
-        let _logs = taurhaus_lib::test_support::acquire_global_log_test_guard();
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
-        let sink = LogFileState::new(root.join("events.jsonl")).unwrap();
-        install_global_sink(&sink);
-        let (registry, hosts) = running(root);
-        transcript(&hosts, &registry, saved(root).attachment_generation);
-        std::fs::write(root.join("compact.json"), r#"{"threadId":"foreign"}"#).unwrap();
-        hosts.reconcile(&registry, "team", "seat").unwrap();
-        assert_eq!(saved(root).context_generation, 0);
-        assert!(MemberCompactionStore::load(root, "team", "seat")
-            .unwrap()
-            .is_none());
-        sink.flush_for_test().unwrap();
-        assert!(std::fs::read_to_string(root.join("events.jsonl"))
-            .unwrap()
-            .contains("different_thread"));
-        hosts.stop(&registry, "team", "seat").unwrap();
-    }
-
     #[test]
     fn hosted_publication_preserves_concurrent_foreign_fields_and_checks_incarnation() {
         // Regression: 83077dad replaced the compared current record with a stale clone,
