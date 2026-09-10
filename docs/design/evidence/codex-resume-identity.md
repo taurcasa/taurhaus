@@ -1,0 +1,13 @@
+# Codex resume identity — L2 run 4f replay
+
+Base: `206f88b0`; protocol 27 unchanged. Source: the committed `l2-tmux-busy/run4f/run/` packet in `/home/mstie/projects/taurhaus-l2-tmux-busy` (rollouts, inventory, notify, resumed/final runtime records, runtime sessions and complete daemon log).
+
+The packet's final **runtime session already names the new ID and rollout**. Display rows omit those fields by schema; their absence does not prove unresolved identity. Neither `codex_identity_ambiguous` nor `codex_identity_ambiguous_writer_locks` is reproduced with the recorded layout: one owned UUID writer lock wins over the old unlocked rollout, even when the runtime record still names the old ID or a stale cache entry exists. `.coordination.lock` is excluded.
+
+The reproduced refusal is **`apply_notify_edge`: `notify.ts < transcript_mtime`** (or the notify sink mtime prefilter). A final rollout flush after notify leaves identity intact but `authoritative = false`; readiness then rejects notify and classification eventually exports uncertain. The retained completion is `18:07:22.429318444Z`, matching the final `task_complete` row at `18:07:22.429Z` and turn `01a08c80-769a-7683-ad44-8243b2ad9945`. Exported rollout mtimes are copy times, so the replay reconstructs flush ordering; the original host mtime comparison cannot be proved from this packet.
+
+The fix additionally accepts a matching final completion row from a bounded 64 KiB tail. It requires a complete JSONL row, matching turn ID and timestamp no later than notify; later rows and partial tails cannot authorize idle. The reserved resume launch is the notify floor; ordinary reattachment still preserves validated completion. Writer locks remain identity evidence only. Linux dead-PID resolution invalidates its cached binding instead of falling back to the lone retained rollout.
+
+The scanner remains the single binding authority. `SystemCoordinationRuntime::detect_runtime_session`, capture and liveness already consume scanner results; runtime persistence mirrors that identity into `hookSessionId`. Codex activity events now include the same session ID and rollout path. Hosted and other harness behavior, goldens, dependencies and protocol remain unchanged.
+
+Tests generate the two recorded rollout names and 0.153.4 `session_meta` shapes in tempdirs (instruction prose replaced with inert text; dates/timestamps rebased), use owned sleep processes and real lock descriptors, and exercise old/new runtime IDs, pane reuse, stale cache, persistence, notify, later-turn rejection, dead PID, pre-turn readiness and event identity. No real model CLI, operator tmux, standing team or live daemon is used.

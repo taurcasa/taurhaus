@@ -142,6 +142,11 @@ impl CodexResolver {
         records: &[crate::coordination::stores::MemberRuntimeRecord],
     ) -> IdleResult {
         super::codex_readiness::invalidate(pid);
+        #[cfg(target_os = "linux")]
+        if crate::platform::process_start_ticks(pid).is_none() {
+            invalidate_binding(project_path, pid, pane_id);
+            return unresolved_identity(pid, "codex_identity_process_gone");
+        }
         let Some((seat_root, excluded)) = codex_identity_scope(project_path, pid, pane_id, records)
         else {
             return unresolved_identity(pid, "codex_identity_ambiguous_account");
@@ -203,17 +208,53 @@ fn apply_notify_edge(mut result: IdleResult, notify_path: &Path) -> IdleResult {
         notify_path,
         session_id,
         "agent-turn-complete",
-        transcript_mtime,
+        SystemTime::UNIX_EPOCH,
     ) else {
         return result;
     };
-    if record.ts < DateTime::<Utc>::from(transcript_mtime) {
+    if record.ts < DateTime::<Utc>::from(transcript_mtime)
+        && !codex_completed_tail(Path::new(transcript_path), &record)
+    {
         return result;
     }
 
     result.state = SessionState::Idle;
     result.authoritative = true;
     result
+}
+
+// Codex may flush task_complete after notify has already timestamped completion.
+// Only the final complete row can bridge that ordering; never skip a newer row.
+fn codex_completed_tail(
+    path: &Path,
+    notify: &crate::daemon::codex_notify::CodexNotifyRecord,
+) -> bool {
+    use std::io::{Read, Seek, SeekFrom};
+    let read = || -> Option<bool> {
+        let turn = notify.turn_id.as_deref().filter(|id| !id.is_empty())?;
+        let mut file = fs::File::open(path).ok()?;
+        let len = file.metadata().ok()?.len();
+        file.seek(SeekFrom::Start(len.saturating_sub(65_536)))
+            .ok()?;
+        let mut tail = Vec::new();
+        file.take(65_537).read_to_end(&mut tail).ok()?;
+        if tail.len() > 65_536 || !tail.ends_with(b"\n") {
+            return None;
+        }
+        let line = tail
+            .split(|b| *b == b'\n')
+            .rev()
+            .find(|line| !line.is_empty())?;
+        let row: serde_json::Value = serde_json::from_slice(line).ok()?;
+        let at = DateTime::parse_from_rfc3339(row["timestamp"].as_str()?).ok()?;
+        Some(
+            row["type"] == "event_msg"
+                && row["payload"]["type"] == "task_complete"
+                && row["payload"]["turn_id"].as_str() == Some(turn)
+                && at <= notify.ts,
+        )
+    };
+    read().unwrap_or(false)
 }
 
 impl Default for CodexResolver {
@@ -791,10 +832,8 @@ fn codex_result_from_file(path: &Path) -> IdleResult {
 /// How many days back to scan for Codex session files.
 ///
 /// Codex stores session files in date-organized directories (YYYY/MM/DD/).
-/// When a session is resumed, Codex appends to the *original* file — which
-/// stays in the date directory where it was first created. A session created
-/// on Monday and resumed on Thursday would still live in Monday's directory
-/// but with Thursday's mtime. We scan back far enough to catch these.
+/// Older versions may append on resume; 0.153.4 can create a new rollout.
+/// Retained files are discovery candidates, never stronger than writer ownership.
 const CODEX_LOOKBACK_DAYS: i64 = 7;
 
 /// Scan recent date directories to find the Codex session file for a project.
@@ -913,14 +952,197 @@ mod tests {
     use std::fs::File;
     use std::io::Write;
 
+    #[cfg(target_os = "linux")]
+    struct ResumeProcess(std::process::Child);
+
+    #[cfg(target_os = "linux")]
+    impl ResumeProcess {
+        fn start(root: &Path, lock: &Path, coordination: &Path) -> Self {
+            let writer = File::open(lock).unwrap();
+            fs2::FileExt::try_lock_exclusive(&writer).unwrap();
+            Self(
+                std::process::Command::new("/bin/sleep")
+                    .arg("60")
+                    .env_clear()
+                    .env("CODEX_HOME", root)
+                    .env("HOME", root)
+                    .stdin(writer)
+                    .stdout(File::open(coordination).unwrap())
+                    .spawn()
+                    .unwrap(),
+            )
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    impl Drop for ResumeProcess {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+
+    // Regression: 61e9a247's mtime floor, L2 run 4f: resumed notify lost
+    // authority despite the unique writer lock and rebound runtime identity.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn codex_resume_run4f_writer_identity_and_notify() {
+        use crate::coordination::stores::{MemberRuntimeRecord, MemberRuntimeStore};
+        let _guard = CODEX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let tmp = TempDir::new().unwrap();
+        setup_binding_store(&tmp);
+        let project = tmp.path().join("project");
+        let cwd = project.to_str().unwrap();
+        let sessions = tmp.path().join("sessions");
+        let date = sessions.join(chrono::Local::now().format("%Y/%m/%d").to_string());
+        fs::create_dir_all(&date).unwrap();
+        let locks = tmp.path().join("thread-writer-locks");
+        fs::create_dir(&locks).unwrap();
+        let coordination = locks.join(".coordination.lock");
+        fs::write(&coordination, "").unwrap();
+        fs::write(locks.join("not-a-session.lock"), "").unwrap();
+        let ids = [
+            "01a08c7e-f709-7152-92ae-8fdb97f3f3d8",
+            "01a08c80-6beb-7433-8d1c-4b4c15e7f335",
+        ];
+        let mut paths = Vec::new();
+        for (id, time) in ids.iter().zip(["20-05-26", "20-07-01"]) {
+            let path = date.join(format!("rollout-2026-09-10T{time}-{id}.jsonl"));
+            // Run-4f session_meta shape; instruction prose is irrelevant to identity.
+            let meta = serde_json::json!({"timestamp":"2026-09-10T18:07:01.638Z",
+                "ordinal":0,"type":"session_meta","payload":{"session_id":id,"id":id,
+                "timestamp":"2026-09-10T18:07:01.638Z","cwd":cwd,"originator":"codex-tui",
+                "cli_version":"0.153.4","source":"cli","thread_source":"user",
+                "model_provider":"openai","history_mode":"paginated",
+                "base_instructions":{"text":"fixture"},"context_window":{"window_id":"01a08c80-6beb-7433-8d1c-4b500b45a039"},
+                "git":{"commit_hash":"29686d797ccd89b253b8a6ec225dfa4d353496eb","branch":"master"}}});
+            fs::write(&path, format!("{meta}\n")).unwrap();
+            paths.push(path);
+        }
+        let old_lock = locks.join(format!("{}.lock", ids[0]));
+        fs::write(&old_lock, "").unwrap();
+        let old = ResumeProcess::start(tmp.path(), &old_lock, &coordination);
+        let resolver = CodexResolver {
+            base_dir: Some(sessions),
+            notify_path: tmp.path().join("notify.jsonl"),
+        };
+        let before = resolver.detect_idle_for_pid_in(cwd, old.0.id(), Some("%5"), &[]);
+        assert_eq!(before.session_id.as_deref(), Some(ids[0]));
+        let old_pid = old.0.id();
+        drop(old);
+        fs::remove_file(old_lock).unwrap();
+        let new_lock = locks.join(format!("{}.lock", ids[1]));
+        fs::write(&new_lock, "").unwrap();
+        let resumed = ResumeProcess::start(tmp.path(), &new_lock, &coordination);
+        let pid = resumed.0.id();
+        assert_ne!(pid, old_pid);
+        let mut record: MemberRuntimeRecord = serde_json::from_value(serde_json::json!({
+            "paneId":"%5","panePid":pid,"paneStartTime":crate::platform::process_start_ticks(pid).unwrap().to_string(),
+            "cli_tool":"codex","project_path":project,"session_id":ids[0],"jsonl_path":paths[0],
+            "attached_at":Utc::now() - chrono::Duration::seconds(30),
+            "recovery":{"harness_account_root":tmp.path()}
+        })).unwrap();
+        for recorded_id in ids {
+            record.session_id = Some(recorded_id.into());
+            let result = resolver.detect_idle_for_pid_in(cwd, pid, Some("%5"), &[record.clone()]);
+            assert_eq!(
+                result.session_id.as_deref(),
+                Some(ids[1]),
+                "older rollout must not cause codex_identity_ambiguous"
+            );
+            assert_eq!(result.jsonl_path.as_deref(), paths[1].to_str());
+        }
+        // Same pane/new PID re-resolves; even a stale entry for that PID loses to its lock.
+        persist_binding(cwd, pid, Some("%5"), &before);
+        let rebound = resolver.detect_idle_for_pid_in(cwd, pid, Some("%5"), &[record.clone()]);
+        record.session_id = rebound.session_id.clone();
+        record.jsonl_path = rebound.jsonl_path.as_ref().map(PathBuf::from);
+        let teams = tmp.path().join("teams");
+        MemberRuntimeStore::save(&teams, "trial", "alpha", &record).unwrap();
+        let saved: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(teams.join("trial/runtime/alpha.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(saved["hookSessionId"], ids[1]);
+        assert_eq!(saved["session_id"], ids[1]);
+        assert_eq!(saved["jsonl_path"].as_str(), rebound.jsonl_path.as_deref());
+        // Exact final run-4f row and notify, with its timestamp rebased for freshness.
+        let completed = Utc::now() - chrono::Duration::seconds(1);
+        let turn = "01a08c80-769a-7683-ad44-8243b2ad9945";
+        let row = serde_json::json!({"timestamp":completed.to_rfc3339(),"ordinal":49,"type":"event_msg",
+            "payload":{"type":"task_complete","turn_id":turn,"last_agent_message":"Q2-cc0dd185",
+            "started_at":1789063624,"completed_at":1789063642,"duration_ms":18075,"time_to_first_token_ms":2760}});
+        writeln!(
+            fs::OpenOptions::new().append(true).open(&paths[1]).unwrap(),
+            "{row}"
+        )
+        .unwrap();
+        let event =
+            serde_json::json!({"type":"agent-turn-complete","thread-id":ids[1],"turn-id":turn});
+        crate::daemon::codex_notify::append_event_at(
+            &resolver.notify_path,
+            &event.to_string(),
+            completed,
+        )
+        .unwrap();
+        record.tmux_socket = Some(tmp.path().join("never-probed.sock"));
+        let result = resolver.detect_idle_for_pid_in(cwd, pid, Some("%5"), &[record.clone()]);
+        assert_eq!(result.session_id, rebound.session_id);
+        assert!(
+            result.authoritative,
+            "apply_notify_edge refuses completion when final rollout flush mtime exceeds notify.ts"
+        );
+        assert_eq!(result.state, SessionState::Idle);
+        let observed = super::super::codex_readiness::observation(pid, cwd, Some("%5")).unwrap();
+        assert_eq!(observed.source, "notify");
+        // A later turn cannot reuse the previous completion.
+        writeln!(
+            fs::OpenOptions::new().append(true).open(&paths[1]).unwrap(),
+            "{{\"type\":\"event_msg\",\"payload\":{{\"type\":\"task_started\"}}}}"
+        )
+        .unwrap();
+        assert!(
+            !resolver
+                .detect_idle_for_pid_in(cwd, pid, Some("%5"), &[record])
+                .authoritative
+        );
+    }
+
+    // Regression: c9669ef8's single-rollout fallback attributes even a dead PID;
+    // L2 run 4f retains the old rollout after its process and lock are gone.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn codex_resume_run4f_dead_pid_has_no_identity() {
+        let _guard = CODEX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let tmp = TempDir::new().unwrap();
+        setup_binding_store(&tmp);
+        let date = tmp
+            .path()
+            .join("sessions")
+            .join(chrono::Local::now().format("%Y/%m/%d").to_string());
+        create_codex_session(
+            &date,
+            "rollout-2026-09-10T20-05-26-01a08c7e-f709-7152-92ae-8fdb97f3f3d8.jsonl",
+            "/scratch/project",
+        );
+        let resolver = CodexResolver {
+            base_dir: Some(tmp.path().join("sessions")),
+            notify_path: tmp.path().join("notify.jsonl"),
+        };
+        let result = resolver.detect_idle_for_pid_in("/scratch/project", u32::MAX, Some("%5"), &[]);
+        assert!(result.session_id.is_none());
+        assert!(result.jsonl_path.is_none());
+    }
+
     // Regression: 41ef6b21 made unrelated corrupt team bookkeeping erase TUI identity.
     #[test]
+    #[cfg(target_os = "linux")]
     fn codex_review_registry_failure_preserves_rollout_identity() {
         let _guard = CODEX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let tmp = TempDir::new().unwrap();
         setup_binding_store(&tmp);
         let sessions = tmp.path().join("sessions");
-        create_codex_session(
+        let file = create_codex_session(
             &sessions.join(chrono::Local::now().format("%Y/%m/%d").to_string()),
             "rollout-2026-09-10T08-30-00-seat-thread.jsonl",
             "/scratch/project",
@@ -938,7 +1160,9 @@ mod tests {
             base_dir: Some(sessions),
             notify_path: tmp.path().join("notify.jsonl"),
         };
-        let result = resolver.detect_idle_for_pid_at("/scratch/project", u32::MAX, None, &teams);
+        let process = ResumeProcess::start(tmp.path(), &file, &file);
+        let result =
+            resolver.detect_idle_for_pid_at("/scratch/project", process.0.id(), None, &teams);
         assert_eq!(result.session_id.as_deref(), Some("seat-thread"));
         assert!(result.jsonl_path.is_some());
     }
@@ -952,7 +1176,7 @@ mod tests {
         let locks = tmp.path().join("thread-writer-locks");
         fs::create_dir(&locks).unwrap();
         let hosted = "01a08a70-8595-7ea0-a004-4ae0385d4e2f";
-        for id in ["invalid", hosted] {
+        for id in ["invalid", ".coordination", "not-a-session", hosted] {
             fs::write(locks.join(format!("{id}.lock")), "").unwrap();
         }
         let result = codex_detect_idle_scoped(
@@ -1505,6 +1729,7 @@ mod tests {
     // Regression: 61e9a24 only tested the edge helper, leaving resolver path
     // wiring and the platform fd-probe boundary uncovered.
     #[test]
+    #[cfg(target_os = "linux")]
     fn resolver_consumes_notify_edge_through_configured_paths() {
         let _guard = CODEX_TEST_LOCK
             .lock()
@@ -1537,8 +1762,9 @@ mod tests {
             notify_path,
         };
 
+        let process = ResumeProcess::start(tmp.path(), &transcript, &transcript);
         let result =
-            resolver.detect_idle_for_pid_in("/home/test/project", u32::MAX, Some("%99"), &[]);
+            resolver.detect_idle_for_pid_in("/home/test/project", process.0.id(), Some("%99"), &[]);
 
         assert_eq!(result.state, SessionState::Idle);
         assert!(result.authoritative);
