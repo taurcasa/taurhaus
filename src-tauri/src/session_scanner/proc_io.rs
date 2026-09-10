@@ -40,7 +40,7 @@ const ACTIVE_IO_RATE_BYTES_PER_SEC: u64 = 1_000;
 /// can poll the same PID milliseconds apart. Dividing an idle keep-alive read
 /// by a few milliseconds turns it into tens of kB/s, so a sample that close
 /// carries no new information and the stored one is kept.
-const MIN_SAMPLE_INTERVAL: Duration = Duration::from_millis(250);
+pub(super) const MIN_SAMPLE_INTERVAL: Duration = Duration::from_millis(250);
 
 /// Per-PID tracking state for IO activity detection (Claude only).
 struct IoState {
@@ -64,7 +64,7 @@ enum Poll {
 }
 
 /// Whether an rchar delta observed over `elapsed` clears the activity rate.
-fn is_active_rate(delta_bytes: u64, elapsed: Duration) -> bool {
+pub(super) fn is_active_rate(delta_bytes: u64, elapsed: Duration) -> bool {
     let elapsed_ms = u64::try_from(elapsed.as_millis())
         .unwrap_or(u64::MAX)
         .max(1);

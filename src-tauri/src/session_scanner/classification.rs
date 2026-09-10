@@ -150,11 +150,14 @@ where
             // The tool reported this state itself (Claude sessions registry or
             // Codex notify): it replaces the file signal rather than
             // supplementing it.
-            let seat_observation = tool_spec.activity_source().observation(
-                proc.pid,
-                &proc.project_path,
-                tmux_pane.map(|pane| pane.pane_id.as_str()),
-            );
+            let seat_observation = tool_spec
+                .activity_source()
+                .observation(
+                    proc.pid,
+                    &proc.project_path,
+                    tmux_pane.map(|pane| pane.pane_id.as_str()),
+                )
+                .filter(|observed| matches!(observed.source, "launch_ready" | "notify"));
             let authoritative_state = tool_spec
                 .activity_source()
                 .authoritative_state(&proc.project_path, proc.pid, &idle_result)
@@ -439,6 +442,56 @@ mod tests {
             &move |_: &process::ProcessInfo| result.clone(),
         );
         sessions.into_iter().next().expect("one session")
+    }
+
+    // Regression: b9e4a855 promoted the readiness slice's raw process_io
+    // observation to High-confidence working, bypassing proc_io hysteresis.
+    #[test]
+    fn codex_round3_process_io_observation_is_not_authoritative() {
+        let _lock = SCANNER_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let pid = 941_033;
+        let project = "/scratch/round3";
+        idle::codex_readiness::seed_observation_for_test(
+            pid,
+            project,
+            "%round3",
+            "process_io",
+            SessionState::Active,
+            chrono::Utc::now(),
+        );
+        let proc = process::ProcessInfo {
+            pid,
+            project_path: project.into(),
+            tty: "round3-tty".into(),
+            args: "codex".into(),
+            cli_tool: CliTool::Codex,
+        };
+        let panes = HashMap::from([(
+            "round3-tty".into(),
+            tmux::TmuxPane {
+                pane_id: "%round3".into(),
+                tty: "round3-tty".into(),
+                window_index: "0".into(),
+                window_name: "test".into(),
+                session_name: "test".into(),
+            },
+        )]);
+        struct Reset;
+        impl Drop for Reset {
+            fn drop(&mut self) {
+                set_runtime_idle_detector_override(None);
+            }
+        }
+        let _reset = Reset;
+        set_runtime_idle_detector_override(Some(|_| idle_result(SessionState::Idle, false)));
+        let (sessions, _, _, _) =
+            classify_display_runtime_sessions_with(vec![proc], panes, &HashMap::new(), &|_| {
+                idle_result(SessionState::Idle, false)
+            });
+        assert_eq!(sessions[0].state, SessionState::Idle);
+        assert!(!sessions[0].recent_io);
+        assert_eq!(sessions[0].activity_confidence, ActivityConfidence::Low);
+        cache::remove_state_tracker(pid);
     }
 
     // Regression: b9e4a855 bypassed the activity registry for launch readiness.
