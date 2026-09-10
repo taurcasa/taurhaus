@@ -1,0 +1,370 @@
+{
+  "identities": {
+    "lead": {
+      "old_session": null,
+      "new_session": null,
+      "old_generation": 1,
+      "new_generation": 2,
+      "old_pane": "%2",
+      "new_pane": "%13",
+      "old_tmux_session": "$0",
+      "new_tmux_session": "$0",
+      "old_host_generation": null,
+      "new_host_generation": null
+    },
+    "alpha": {
+      "old_session": "01a08d54-dc9c-79b0-bad6-5a6ea04f55aa",
+      "new_session": "01a08d56-c982-7c71-abd9-c9c7450aed07",
+      "old_generation": 1,
+      "new_generation": 2,
+      "old_pane": "%3",
+      "new_pane": "%14",
+      "old_tmux_session": "$0",
+      "new_tmux_session": "$0",
+      "old_host_generation": null,
+      "new_host_generation": null
+    },
+    "beta": {
+      "old_session": "01a08d54-e121-7d31-bd6a-d6e72d498dbf",
+      "new_session": "01a08d54-e121-7d31-bd6a-d6e72d498dbf",
+      "old_generation": 1,
+      "new_generation": 3,
+      "old_pane": "%4",
+      "new_pane": "%15",
+      "old_tmux_session": "$0",
+      "new_tmux_session": "$0",
+      "old_host_generation": "ab24597b-c57f-4b3f-a09b-ea63bad03ee2",
+      "new_host_generation": "c77abfe2-6d50-4c1c-b41a-1fe8a1246693"
+    }
+  },
+  "messages": {
+    "old/alpha": {
+      "message_id": "e238a30b-5169-4f8b-829b-dbf3ff498ca9",
+      "events": [
+        {
+          "sequence": 8,
+          "event_type": "message_accepted",
+          "stage": null,
+          "kind": null,
+          "adapter": null,
+          "recipient": null,
+          "reader_name": null,
+          "generation": null
+        },
+        {
+          "sequence": 9,
+          "event_type": "delivery_attempt",
+          "stage": "attempt_started",
+          "kind": null,
+          "adapter": "tmux/1",
+          "recipient": "alpha",
+          "reader_name": null,
+          "generation": 1
+        },
+        {
+          "sequence": 10,
+          "event_type": "receipt",
+          "stage": "submitted",
+          "kind": null,
+          "adapter": "tmux/1",
+          "recipient": "alpha",
+          "reader_name": null,
+          "generation": 1
+        },
+        {
+          "sequence": 11,
+          "event_type": "receipt",
+          "stage": null,
+          "kind": "consumed_by_read",
+          "adapter": null,
+          "recipient": null,
+          "reader_name": "alpha",
+          "generation": null
+        }
+      ]
+    },
+    "old/beta": {
+      "message_id": "59d1a1d5-a19c-4752-8bd2-6390358c68e4",
+      "events": [
+        {
+          "sequence": 12,
+          "event_type": "message_accepted",
+          "stage": null,
+          "kind": null,
+          "adapter": null,
+          "recipient": null,
+          "reader_name": null,
+          "generation": null
+        },
+        {
+          "sequence": 13,
+          "event_type": "delivery_attempt",
+          "stage": "attempt_started",
+          "kind": null,
+          "adapter": "app_server",
+          "recipient": "beta",
+          "reader_name": null,
+          "generation": 1
+        },
+        {
+          "sequence": 14,
+          "event_type": "receipt",
+          "stage": "native_enqueued",
+          "kind": null,
+          "adapter": "app_server",
+          "recipient": "beta",
+          "reader_name": null,
+          "generation": 1
+        },
+        {
+          "sequence": 15,
+          "event_type": "receipt",
+          "stage": null,
+          "kind": "consumed_by_read",
+          "adapter": null,
+          "recipient": null,
+          "reader_name": "beta",
+          "generation": null
+        }
+      ]
+    },
+    "pending/alpha": {
+      "message_id": "c2bc23e0-39ab-4881-a3d4-c92a2141571b",
+      "events": [
+        {
+          "sequence": 16,
+          "event_type": "message_accepted",
+          "stage": null,
+          "kind": null,
+          "adapter": null,
+          "recipient": null,
+          "reader_name": null,
+          "generation": null
+        },
+        {
+          "sequence": 22,
+          "event_type": "delivery_attempt",
+          "stage": "attempt_started",
+          "kind": null,
+          "adapter": "tmux/1",
+          "recipient": "alpha",
+          "reader_name": null,
+          "generation": 2
+        },
+        {
+          "sequence": 24,
+          "event_type": "receipt",
+          "stage": "submitted",
+          "kind": null,
+          "adapter": "tmux/1",
+          "recipient": "alpha",
+          "reader_name": null,
+          "generation": 2
+        },
+        {
+          "sequence": 28,
+          "event_type": "receipt",
+          "stage": null,
+          "kind": "consumed_by_read",
+          "adapter": null,
+          "recipient": null,
+          "reader_name": "alpha",
+          "generation": null
+        }
+      ]
+    },
+    "pending/beta": {
+      "message_id": "00fc2149-8f8d-4f1b-b1f7-5eecb683de82",
+      "events": [
+        {
+          "sequence": 17,
+          "event_type": "message_accepted",
+          "stage": null,
+          "kind": null,
+          "adapter": null,
+          "recipient": null,
+          "reader_name": null,
+          "generation": null
+        },
+        {
+          "sequence": 26,
+          "event_type": "delivery_attempt",
+          "stage": "attempt_started",
+          "kind": null,
+          "adapter": "app_server",
+          "recipient": "beta",
+          "reader_name": null,
+          "generation": 3
+        },
+        {
+          "sequence": 27,
+          "event_type": "receipt",
+          "stage": "pending",
+          "kind": null,
+          "adapter": "app_server",
+          "recipient": "beta",
+          "reader_name": null,
+          "generation": 3
+        },
+        {
+          "sequence": 30,
+          "event_type": "delivery_attempt",
+          "stage": "attempt_started",
+          "kind": null,
+          "adapter": "app_server",
+          "recipient": "beta",
+          "reader_name": null,
+          "generation": 3
+        },
+        {
+          "sequence": 31,
+          "event_type": "receipt",
+          "stage": "pending",
+          "kind": null,
+          "adapter": "app_server",
+          "recipient": "beta",
+          "reader_name": null,
+          "generation": 3
+        },
+        {
+          "sequence": 32,
+          "event_type": "delivery_attempt",
+          "stage": "attempt_started",
+          "kind": null,
+          "adapter": "app_server",
+          "recipient": "beta",
+          "reader_name": null,
+          "generation": 3
+        },
+        {
+          "sequence": 33,
+          "event_type": "receipt",
+          "stage": "native_enqueued",
+          "kind": null,
+          "adapter": "app_server",
+          "recipient": "beta",
+          "reader_name": null,
+          "generation": 3
+        }
+      ]
+    }
+  },
+  "final_member_executors": [],
+  "identity_deviation": {
+    "classification": "taurhaus",
+    "observation": "alpha ordinary whole-team resume launched fresh and replaced the recorded session; prepare_resume retains session_id for effort override or hosted/rollback, not ordinary tmux resume",
+    "source": "src-tauri/src/coordination/pipelines/members.rs:615-655",
+    "acceptance": "Step-5 original-session identity criterion is contradicted by retained runtime, although the controller stopped earlier on metering."
+  },
+  "launch_commands": [
+    {
+      "ts": "2026-09-10T21:59:03.026Z",
+      "level": "INFO",
+      "component": "coordination",
+      "event": "launch.command.rendered",
+      "run_id": "run_b62d064cd91e409a99c718dec0fab89d",
+      "message": "Rendered team member launch command",
+      "command": "CLAUDE_CONFIG_DIR='/tmp/th-l4-run6-1y1sx1qi/claude' CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions --model 'claude-haiku-4-5' --team-name 'l4-resume' --agent-name 'lead' --agent-id 'lead@l4-resume' --agent-type 'orchestrator' -n 'lead'",
+      "member": "lead",
+      "mode": "fresh",
+      "model": "claude-haiku-4-5",
+      "reasoning_effort": null,
+      "team": "l4-resume",
+      "tool": "claude"
+    },
+    {
+      "ts": "2026-09-10T21:59:03.087Z",
+      "level": "INFO",
+      "component": "coordination",
+      "event": "launch.command.rendered",
+      "run_id": "run_b62d064cd91e409a99c718dec0fab89d",
+      "message": "Rendered team member launch command",
+      "command": "CODEX_HOME='/tmp/th-l4-run6-1y1sx1qi/codex' codex --sandbox danger-full-access --ask-for-approval never --dangerously-bypass-hook-trust -c 'notify=[\"/tmp/th-l4-run6-1y1sx1qi/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]' -m 'gpt-5.6-luna' -c 'model_reasoning_effort=\"low\"'",
+      "member": "alpha",
+      "mode": "fresh",
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "low",
+      "team": "l4-resume",
+      "tool": "codex"
+    },
+    {
+      "ts": "2026-09-10T21:59:03.147Z",
+      "level": "INFO",
+      "component": "coordination",
+      "event": "launch.command.rendered",
+      "run_id": "run_b62d064cd91e409a99c718dec0fab89d",
+      "message": "Rendered team member launch command",
+      "command": "CODEX_HOME='/tmp/th-l4-run6-1y1sx1qi/codex' codex --sandbox danger-full-access --ask-for-approval never -m 'gpt-5.6-luna' -c 'model_reasoning_effort=\"low\"'",
+      "member": "beta",
+      "mode": "fresh",
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "low",
+      "team": "l4-resume",
+      "tool": "codex"
+    },
+    {
+      "ts": "2026-09-10T22:01:08.071Z",
+      "level": "INFO",
+      "component": "coordination",
+      "event": "launch.command.rendered",
+      "run_id": "run_b62d064cd91e409a99c718dec0fab89d",
+      "message": "Rendered team member launch command",
+      "command": "CLAUDE_CONFIG_DIR='/tmp/th-l4-run6-1y1sx1qi/claude' CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions --model 'claude-haiku-4-5' --team-name 'l4-resume' --agent-name 'lead' --agent-id 'lead@l4-resume' --agent-type 'orchestrator' -n 'lead'",
+      "member": "lead",
+      "mode": "fresh",
+      "model": "claude-haiku-4-5",
+      "reasoning_effort": null,
+      "team": "l4-resume",
+      "tool": "claude"
+    },
+    {
+      "ts": "2026-09-10T22:01:09.596Z",
+      "level": "INFO",
+      "component": "coordination",
+      "event": "launch.command.rendered",
+      "run_id": "run_b62d064cd91e409a99c718dec0fab89d",
+      "message": "Rendered team member launch command",
+      "command": "CODEX_HOME='/tmp/th-l4-run6-1y1sx1qi/codex' codex --sandbox danger-full-access --ask-for-approval never -c 'notify=[\"/tmp/th-l4-run6-1y1sx1qi/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]' -m 'gpt-5.6-luna' -c 'model_reasoning_effort=\"low\"'",
+      "member": "alpha",
+      "mode": "fresh",
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "low",
+      "team": "l4-resume",
+      "tool": "codex"
+    },
+    {
+      "ts": "2026-09-10T22:01:11.107Z",
+      "level": "INFO",
+      "component": "coordination",
+      "event": "launch.command.rendered",
+      "run_id": "run_b62d064cd91e409a99c718dec0fab89d",
+      "message": "Rendered team member launch command",
+      "command": "CODEX_HOME='/tmp/th-l4-run6-1y1sx1qi/codex' codex --sandbox danger-full-access --ask-for-approval never resume '01a08d54-e121-7d31-bd6a-d6e72d498dbf' -m 'gpt-5.6-luna' -c 'model_reasoning_effort=\"low\"'",
+      "member": "beta",
+      "mode": "fresh",
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "low",
+      "team": "l4-resume",
+      "tool": "codex"
+    }
+  ],
+  "stop_events": [
+    {
+      "ts": "2026-09-10T21:59:58.614Z",
+      "level": "INFO",
+      "component": "coordination",
+      "event": "hosted.stop_session.host_stopped",
+      "run_id": "run_b62d064cd91e409a99c718dec0fab89d",
+      "message": "Hosted session stopped",
+      "exit_status": "signal: 9 (SIGKILL)",
+      "member": "beta",
+      "team": "l4-resume",
+      "thread_id": "01a08d54-e121-7d31-bd6a-d6e72d498dbf"
+    }
+  ],
+  "resume_calls": 1,
+  "limitations": [
+    "Step5 observer threw before action checkpoint; no step5 assertions or step6 read/export commands executed.",
+    "Failing counter row was not exported before the inherited assertion; scratch removed. Final turn costs and cap unverified."
+  ]
+}

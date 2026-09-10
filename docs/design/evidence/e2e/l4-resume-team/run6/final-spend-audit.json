@@ -1,0 +1,47 @@
+{
+  "evidenced_turn_ids": [
+    "01a08d54-e765-7b60-bcd7-1414d2c54648",
+    "01a08d54-f434-79a0-b5c9-5023bc854a36",
+    "01a08d55-1d1b-7c31-bd16-beed89397d08",
+    "01a08d55-33a4-7403-bbc0-598151dd6506",
+    "01a08d56-d1dd-73b2-aa3e-52ced71f7e44",
+    "01a08d56-d5c7-7332-a3ef-765ba8611c34",
+    "01a08d56-e9b7-7f02-8000-81bb3d5a40bc"
+  ],
+  "evidenced_turns": 7,
+  "controller_last_observed_turns": 6,
+  "journal_native_start_receipts": [
+    {
+      "sequence": 14,
+      "turn_id": "01a08d55-33a4-7403-bbc0-598151dd6506",
+      "message_id": "59d1a1d5-a19c-4752-8bd2-6390358c68e4",
+      "stage": "native_enqueued"
+    },
+    {
+      "sequence": 33,
+      "turn_id": "01a08d56-e9b7-7f02-8000-81bb3d5a40bc",
+      "message_id": "00fc2149-8f8d-4f1b-b1f7-5eecb683de82",
+      "stage": "native_enqueued"
+    }
+  ],
+  "metered_api_equivalent_subtotal_usd": 0.00621952,
+  "conservative_all_output_rate_subtotal_usd": 0.090996,
+  "unmetered_turn_ids": [
+    "01a08d56-d5c7-7332-a3ef-765ba8611c34",
+    "01a08d56-e9b7-7f02-8000-81bb3d5a40bc"
+  ],
+  "partially_metered_turn_ids": [
+    "01a08d56-d1dd-73b2-aa3e-52ced71f7e44"
+  ],
+  "final_total_usd": null,
+  "final_cost_cap_verified": false,
+  "seat_start_reservations": 4,
+  "pre_readiness_host_retry": 1,
+  "evidenced_turns_plus_starts_and_retry": 12,
+  "input_limit": 16,
+  "notes": [
+    "Final native receipt proves one additional beta backlog turn after the last saved meter observation.",
+    "The resumed alpha usage is a partial subtotal: no task_complete was retained for that turn.",
+    "Counter reset assertion ran before export; complete failing native token row unavailable. Never interpret missing usage as zero."
+  ]
+}
