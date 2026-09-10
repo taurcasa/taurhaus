@@ -3,10 +3,10 @@
   "root": "/tmp/th-l2-4maq2k8o/claude",
   "incarnation": "2eb66d6f68301472f19b17476130d667982e192a6b32a4ae68926fccfd6f3d2f",
   "epoch": 2,
-  "heartbeat": "2026-09-10T18:05:53.158374479+00:00",
-  "pending_since": null,
+  "heartbeat": "2026-09-10T18:06:34.328894850+00:00",
+  "pending_since": "2026-09-10T18:06:34.328894850+00:00",
   "error": null,
   "last_defer_reason": null,
-  "failures": 2,
-  "completed": 2
+  "failures": 3,
+  "completed": 3
 }

@@ -1,13 +1,13 @@
 [
   {
     "obligation": {
-      "message_id": "6adaff00-e2ce-438a-99f8-15af3336fdb9",
-      "delivery_id": "c288f34e-374b-4f89-a972-4474a980a404",
+      "message_id": "d223c14f-3b8a-493e-a15c-793d532dd4cf",
+      "delivery_id": "358743cb-69e1-486f-854e-f3f9955c9f80",
       "recipient": "lead",
       "source_generation": "1f31f05a-d80f-4948-ad72-f13a9061160e",
-      "source_position": 8,
-      "body": "Inbox shows no assigned task or required context. Please provide the missing identity or task context."
+      "source_position": 15,
+      "body": "Q-bd19c189"
     },
-    "since": "2026-09-10T18:05:51.977331756+00:00"
+    "since": "2026-09-10T18:06:34.343505190+00:00"
   }
 ]
