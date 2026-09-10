@@ -410,7 +410,12 @@ export function createMeshTabGate({ state, refs, deps }) {
     const cachedEntry = deps.untrack(() => deps.getMeshCacheEntry(projectPath))
     const cachedSnapshot = cachedEntry?.snapshot ?? null
     if (cachedSnapshot) {
-      const normalized = applyProjectSnapshot(cachedSnapshot, projectPath)
+      const normalized = applyProjectSnapshot({
+        ...cachedSnapshot,
+        teamStatus: cachedSnapshot.teamStatus ? {
+          ...cachedSnapshot.teamStatus, runtimeSnapshotFreshness: 'cached',
+        } : null,
+      }, projectPath)
       finishHydrationPerf(
         normalized.teamName && normalized.teamStatus ? 'mesh-hydrate-ready' : 'mesh-hydrate-empty',
         sequence,

@@ -15,6 +15,25 @@ import {
 } from './meshTabUtils.js'
 
 describe('accountLineLabel', () => {
+  it('treats a cached direct snapshot as history even when originally fresh', () => {
+    // Regression: 1b19edd2 trusted the freshness saved before a project switch.
+    const state = {}
+    const snapshot = { teamName: 'team', warnings: [], teamStatus: {
+      runtimeSnapshotFreshness: 'fresh', members: [
+        { name: 'lead', role: 'lead', cliTool: 'codex', state: 'working', source: 'host' },
+      ],
+    } }
+    const gate = createMeshTabGate({ state, refs: { discoverySequence: 0 }, deps: {
+      inferTeamName: () => 'team', getProjectPath: () => '/fixture', untrack: fn => fn(),
+      getMeshCacheEntry: () => ({ snapshot, cachedAtMs: Date.now() }),
+      normalizeProjectMeshSnapshot: value => value, buildTeamConfigFromRuntimeStatus,
+    } })
+    try {
+      gate.ensureHydrated('/fixture')
+      expect(state.teamConfig.lead.status).toBe('uncertain')
+      expect(state.teamConfig.lead.source).toBe('host_unavailable')
+    } finally { gate.clearRuntimeTeamRefresh(); gate.clearProjectSnapshotRefresh() }
+  })
   it('downgrades hosted activity after the live gate caches it', async () => {
     // Regression: 1b19edd2 dropped source and freshness in the gate's cache write.
     const members = ['lead', 'seat'].map((name, i) => ({
