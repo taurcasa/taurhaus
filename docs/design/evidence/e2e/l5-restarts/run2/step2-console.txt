@@ -1,0 +1,9 @@
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/run2/steps.py", line 154, in <module>
+    backlog('taurhaus-backlog');checkpoint(2)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/run2/steps.py", line 124, in backlog
+    wait(is_pending,'backlog unproved: no pending receipt '+seat)
+  File "/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/run2/steps.py", line 38, in wait
+    raise AssertionError(why+f'; polled {time.time()-begin:.1f}s')
+AssertionError: backlog unproved: no pending receipt alpha; polled 120.5s

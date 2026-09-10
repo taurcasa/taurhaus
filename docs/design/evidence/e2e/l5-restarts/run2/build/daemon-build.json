@@ -1,0 +1,16 @@
+{
+  "command": [
+    "just",
+    "build-daemon"
+  ],
+  "cwd": "<operator-path-redacted>",
+  "exit": 0,
+  "seconds": 200.63297057151794,
+  "cargo_preflight": [
+    {
+      "at": 1789081904.246941,
+      "exit": 0,
+      "output": "2526387 <operator-path-redacted> test --test cli_renderers --test module_boundary_assertions --test harness_conformance -- --test-threads=1\n"
+    }
+  ]
+}

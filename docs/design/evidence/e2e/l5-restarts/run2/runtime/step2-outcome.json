@@ -1,0 +1,7 @@
+{
+  "step": 2,
+  "outcome": "FAIL",
+  "classification": "unclassified pending evidence review",
+  "reason": "backlog unproved: no pending receipt alpha; polled 120.5s",
+  "at": 1789082301.586932
+}

@@ -6,9 +6,11 @@
     "01a08d9b-0a02-7890-a86f-98362abb84c1",
     "01a08d9b-0bdd-7fc1-aa99-c0d66e27275d",
     "01a08d9b-2f93-7f12-9334-e484f7824ac6",
-    "01a08d9b-76ec-7f90-a239-b740b8b68abb"
+    "01a08d9b-76ec-7f90-a239-b740b8b68abb",
+    "01a08d9b-929f-7a10-99bd-bb2370ca15fe",
+    "01a08d9b-c07d-7621-911f-0851c5dd4d3a"
   ],
-  "paid_inputs": 5,
+  "paid_inputs": 7,
   "generations": [
     {
       "thread_id": "01a08d9a-f727-79a2-b71a-ec21a4a953db",
@@ -69,10 +71,40 @@
       "reasoning_output": 172,
       "api_equivalent_usd": 0.00077988,
       "conservative_usd": 0.014334
+    },
+    {
+      "thread_id": "01a08d9a-f2c5-79e3-a789-507db57d72b4",
+      "turn_id": "01a08d9b-929f-7a10-99bd-bb2370ca15fe",
+      "input": 11981,
+      "cached_input": 11008,
+      "output": 509,
+      "reasoning_output": 24,
+      "api_equivalent_usd": 0.00102556,
+      "conservative_usd": 0.014988
+    },
+    {
+      "thread_id": "01a08d9a-f2c5-79e3-a789-507db57d72b4",
+      "turn_id": "01a08d9b-c07d-7621-911f-0851c5dd4d3a",
+      "input": 12551,
+      "cached_input": 11008,
+      "output": 86,
+      "reasoning_output": 14,
+      "api_equivalent_usd": 0.00063196,
+      "conservative_usd": 0.0151644
+    },
+    {
+      "thread_id": "01a08d9a-f2c5-79e3-a789-507db57d72b4",
+      "turn_id": "01a08d9b-c07d-7621-911f-0851c5dd4d3a",
+      "input": 13439,
+      "cached_input": 12032,
+      "output": 16,
+      "reasoning_output": 0,
+      "api_equivalent_usd": 0.00054124,
+      "conservative_usd": 0.016146
     }
   ],
-  "api_equivalent_usd": 0.00554496,
-  "conservative_usd": 0.0793092,
+  "api_equivalent_usd": 0.00774372,
+  "conservative_usd": 0.1256076,
   "metering_complete": false,
   "unmetered_turn_ids": [
     "01a08d9b-0bdd-7fc1-aa99-c0d66e27275d"
