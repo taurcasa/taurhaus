@@ -1,0 +1,38 @@
+[
+  {
+    "ts": "2026-09-10T18:05:33.036746824Z",
+    "session_id": "01a08c7f-03be-7a80-8ea5-b254e41f1c31",
+    "event": "agent-turn-complete",
+    "turn_id": "01a08c7f-03f3-7a21-b2c7-3a820bfd61cc"
+  },
+  {
+    "ts": "2026-09-10T18:05:52.459244723Z",
+    "session_id": "01a08c7e-f709-7152-92ae-8fdb97f3f3d8",
+    "event": "agent-turn-complete",
+    "turn_id": "01a08c7e-fcd4-77b2-bd05-44f4406c8a23"
+  },
+  {
+    "ts": "2026-09-10T18:06:23.315395825Z",
+    "session_id": "01a08c7e-f709-7152-92ae-8fdb97f3f3d8",
+    "event": "agent-turn-complete",
+    "turn_id": "01a08c7f-606f-7161-af3a-ba7f2d8933de"
+  },
+  {
+    "ts": "2026-09-10T18:06:35.000963883Z",
+    "session_id": "01a08c7e-f709-7152-92ae-8fdb97f3f3d8",
+    "event": "agent-turn-complete",
+    "turn_id": "01a08c7f-dd2a-7d03-a245-ad3bd7e35036"
+  },
+  {
+    "ts": "2026-09-10T18:07:09.730282612Z",
+    "session_id": "01a08c80-79a5-7f92-bf59-b0032e8b863b",
+    "event": "agent-turn-complete",
+    "turn_id": "01a08c80-79c7-7a41-8b16-9e288337c110"
+  },
+  {
+    "ts": "2026-09-10T18:07:22.429318444Z",
+    "session_id": "01a08c80-6beb-7433-8d1c-4b4c15e7f335",
+    "event": "agent-turn-complete",
+    "turn_id": "01a08c80-769a-7683-ad44-8243b2ad9945"
+  }
+]

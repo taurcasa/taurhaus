@@ -1,0 +1,12 @@
+{
+  "check_driver_pid": 2857730,
+  "check_driver_alive": false,
+  "lane_built_executable_survivors": [],
+  "runtime_started": false,
+  "runtime_owned_processes": [],
+  "scratch_root_created": false,
+  "auth_copy_created": false,
+  "auth_copy_remaining": false,
+  "daemon_tmux_codex_runtime_survivors": [],
+  "runtime_cleanup_basis": "Credential preflight exited before any runtime launch or scratch-root creation; empty owned runtime set, not an adopted-process census."
+}

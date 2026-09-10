@@ -1,0 +1,186 @@
+{
+  "before": [
+    {
+      "pid": 108891,
+      "start_ticks": "28406238",
+      "argv": [
+        "bwrap",
+        "--die-with-parent",
+        "--unshare-pid",
+        "--ro-bind",
+        "/",
+        "/",
+        "--tmpfs",
+        "/home",
+        "--tmpfs",
+        "/tmp",
+        "--tmpfs",
+        "/run",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+        "--bind",
+        "/tmp/th-l2-4maq2k8o",
+        "/tmp/th-l2-4maq2k8o",
+        "--chdir",
+        "/tmp/th-l2-4maq2k8o/project",
+        "/bin/bash",
+        "/tmp/th-l2-4maq2k8o/boot.sh",
+        ""
+      ]
+    },
+    {
+      "pid": 108892,
+      "start_ticks": "28406238",
+      "argv": [
+        "bwrap",
+        "--die-with-parent",
+        "--unshare-pid",
+        "--ro-bind",
+        "/",
+        "/",
+        "--tmpfs",
+        "/home",
+        "--tmpfs",
+        "/tmp",
+        "--tmpfs",
+        "/run",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+        "--bind",
+        "/tmp/th-l2-4maq2k8o",
+        "/tmp/th-l2-4maq2k8o",
+        "--chdir",
+        "/tmp/th-l2-4maq2k8o/project",
+        "/bin/bash",
+        "/tmp/th-l2-4maq2k8o/boot.sh",
+        ""
+      ]
+    },
+    {
+      "pid": 108893,
+      "start_ticks": "28406238",
+      "argv": [
+        "/bin/bash",
+        "/tmp/th-l2-4maq2k8o/boot.sh",
+        ""
+      ]
+    },
+    {
+      "pid": 108894,
+      "start_ticks": "28406238",
+      "argv": [
+        "tmux",
+        "-D",
+        "-f",
+        "/dev/null",
+        ""
+      ]
+    },
+    {
+      "pid": 108903,
+      "start_ticks": "28406249",
+      "argv": [
+        "/bin/bash",
+        ""
+      ]
+    },
+    {
+      "pid": 108905,
+      "start_ticks": "28406249",
+      "argv": [
+        "/tmp/th-l2-4maq2k8o/home/.local/bin/taurhaus-daemon",
+        "--port",
+        "44937",
+        "--data-dir",
+        "/tmp/th-l2-4maq2k8o/data",
+        ""
+      ]
+    },
+    {
+      "pid": 109276,
+      "start_ticks": "28406292",
+      "argv": [
+        "/bin/bash",
+        "-ic",
+        "cd '/tmp/th-l2-4maq2k8o/project' && CLAUDE_DIR='/tmp/th-l2-4maq2k8o/claude' CLAUDE_CONFIG_DIR='/tmp/th-l2-4maq2k8o/claude' CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions --model 'claude-haiku-4-5' --team-name 'l2-busy' --agent-name 'lead' --agent-id 'lead@l2-busy' --agent-type 'orchestrator' -n 'lead'; exec \"$SHELL\"",
+        ""
+      ]
+    },
+    {
+      "pid": 109279,
+      "start_ticks": "28406293",
+      "argv": [
+        "claude",
+        "--dangerously-skip-permissions",
+        "--model",
+        "claude-haiku-4-5",
+        "--team-name",
+        "l2-busy",
+        "--agent-name",
+        "lead",
+        "--agent-id",
+        "lead@l2-busy",
+        "--agent-type",
+        "orchestrator",
+        "-n",
+        "lead",
+        ""
+      ]
+    },
+    {
+      "pid": 109411,
+      "start_ticks": "28406305",
+      "argv": [
+        "/tmp/th-l2-4maq2k8o/home/.local/bin/mesh",
+        "team-daemon",
+        "start",
+        "--team",
+        "l2-busy",
+        "--name",
+        "lead",
+        "--claude-dir",
+        "/tmp/th-l2-4maq2k8o/claude",
+        ""
+      ]
+    },
+    {
+      "pid": 137019,
+      "start_ticks": "28415787",
+      "argv": [
+        "-bash",
+        ""
+      ]
+    },
+    {
+      "pid": 137947,
+      "start_ticks": "28415826",
+      "argv": [
+        "codex",
+        "--yolo",
+        "-c",
+        "notify=[\"/tmp/th-l2-4maq2k8o/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]",
+        "-m",
+        "gpt-5.6-luna",
+        "-c",
+        "model_reasoning_effort=\"low\"",
+        ""
+      ]
+    },
+    {
+      "pid": 144256,
+      "start_ticks": "28416680",
+      "argv": [
+        "/tmp/th-l2-4maq2k8o/home/.local/bin/codex-code-mode-host",
+        ""
+      ]
+    }
+  ],
+  "survivors": [],
+  "port_closed": true,
+  "auth_removed": true,
+  "root_removed": true
+}

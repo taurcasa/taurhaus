@@ -1,0 +1,169 @@
+{
+  "paid_inputs": 4,
+  "turns": [
+    {
+      "turn_id": "01a08c5c-67a2-76d1-b779-f3eab40b93d8",
+      "usd": 0.0022737200000000003,
+      "completed": true,
+      "usage": {
+        "input_tokens": 20413,
+        "cached_input_tokens": 11776,
+        "output_tokens": 259
+      },
+      "conservative_usd": 0.0248064
+    },
+    {
+      "turn_id": "01a08c5c-9379-7d03-ade3-b3a3dc24f61b",
+      "usd": 0.0020473600000000002,
+      "completed": true,
+      "usage": {
+        "input_tokens": 12284,
+        "cached_input_tokens": 11008,
+        "output_tokens": 1310
+      },
+      "conservative_usd": 0.0163128
+    },
+    {
+      "turn_id": "01a08c5c-fa85-7370-8336-fdc137d7cf9a",
+      "usd": 0.00272364,
+      "completed": true,
+      "usage": {
+        "input_tokens": 60027,
+        "cached_input_tokens": 54272,
+        "output_tokens": 406
+      },
+      "conservative_usd": 0.07251959999999999
+    },
+    {
+      "turn_id": "01a08c5d-2c60-7341-ab83-2dd93cd00de9",
+      "usd": null,
+      "completed": true
+    },
+    {
+      "turn_id": "01a08c5c-6fb6-7ae1-a9b1-4a5afbc08d62",
+      "usd": null,
+      "completed": true,
+      "source": "notify-only",
+      "classification": "unknown-but-not-a-model-input"
+    }
+  ],
+  "usage_rows": [
+    {
+      "at": "2026-09-10T17:27:47.447Z",
+      "turn_id": "01a08c5c-67a2-76d1-b779-f3eab40b93d8",
+      "usage": {
+        "input_tokens": 9027,
+        "cached_input_tokens": 3840,
+        "output_tokens": 146
+      },
+      "usd": 0.0012894
+    },
+    {
+      "at": "2026-09-10T17:27:51.648Z",
+      "turn_id": "01a08c5c-67a2-76d1-b779-f3eab40b93d8",
+      "usage": {
+        "input_tokens": 11386,
+        "cached_input_tokens": 7936,
+        "output_tokens": 113
+      },
+      "usd": 0.0009843200000000001
+    },
+    {
+      "at": "2026-09-10T17:28:17.522Z",
+      "turn_id": "01a08c5c-9379-7d03-ade3-b3a3dc24f61b",
+      "usage": {
+        "input_tokens": 12284,
+        "cached_input_tokens": 11008,
+        "output_tokens": 1310
+      },
+      "usd": 0.0020473600000000002
+    },
+    {
+      "at": "2026-09-10T17:28:22.256Z",
+      "turn_id": "01a08c5c-fa85-7370-8336-fdc137d7cf9a",
+      "usage": {
+        "input_tokens": 13652,
+        "cached_input_tokens": 12032,
+        "output_tokens": 129
+      },
+      "usd": 0.0007194399999999999
+    },
+    {
+      "at": "2026-09-10T17:28:26.859Z",
+      "turn_id": "01a08c5c-fa85-7370-8336-fdc137d7cf9a",
+      "usage": {
+        "input_tokens": 15017,
+        "cached_input_tokens": 13056,
+        "output_tokens": 169
+      },
+      "usd": 0.00085612
+    },
+    {
+      "at": "2026-09-10T17:28:29.773Z",
+      "turn_id": "01a08c5c-fa85-7370-8336-fdc137d7cf9a",
+      "usage": {
+        "input_tokens": 15523,
+        "cached_input_tokens": 14080,
+        "output_tokens": 96
+      },
+      "usd": 0.0006854000000000001
+    },
+    {
+      "at": "2026-09-10T17:28:31.044Z",
+      "turn_id": "01a08c5c-fa85-7370-8336-fdc137d7cf9a",
+      "usage": {
+        "input_tokens": 15835,
+        "cached_input_tokens": 15104,
+        "output_tokens": 12
+      },
+      "usd": 0.00046267999999999993
+    }
+  ],
+  "metering_complete": false,
+  "api_equivalent_usd": 0.00704472,
+  "conservative_usd": 0.1136388,
+  "rates_usd_per_million": {
+    "input": 0.2,
+    "cached_input": 0.02,
+    "output": 1.2
+  },
+  "rate_source": "Inherited integration/messaging packet; estimates, not invoices",
+  "input_reservations": [
+    {
+      "reason": "production initialization/onboarding",
+      "step": 1,
+      "at": 1789061259.4927263,
+      "generation": null
+    },
+    {
+      "reason": "Q-work",
+      "step": 2,
+      "at": 1789061272.1826801,
+      "generation": 1,
+      "confirmed": true
+    },
+    {
+      "reason": "Q",
+      "step": 2,
+      "at": 1789061272.9380548,
+      "generation": 1
+    },
+    {
+      "reason": "Q2-work",
+      "step": 4,
+      "at": 1789061311.538495,
+      "generation": 1,
+      "confirmed": true
+    },
+    {
+      "reason": "Q2",
+      "step": 4,
+      "at": 1789061312.0906558,
+      "generation": 1
+    }
+  ],
+  "rollout_turns": 4,
+  "controller_input_attempts": 2,
+  "controller_issued_inputs": 2,
+  "mesh_terminal_deliveries": 2
+}

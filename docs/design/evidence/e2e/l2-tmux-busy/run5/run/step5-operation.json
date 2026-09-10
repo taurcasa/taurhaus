@@ -1,0 +1,153 @@
+{
+  "outcome": {
+    "report": {
+      "failed_step": null,
+      "member_name": "alpha",
+      "message": "member resumed",
+      "pane_id": "%5",
+      "resumed": true,
+      "retryable": false,
+      "reused_pane": false,
+      "steps": [
+        {
+          "message": "request validated",
+          "status": "succeeded",
+          "step": "validate"
+        },
+        {
+          "message": "member and runtime state loaded",
+          "status": "succeeded",
+          "step": "load_member"
+        },
+        {
+          "message": "created pane %5",
+          "status": "succeeded",
+          "step": "resolve_pane"
+        },
+        {
+          "message": "cli session launched",
+          "status": "succeeded",
+          "step": "launch_session"
+        },
+        {
+          "message": "mesh joined",
+          "status": "succeeded",
+          "step": "join_mesh"
+        },
+        {
+          "message": "mesh daemon started",
+          "status": "succeeded",
+          "step": "start_daemon"
+        },
+        {
+          "message": "runtime state updated",
+          "status": "succeeded",
+          "step": "update_runtime"
+        },
+        {
+          "message": "onboarding delivered",
+          "status": "succeeded",
+          "step": "send_onboarding"
+        }
+      ],
+      "succeeded_steps": [
+        "validate",
+        "load_member",
+        "resolve_pane",
+        "launch_session",
+        "join_mesh",
+        "start_daemon",
+        "update_runtime",
+        "send_onboarding"
+      ],
+      "team_name": "l2-busy",
+      "warnings": [
+        "existing pane was not reusable for 'alpha'; created a new pane"
+      ]
+    },
+    "status": "completed"
+  },
+  "run_id": "resume_9fd702e85dd2482ca0c2aa11c51a7107",
+  "steps": [
+    {
+      "message": null,
+      "status": "running",
+      "step": "prepare_member"
+    },
+    {
+      "message": "member request and runtime state prepared",
+      "status": "succeeded",
+      "step": "prepare_member"
+    },
+    {
+      "message": null,
+      "status": "running",
+      "step": "acquire_pane"
+    },
+    {
+      "message": "created pane %5",
+      "status": "succeeded",
+      "step": "acquire_pane"
+    },
+    {
+      "message": null,
+      "status": "running",
+      "step": "launch_session"
+    },
+    {
+      "message": "cli session launched",
+      "status": "succeeded",
+      "step": "launch_session"
+    },
+    {
+      "message": null,
+      "status": "running",
+      "step": "capture_session_identity"
+    },
+    {
+      "message": "session identity captured",
+      "status": "succeeded",
+      "step": "capture_session_identity"
+    },
+    {
+      "message": null,
+      "status": "running",
+      "step": "join_mesh"
+    },
+    {
+      "message": "mesh joined",
+      "status": "succeeded",
+      "step": "join_mesh"
+    },
+    {
+      "message": null,
+      "status": "running",
+      "step": "start_member_daemon"
+    },
+    {
+      "message": "mesh daemon started",
+      "status": "succeeded",
+      "step": "start_member_daemon"
+    },
+    {
+      "message": null,
+      "status": "running",
+      "step": "commit_runtime"
+    },
+    {
+      "message": "runtime state updated",
+      "status": "succeeded",
+      "step": "commit_runtime"
+    },
+    {
+      "message": null,
+      "status": "running",
+      "step": "deliver_onboarding"
+    },
+    {
+      "message": "onboarding delivered",
+      "status": "succeeded",
+      "step": "deliver_onboarding"
+    }
+  ]
+}

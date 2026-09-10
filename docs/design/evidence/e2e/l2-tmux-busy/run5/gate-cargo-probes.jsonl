@@ -1,0 +1,3 @@
+{"command": "pgrep -af '(^|/)cargo( |$)'", "at": 1789076925.400205, "exit": 0, "pids": ["1855771"]}
+{"command": "pgrep -af '(^|/)cargo( |$)'", "at": 1789076955.9529107, "exit": 0, "pids": ["1855771"]}
+{"command": "pgrep -af '(^|/)cargo( |$)'", "at": 1789076983.662269, "exit": 0, "pids": ["1855771"]}

@@ -1,0 +1,53 @@
+{
+  "exit": 0,
+  "survivors": [],
+  "port": 46929,
+  "port_closed": true,
+  "root_removed": true,
+  "auth_removed": true,
+  "pane_lines": {
+    "final-pane-2.txt": 60,
+    "step1-final-pane-2.txt": 60,
+    "final-pane-1.txt": 48,
+    "step1-initial-pane-2.txt": 59,
+    "final-pane-0.txt": 48
+  },
+  "jsonl_complete": true,
+  "forbidden_export_fields": false,
+  "steps": {
+    "1": {
+      "step": 1,
+      "outcome": "PASS",
+      "at": 1789058521.4797714
+    },
+    "2": {
+      "step": 2,
+      "outcome": "FAIL",
+      "classification": "harness",
+      "reason": "no production busy observation"
+    },
+    "3": {
+      "step": 3,
+      "outcome": "NOT RUN",
+      "reason": "blocked by step 2"
+    },
+    "4": {
+      "step": 4,
+      "outcome": "NOT RUN",
+      "reason": "blocked by step 2"
+    },
+    "5": {
+      "step": 5,
+      "outcome": "NOT RUN",
+      "reason": "blocked by step 2"
+    },
+    "6": {
+      "step": 6,
+      "outcome": "NOT RUN",
+      "reason": "blocked by step 2"
+    }
+  },
+  "opus_review": "unavailable: no callable Opus reviewer in session",
+  "runtime_trial_count": 1,
+  "paid_retry_count": 0
+}

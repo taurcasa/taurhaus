@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "observed_at": "2026-09-10T17:30:10.886170345+00:00",
+  "stall_recent_activity": false,
+  "stall_no_output": true,
+  "stall_no_active_process": true,
+  "active_non_shell_process": false,
+  "recent_io": false,
+  "pane_alive": false,
+  "pane_foreign": false,
+  "last_output_age_secs": null,
+  "activity_confidence": "dead"
+}

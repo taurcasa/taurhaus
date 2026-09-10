@@ -1,0 +1,13 @@
+.......E..........
+======================================================================
+ERROR: test_run4_rejects_wrong_product_mesh_or_protocol_before_launch (controller_test.Run4Tests.test_run4_rejects_wrong_product_mesh_or_protocol_before_launch)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run4/controller_test.py", line 11, in test_run4_rejects_wrong_product_mesh_or_protocol_before_launch
+    from support import validate_candidate
+ImportError: cannot import name 'validate_candidate' from 'support' (/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run4/support.py)
+
+----------------------------------------------------------------------
+Ran 18 tests in 0.014s
+
+FAILED (errors=1)

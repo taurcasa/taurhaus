@@ -1,0 +1,41 @@
+EEEE
+======================================================================
+ERROR: test_alpha_journal_reply_is_sufficient (reply_test.ReplyTests.test_alpha_journal_reply_is_sufficient)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run4d/reply_test.py", line 14, in test_alpha_journal_reply_is_sufficient
+    result=support.reply_evidence([self.submitted(),reply],[],'q','Q-marker')
+           ^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'support' has no attribute 'reply_evidence'
+
+======================================================================
+ERROR: test_any_post_delivery_rollout_row_is_sufficient (reply_test.ReplyTests.test_any_post_delivery_rollout_row_is_sufficient)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run4d/reply_test.py", line 22, in test_any_post_delivery_rollout_row_is_sufficient
+    self.assertTrue(support.reply_evidence([self.submitted()],[row],'q','Q-marker'))
+                    ^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'support' has no attribute 'reply_evidence'
+
+======================================================================
+ERROR: test_pending_uses_message_scope_without_health (reply_test.ReplyTests.test_pending_uses_message_scope_without_health)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run4d/reply_test.py", line 40, in test_pending_uses_message_scope_without_health
+    result=support.pending_observation([accepted],'q',{},activity=activity,now=1788998403)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: pending_observation() got an unexpected keyword argument 'activity'
+
+======================================================================
+ERROR: test_reply_idle_and_metering_have_distinct_waits (reply_test.ReplyTests.test_reply_idle_and_metering_have_distinct_waits)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run4d/reply_test.py", line 33, in test_reply_idle_and_metering_have_distinct_waits
+    trial.settle_delivery('Q-marker','q')
+    ^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Trial' object has no attribute 'settle_delivery'
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.002s
+
+FAILED (errors=4)

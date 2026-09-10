@@ -1,0 +1,181 @@
+{
+  "before": [
+    {
+      "pid": 3275023,
+      "start_ticks": "24956093",
+      "argv": [
+        "bwrap",
+        "--die-with-parent",
+        "--unshare-pid",
+        "--ro-bind",
+        "/",
+        "/",
+        "--tmpfs",
+        "/home",
+        "--tmpfs",
+        "/tmp",
+        "--tmpfs",
+        "/run",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+        "--bind",
+        "/tmp/th-l2-enwdjc07",
+        "/tmp/th-l2-enwdjc07",
+        "--chdir",
+        "/tmp/th-l2-enwdjc07/project",
+        "/bin/bash",
+        "/tmp/th-l2-enwdjc07/boot.sh",
+        ""
+      ]
+    },
+    {
+      "pid": 3275026,
+      "start_ticks": "24956093",
+      "argv": [
+        "bwrap",
+        "--die-with-parent",
+        "--unshare-pid",
+        "--ro-bind",
+        "/",
+        "/",
+        "--tmpfs",
+        "/home",
+        "--tmpfs",
+        "/tmp",
+        "--tmpfs",
+        "/run",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+        "--bind",
+        "/tmp/th-l2-enwdjc07",
+        "/tmp/th-l2-enwdjc07",
+        "--chdir",
+        "/tmp/th-l2-enwdjc07/project",
+        "/bin/bash",
+        "/tmp/th-l2-enwdjc07/boot.sh",
+        ""
+      ]
+    },
+    {
+      "pid": 3275027,
+      "start_ticks": "24956093",
+      "argv": [
+        "/bin/bash",
+        "/tmp/th-l2-enwdjc07/boot.sh",
+        ""
+      ]
+    },
+    {
+      "pid": 3275028,
+      "start_ticks": "24956093",
+      "argv": [
+        "tmux",
+        "-D",
+        "-f",
+        "/dev/null",
+        ""
+      ]
+    },
+    {
+      "pid": 3275041,
+      "start_ticks": "24956104",
+      "argv": [
+        "/bin/bash",
+        ""
+      ]
+    },
+    {
+      "pid": 3275043,
+      "start_ticks": "24956104",
+      "argv": [
+        "/tmp/th-l2-enwdjc07<operator-path-redacted>",
+        "--port",
+        "45371",
+        "--data-dir",
+        "/tmp/th-l2-enwdjc07/data",
+        ""
+      ]
+    },
+    {
+      "pid": 3275286,
+      "start_ticks": "24956160",
+      "argv": [
+        "/bin/bash",
+        "-ic",
+        "cd '/tmp/th-l2-enwdjc07/project' && CLAUDE_DIR='/tmp/th-l2-enwdjc07/claude' CLAUDE_CONFIG_DIR='/tmp/th-l2-enwdjc07/claude' CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions --model 'claude-haiku-4-5' --team-name 'l2-busy' --agent-name 'lead' --agent-id 'lead@l2-busy' --agent-type 'orchestrator' -n 'lead'; exec \"$SHELL\"",
+        ""
+      ]
+    },
+    {
+      "pid": 3275293,
+      "start_ticks": "24956161",
+      "argv": [
+        "claude",
+        "--dangerously-skip-permissions",
+        "--model",
+        "claude-haiku-4-5",
+        "--team-name",
+        "l2-busy",
+        "--agent-name",
+        "lead",
+        "--agent-id",
+        "lead@l2-busy",
+        "--agent-type",
+        "orchestrator",
+        "-n",
+        "lead",
+        ""
+      ]
+    },
+    {
+      "pid": 3275339,
+      "start_ticks": "24956166",
+      "argv": [
+        "/bin/bash",
+        "-ic",
+        "cd '/tmp/th-l2-enwdjc07/project' && CLAUDE_DIR='/tmp/th-l2-enwdjc07/claude' CODEX_HOME='/tmp/th-l2-enwdjc07/codex' codex --yolo --dangerously-bypass-hook-trust -c 'notify=[\"/tmp/th-l2-enwdjc07<operator-path-redacted>\",\"codex-notify\"]' -m 'gpt-5.6-luna' -c 'model_reasoning_effort=\"low\"'; exec \"$SHELL\"",
+        ""
+      ]
+    },
+    {
+      "pid": 3275343,
+      "start_ticks": "24956167",
+      "argv": [
+        "codex",
+        "--yolo",
+        "--dangerously-bypass-hook-trust",
+        "-c",
+        "notify=[\"/tmp/th-l2-enwdjc07<operator-path-redacted>\",\"codex-notify\"]",
+        "-m",
+        "gpt-5.6-luna",
+        "-c",
+        "model_reasoning_effort=\"low\"",
+        ""
+      ]
+    },
+    {
+      "pid": 3275899,
+      "start_ticks": "24956249",
+      "argv": [
+        "/tmp/th-l2-enwdjc07<operator-path-redacted>",
+        "team-daemon",
+        "start",
+        "--team",
+        "l2-busy",
+        "--name",
+        "lead",
+        "--claude-dir",
+        "/tmp/th-l2-enwdjc07/claude",
+        ""
+      ]
+    }
+  ],
+  "survivors": [],
+  "port_closed": true,
+  "auth_removed": true,
+  "root_removed": true
+}

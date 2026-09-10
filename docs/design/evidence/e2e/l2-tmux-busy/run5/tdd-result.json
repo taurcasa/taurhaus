@@ -1,0 +1,7 @@
+{
+  "red_exit": 1,
+  "green_exit": 0,
+  "tests": 39,
+  "red": "run5 candidate rejected by inherited old candidate pin; no runtime launch",
+  "changes": "candidate pins, run label, required commit trailer, Cargo scheduling wrappers only"
+}

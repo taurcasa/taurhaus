@@ -1,0 +1,31 @@
+EFE
+======================================================================
+ERROR: test_each_usage_increment_is_retained_without_streaming_double_count (rulings_test.RulingsTests.test_each_usage_increment_is_retained_without_streaming_double_count)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run4b/rulings_test.py", line 27, in test_each_usage_increment_is_retained_without_streaming_double_count
+    self.assertEqual([r['usage']['input_tokens'] for r in result['usage_rows']],[100,150])
+                                                          ~~~~~~^^^^^^^^^^^^^^
+KeyError: 'usage_rows'
+
+======================================================================
+ERROR: test_onboarding_requires_matching_submission_read_and_fresh_attribution (rulings_test.RulingsTests.test_onboarding_requires_matching_submission_read_and_fresh_attribution)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run4b/rulings_test.py", line 39, in test_onboarding_requires_matching_submission_read_and_fresh_attribution
+    self.assertTrue(support.onboarding_delivered(record,activity,snapshot,rows,1788998400))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'support' has no attribute 'onboarding_delivered'
+
+======================================================================
+FAIL: test_notify_only_is_recorded_without_blocking_metering (rulings_test.RulingsTests.test_notify_only_is_recorded_without_blocking_metering)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run4b/rulings_test.py", line 14, in test_notify_only_is_recorded_without_blocking_metering
+    self.assertTrue(result['metering_complete'])
+AssertionError: False is not true
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.001s
+
+FAILED (failures=1, errors=2)

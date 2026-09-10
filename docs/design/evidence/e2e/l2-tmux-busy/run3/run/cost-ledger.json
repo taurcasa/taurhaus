@@ -1,0 +1,21 @@
+{
+  "paid_inputs": 0,
+  "turns": [],
+  "metering_complete": true,
+  "api_equivalent_usd": 0,
+  "conservative_usd": 0,
+  "rates_usd_per_million": {
+    "input": 0.2,
+    "cached_input": 0.02,
+    "output": 1.2
+  },
+  "rate_source": "Inherited integration/messaging packet; estimates, not invoices",
+  "input_reservations": [
+    {
+      "reason": "production initialization/onboarding",
+      "step": 1,
+      "at": 1789044182.0387275,
+      "generation": null
+    }
+  ]
+}

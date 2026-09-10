@@ -1,0 +1,23 @@
+{
+  "total_generated_file_count": 218,
+  "session_files": [
+    {
+      "path": "config.toml",
+      "bytes": 266
+    },
+    {
+      "path": "shell_snapshots/01a08a70-8595-7ea0-a004-4ae0385d4e2f.1789029025177882722.sh",
+      "bytes": 1129
+    },
+    {
+      "path": "thread-writer-locks/.coordination.lock",
+      "bytes": 0
+    },
+    {
+      "path": "thread-writer-locks/01a08a70-8595-7ea0-a004-4ae0385d4e2f.lock",
+      "bytes": 0
+    }
+  ],
+  "rollout_files": [],
+  "scope": "Relevant generated filenames/sizes only. No file contents, installation IDs, credential bytes, caches or account usage exported."
+}

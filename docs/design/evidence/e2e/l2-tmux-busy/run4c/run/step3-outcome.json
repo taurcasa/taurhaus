@@ -1,0 +1,6 @@
+{
+  "step": 3,
+  "outcome": "FAIL",
+  "classification": "harness",
+  "reason": "no settled marker reply"
+}

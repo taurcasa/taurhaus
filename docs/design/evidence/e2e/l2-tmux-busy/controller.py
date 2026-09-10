@@ -1,0 +1,412 @@
+"""Lane 2 isolated live controller. Explicit authorized auth source is required.
+
+Only this controller copies that single file; children cannot see operator homes.
+Run from this checkout: python3 -B <this-file> --auth-source AUTHORIZED_FILE
+The output directory must be new; a restart never retries a paid mutation.
+"""
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import secrets
+import shlex
+import shutil
+import signal
+import socket
+import subprocess
+import tempfile
+import threading
+import time
+from datetime import datetime, timezone
+from preflight import credential_source
+from support import clean, complete_rows, meter, pending_receipt
+
+BASE=Path(__file__).resolve().parent
+CHECKOUT=BASE.parents[4]
+TEAM='l2-busy'
+MEMBER='alpha'
+
+class Trial:
+    def __init__(self):
+        self.out=BASE/'run';self.out.mkdir()
+        self.root=Path(tempfile.mkdtemp(prefix='th-l2-'))
+        self.children=[];self.step=1;self.started=time.monotonic();self.port=None
+        self.stop=threading.Event();self.observer=None;self.seen={};self.reservations=[]
+        self.classification='harness';self.code=1;self.state={};self.identities_seen={}
+        self.env={}
+        self.events=(self.out/'events.jsonl').open('w',buffering=1)
+
+    def save(self,name,value):
+        path=self.out/name;path.parent.mkdir(parents=True,exist_ok=True)
+        data=json.dumps(clean(value),indent=2)+'\n'
+        temporary=path.with_suffix(path.suffix+'.tmp');temporary.write_text(data);temporary.replace(path)
+
+    def log(self,kind,**fields):
+        row=clean({'at':time.time(),'kind':kind,**fields})
+        self.events.write(json.dumps(row)+'\n')
+
+    def run(self,argv,timeout=25,check=True):
+        self.log('command',argv=argv)
+        child=subprocess.Popen(argv,env=self.env,cwd=self.root/'project',stdout=subprocess.PIPE,stderr=subprocess.STDOUT,start_new_session=True)
+        self.children.append(child)
+        try:output=child.communicate(timeout=timeout)[0].decode(errors='replace')
+        except subprocess.TimeoutExpired:
+            os.killpg(child.pid,signal.SIGTERM);child.communicate(timeout=10);raise
+        self.log('command_result',exit=child.returncode,output=output)
+        if check and child.returncode:raise RuntimeError(f'command exit {child.returncode}: {clean(output)}')
+        return output
+
+    def rpc(self,method,params):
+        request={'id':secrets.token_hex(8),'method':method,'params':params}
+        self.log('daemon_request',request=request)
+        with socket.create_connection(('127.0.0.1',self.port),timeout=15) as conn:
+            request['auth']=(self.root/'data/daemon.token').read_text().strip()
+            conn.sendall(json.dumps(request).encode()+b'\n');stream=conn.makefile('rb')
+            while True:
+                response=json.loads(stream.readline())
+                if response.get('id')==request['id']:break
+        self.log('daemon_response',response=response)
+        if 'error' in response:raise RuntimeError(str(response['error']))
+        return response['result']
+
+    def operation(self,method,params):
+        accepted=self.rpc(method,params)
+        def done():
+            status=self.rpc('coordination.initialize_status' if method=='coordination.initialize_team' else method+'_status',{'run_id':accepted['run_id']})
+            return status if status['outcome']['status']!='running' else None
+        value=self.wait(done,method,120)
+        self.save(f'step{self.step}-operation.json',value)
+        assert value['outcome']['status']=='completed' and not value['outcome']['report'].get('failed_step'), value
+        return value
+
+    def wait(self,predicate,why,timeout=90):
+        assert timeout>=60
+        end=time.monotonic()+timeout
+        while time.monotonic()<end:
+            self.budget();self.snapshot()
+            value=predicate()
+            if value:return value
+            time.sleep(.2)
+        raise AssertionError(why)
+
+    @property
+    def team(self):return self.root/'claude/teams'/TEAM
+    def record(self):
+        try:return json.loads((self.team/'runtime/alpha.json').read_text())
+        except (ValueError,FileNotFoundError):return {}
+    def activity(self):
+        try:return json.loads(Path(self.record()['activitySnapshotPath']).read_text())
+        except (KeyError,ValueError,FileNotFoundError):return {}
+    def fresh_idle(self):
+        value=self.activity()
+        try:age=(datetime.now(timezone.utc)-datetime.fromisoformat(value['observed_at'].replace('Z','+00:00'))).total_seconds()
+        except (KeyError,ValueError):return False
+        return value if value.get('activity_confidence')=='idle' and 0<=age<=120 else False
+    def sessions(self):return [complete_rows(p.read_text()) for p in (self.root/'codex/sessions').rglob('rollout-*.jsonl')]
+    def notify(self):
+        path=self.root/'data/codex-notify.jsonl'
+        return complete_rows(path.read_text()) if path.exists() else []
+    def budget(self,next_input=False):
+        value=meter(self.sessions(),self.notify());value['input_reservations']=self.reservations
+        self.save('cost-ledger.json',value)
+        assert value['paid_inputs']<=10 and len(self.reservations)<=10,'input cap exceeded'
+        assert value['conservative_usd']<=.20,'cost cap exceeded'
+        assert time.monotonic()-self.started<=720,'12 minute runtime cap reached'
+        if next_input:
+            assert value['metering_complete'],'previous turn cost is unverified; no next input permitted'
+            assert max(value['paid_inputs'],len(self.reservations))<10,'no input headroom'
+            assert value['conservative_usd']+.04<=.20,'no conservative cost headroom'
+        return value
+    def reserve(self,reason):
+        self.budget(next_input=True);self.reservations.append({'reason':reason,'step':self.step,'at':time.time(),'generation':self.record().get('attachmentGeneration')})
+        self.budget()
+
+    def identities(self):
+        result=[]
+        for p in Path('/proc').iterdir():
+            if not p.name.isdigit():continue
+            try:
+                if ('TAURHAUS_TRIAL_ID='+self.root.name).encode()+b'\0' not in (p/'environ').read_bytes():continue
+                row={'pid':int(p.name),'start_ticks':(p/'stat').read_text().rsplit(')',1)[1].split()[19], 'argv':(p/'cmdline').read_bytes().decode(errors='replace').split('\0')}
+                result.append(row);self.identities_seen[(row['pid'],row['start_ticks'])]=row
+            except (FileNotFoundError,ProcessLookupError,PermissionError):pass
+        return result
+
+    def snapshot(self):
+        # Observation errors never abort a step or a receipt wait. Only complete rows retained.
+        try:
+            for glob in ['config.json','runtime/*.json','state/delivery/*.json','state/messaging-v2/segments/*.jsonl','state/terminal/*.holder.json']:
+                for path in self.team.glob(glob):
+                    try:
+                        value=json.loads(path.read_text()) if path.suffix=='.json' else complete_rows(path.read_text())
+                        self.save(str(Path('team')/path.relative_to(self.team)),value)
+                    except (OSError,ValueError):pass
+            for label,value in [('runtime',self.record()),('activity',self.activity())]:
+                stable=json.dumps(value,sort_keys=True)
+                if self.seen.get(label)!=stable:
+                    self.log(label,value=value);self.seen[label]=stable
+            self.identities()
+        except Exception as error:self.log('observer_error',error=str(error))
+
+    def observe(self):
+        previous=None
+        with (self.out/'terminal-locks.jsonl').open('w',buffering=1) as stream:
+            while not self.stop.is_set():
+                try:
+                    lock=self.team/'state/terminal/alpha.lock'
+                    if not lock.exists():self.stop.wait(.02);continue
+                    inode=lock.stat().st_ino;holders=[]
+                    for row in self.identities():
+                        proc=Path('/proc')/str(row['pid'])
+                        try:
+                            for fd in (proc/'fdinfo').iterdir():
+                                info=fd.read_text()
+                                if f'ino:\t{inode}\n' in info and 'lock:' in info:
+                                    holders.append({**row,'fd':fd.name,'fdinfo':info})
+                        except (OSError,ProcessLookupError):pass
+                    holder=self.team/'state/terminal/alpha.holder.json'
+                    diagnostic=json.loads(holder.read_text()) if holder.exists() else None
+                    value={'inode':inode,'holders':holders,'diagnostic':diagnostic}
+                    if value!=previous:
+                        stream.write(json.dumps(clean({'at':time.time(),**value}))+'\n');previous=value
+                except Exception as error:self.log('lock_observer_error',error=str(error))
+                self.stop.wait(.02)
+
+    def capture(self,label):
+        panes=self.run(['tmux','list-panes','-a','-F','#{pane_id}']).splitlines()
+        for pane in panes:
+            value=self.run(['tmux','capture-pane','-p','-S','-12','-t',pane])
+            (self.out/f'{label}-pane-{pane[1:]}.txt').write_text(clean('\n'.join(value.splitlines()[-60:]))+'\n')
+
+    def mesh(self,args,member="lead"):
+        # Same PID namespace as daemon; explicit root/team/member on every call.
+        name=secrets.token_hex(4);output=self.root/(name+'.out');status=self.root/(name+'.exit')
+        argv=[str(self.root/'home/.local/bin/mesh'),*args,'--claude-dir',str(self.root/'claude'),'--team',TEAM,'--name',member]
+        command=shlex.join(argv)+' >'+shlex.quote(str(output))+' 2>&1; echo $? >'+shlex.quote(str(status))
+        self.log('mesh_command',argv=argv)
+        self.run(['tmux','new-window','-d','-t','taurhaus','/bin/bash -c '+shlex.quote(command)])
+        self.wait(lambda:status.exists(),'mesh command completion',60)
+        value=output.read_text();code=int(status.read_text());self.log('mesh_result',exit=code,output=value)
+        assert code==0, f'mesh exit {code}: {value}'
+        return value
+
+    def boot(self,source):
+        for directory in ['home/.local/bin','codex','project','tmp','tmux','claude','grok','gemini','agy','data']:(self.root/directory).mkdir(parents=True,exist_ok=True,mode=0o700)
+        binpath=self.root/'home/.local/bin'
+        self.env={'PATH':f'{binpath}:/usr/bin:/bin','HOME':str(self.root/'home'),'CODEX_HOME':str(self.root/'codex'),'TMPDIR':str(self.root/'tmp'),'TMUX_TMPDIR':str(self.root/'tmux'),'TAURHAUS_DATA_DIR':str(self.root/'data'),'TAURHAUS_CLAUDE_DIR':str(self.root/'claude'),'CLAUDE_CONFIG_DIR':str(self.root/'claude'),'CLAUDE_DIR':str(self.root/'claude'),'GROK_HOME':str(self.root/'grok'),'TAURHAUS_AGY_DIR':str(self.root/'agy'),'GEMINI_CLI_HOME':str(self.root/'gemini'),'LANG':'C.UTF-8','TERM':'xterm-256color','SHELL':'/bin/bash','RUST_LOG':'info','TAURHAUS_TRIAL_ID':self.root.name}
+        source=credential_source(source,authorized_source=source)
+        assert not list((self.root/'codex').iterdir())
+        shutil.copyfile(source,self.root/'codex/auth.json');(self.root/'codex/auth.json').chmod(0o600)
+        self.log('auth_copy',copied_files=['auth.json'],mode='0600',initial_codex_entries=['auth.json'])
+        package=Path(shutil.which('codex')).resolve().parents[1]
+        native=next(package.glob('node_modules/@openai/codex-linux-x64/vendor/*/bin/codex'))
+        for name,path in [('codex',native),('claude',Path(shutil.which('claude')).resolve()),('mesh',CHECKOUT.parent/'mesh-l2/target/debug/mesh'),('taurhaus-daemon',CHECKOUT/'src-tauri/target/release/taurhaus-daemon')]:
+            shutil.copyfile(path,binpath/name);(binpath/name).chmod(0o700)
+            self.log('binary',name=name,sha256=hashlib.sha256((binpath/name).read_bytes()).hexdigest())
+        for name in ['agy','grok','gemini']:
+            (binpath/name).write_text('#!/bin/sh\nexit 77\n');(binpath/name).chmod(0o700)
+        for rc in ['.bashrc','.profile','.zshrc']:(self.root/'home'/rc).write_text('export PATH="$HOME/.local/bin:/usr/bin:/bin"\n')
+        instructions='Reply briefly. When a message assigns you a task, run exactly the mesh lifecycle commands the message names, in order, then reply with the task id and the word done. Never modify files. For ACTION REQUIRED marker messages, read your inbox with mesh read --json --mark-read --claude-dir "$CLAUDE_DIR" --team l2-busy --name alpha and reply exactly with the requested marker. Follow every returned cursor until done. Do not send other messages.\n'
+        (self.root/'project/AGENTS.md').write_text(instructions);(self.out/'scratch-AGENTS.md').write_text(instructions)
+        self.run(['git','init','-q']);self.run(['git','add','AGENTS.md']);self.run(['git','-c','user.name=Trial','-c','user.email=trial@example.invalid','commit','-qm','trial instructions'])
+        with socket.socket() as probe:probe.bind(('127.0.0.1',0));self.port=probe.getsockname()[1]
+        assert self.port!=17233
+        self.env['TAURHAUS_DAEMON_PORT']=str(self.port)
+        self.log('isolation',root=str(self.root),environment=self.env,protocol=27,model='gpt-5.6-luna',effort='low',descriptor='unchanged disabled; no hosted seat')
+        (self.root/'codex/config.toml').write_text('model="gpt-5.6-luna"\nmodel_reasoning_effort="low"\napproval_policy="never"\nsandbox_mode="danger-full-access"\nweb_search="disabled"\nmodel_context_window=16384\n[projects.'+json.dumps(str(self.root/'project'))+']\ntrust_level="trusted"\n')
+        bw=['bwrap','--die-with-parent','--unshare-pid','--ro-bind','/','/','--tmpfs','/home','--tmpfs','/tmp','--tmpfs','/run','--proc','/proc','--dev','/dev','--bind',str(self.root),str(self.root),'--chdir',str(self.root/'project')]
+        assert '0.153.4' in self.run(bw+[str(binpath/'codex'),'--version'])
+        daemon_argv=[str(binpath/'taurhaus-daemon'),'--port',str(self.port),'--data-dir',str(self.root/'data')]
+        boot=self.root/'boot.sh'
+        boot.write_text('#!/bin/bash\nset -eu\ntmux -D -f /dev/null &\nfor i in {1..100}; do test -S "$TMUX_TMPDIR/tmux-$(id -u)/default" && break; sleep .1; done\ntmux set-option -g default-shell /bin/bash\ntmux new-session -d -s taurhaus -x 140 -y 48 /bin/bash\n'+shlex.join(daemon_argv)+' &\nwait $!\n')
+        self.log('bootstrap_script',text=boot.read_text());self.log('daemon_spawn',argv=bw+['/bin/bash',str(boot)])
+        log=(self.root/'daemon.log').open('w')
+        child=subprocess.Popen(bw+['/bin/bash',str(boot)],env=self.env,stdout=log,stderr=subprocess.STDOUT,start_new_session=True);self.children.append(child)
+        self.wait(lambda:(self.root/'data/daemon.token').exists(),'daemon ready',60)
+        ping=self.rpc('ping',{});self.save('ping.json',ping)
+        self.observer=threading.Thread(target=self.observe);self.observer.start()
+        policy=json.loads(re.search(r'DEFAULT_CANONICAL_POLICY = Object.freeze\((\{.*?\})\)',(CHECKOUT/'src/lib/components/meshTabUtils.js').read_text(),re.S)[1])
+        self.commands={'codex':{'fresh':'codex --yolo','continue_cmd':'codex --yolo','resume':'codex --yolo resume'}}
+        request={'team_name':TEAM,'team_description':'Isolated lane 2 busy stop resume','lead_mode':'launch_new','lead':{'name':'lead','cli_tool':'claude','model':'claude-haiku-4-5','delivery':'tmux','project_id':str(self.root/'project')},'agents':[{'name':'alpha','cli_tool':'codex','model':'gpt-5.6-luna','reasoning_effort':'low','delivery':'tmux','project_id':str(self.root/'project'),'instructions':instructions}],'messaging':{'mode':'canonical','retentionPolicy':policy}}
+        self.reserve('production initialization/onboarding')
+        self.classification='taurhaus'
+        self.operation('coordination.initialize_team',{'request':request,'cli_commands':self.commands,'tmux_layout':'new_window'})
+        self.classification='taurhaus'
+        record=self.wait(lambda:self.record() if self.record().get('terminalContract')==1 else None,'terminal contract record absent',90)
+        self.save('step1-runtime.json',record)
+        for field in ['attachmentGeneration','tmuxSocket','tmuxSessionId','paneId','panePid','paneStartTime','contextGeneration','harness','launchRoot','activitySnapshotPath']:assert record.get(field) is not None,field
+        assert not record.get('appServer'),'unexpected hosted seat'
+        self.save('step1-pane-identity.json',{'record':record,'probe':self.run(['tmux','-S',record['tmuxSocket'],'display-message','-p','-t',record['paneId'],'#{socket_path} #{session_id} #{pane_id} #{pane_pid}'])})
+        self.capture('step1-initial')
+        self.save('step1-terminal-lock.json',{'path':str(self.team/'state/terminal/alpha.lock'),'inode':(self.team/'state/terminal/alpha.lock').stat().st_ino})
+        # A launch is not a ready seat. Diagnose this known production failure before any direct input.
+        def onboarded():
+            return self.fresh_idle() and any(p.get('type')=='task_complete' for rows in self.sessions() for r in rows if r.get('type')=='event_msg' for p in [r.get('payload',{})]) and self.budget()['metering_complete']
+        self.wait(onboarded,'alpha onboarding not delivered/completed with fresh idle activity',90)
+        self.capture('step1-final');self.pass_step()
+
+    def pass_step(self):
+        self.snapshot();self.save(f'step{self.step}-outcome.json',{'step':self.step,'outcome':'PASS','at':time.time()})
+        # Commit only this lane's explicitly named evidence directory and report.
+        paths=[str(BASE.relative_to(CHECKOUT)),str((BASE.parent/'l2-tmux-busy.md').relative_to(CHECKOUT))]
+        subprocess.run(['git','add',*paths],cwd=CHECKOUT,check=True)
+        subprocess.run(['git','commit','-m',f'test(e2e): Lane 2 step {self.step} runtime evidence\n\nCo-Authored-By: Codex (gpt-6-astra) <noreply@openai.com>'],cwd=CHECKOUT,check=True,stdout=subprocess.DEVNULL)
+        print(f'Step {self.step} PASS and committed',flush=True)
+
+    def journals(self):
+        return [r for p in (self.team/'state/messaging-v2/segments').glob('*.jsonl') for r in complete_rows(p.read_text())]
+
+    def exposure(self,marker,role):
+        return [r for rows in self.sessions() for r in rows if r.get('type')=='response_item' and r.get('payload',{}).get('role')==role and marker in json.dumps(r.get('payload',{}).get('content',[]))]
+
+    def response(self,label):
+        assert self.fresh_idle(), 'ordinary input requires fresh idle'
+        self.reserve(label)
+        record=self.record()
+        self.run(['tmux','-S',record['tmuxSocket'],'send-keys','-t',record['paneId'],'-l','For this bounded ordinary response, write exactly 60 numbered lines, each saying blue river stone. Do not execute tools.'])
+        self.run(['tmux','-S',record['tmuxSocket'],'send-keys','-t',record['paneId'],'Enter'])
+        working=self.wait(lambda:self.activity() if self.activity().get('activity_confidence') in ('active','likely_working') else None,'no production busy observation',90)
+        self.save(label+'-working.json',{'runtime':self.record(),'activity':working,'at':time.time()})
+
+    def send_marker(self,label):
+        # Current ordinary turn is intentionally active. Reserve the queued turn from
+        # the previously metered headroom, never assume this active turn is free.
+        value=self.budget()
+        assert max(value['paid_inputs'],len(self.reservations))+1<=10
+        assert value['conservative_usd']+.08<=.20
+        self.reservations.append({'reason':label,'step':self.step,'at':time.time(),'generation':self.record().get('attachmentGeneration')})
+        marker=label+'-'+secrets.token_hex(4)
+        output=self.mesh(['send','alpha','ACTION REQUIRED: Read this message explicitly, then reply exactly '+marker+'.','--summary',label])
+        accepted=next(json.loads(line) for line in output.splitlines() if line.startswith('{'))
+        self.save(label+'-accepted.json',{'marker':marker,**accepted})
+        return marker,accepted['message_id']
+
+    def pending(self,marker,message_id):
+        def observed():
+            rows=self.journals()
+            assert not any(r.get('payload',{}).get('message_id')==message_id and r.get('payload',{}).get('stage') in ('submitted','consumed','native_enqueued') for r in rows),'submission before observed busy deferral'
+            assert not self.exposure(marker,'user'),'marker exposed before pending evidence'
+            return pending_receipt(rows,message_id)
+        value=self.wait(observed,'no message-scoped pending receipt',90)
+        self.save(f'step{self.step}-pending.json',{'receipt':value,'runtime':self.record(),'activity':self.activity(),'at':time.time()})
+        self.capture(f'step{self.step}-pending')
+
+    def delivered(self,marker,message_id,generation):
+        self.wait(lambda:self.exposure(marker,'assistant') and self.fresh_idle() and self.budget()['metering_complete'],'no settled marker reply',90)
+        assert len(self.exposure(marker,'user'))==1 and len(self.exposure(marker,'assistant'))==1,'duplicate/missing marker exposure'
+        assert self.record()['attachmentGeneration']==generation,'unexpected delivery generation'
+        rows=[r for r in self.journals() if r.get('payload',{}).get('message_id')==message_id]
+        assert any(r.get('payload',{}).get('stage') in ('submitted','consumed') for r in rows),'no terminal submission receipt'
+        self.save(f'step{self.step}-delivery.json',{'receipts':rows,'runtime':self.record(),'activity':self.activity(),'user_exposure':self.exposure(marker,'user'),'reply':self.exposure(marker,'assistant')})
+        samples=complete_rows((self.out/'terminal-locks.jsonl').read_text())
+        assert any(r.get('holders') for r in samples),'passive terminal FLOCK evidence missing'
+        self.capture(f'step{self.step}-delivered')
+
+    def remaining_steps(self):
+        self.step=2;self.classification='taurhaus'
+        self.response('Q-work')
+        assert self.activity().get('activity_confidence') in ('active','likely_working'),'busy snapshot no longer current before Q'
+        q,qid=self.send_marker('Q');generation=self.record()['attachmentGeneration']
+        self.pass_step()
+        self.step=3;self.classification='mesh'
+        self.pending(q,qid)
+        self.delivered(q,qid,generation);self.pass_step()
+        self.step=4;self.classification='taurhaus'
+        self.response('Q2-work');q2,q2id=self.send_marker('Q2');self.pending(q2,q2id)
+        old=self.record();self.save('step4-before-stop.json',old)
+        self.save('step4-stop-result.json',self.rpc('stop_session',{'tmux_pane':old['paneId'],'cli_tool':'codex'}))
+        stopped=self.wait(lambda:self.record() if self.record().get('health')=='session_dead' else None,'stopped runtime not published',90)
+        self.save('step4-stopped.json',{'runtime':stopped,'journal':self.journals()});self.pass_step()
+        self.step=5
+        self.reserve('managed resume recovery')
+        self.operation('coordination.resume_member',{'request':{'team_name':TEAM,'member_name':'alpha'},'cli_commands':self.commands,'tmux_layout':'new_window'})
+        new=self.wait(lambda:self.record() if self.record().get('attachmentGeneration',0)>old['attachmentGeneration'] else None,'resume did not advance attachment',90)
+        self.save('step5-resumed.json',new)
+        self.delivered(q2,q2id,new['attachmentGeneration'])
+        assert len(self.exposure(q,'user'))==1,'completed Q replayed'
+        self.pass_step()
+        self.step=6;self.classification='mesh'
+        # Keep scope fixed across every forward page, including empty unread pages.
+        cursor=None;pages=[]
+        while True:
+            args=['read','--json','--mark-read','--last','16']
+            if cursor:args+=['--since',cursor]
+            # mesh() names lead; explicit alpha read uses the same namespace runner
+            # by selecting the member in a narrowly scoped method override.
+            output=self.mesh_as_alpha(args)
+            page=json.loads(output);pages.append(page)
+            if page.get('done'):break
+            next_cursor=page.get('next_cursor',page.get('cursor'))
+            assert next_cursor and next_cursor!=cursor,'read cursor made no progress'
+            cursor=next_cursor
+        self.save('step6-read-pages.json',pages)
+        rows=[r for r in self.journals() if r.get('payload',{}).get('message_id')==q2id]
+        assert any(r.get('payload',{}).get('kind')=='consumed_by_read' for r in rows),'Q2 explicit read receipt missing'
+        self.save('step6-reconciliation.json',{'Q':qid,'Q2':q2id,'Q2_rows':rows,'Q_exposures':len(self.exposure(q,'user')),'Q2_exposures':len(self.exposure(q2,'user'))})
+        self.pass_step()
+
+    def mesh_as_alpha(self,args):
+        return self.mesh(args,member='alpha')
+
+    def teardown(self):
+        self.stop.set()
+        if self.observer:self.observer.join(timeout=10)
+        self.snapshot()
+        self.save('identities.json',list(self.identities_seen.values()))
+        self.save('cost-ledger.json',{**meter(self.sessions(),self.notify()),'input_reservations':self.reservations})
+        for path in (self.root/'codex/sessions').rglob('rollout-*.jsonl'):
+            # Scratch-only native records; never export config/database/account rows.
+            self.save('sessions/'+path.name,[r for r in complete_rows(path.read_text()) if r.get('type') in ('session_meta','turn_context','event_msg','response_item')])
+        self.save('codex-session-inventory.json',[{'path':str(p.relative_to(self.root/'codex')),'bytes':p.stat().st_size} for p in (self.root/'codex').rglob('*') if p.is_file() and p.name!='auth.json'])
+        self.save('codex-notify.json',self.notify())
+        if (self.root/'data/taurhaus.log.jsonl').exists():
+            rows=complete_rows((self.root/'data/taurhaus.log.jsonl').read_text())
+            rows=[r for r in rows if r.get('event','').startswith(('coordination.','onboarding.','activity.','ipc.lock.'))]
+            self.save('daemon-events.json',list({json.dumps(clean(r),sort_keys=True):r for r in rows}.values()))
+        if self.record():
+            try:self.capture('final')
+            except Exception as e:self.log('capture_error',error=str(e))
+        self.save('final-runtime.json',self.record());self.save('final-activity.json',self.activity())
+        # Namespace PID 1 exit reaps every descendant. No foreign process is signalled.
+        before=self.identities()
+        for row in before:
+            if row['argv'][0]==str(self.root/'home/.local/bin/taurhaus-daemon'):
+                try:
+                    if (Path('/proc')/str(row['pid'])/'stat').read_text().rsplit(')',1)[1].split()[19]==row['start_ticks']:os.kill(row['pid'],signal.SIGINT)
+                except (FileNotFoundError,ProcessLookupError):pass
+        for child in reversed(self.children):
+            if child.poll() is None:
+                try:child.wait(timeout=10)
+                except subprocess.TimeoutExpired:os.killpg(child.pid,signal.SIGTERM);child.wait(timeout=10)
+        survivors=self.identities()
+        with socket.socket() as probe:
+            probe.settimeout(.2);closed=self.port is None or probe.connect_ex(('127.0.0.1',self.port))!=0
+        auth=self.root/'codex/auth.json'
+        if auth.exists():auth.unlink()
+        auth_removed=not auth.exists();shutil.rmtree(self.root)
+        self.save('cleanup.json',{'before':before,'survivors':survivors,'port_closed':closed,'auth_removed':auth_removed,'root_removed':not self.root.exists()})
+        self.events.close()
+        if survivors or not closed:self.code=2
+
+
+def main():
+    parser=argparse.ArgumentParser();parser.add_argument('--auth-source',required=True);args=parser.parse_args()
+    assert Path.cwd()==CHECKOUT, 'wrong checkout'
+    os.umask(0o077)
+    trial=Trial()
+    def interrupted(sig,frame):raise RuntimeError(f'controller interrupted {sig}')
+    signal.signal(signal.SIGINT,interrupted);signal.signal(signal.SIGTERM,interrupted)
+    try:
+        trial.boot(args.auth_source)
+        trial.remaining_steps()
+        trial.code=0
+    except BaseException as error:
+        trial.save(f'step{trial.step}-outcome.json',{'step':trial.step,'outcome':'FAIL','classification':trial.classification,'reason':str(error)})
+        trial.log('stopped',step=trial.step,classification=trial.classification,error=str(error))
+        print(json.dumps({'step':trial.step,'classification':trial.classification,'error':clean(str(error))}),flush=True)
+    finally:trial.teardown()
+    return trial.code
+
+if __name__=='__main__':raise SystemExit(main())

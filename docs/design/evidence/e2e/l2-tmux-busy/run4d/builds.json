@@ -1,0 +1,114 @@
+[
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789061026.109396,
+    "exit": 0,
+    "pids": [
+      "3912951"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789061041.118107,
+    "exit": 0,
+    "pids": [
+      "3912951"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789061056.1271691,
+    "exit": 0,
+    "pids": [
+      "3912951"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789061071.135811,
+    "exit": 0,
+    "pids": [
+      "3912951"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789061086.1451154,
+    "exit": 0,
+    "pids": [
+      "3912951"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789061101.15453,
+    "exit": 0,
+    "pids": [
+      "3912951"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789061116.1626506,
+    "exit": 0,
+    "pids": [
+      "3912951"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789061131.171392,
+    "exit": 0,
+    "pids": [
+      "3912951"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789061146.1802065,
+    "exit": 0,
+    "pids": [
+      "3912951"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789061161.189096,
+    "exit": 0,
+    "pids": [
+      "3912951"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789061176.1978703,
+    "exit": 0,
+    "pids": [
+      "3912951"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789061191.2067833,
+    "exit": 1,
+    "pids": []
+  },
+  {
+    "command": "just build-daemon",
+    "cwd": "/home/mstie/projects/taurhaus-l2-tmux-busy",
+    "CARGO_TARGET_DIR": "/home/mstie/projects/taurhaus-l2-tmux-busy/src-tauri/target",
+    "exit": 0
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789061243.148796,
+    "exit": 1,
+    "pids": []
+  },
+  {
+    "command": "cargo build --bin mesh",
+    "cwd": "/home/mstie/projects/mesh-l2",
+    "CARGO_TARGET_DIR": "/home/mstie/projects/mesh-l2/target",
+    "exit": 0
+  }
+]

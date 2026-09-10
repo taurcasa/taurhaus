@@ -1,0 +1,300 @@
+[
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789056516.0605793,
+    "exit": 0,
+    "pids": [
+      "3064021"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789056531.070491,
+    "exit": 0,
+    "pids": [
+      "3064021"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789056546.0835526,
+    "exit": 0,
+    "pids": [
+      "3064021"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789056561.0931513,
+    "exit": 0,
+    "pids": [
+      "3064021"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789056576.1021338,
+    "exit": 0,
+    "pids": [
+      "3064021"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789056591.1118162,
+    "exit": 0,
+    "pids": [
+      "3096463",
+      "3096498"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789056606.1222498,
+    "exit": 0,
+    "pids": [
+      "3096498",
+      "3097092"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789056621.1335018,
+    "exit": 0,
+    "pids": [
+      "3097092"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789056636.1429617,
+    "exit": 0,
+    "pids": [
+      "3097092"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789056651.1522484,
+    "exit": 0,
+    "pids": [
+      "3097092"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789056666.1619444,
+    "exit": 0,
+    "pids": [
+      "3097092"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789056681.1717625,
+    "exit": 0,
+    "pids": [
+      "3097092"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789056696.18062,
+    "exit": 0,
+    "pids": [
+      "3097092"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789056711.190163,
+    "exit": 0,
+    "pids": [
+      "3097092"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789056726.1999612,
+    "exit": 0,
+    "pids": [
+      "3097092"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789056741.209755,
+    "exit": 0,
+    "pids": [
+      "3097092"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789056756.2190268,
+    "exit": 0,
+    "pids": [
+      "3097092"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789056771.2286096,
+    "exit": 0,
+    "pids": [
+      "3097092"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789056786.2384775,
+    "exit": 0,
+    "pids": [
+      "3097092"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789056801.2477362,
+    "exit": 0,
+    "pids": [
+      "3097092"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789056816.2572749,
+    "exit": 0,
+    "pids": [
+      "3097092"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789056831.2667756,
+    "exit": 0,
+    "pids": [
+      "3097092"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789056846.2758152,
+    "exit": 0,
+    "pids": [
+      "3097092"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789056861.2869003,
+    "exit": 0,
+    "pids": [
+      "3097092"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789056876.2963276,
+    "exit": 0,
+    "pids": [
+      "3097092"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789056891.3063798,
+    "exit": 0,
+    "pids": [
+      "3097092"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789056906.3158596,
+    "exit": 0,
+    "pids": [
+      "3097092"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789056921.3258028,
+    "exit": 0,
+    "pids": [
+      "3097092"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789056936.3355079,
+    "exit": 0,
+    "pids": [
+      "3097092"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789056951.3456643,
+    "exit": 0,
+    "pids": [
+      "3097092"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789056966.3555062,
+    "exit": 0,
+    "pids": [
+      "3097092"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789056981.3652918,
+    "exit": 0,
+    "pids": [
+      "3097092"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789056996.3746781,
+    "exit": 0,
+    "pids": [
+      "3160649"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789057011.3849473,
+    "exit": 0,
+    "pids": [
+      "3160649"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789057026.3952382,
+    "exit": 1,
+    "pids": []
+  },
+  {
+    "command": "just build-daemon",
+    "cwd": "/home/mstie/projects/taurhaus-l2-tmux-busy",
+    "CARGO_TARGET_DIR": "/home/mstie/projects/taurhaus-l2-tmux-busy/src-tauri/target",
+    "exit": 0
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789057146.9814749,
+    "exit": 1,
+    "pids": []
+  },
+  {
+    "command": "cargo build --bin mesh",
+    "cwd": "/home/mstie/projects/mesh-l2",
+    "CARGO_TARGET_DIR": "/home/mstie/projects/mesh-l2/target",
+    "exit": 0
+  }
+]

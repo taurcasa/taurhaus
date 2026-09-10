@@ -1,0 +1,8 @@
+{
+  "exit": 1,
+  "last_lines": [
+    "{\"step\": 1, \"classification\": \"taurhaus\", \"error\": \"alpha onboarding not delivered/completed with fresh idle activity\"}"
+  ],
+  "runtime_trial_count": 1,
+  "retry_count": 0
+}

@@ -1,0 +1,6 @@
+{
+  "step": 5,
+  "outcome": "FAIL",
+  "classification": "harness",
+  "reason": "post-reply fresh idle missing"
+}

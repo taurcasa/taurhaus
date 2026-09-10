@@ -1,0 +1,31 @@
+{
+  "format_changes": [
+    {
+      "file": "team/state/messaging-v2/segments/000001.jsonl",
+      "rows": 4,
+      "change": "JSON array to complete JSONL rows; values unchanged"
+    },
+    {
+      "file": "final-pane-2.txt",
+      "change": "Trim trailing blank display rows; raw capture retained in events.jsonl"
+    },
+    {
+      "file": "final-pane-1.txt",
+      "change": "Trim trailing blank display rows; raw capture retained in events.jsonl"
+    },
+    {
+      "file": "step1-initial-pane-2.txt",
+      "change": "Trim trailing blank display rows; raw capture retained in events.jsonl"
+    },
+    {
+      "file": "final-pane-0.txt",
+      "change": "Trim trailing blank display rows; raw capture retained in events.jsonl"
+    }
+  ],
+  "aliases": {
+    "step1-initial-pane-0.txt": "final-pane-0.txt",
+    "step1-initial-pane-1.txt": "final-pane-1.txt",
+    "step1-runtime.json": "final-runtime.json",
+    "team/runtime/alpha.json": "final-runtime.json"
+  }
+}

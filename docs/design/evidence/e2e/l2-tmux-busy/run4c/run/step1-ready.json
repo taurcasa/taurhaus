@@ -1,0 +1,980 @@
+{
+  "runtime": {
+    "activitySnapshotPath": "/tmp/th-l2-eywgfjoe/claude/teams/l2-busy/state/activity/alpha.json",
+    "appliedEffort": "low",
+    "attached_at": "2026-09-10T16:55:11.249689264Z",
+    "attachmentGeneration": 1,
+    "cli_tool": "codex",
+    "contextGeneration": "0",
+    "daemon_pid": null,
+    "delivery_lease": null,
+    "harness": "codex",
+    "health": "healthy",
+    "hookSessionId": "01a08c3e-aa6c-72d0-a63d-bff45b5cb3af",
+    "hostInputAbandonedAt": null,
+    "hostInputUnknown": false,
+    "jsonl_path": "/tmp/th-l2-eywgfjoe/codex/sessions/2026/09/10/rollout-2026-09-10T18-55-12-01a08c3e-aa6c-72d0-a63d-bff45b5cb3af.jsonl",
+    "last_seen_at": "2026-09-10T16:55:15.688318833Z",
+    "launchRoot": {
+      "claudeDir": "/tmp/th-l2-eywgfjoe/claude",
+      "rootAuthorityRevision": 0,
+      "teamIncarnationId": "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9",
+      "teamsDir": "/tmp/th-l2-eywgfjoe/claude/teams"
+    },
+    "memberName": "alpha",
+    "paneId": "%2",
+    "panePid": 137,
+    "paneStartTime": "27984903",
+    "project_path": "/tmp/th-l2-eywgfjoe/project",
+    "recovery": {
+      "activation_intent": "2f649b2c4fc1bb7438d307e0eedc5d971d3f4cf023bc76636b182697fdd1f1f1",
+      "admitted_boundary": null,
+      "baseline_binding": [
+        [
+          "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9",
+          "b635a236-2e37-44d3-aa5d-f7bb4c5dce94"
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "claim": {
+        "accepted_bytes": 2860,
+        "attempt": 1,
+        "card_key": {
+          "card_schema": 1,
+          "context": [
+            1,
+            0
+          ],
+          "contract": {
+            "effective_role_revision": "bb80b8a0546ec4a737117a5e83df361adeb3072fc2e0f6bd1fe36379b172fa30",
+            "instruction_contract_revision": "bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f",
+            "packet_revision": "",
+            "role_id": ""
+          },
+          "recipient": [
+            "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9",
+            "b635a236-2e37-44d3-aa5d-f7bb4c5dce94"
+          ],
+          "roots": {
+            "harness_account_root": "/tmp/th-l2-eywgfjoe/codex",
+            "launch_namespace": "native",
+            "resolved_mesh_config_root": "/tmp/th-l2-eywgfjoe/claude",
+            "resolved_project_root": "/tmp/th-l2-eywgfjoe/project",
+            "resolved_teams_root": "/tmp/th-l2-eywgfjoe/claude/teams",
+            "root_authority_revision": "0"
+          }
+        },
+        "content_revision": "32bdf45ada21f97df9fd78c6a6433157e4c879ac7e5819c4e91e80b5751eae8d",
+        "delivery_id": "8c462b681a858116517080692de39bab3f93d0697bf8644de7e2f12845a4ef7b",
+        "generated_bytes": 2860,
+        "journal": {
+          "delivery_id": "8827794d-3f0e-4829-a13f-0cbdf49702a5",
+          "message_id": "6f56878d-3d7e-462c-a91c-9675827989d4",
+          "projection": "pending",
+          "sequence": 2
+        },
+        "kind": "baseline",
+        "obligation_key": [
+          [
+            "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9",
+            "b635a236-2e37-44d3-aa5d-f7bb4c5dce94"
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "observations": [
+          [
+            "accepted",
+            "2026-09-10T16:55:11.754987394Z",
+            "inbox"
+          ]
+        ],
+        "offered_bytes": 0,
+        "path": "inbox",
+        "returned_by_read_bytes": 0,
+        "satisfied_obligations": [
+          [
+            [
+              "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9",
+              "b635a236-2e37-44d3-aa5d-f7bb4c5dce94"
+            ],
+            [
+              1,
+              0
+            ]
+          ]
+        ],
+        "stage": "accepted",
+        "supersedes_revision": null
+      },
+      "harness_account_root": "/tmp/th-l2-eywgfjoe/codex",
+      "last_delivered": {
+        "accepted_bytes": 2860,
+        "attempt": 1,
+        "card_key": {
+          "card_schema": 1,
+          "context": [
+            1,
+            0
+          ],
+          "contract": {
+            "effective_role_revision": "bb80b8a0546ec4a737117a5e83df361adeb3072fc2e0f6bd1fe36379b172fa30",
+            "instruction_contract_revision": "bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f",
+            "packet_revision": "",
+            "role_id": ""
+          },
+          "recipient": [
+            "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9",
+            "b635a236-2e37-44d3-aa5d-f7bb4c5dce94"
+          ],
+          "roots": {
+            "harness_account_root": "/tmp/th-l2-eywgfjoe/codex",
+            "launch_namespace": "native",
+            "resolved_mesh_config_root": "/tmp/th-l2-eywgfjoe/claude",
+            "resolved_project_root": "/tmp/th-l2-eywgfjoe/project",
+            "resolved_teams_root": "/tmp/th-l2-eywgfjoe/claude/teams",
+            "root_authority_revision": "0"
+          }
+        },
+        "content_revision": "32bdf45ada21f97df9fd78c6a6433157e4c879ac7e5819c4e91e80b5751eae8d",
+        "delivery_id": "8c462b681a858116517080692de39bab3f93d0697bf8644de7e2f12845a4ef7b",
+        "generated_bytes": 2860,
+        "journal": {
+          "delivery_id": "8827794d-3f0e-4829-a13f-0cbdf49702a5",
+          "message_id": "6f56878d-3d7e-462c-a91c-9675827989d4",
+          "projection": "pending",
+          "sequence": 2
+        },
+        "kind": "baseline",
+        "obligation_key": [
+          [
+            "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9",
+            "b635a236-2e37-44d3-aa5d-f7bb4c5dce94"
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "observations": [
+          [
+            "accepted",
+            "2026-09-10T16:55:11.754987394Z",
+            "inbox"
+          ]
+        ],
+        "offered_bytes": 0,
+        "path": "inbox",
+        "returned_by_read_bytes": 0,
+        "satisfied_obligations": [
+          [
+            [
+              "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9",
+              "b635a236-2e37-44d3-aa5d-f7bb4c5dce94"
+            ],
+            [
+              1,
+              0
+            ]
+          ]
+        ],
+        "stage": "accepted",
+        "supersedes_revision": null
+      },
+      "launch_namespace": "native",
+      "member_incarnation_id": "b635a236-2e37-44d3-aa5d-f7bb4c5dce94",
+      "reserved_attachment": "2026-09-10T16:55:11.249689264Z",
+      "reserved_effort": "low"
+    },
+    "schema_version": 3,
+    "session_id": "01a08c3e-aa6c-72d0-a63d-bff45b5cb3af",
+    "terminalContract": 1,
+    "tmuxSessionId": "$0",
+    "tmuxSocket": "/tmp/th-l2-eywgfjoe/tmux/tmux-1000/default"
+  },
+  "activity": {
+    "version": 1,
+    "observed_at": "2026-09-10T16:55:34.179523160+00:00",
+    "stall_recent_activity": false,
+    "stall_no_output": true,
+    "stall_no_active_process": false,
+    "active_non_shell_process": true,
+    "recent_io": false,
+    "pane_alive": true,
+    "pane_foreign": false,
+    "last_output_age_secs": 0,
+    "activity_confidence": "idle",
+    "confidence": "high",
+    "last_observed_at": "2026-09-10T16:55:34.177262328+00:00",
+    "source": "notify",
+    "state": "idle"
+  },
+  "attribution": {
+    "snapshot": {
+      "degraded": false,
+      "degraded_revision": 0,
+      "display_sessions": [
+        {
+          "activity_attribution": "attributed",
+          "activity_confidence": "high",
+          "args": "codex --yolo --dangerously-bypass-hook-trust -c notify=[\"/tmp/th-l2-eywgfjoe/home/.local/bin/taurhaus-daemon\",\"codex-notify\"] -m gpt-5.6-luna -c model_reasoning_effort=\"low\"",
+          "cli_tool": "codex",
+          "group_id": "l2-busy",
+          "group_kind": "mesh_team",
+          "group_label": "l2-busy",
+          "last_output_age_secs": 0,
+          "member_name": "alpha",
+          "pid": 140,
+          "project_path": "/tmp/th-l2-eywgfjoe/project",
+          "project_unattributed_active": false,
+          "recent_io": false,
+          "state": "idle",
+          "tmux_pane": "%2",
+          "tmux_session": "taurhaus",
+          "tmux_window": "2",
+          "tmux_window_name": "project",
+          "tty": "/dev/pts/2"
+        },
+        {
+          "activity_attribution": "none",
+          "activity_confidence": "low",
+          "args": "claude --dangerously-skip-permissions --model claude-haiku-4-5 --team-name l2-busy --agent-name lead --agent-id lead@l2-busy --agent-type orchestrator -n lead",
+          "cli_tool": "claude",
+          "group_id": "l2-busy",
+          "group_kind": "mesh_team",
+          "group_label": "l2-busy",
+          "last_output_age_secs": null,
+          "member_name": "lead",
+          "pid": 121,
+          "project_path": "/tmp/th-l2-eywgfjoe/project",
+          "project_unattributed_active": false,
+          "recent_io": false,
+          "state": "idle",
+          "tmux_pane": "%1",
+          "tmux_session": "taurhaus",
+          "tmux_window": "1",
+          "tmux_window_name": "project",
+          "tty": "/dev/pts/1"
+        }
+      ],
+      "focus": null,
+      "foreground_project_path": null,
+      "runtime_sessions": [
+        {
+          "activity_attribution": "attributed",
+          "activity_confidence": "high",
+          "args": "codex --yolo --dangerously-bypass-hook-trust -c notify=[\"/tmp/th-l2-eywgfjoe/home/.local/bin/taurhaus-daemon\",\"codex-notify\"] -m gpt-5.6-luna -c model_reasoning_effort=\"low\"",
+          "cli_tool": "codex",
+          "group_id": "l2-busy",
+          "group_kind": "mesh_team",
+          "group_label": "l2-busy",
+          "jsonl_path": "/tmp/th-l2-eywgfjoe/codex/sessions/2026/09/10/rollout-2026-09-10T18-55-12-01a08c3e-aa6c-72d0-a63d-bff45b5cb3af.jsonl",
+          "last_output_age_secs": 0,
+          "member_name": "alpha",
+          "pid": 140,
+          "project_path": "/tmp/th-l2-eywgfjoe/project",
+          "project_unattributed_active": false,
+          "recent_io": false,
+          "session_id": "01a08c3e-aa6c-72d0-a63d-bff45b5cb3af",
+          "state": "idle",
+          "tmux_pane": "%2",
+          "tmux_session": "taurhaus",
+          "tmux_window": "2",
+          "tmux_window_name": "project",
+          "tty": "/dev/pts/2"
+        },
+        {
+          "activity_attribution": "none",
+          "activity_confidence": "low",
+          "args": "claude --dangerously-skip-permissions --model claude-haiku-4-5 --team-name l2-busy --agent-name lead --agent-id lead@l2-busy --agent-type orchestrator -n lead",
+          "cli_tool": "claude",
+          "group_id": "l2-busy",
+          "group_kind": "mesh_team",
+          "group_label": "l2-busy",
+          "jsonl_path": null,
+          "last_output_age_secs": null,
+          "member_name": "lead",
+          "pid": 121,
+          "project_path": "/tmp/th-l2-eywgfjoe/project",
+          "project_unattributed_active": false,
+          "recent_io": false,
+          "session_id": null,
+          "state": "idle",
+          "tmux_pane": "%1",
+          "tmux_session": "taurhaus",
+          "tmux_window": "1",
+          "tmux_window_name": "project",
+          "tty": "/dev/pts/1"
+        }
+      ],
+      "version": 11
+    },
+    "alpha": {
+      "activity_attribution": "attributed",
+      "activity_confidence": "high",
+      "args": "codex --yolo --dangerously-bypass-hook-trust -c notify=[\"/tmp/th-l2-eywgfjoe/home/.local/bin/taurhaus-daemon\",\"codex-notify\"] -m gpt-5.6-luna -c model_reasoning_effort=\"low\"",
+      "cli_tool": "codex",
+      "group_id": "l2-busy",
+      "group_kind": "mesh_team",
+      "group_label": "l2-busy",
+      "jsonl_path": "/tmp/th-l2-eywgfjoe/codex/sessions/2026/09/10/rollout-2026-09-10T18-55-12-01a08c3e-aa6c-72d0-a63d-bff45b5cb3af.jsonl",
+      "last_output_age_secs": 0,
+      "member_name": "alpha",
+      "pid": 140,
+      "project_path": "/tmp/th-l2-eywgfjoe/project",
+      "project_unattributed_active": false,
+      "recent_io": false,
+      "session_id": "01a08c3e-aa6c-72d0-a63d-bff45b5cb3af",
+      "state": "idle",
+      "tmux_pane": "%2",
+      "tmux_session": "taurhaus",
+      "tmux_window": "2",
+      "tmux_window_name": "project",
+      "tty": "/dev/pts/2"
+    }
+  },
+  "journal": [
+    {
+      "checksum": "5f9eea2121266603a7f070b0652610326b68f1493e25befb5c3912c298944c8f",
+      "committed_at": "2026-09-10T16:55:11.483633124+00:00",
+      "event_id": "c3854556-ed9e-4286-b238-d96422f2873b",
+      "event_type": "message_accepted",
+      "log_epoch": "dfcc31bc-2520-4e0d-a71a-e07fe689120e",
+      "payload": {
+        "acceptance": "canonical",
+        "archive_outcome": "retained",
+        "audience_proof": {
+          "kind": "captured-members",
+          "members": [
+            {
+              "member_id": "4ed6ad6d-86b3-4fb5-a429-30b0beec53e6",
+              "name": "lead"
+            }
+          ],
+          "team_id": "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9"
+        },
+        "author": {
+          "claimed_sender": "lead",
+          "service": "taurhaus-daemon",
+          "verified": true
+        },
+        "body": "[taurhaus] recovery_card\nIdentity: lead on l2-busy; key={\"card_schema\":1,\"recipient\":[\"e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9\",\"5ff2872d-b3a5-44fe-b549-bcb55bcf653f\"],\"context\":[1,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-l2-eywgfjoe/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-l2-eywgfjoe/claude\",\"harness_account_root\":\"/tmp/th-l2-eywgfjoe/claude\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-l2-eywgfjoe/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"37a06e5154de9ef5fdb08ede626ffb29630db236bda6cc9bd2f7868b61a9c25b\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: ba6889266c0a30129686075b8b65701909d168a6240744b9497673c5fd34d256; source=a8d97ad61031cbcac3988f3b68c520a8a5a4cb0a780f3e3a2fe21bf4bef83bf2; audience=unavailable\nProject cwd: /tmp/th-l2-eywgfjoe/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: unavailable; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-10 16:55:11.430069131 UTC\nCurrent task: # \u2014 \nExecution mode: ; Validation expectation: ; Response expectation: ; Adjacent fix policy: ; Override allowed: false; Override reason: none\nFocal files: unavailable\nRole: unavailable\nHOLD: minimal role steering unavailable; owner: team lead.\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.",
+        "body_bytes": 2249,
+        "body_format": "text/plain",
+        "body_hash": "c46d3e965d17618d3cb65abc72c25ade6e3e575a2debccd4a8353511e467429a",
+        "conversation_id": "ad634a9d531eaff149173ca8533c766a7da7abc32d5b5831f01f921f4f907114",
+        "conversation_kind": "dm",
+        "correction_reason": null,
+        "delivery_targets": [
+          {
+            "delivery_id": "c09cb83b-4bbc-46c2-9a29-2bb683de357a",
+            "legacy_acceptance": "unknown",
+            "legacy_id": "a00286cd-da98-4297-80a5-79973bb3f6bd",
+            "member_id": "4ed6ad6d-86b3-4fb5-a429-30b0beec53e6",
+            "read_audience": [
+              {
+                "member_id": "4ed6ad6d-86b3-4fb5-a429-30b0beec53e6",
+                "name": "lead"
+              }
+            ],
+            "recipient": "lead",
+            "source_path": "inboxes/lead.json"
+          }
+        ],
+        "dispatch_decision": {
+          "expectation": "unknown/legacy",
+          "policy_revision": 1,
+          "provenance": "legacy_default",
+          "wake_eligible": true
+        },
+        "envelope": {
+          "from": "lead",
+          "read": false,
+          "text": null,
+          "timestamp": "2026-09-10T16:55:11.478956130+00:00"
+        },
+        "idempotency_key": "taurhaus-daemon:1cb012186db30f6b6e3ed95fa86f3718b533ec7c1e5ec2ed64454404ff452512",
+        "legacy_acceptance": "unknown",
+        "link": null,
+        "message_id": "2acc0862-7084-42e1-95fb-4d4d7596374d",
+        "origin": "generated",
+        "producer": "taurhaus-daemon:taurhaus-daemon",
+        "read_audience": [
+          {
+            "member_id": "4ed6ad6d-86b3-4fb5-a429-30b0beec53e6",
+            "name": "lead"
+          }
+        ],
+        "reply_to_message_id": null,
+        "request_digest": "b36773cca2b996371e585b8b6f5e10f7950efcc0fcd33d1e02b81dc37fd8a6b9",
+        "response_expectation": {
+          "basis": "producer-context-unavailable",
+          "expectation": "unknown/legacy",
+          "kind": "unavailable",
+          "policy_revision": 1,
+          "provenance": "legacy_default",
+          "wake_eligible": true
+        },
+        "retention_class": "dm",
+        "source_authority": null,
+        "source_event_refs": [],
+        "summary": null,
+        "supersedes_message_ids": [],
+        "task_links": [],
+        "visibility_policy_id": "captured-members",
+        "visibility_policy_revision": 1,
+        "wake_priority": "urgent"
+      },
+      "schema_version": 1,
+      "sequence": 1,
+      "team_id": "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9"
+    },
+    {
+      "checksum": "22085ddfdc74c1248ec8b85a91f988e39ca9fe7e1678e25c97fb3045f6c83d67",
+      "committed_at": "2026-09-10T16:55:11.643694734+00:00",
+      "event_id": "5927fb15-243a-49bd-aadb-bf2a9da5a223",
+      "event_type": "message_accepted",
+      "log_epoch": "dfcc31bc-2520-4e0d-a71a-e07fe689120e",
+      "payload": {
+        "acceptance": "canonical",
+        "archive_outcome": "retained",
+        "audience_proof": {
+          "kind": "captured-members",
+          "members": [
+            {
+              "member_id": "4ed6ad6d-86b3-4fb5-a429-30b0beec53e6",
+              "name": "lead"
+            },
+            {
+              "member_id": "alpha@l2-busy",
+              "name": "alpha"
+            }
+          ],
+          "team_id": "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9"
+        },
+        "author": {
+          "claimed_sender": "lead",
+          "service": "taurhaus-daemon",
+          "verified": true
+        },
+        "body": "[taurhaus] recovery_card\nIdentity: alpha on l2-busy; key={\"card_schema\":1,\"recipient\":[\"e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9\",\"b635a236-2e37-44d3-aa5d-f7bb4c5dce94\"],\"context\":[1,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-l2-eywgfjoe/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-l2-eywgfjoe/claude\",\"harness_account_root\":\"/tmp/th-l2-eywgfjoe/codex\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-l2-eywgfjoe/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"bb80b8a0546ec4a737117a5e83df361adeb3072fc2e0f6bd1fe36379b172fa30\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: 32bdf45ada21f97df9fd78c6a6433157e4c879ac7e5819c4e91e80b5751eae8d; source=682540e4a3f9cfbca660a5add5db7fa379ff474f5fe7c2f18798f74d7e72c755; audience=unavailable\nProject cwd: /tmp/th-l2-eywgfjoe/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: low; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-10 16:55:11.609510058 UTC\nCurrent task: # \u2014 \nExecution mode: ; Validation expectation: ; Response expectation: ; Adjacent fix policy: ; Override allowed: false; Override reason: none\nFocal files: unavailable\nRole: unavailable\nPurpose: For every inbox notification including onboarding, explicitly run mesh read --json --unread --mark-read --claude-dir \"$CLAUDE_DIR\" --team l2-busy --name alpha; follow returned --since cursors with the same filters until done. Reply briefly. When a message assigns you a task, run exactly the mesh lifecycle commands the message names, in order, then reply with the task id and the word done. Never modify files. For ACTION REQUIRED marker messages, read your inbox with mesh read --json --mark-read --claude-dir \"$CLAUDE_DIR\" --team l2-busy --name alpha and reply exactly with the requested marker. Follow every returned cursor until done. Do not send other messages.\n\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.",
+        "body_bytes": 2860,
+        "body_format": "text/plain",
+        "body_hash": "77e2bd96f89b794dbd89db5a3c2dc56264a6898bb9417b84299437f4e1f920e7",
+        "conversation_id": "4e6ec03bf27e14da62089a0543e28403cea9a2f197b52edacfe8d5dffd8cffe3",
+        "conversation_kind": "dm",
+        "correction_reason": null,
+        "delivery_targets": [
+          {
+            "delivery_id": "8827794d-3f0e-4829-a13f-0cbdf49702a5",
+            "legacy_acceptance": "unknown",
+            "legacy_id": "373511e0-48ce-4f80-90fd-f914e3575646",
+            "member_id": "alpha@l2-busy",
+            "read_audience": [
+              {
+                "member_id": "4ed6ad6d-86b3-4fb5-a429-30b0beec53e6",
+                "name": "lead"
+              },
+              {
+                "member_id": "alpha@l2-busy",
+                "name": "alpha"
+              }
+            ],
+            "recipient": "alpha",
+            "source_path": "inboxes/alpha.json"
+          }
+        ],
+        "dispatch_decision": {
+          "expectation": "unknown/legacy",
+          "policy_revision": 1,
+          "provenance": "legacy_default",
+          "wake_eligible": true
+        },
+        "envelope": {
+          "from": "lead",
+          "read": false,
+          "text": null,
+          "timestamp": "2026-09-10T16:55:11.632712540+00:00"
+        },
+        "idempotency_key": "taurhaus-daemon:8c462b681a858116517080692de39bab3f93d0697bf8644de7e2f12845a4ef7b",
+        "legacy_acceptance": "unknown",
+        "link": null,
+        "message_id": "6f56878d-3d7e-462c-a91c-9675827989d4",
+        "origin": "generated",
+        "producer": "taurhaus-daemon:taurhaus-daemon",
+        "read_audience": [
+          {
+            "member_id": "4ed6ad6d-86b3-4fb5-a429-30b0beec53e6",
+            "name": "lead"
+          },
+          {
+            "member_id": "alpha@l2-busy",
+            "name": "alpha"
+          }
+        ],
+        "reply_to_message_id": null,
+        "request_digest": "84d459120132b91c79b1bad0fac64fa66982fd98d86bf98b7dc053ec2c614c36",
+        "response_expectation": {
+          "basis": "producer-context-unavailable",
+          "expectation": "unknown/legacy",
+          "kind": "unavailable",
+          "policy_revision": 1,
+          "provenance": "legacy_default",
+          "wake_eligible": true
+        },
+        "retention_class": "dm",
+        "source_authority": null,
+        "source_event_refs": [],
+        "summary": null,
+        "supersedes_message_ids": [],
+        "task_links": [],
+        "visibility_policy_id": "captured-members",
+        "visibility_policy_revision": 1,
+        "wake_priority": "urgent"
+      },
+      "schema_version": 1,
+      "sequence": 2,
+      "team_id": "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9"
+    },
+    {
+      "checksum": "e642e331c58278989e704169ed21d79a3bfafc677cc1e75ca5fffc682bd9d535",
+      "committed_at": "2026-09-10T16:55:12.385778813+00:00",
+      "event_id": "78a07572-6bf7-485b-ac58-24297d0e0acc",
+      "event_type": "delivery_attempt",
+      "log_epoch": "dfcc31bc-2520-4e0d-a71a-e07fe689120e",
+      "payload": {
+        "adapter": "native-mailbox/1",
+        "attachment": {
+          "attachment_generation": 1,
+          "context_generation": "0",
+          "generation": "1",
+          "harness": "claude",
+          "launch_root": {
+            "claudeDir": "/tmp/th-l2-eywgfjoe/claude",
+            "rootAuthorityRevision": 0,
+            "teamIncarnationId": "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9",
+            "teamsDir": "/tmp/th-l2-eywgfjoe/claude/teams"
+          },
+          "member": "lead",
+          "pane": "%1",
+          "pane_pid": 118,
+          "pane_start": "27984898",
+          "root": "/tmp/th-l2-eywgfjoe/claude",
+          "session": "$0",
+          "socket": "/tmp/th-l2-eywgfjoe/tmux/tmux-1000/default",
+          "team_incarnation": "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9",
+          "tmux_session": "$0"
+        },
+        "attempt_id": "8965cd06-377d-4ab6-84c7-8cc5e3b8f5cc",
+        "delivery_id": "c09cb83b-4bbc-46c2-9a29-2bb683de357a",
+        "event_type": "delivery_attempt",
+        "evidence": "durable claim",
+        "message_id": "2acc0862-7084-42e1-95fb-4d4d7596374d",
+        "observed_at": "2026-09-10T16:55:12.369196995+00:00",
+        "origin": "adapter",
+        "owner_epoch": 2,
+        "recipient": "lead",
+        "source_generation": "dfcc31bc-2520-4e0d-a71a-e07fe689120e",
+        "source_position": 1,
+        "stage": "attempt_started",
+        "team_incarnation": "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9"
+      },
+      "schema_version": 1,
+      "sequence": 3,
+      "team_id": "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9"
+    },
+    {
+      "checksum": "10b709f654102d811c182c985c0025a857a265fa2fa3cec9e627ff7f3728866c",
+      "committed_at": "2026-09-10T16:55:12.445802125+00:00",
+      "event_id": "9cd6497a-fb9b-4d5a-b7f3-8f4a6b7aa6fa",
+      "event_type": "receipt",
+      "log_epoch": "dfcc31bc-2520-4e0d-a71a-e07fe689120e",
+      "payload": {
+        "adapter": "native-mailbox/1",
+        "attachment": {
+          "attachment_generation": 1,
+          "context_generation": "0",
+          "generation": "1",
+          "harness": "claude",
+          "launch_root": {
+            "claudeDir": "/tmp/th-l2-eywgfjoe/claude",
+            "rootAuthorityRevision": 0,
+            "teamIncarnationId": "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9",
+            "teamsDir": "/tmp/th-l2-eywgfjoe/claude/teams"
+          },
+          "member": "lead",
+          "pane": "%1",
+          "pane_pid": 118,
+          "pane_start": "27984898",
+          "root": "/tmp/th-l2-eywgfjoe/claude",
+          "session": "$0",
+          "socket": "/tmp/th-l2-eywgfjoe/tmux/tmux-1000/default",
+          "team_incarnation": "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9",
+          "tmux_session": "$0"
+        },
+        "attempt_id": "8965cd06-377d-4ab6-84c7-8cc5e3b8f5cc",
+        "delivery_id": "c09cb83b-4bbc-46c2-9a29-2bb683de357a",
+        "event_type": "receipt",
+        "evidence": "durable native mailbox projection; uptake unobserved",
+        "message_id": "2acc0862-7084-42e1-95fb-4d4d7596374d",
+        "observed_at": "2026-09-10T16:55:12.418288833+00:00",
+        "origin": "canonical_projection",
+        "owner_epoch": 2,
+        "recipient": "lead",
+        "source_generation": "dfcc31bc-2520-4e0d-a71a-e07fe689120e",
+        "source_position": 1,
+        "stage": "native_enqueued",
+        "team_incarnation": "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9"
+      },
+      "schema_version": 1,
+      "sequence": 4,
+      "team_id": "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9"
+    },
+    {
+      "checksum": "ff1f9ef5b015fe16ec447b75b10a07f1827eb541d18e0442b4e691043c658d2e",
+      "committed_at": "2026-09-10T16:55:13.399312767+00:00",
+      "event_id": "ca9005c3-f2ab-43df-89f2-771147d94945",
+      "event_type": "delivery_attempt",
+      "log_epoch": "dfcc31bc-2520-4e0d-a71a-e07fe689120e",
+      "payload": {
+        "adapter": "tmux/1",
+        "attachment": {
+          "attachment_generation": 1,
+          "context_generation": "0",
+          "generation": "1",
+          "harness": "codex",
+          "launch_root": {
+            "claudeDir": "/tmp/th-l2-eywgfjoe/claude",
+            "rootAuthorityRevision": 0,
+            "teamIncarnationId": "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9",
+            "teamsDir": "/tmp/th-l2-eywgfjoe/claude/teams"
+          },
+          "member": "alpha",
+          "pane": "%2",
+          "pane_pid": 137,
+          "pane_start": "27984903",
+          "root": "/tmp/th-l2-eywgfjoe/claude",
+          "session": "$0",
+          "socket": "/tmp/th-l2-eywgfjoe/tmux/tmux-1000/default",
+          "team_incarnation": "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9",
+          "tmux_session": "$0"
+        },
+        "attempt_id": "f84cea49-cb85-428d-b505-e56ece9e065c",
+        "delivery_id": "8827794d-3f0e-4829-a13f-0cbdf49702a5",
+        "event_type": "delivery_attempt",
+        "evidence": "durable claim",
+        "message_id": "6f56878d-3d7e-462c-a91c-9675827989d4",
+        "observed_at": "2026-09-10T16:55:13.378627054+00:00",
+        "origin": "adapter",
+        "owner_epoch": 2,
+        "recipient": "alpha",
+        "source_generation": "dfcc31bc-2520-4e0d-a71a-e07fe689120e",
+        "source_position": 2,
+        "stage": "attempt_started",
+        "team_incarnation": "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9"
+      },
+      "schema_version": 1,
+      "sequence": 5,
+      "team_id": "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9"
+    },
+    {
+      "checksum": "4fe71aa976d0abb0e76bd5306743235c26c80c24cb156e1c37fc8107fb6a6c9a",
+      "committed_at": "2026-09-10T16:55:13.583097445+00:00",
+      "event_id": "141ff3ea-111b-491d-b0df-6bce331a5208",
+      "event_type": "receipt",
+      "log_epoch": "dfcc31bc-2520-4e0d-a71a-e07fe689120e",
+      "payload": {
+        "adapter": "tmux/1",
+        "attachment": {
+          "attachment_generation": 1,
+          "context_generation": "0",
+          "generation": "1",
+          "harness": "codex",
+          "launch_root": {
+            "claudeDir": "/tmp/th-l2-eywgfjoe/claude",
+            "rootAuthorityRevision": 0,
+            "teamIncarnationId": "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9",
+            "teamsDir": "/tmp/th-l2-eywgfjoe/claude/teams"
+          },
+          "member": "alpha",
+          "pane": "%2",
+          "pane_pid": 137,
+          "pane_start": "27984903",
+          "root": "/tmp/th-l2-eywgfjoe/claude",
+          "session": "$0",
+          "socket": "/tmp/th-l2-eywgfjoe/tmux/tmux-1000/default",
+          "team_incarnation": "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9",
+          "tmux_session": "$0"
+        },
+        "attempt_id": "f84cea49-cb85-428d-b505-e56ece9e065c",
+        "delivery_id": "8827794d-3f0e-4829-a13f-0cbdf49702a5",
+        "event_type": "receipt",
+        "evidence": "literal paste and harness submit exited 0; model uptake unobserved",
+        "message_id": "6f56878d-3d7e-462c-a91c-9675827989d4",
+        "observed_at": "2026-09-10T16:55:13.563476130+00:00",
+        "origin": "tmux_send_keys",
+        "owner_epoch": 2,
+        "recipient": "alpha",
+        "source_generation": "dfcc31bc-2520-4e0d-a71a-e07fe689120e",
+        "source_position": 2,
+        "stage": "submitted",
+        "team_incarnation": "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9"
+      },
+      "schema_version": 1,
+      "sequence": 6,
+      "team_id": "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9"
+    },
+    {
+      "checksum": "b4d81330139a5dd85bd74c71eafde557c0a3ca2086331ee63d4a97bfb8dfe671",
+      "committed_at": "2026-09-10T16:55:18.569011971+00:00",
+      "event_id": "a354be78-98c6-43a7-9acf-7a18f44ceaa7",
+      "event_type": "receipt",
+      "log_epoch": "dfcc31bc-2520-4e0d-a71a-e07fe689120e",
+      "payload": {
+        "accepted_sequence": 2,
+        "audience_proof": {
+          "kind": "captured-members",
+          "members": [
+            {
+              "member_id": "4ed6ad6d-86b3-4fb5-a429-30b0beec53e6",
+              "name": "lead"
+            },
+            {
+              "member_id": "alpha@l2-busy",
+              "name": "alpha"
+            }
+          ],
+          "team_id": "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9"
+        },
+        "body_bytes": 2860,
+        "body_hash": "77e2bd96f89b794dbd89db5a3c2dc56264a6898bb9417b84299437f4e1f920e7",
+        "context": "explicit-mesh-cli",
+        "delivery_id": "8827794d-3f0e-4829-a13f-0cbdf49702a5",
+        "kind": "consumed_by_read",
+        "message_id": "6f56878d-3d7e-462c-a91c-9675827989d4",
+        "read_audience": [
+          {
+            "member_id": "4ed6ad6d-86b3-4fb5-a429-30b0beec53e6",
+            "name": "lead"
+          },
+          {
+            "member_id": "alpha@l2-busy",
+            "name": "alpha"
+          }
+        ],
+        "reader": "alpha@l2-busy",
+        "reader_name": "alpha"
+      },
+      "schema_version": 1,
+      "sequence": 7,
+      "team_id": "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9"
+    },
+    {
+      "checksum": "78bba297dea33d566129f2f3ec8adbebf87b0975073537630a280daf4d8cc78e",
+      "committed_at": "2026-09-10T16:55:31.648592201+00:00",
+      "event_id": "e2313472-27ca-4eb8-9bd2-e0148531fa95",
+      "event_type": "message_accepted",
+      "log_epoch": "dfcc31bc-2520-4e0d-a71a-e07fe689120e",
+      "payload": {
+        "acceptance": "canonical",
+        "archive_outcome": "retained",
+        "audience_proof": {
+          "kind": "captured-members",
+          "members": [
+            {
+              "member_id": "4ed6ad6d-86b3-4fb5-a429-30b0beec53e6",
+              "name": "lead"
+            },
+            {
+              "member_id": "alpha@l2-busy",
+              "name": "alpha"
+            }
+          ],
+          "team_id": "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9"
+        },
+        "author": {
+          "member_id": "alpha@l2-busy",
+          "name": "alpha",
+          "verified": true
+        },
+        "body": "Please provide the missing assignment identity, release, and required context.",
+        "body_bytes": 78,
+        "body_format": "text/plain",
+        "body_hash": "f0f3604827cc264a85a76c26492f0633eded218f5240b1e4fc1a75293986d9bf",
+        "conversation_id": "4e6ec03bf27e14da62089a0543e28403cea9a2f197b52edacfe8d5dffd8cffe3",
+        "conversation_kind": "dm",
+        "correction_reason": null,
+        "delivery_targets": [
+          {
+            "delivery_id": "65e1ce8e-8ef7-4af4-8cdc-83fcf290e8f8",
+            "legacy_acceptance": "unknown",
+            "legacy_id": "d01e22ff-443b-49b5-8594-6d19cfd1d4bc",
+            "member_id": "4ed6ad6d-86b3-4fb5-a429-30b0beec53e6",
+            "read_audience": [
+              {
+                "member_id": "4ed6ad6d-86b3-4fb5-a429-30b0beec53e6",
+                "name": "lead"
+              },
+              {
+                "member_id": "alpha@l2-busy",
+                "name": "alpha"
+              }
+            ],
+            "recipient": "lead",
+            "source_path": "inboxes/lead.json"
+          }
+        ],
+        "dispatch_decision": {
+          "expectation": "unknown/legacy",
+          "policy_revision": 1,
+          "provenance": "legacy_default",
+          "wake_eligible": true
+        },
+        "envelope": {
+          "from": "alpha",
+          "id": "d01e22ff-443b-49b5-8594-6d19cfd1d4bc",
+          "read": false,
+          "text": null,
+          "timestamp": "2026-09-10T16:55:31.639Z"
+        },
+        "idempotency_key": "d01e22ff-443b-49b5-8594-6d19cfd1d4bc",
+        "legacy_acceptance": "unknown",
+        "link": null,
+        "message_id": "155f6a53-0e5a-4030-9535-968a165ff1df",
+        "origin": "authored",
+        "producer": "mesh-send:alpha@l2-busy",
+        "read_audience": [
+          {
+            "member_id": "4ed6ad6d-86b3-4fb5-a429-30b0beec53e6",
+            "name": "lead"
+          },
+          {
+            "member_id": "alpha@l2-busy",
+            "name": "alpha"
+          }
+        ],
+        "reply_to_message_id": null,
+        "request_digest": "85a1e6b25bdcd750c47064f08b234af9819d8c14b37e4d1685951b173b415350",
+        "response_expectation": {
+          "basis": "producer",
+          "expectation": "unknown/legacy",
+          "kind": "info",
+          "policy_revision": 1,
+          "provenance": "legacy_default",
+          "wake_eligible": true
+        },
+        "retention_class": "dm",
+        "source_authority": null,
+        "source_event_refs": [],
+        "summary": null,
+        "supersedes_message_ids": [],
+        "task_links": [],
+        "visibility_policy_id": "captured-members",
+        "visibility_policy_revision": 1,
+        "wake_priority": "urgent"
+      },
+      "schema_version": 1,
+      "sequence": 8,
+      "team_id": "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9"
+    },
+    {
+      "checksum": "9447deb2336fb8464ad1b32a2ef7120edc6bee6c24f423a2805196f838aa2bb1",
+      "committed_at": "2026-09-10T16:55:31.747494118+00:00",
+      "event_id": "ec8ddb28-faac-4ce0-9d33-3ada41e97722",
+      "event_type": "delivery_attempt",
+      "log_epoch": "dfcc31bc-2520-4e0d-a71a-e07fe689120e",
+      "payload": {
+        "adapter": "native-mailbox/1",
+        "attachment": {
+          "attachment_generation": 1,
+          "context_generation": "0",
+          "generation": "1",
+          "harness": "claude",
+          "launch_root": {
+            "claudeDir": "/tmp/th-l2-eywgfjoe/claude",
+            "rootAuthorityRevision": 0,
+            "teamIncarnationId": "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9",
+            "teamsDir": "/tmp/th-l2-eywgfjoe/claude/teams"
+          },
+          "member": "lead",
+          "pane": "%1",
+          "pane_pid": 118,
+          "pane_start": "27984898",
+          "root": "/tmp/th-l2-eywgfjoe/claude",
+          "session": "$0",
+          "socket": "/tmp/th-l2-eywgfjoe/tmux/tmux-1000/default",
+          "team_incarnation": "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9",
+          "tmux_session": "$0"
+        },
+        "attempt_id": "2d6e2560-ae2b-4ba5-b040-3016c2953c8a",
+        "delivery_id": "65e1ce8e-8ef7-4af4-8cdc-83fcf290e8f8",
+        "event_type": "delivery_attempt",
+        "evidence": "durable claim",
+        "message_id": "155f6a53-0e5a-4030-9535-968a165ff1df",
+        "observed_at": "2026-09-10T16:55:31.723149518+00:00",
+        "origin": "adapter",
+        "owner_epoch": 2,
+        "recipient": "lead",
+        "source_generation": "dfcc31bc-2520-4e0d-a71a-e07fe689120e",
+        "source_position": 8,
+        "stage": "attempt_started",
+        "team_incarnation": "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9"
+      },
+      "schema_version": 1,
+      "sequence": 9,
+      "team_id": "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9"
+    },
+    {
+      "checksum": "184ecaaf37e7dd34d72c1edd7af6cb5522f14c900ab3aa388e9fe0962409a35b",
+      "committed_at": "2026-09-10T16:55:31.813201025+00:00",
+      "event_id": "bb5e085d-ac9e-498e-a7eb-d9ecde0ff179",
+      "event_type": "receipt",
+      "log_epoch": "dfcc31bc-2520-4e0d-a71a-e07fe689120e",
+      "payload": {
+        "adapter": "native-mailbox/1",
+        "attachment": {
+          "attachment_generation": 1,
+          "context_generation": "0",
+          "generation": "1",
+          "harness": "claude",
+          "launch_root": {
+            "claudeDir": "/tmp/th-l2-eywgfjoe/claude",
+            "rootAuthorityRevision": 0,
+            "teamIncarnationId": "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9",
+            "teamsDir": "/tmp/th-l2-eywgfjoe/claude/teams"
+          },
+          "member": "lead",
+          "pane": "%1",
+          "pane_pid": 118,
+          "pane_start": "27984898",
+          "root": "/tmp/th-l2-eywgfjoe/claude",
+          "session": "$0",
+          "socket": "/tmp/th-l2-eywgfjoe/tmux/tmux-1000/default",
+          "team_incarnation": "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9",
+          "tmux_session": "$0"
+        },
+        "attempt_id": "2d6e2560-ae2b-4ba5-b040-3016c2953c8a",
+        "delivery_id": "65e1ce8e-8ef7-4af4-8cdc-83fcf290e8f8",
+        "event_type": "receipt",
+        "evidence": "durable native mailbox projection; uptake unobserved",
+        "message_id": "155f6a53-0e5a-4030-9535-968a165ff1df",
+        "observed_at": "2026-09-10T16:55:31.780957821+00:00",
+        "origin": "canonical_projection",
+        "owner_epoch": 2,
+        "recipient": "lead",
+        "source_generation": "dfcc31bc-2520-4e0d-a71a-e07fe689120e",
+        "source_position": 8,
+        "stage": "native_enqueued",
+        "team_incarnation": "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9"
+      },
+      "schema_version": 1,
+      "sequence": 10,
+      "team_id": "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9"
+    }
+  ]
+}

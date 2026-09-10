@@ -1,0 +1,186 @@
+{
+  "before": [
+    {
+      "pid": 1860433,
+      "start_ticks": "29747279",
+      "argv": [
+        "bwrap",
+        "--die-with-parent",
+        "--unshare-pid",
+        "--ro-bind",
+        "/",
+        "/",
+        "--tmpfs",
+        "/home",
+        "--tmpfs",
+        "/tmp",
+        "--tmpfs",
+        "/run",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+        "--bind",
+        "/tmp/th-l2-d9vmymco",
+        "/tmp/th-l2-d9vmymco",
+        "--chdir",
+        "/tmp/th-l2-d9vmymco/project",
+        "/bin/bash",
+        "/tmp/th-l2-d9vmymco/boot.sh",
+        ""
+      ]
+    },
+    {
+      "pid": 1860434,
+      "start_ticks": "29747279",
+      "argv": [
+        "bwrap",
+        "--die-with-parent",
+        "--unshare-pid",
+        "--ro-bind",
+        "/",
+        "/",
+        "--tmpfs",
+        "/home",
+        "--tmpfs",
+        "/tmp",
+        "--tmpfs",
+        "/run",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+        "--bind",
+        "/tmp/th-l2-d9vmymco",
+        "/tmp/th-l2-d9vmymco",
+        "--chdir",
+        "/tmp/th-l2-d9vmymco/project",
+        "/bin/bash",
+        "/tmp/th-l2-d9vmymco/boot.sh",
+        ""
+      ]
+    },
+    {
+      "pid": 1860435,
+      "start_ticks": "29747279",
+      "argv": [
+        "/bin/bash",
+        "/tmp/th-l2-d9vmymco/boot.sh",
+        ""
+      ]
+    },
+    {
+      "pid": 1860436,
+      "start_ticks": "29747280",
+      "argv": [
+        "tmux",
+        "-D",
+        "-f",
+        "/dev/null",
+        ""
+      ]
+    },
+    {
+      "pid": 1860442,
+      "start_ticks": "29747290",
+      "argv": [
+        "/bin/bash",
+        ""
+      ]
+    },
+    {
+      "pid": 1860445,
+      "start_ticks": "29747290",
+      "argv": [
+        "/tmp/th-l2-d9vmymco/home/.local/bin/taurhaus-daemon",
+        "--port",
+        "48695",
+        "--data-dir",
+        "/tmp/th-l2-d9vmymco/data",
+        ""
+      ]
+    },
+    {
+      "pid": 1860720,
+      "start_ticks": "29747331",
+      "argv": [
+        "/bin/bash",
+        "-ic",
+        "cd '/tmp/th-l2-d9vmymco/project' && CLAUDE_DIR='/tmp/th-l2-d9vmymco/claude' CLAUDE_CONFIG_DIR='/tmp/th-l2-d9vmymco/claude' CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions --model 'claude-haiku-4-5' --team-name 'l2-busy' --agent-name 'lead' --agent-id 'lead@l2-busy' --agent-type 'orchestrator' -n 'lead'; exec \"$SHELL\"",
+        ""
+      ]
+    },
+    {
+      "pid": 1860723,
+      "start_ticks": "29747332",
+      "argv": [
+        "claude",
+        "--dangerously-skip-permissions",
+        "--model",
+        "claude-haiku-4-5",
+        "--team-name",
+        "l2-busy",
+        "--agent-name",
+        "lead",
+        "--agent-id",
+        "lead@l2-busy",
+        "--agent-type",
+        "orchestrator",
+        "-n",
+        "lead",
+        ""
+      ]
+    },
+    {
+      "pid": 1860797,
+      "start_ticks": "29747344",
+      "argv": [
+        "/tmp/th-l2-d9vmymco/home/.local/bin/mesh",
+        "team-daemon",
+        "start",
+        "--team",
+        "l2-busy",
+        "--name",
+        "lead",
+        "--claude-dir",
+        "/tmp/th-l2-d9vmymco/claude",
+        ""
+      ]
+    },
+    {
+      "pid": 1880813,
+      "start_ticks": "29754052",
+      "argv": [
+        "-bash",
+        ""
+      ]
+    },
+    {
+      "pid": 1880855,
+      "start_ticks": "29754090",
+      "argv": [
+        "codex",
+        "--yolo",
+        "-c",
+        "notify=[\"/tmp/th-l2-d9vmymco/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]",
+        "-m",
+        "gpt-5.6-luna",
+        "-c",
+        "model_reasoning_effort=\"low\"",
+        ""
+      ]
+    },
+    {
+      "pid": 1883125,
+      "start_ticks": "29754869",
+      "argv": [
+        "/tmp/th-l2-d9vmymco/home/.local/bin/codex-code-mode-host",
+        ""
+      ]
+    }
+  ],
+  "survivors": [],
+  "port_closed": true,
+  "auth_removed": true,
+  "root_removed": true
+}

@@ -1,0 +1,26 @@
+[
+  {
+    "ts": "2026-09-10T17:27:46.469804824Z",
+    "session_id": "01a08c5c-6f91-7fd0-82a7-67bc6482f99e",
+    "event": "agent-turn-complete",
+    "turn_id": "01a08c5c-6fb6-7ae1-a9b1-4a5afbc08d62"
+  },
+  {
+    "ts": "2026-09-10T17:27:51.654126082Z",
+    "session_id": "01a08c5c-6617-75b3-b64a-3d23e8eb94c9",
+    "event": "agent-turn-complete",
+    "turn_id": "01a08c5c-67a2-76d1-b779-f3eab40b93d8"
+  },
+  {
+    "ts": "2026-09-10T17:28:17.527850190Z",
+    "session_id": "01a08c5c-6617-75b3-b64a-3d23e8eb94c9",
+    "event": "agent-turn-complete",
+    "turn_id": "01a08c5c-9379-7d03-ade3-b3a3dc24f61b"
+  },
+  {
+    "ts": "2026-09-10T17:28:31.050596320Z",
+    "session_id": "01a08c5c-6617-75b3-b64a-3d23e8eb94c9",
+    "event": "agent-turn-complete",
+    "turn_id": "01a08c5c-fa85-7370-8336-fdc137d7cf9a"
+  }
+]

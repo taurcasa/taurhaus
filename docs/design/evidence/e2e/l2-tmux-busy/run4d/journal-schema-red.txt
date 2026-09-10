@@ -1,0 +1,14 @@
+E...
+======================================================================
+ERROR: test_alpha_journal_reply_is_sufficient (reply_test.ReplyTests.test_alpha_journal_reply_is_sufficient)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run4d/reply_test.py", line 15, in test_alpha_journal_reply_is_sufficient
+    self.assertEqual(result['source'],'alpha journal reply')
+                     ~~~~~~^^^^^^^^^^
+TypeError: 'NoneType' object is not subscriptable
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.001s
+
+FAILED (errors=1)

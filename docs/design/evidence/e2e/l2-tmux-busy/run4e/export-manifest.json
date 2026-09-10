@@ -1,0 +1,9 @@
+{
+  "aliases": {
+    "step1-initial-pane-0.txt": "final-pane-0.txt",
+    "step1-initial-pane-1.txt": "final-pane-1.txt",
+    "step1-runtime.json": "final-runtime.json",
+    "team/runtime/alpha.json": "final-runtime.json"
+  },
+  "sanitization": "Drop account rate_limits; retain per-turn token counts and every daemon JSONL row."
+}

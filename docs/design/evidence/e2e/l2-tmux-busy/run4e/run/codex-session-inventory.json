@@ -1,0 +1,14 @@
+[
+  {
+    "path": "shell_snapshots/01a08c6d-44bb-7e20-90fc-98221d301603.1789062366399681342.sh",
+    "bytes": 1129
+  },
+  {
+    "path": "thread-writer-locks/01a08c6d-44bb-7e20-90fc-98221d301603.lock",
+    "bytes": 0
+  },
+  {
+    "path": "thread-writer-locks/.coordination.lock",
+    "bytes": 0
+  }
+]

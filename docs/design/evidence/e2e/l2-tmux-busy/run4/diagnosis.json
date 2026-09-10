@@ -1,0 +1,94 @@
+{
+  "outcome": "UNAVAILABLE / INCOMPLETE",
+  "classification": "harness",
+  "raw_controller_result": {
+    "step": 1,
+    "outcome": "FAIL",
+    "classification": "taurhaus",
+    "reason": "alpha onboarding not delivered/completed with fresh idle activity"
+  },
+  "reason": "Controller requires recovery-card text as user input; actual card arrived through successful explicit mesh read. In addition, a different-session notify-only turn has no retained token accounting; no further input was permitted.",
+  "fresh_attributed_idle_at_stop": true,
+  "attributed_runtime_row": {
+    "activity_attribution": "attributed",
+    "activity_confidence": "high",
+    "args": "codex --yolo --dangerously-bypass-hook-trust -c notify=[\"/tmp/th-l2-i_py2myk/home/.local/bin/taurhaus-daemon\",\"codex-notify\"] -m gpt-5.6-luna -c model_reasoning_effort=\"low\"",
+    "cli_tool": "codex",
+    "group_id": "l2-busy",
+    "group_kind": "mesh_team",
+    "group_label": "l2-busy",
+    "jsonl_path": "/tmp/th-l2-i_py2myk/codex/sessions/2026/09/10/rollout-2026-09-10T18-20-28-01a08c1e-dcdc-7bf3-8069-acb3a802a38a.jsonl",
+    "last_output_age_secs": 76,
+    "member_name": "alpha",
+    "pid": 138,
+    "project_path": "/tmp/th-l2-i_py2myk/project",
+    "project_unattributed_active": false,
+    "recent_io": false,
+    "session_id": "01a08c1e-dcdc-7bf3-8069-acb3a802a38a",
+    "state": "idle",
+    "tmux_pane": "%2",
+    "tmux_session": "taurhaus",
+    "tmux_window": "2",
+    "tmux_window_name": "project",
+    "tty": "/dev/pts/2"
+  },
+  "onboarding_message_id": "f6238d79-b8a7-47f6-a6c1-23e0fd6c1e81",
+  "submission_count": 1,
+  "explicit_read_receipt_count": 1,
+  "recovery_card_user_rows": 0,
+  "successful_card_tool_reads": 1,
+  "tool_read_commands": [
+    [
+      "/usr/bin/zsh",
+      "-lc",
+      "mesh read --unread --mark-read --team l2-busy --name alpha"
+    ]
+  ],
+  "completed_rollout_turns": [
+    "01a08c1e-e1e5-73b0-b4a4-4bd12703805d"
+  ],
+  "metering_complete": false,
+  "unknown_notify_turns": [
+    {
+      "turn_id": "01a08c1e-e4bf-72b2-a558-dbbebeed86b3",
+      "usd": null,
+      "completed": true,
+      "source": "notify-only"
+    }
+  ],
+  "known_model_call_increments": [
+    {
+      "at": "2026-09-10T16:20:36.108Z",
+      "usage": {
+        "input_tokens": 8818,
+        "cached_input_tokens": 3840,
+        "output_tokens": 114
+      },
+      "api_equivalent_usd": 0.0012092000000000001,
+      "conservative_usd": 0.0107184
+    },
+    {
+      "at": "2026-09-10T16:20:40.013Z",
+      "usage": {
+        "input_tokens": 10637,
+        "cached_input_tokens": 7936,
+        "output_tokens": 98
+      },
+      "api_equivalent_usd": 0.00081652,
+      "conservative_usd": 0.012882
+    }
+  ],
+  "total_spend_cap_verified": false,
+  "daemon_jsonl_rows": 139,
+  "passive_flock_samples": 4,
+  "terminal_lock_inode": 1638350,
+  "product_failure_established": false,
+  "runtime_retried": false,
+  "steps_2_through_6": "NOT RUN",
+  "limitations": [
+    "No managed-stop lock contention observed.",
+    "Model-issued onboarding read relied on scratch CLAUDE_DIR; omitted explicit --claude-dir and did not follow its returned cursor. Step 6 was not reached.",
+    "Notify-only identity and its unobserved spend were not inferred away.",
+    "No callable Opus reviewer; no review approval."
+  ]
+}

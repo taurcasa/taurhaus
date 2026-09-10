@@ -1,0 +1,12 @@
+{
+  "member": "alpha",
+  "root": "/tmp/th-l2-enwdjc07/claude",
+  "incarnation": "22cb580d00c7c335b10eb8d224da01c9d79c2a1708c8c67bec751348df72bd74",
+  "epoch": 2,
+  "heartbeat": "2026-09-10T08:31:54.397870992+00:00",
+  "pending_since": null,
+  "error": null,
+  "last_defer_reason": "IO error: delivery: pending: activity not freshly idle",
+  "failures": 0,
+  "completed": 0
+}

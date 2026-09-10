@@ -1,0 +1,161 @@
+{
+  "paid_inputs": 3,
+  "turns": [
+    {
+      "turn_id": "01a08d4b-9cb3-7813-b7b6-a07558315b2b",
+      "usd": 0.00755876,
+      "completed": true,
+      "usage": {
+        "input_tokens": 44647,
+        "cached_input_tokens": 11008,
+        "output_tokens": 509
+      },
+      "conservative_usd": 0.0541872
+    },
+    {
+      "turn_id": "01a08d4b-e040-7920-8c97-18d3d383691d",
+      "usd": 0.00224604,
+      "completed": true,
+      "usage": {
+        "input_tokens": 13095,
+        "cached_input_tokens": 12032,
+        "output_tokens": 1494
+      },
+      "conservative_usd": 0.0175068
+    },
+    {
+      "turn_id": "01a08d4c-4fe8-7991-9199-e6fe02fd86de",
+      "usd": 0.00250924,
+      "completed": true,
+      "usage": {
+        "input_tokens": 47003,
+        "cached_input_tokens": 40192,
+        "output_tokens": 286
+      },
+      "conservative_usd": 0.05674679999999999
+    },
+    {
+      "turn_id": "01a08d4b-a08d-7162-a0e6-ae11e3252ea5",
+      "usd": null,
+      "completed": true,
+      "source": "notify-only",
+      "classification": "unknown-but-not-a-model-input"
+    }
+  ],
+  "usage_rows": [
+    {
+      "at": "2026-09-10T21:49:03.279Z",
+      "turn_id": "01a08d4b-9cb3-7813-b7b6-a07558315b2b",
+      "usage": {
+        "input_tokens": 9023,
+        "cached_input_tokens": 0,
+        "output_tokens": 156
+      },
+      "usd": 0.0019918
+    },
+    {
+      "at": "2026-09-10T21:49:08.868Z",
+      "turn_id": "01a08d4b-9cb3-7813-b7b6-a07558315b2b",
+      "usage": {
+        "input_tokens": 11407,
+        "cached_input_tokens": 0,
+        "output_tokens": 183
+      },
+      "usd": 0.002501
+    },
+    {
+      "at": "2026-09-10T21:49:13.118Z",
+      "turn_id": "01a08d4b-9cb3-7813-b7b6-a07558315b2b",
+      "usage": {
+        "input_tokens": 11926,
+        "cached_input_tokens": 0,
+        "output_tokens": 149
+      },
+      "usd": 0.0025640000000000003
+    },
+    {
+      "at": "2026-09-10T21:49:14.388Z",
+      "turn_id": "01a08d4b-9cb3-7813-b7b6-a07558315b2b",
+      "usage": {
+        "input_tokens": 12291,
+        "cached_input_tokens": 11008,
+        "output_tokens": 21
+      },
+      "usd": 0.00050196
+    },
+    {
+      "at": "2026-09-10T21:49:42.963Z",
+      "turn_id": "01a08d4b-e040-7920-8c97-18d3d383691d",
+      "usage": {
+        "input_tokens": 13095,
+        "cached_input_tokens": 12032,
+        "output_tokens": 1494
+      },
+      "usd": 0.00224604
+    },
+    {
+      "at": "2026-09-10T21:49:47.875Z",
+      "turn_id": "01a08d4c-4fe8-7991-9199-e6fe02fd86de",
+      "usage": {
+        "input_tokens": 14647,
+        "cached_input_tokens": 11008,
+        "output_tokens": 120
+      },
+      "usd": 0.0010919600000000001
+    },
+    {
+      "at": "2026-09-10T21:49:51.931Z",
+      "turn_id": "01a08d4c-4fe8-7991-9199-e6fe02fd86de",
+      "usage": {
+        "input_tokens": 15992,
+        "cached_input_tokens": 14080,
+        "output_tokens": 156
+      },
+      "usd": 0.0008512000000000001
+    },
+    {
+      "at": "2026-09-10T21:49:52.821Z",
+      "turn_id": "01a08d4c-4fe8-7991-9199-e6fe02fd86de",
+      "usage": {
+        "input_tokens": 16364,
+        "cached_input_tokens": 15104,
+        "output_tokens": 10
+      },
+      "usd": 0.00056608
+    }
+  ],
+  "metering_complete": true,
+  "api_equivalent_usd": 0.01231404,
+  "conservative_usd": 0.1284408,
+  "rates_usd_per_million": {
+    "input": 0.2,
+    "cached_input": 0.02,
+    "output": 1.2
+  },
+  "rate_source": "Inherited integration/messaging packet; estimates, not invoices",
+  "input_reservations": [
+    {
+      "reason": "production initialization/onboarding",
+      "step": 1,
+      "at": 1789076935.237916,
+      "generation": null
+    },
+    {
+      "reason": "Q-work",
+      "step": 2,
+      "at": 1789076954.9306345,
+      "generation": 1,
+      "confirmed": true
+    },
+    {
+      "reason": "Q",
+      "step": 2,
+      "at": 1789076955.665097,
+      "generation": 1
+    }
+  ],
+  "rollout_turns": 3,
+  "controller_input_attempts": 1,
+  "controller_issued_inputs": 1,
+  "mesh_terminal_deliveries": 2
+}

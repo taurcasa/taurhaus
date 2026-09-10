@@ -1,0 +1,69 @@
+{
+  "obligation": {
+    "message_id": "2acc0862-7084-42e1-95fb-4d4d7596374d",
+    "delivery_id": "c09cb83b-4bbc-46c2-9a29-2bb683de357a",
+    "recipient": "lead",
+    "source_generation": "dfcc31bc-2520-4e0d-a71a-e07fe689120e",
+    "source_position": 1,
+    "body": "[taurhaus] recovery_card\nIdentity: lead on l2-busy; key={\"card_schema\":1,\"recipient\":[\"e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9\",\"5ff2872d-b3a5-44fe-b549-bcb55bcf653f\"],\"context\":[1,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-l2-eywgfjoe/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-l2-eywgfjoe/claude\",\"harness_account_root\":\"/tmp/th-l2-eywgfjoe/claude\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-l2-eywgfjoe/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"37a06e5154de9ef5fdb08ede626ffb29630db236bda6cc9bd2f7868b61a9c25b\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: ba6889266c0a30129686075b8b65701909d168a6240744b9497673c5fd34d256; source=a8d97ad61031cbcac3988f3b68c520a8a5a4cb0a780f3e3a2fe21bf4bef83bf2; audience=unavailable\nProject cwd: /tmp/th-l2-eywgfjoe/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: unavailable; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-10 16:55:11.430069131 UTC\nCurrent task: # \u2014 \nExecution mode: ; Validation expectation: ; Response expectation: ; Adjacent fix policy: ; Override allowed: false; Override reason: none\nFocal files: unavailable\nRole: unavailable\nHOLD: minimal role steering unavailable; owner: team lead.\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context."
+  },
+  "attempts": [
+    {
+      "claim": {
+        "obligation": {
+          "message_id": "2acc0862-7084-42e1-95fb-4d4d7596374d",
+          "delivery_id": "c09cb83b-4bbc-46c2-9a29-2bb683de357a",
+          "recipient": "lead",
+          "source_generation": "dfcc31bc-2520-4e0d-a71a-e07fe689120e",
+          "source_position": 1,
+          "body": "[taurhaus] recovery_card\nIdentity: lead on l2-busy; key={\"card_schema\":1,\"recipient\":[\"e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9\",\"5ff2872d-b3a5-44fe-b549-bcb55bcf653f\"],\"context\":[1,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-l2-eywgfjoe/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-l2-eywgfjoe/claude\",\"harness_account_root\":\"/tmp/th-l2-eywgfjoe/claude\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-l2-eywgfjoe/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"37a06e5154de9ef5fdb08ede626ffb29630db236bda6cc9bd2f7868b61a9c25b\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: ba6889266c0a30129686075b8b65701909d168a6240744b9497673c5fd34d256; source=a8d97ad61031cbcac3988f3b68c520a8a5a4cb0a780f3e3a2fe21bf4bef83bf2; audience=unavailable\nProject cwd: /tmp/th-l2-eywgfjoe/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: unavailable; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-10 16:55:11.430069131 UTC\nCurrent task: # \u2014 \nExecution mode: ; Validation expectation: ; Response expectation: ; Adjacent fix policy: ; Override allowed: false; Override reason: none\nFocal files: unavailable\nRole: unavailable\nHOLD: minimal role steering unavailable; owner: team lead.\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context."
+        },
+        "attachment": {
+          "launch_root": {
+            "claudeDir": "/tmp/th-l2-eywgfjoe/claude",
+            "rootAuthorityRevision": 0,
+            "teamsDir": "/tmp/th-l2-eywgfjoe/claude/teams",
+            "teamIncarnationId": "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9"
+          },
+          "attachment_generation": 1,
+          "root": "/tmp/th-l2-eywgfjoe/claude",
+          "team_incarnation": "e0102e361ffeabe3e1dcfd688a569fa7e84964c50d728761e934f2947d2acbd9",
+          "member": "lead",
+          "session": "$0",
+          "context_generation": "0",
+          "generation": "1",
+          "socket": "/tmp/th-l2-eywgfjoe/tmux/tmux-1000/default",
+          "pane": "%1",
+          "pane_pid": 118,
+          "pane_start": "27984898",
+          "tmux_session": "$0",
+          "harness": "claude"
+        },
+        "epoch": 2,
+        "adapter": "native-mailbox/1",
+        "attempt_id": "8965cd06-377d-4ab6-84c7-8cc5e3b8f5cc"
+      },
+      "receipts": [
+        {
+          "stage": "accepted",
+          "origin": "legacy_mapping",
+          "evidence": "source obligation",
+          "observed_at": "2026-09-10T16:55:12.369192505+00:00"
+        },
+        {
+          "stage": "attempt_started",
+          "origin": "adapter",
+          "evidence": "durable claim",
+          "observed_at": "2026-09-10T16:55:12.369196995+00:00"
+        },
+        {
+          "stage": "native_enqueued",
+          "origin": "canonical_projection",
+          "evidence": "durable native mailbox projection; uptake unobserved",
+          "observed_at": "2026-09-10T16:55:12.418288833+00:00"
+        }
+      ],
+      "presentation_started": true
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "marker": "Q-bd19c189",
+  "message_id": "e546fe4e-8924-4cc1-b78e-6815522bc7a4",
+  "sequence": 11,
+  "status": "accepted",
+  "projection": "pending",
+  "delivery_targets": [
+    {
+      "delivery_id": "3c04700d-c6a4-4694-91a5-ec30591a90a9",
+      "legacy_acceptance": "unknown",
+      "legacy_id": "74099cca-ee7a-426e-809e-541174a7cf5f",
+      "member_id": "alpha@l2-busy",
+      "read_audience": [
+        {
+          "member_id": "aaae6903-3d77-4fb1-acbe-76b5ef51d44d",
+          "name": "lead"
+        },
+        {
+          "member_id": "alpha@l2-busy",
+          "name": "alpha"
+        }
+      ],
+      "recipient": "alpha",
+      "source_path": "inboxes/alpha.json"
+    }
+  ]
+}

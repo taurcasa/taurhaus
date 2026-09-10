@@ -1,0 +1,41 @@
+EEEE
+======================================================================
+ERROR: test_blank_startup_waits_120_seconds_and_is_environment (startup_test.StartupTests.test_blank_startup_waits_120_seconds_and_is_environment)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run4f/startup_test.py", line 26, in test_blank_startup_waits_120_seconds_and_is_environment
+    trial.startup_preflight()
+    ^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Trial' object has no attribute 'startup_preflight'
+
+======================================================================
+ERROR: test_composer_requires_prompt_and_model_footer (startup_test.StartupTests.test_composer_requires_prompt_and_model_footer)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run4f/startup_test.py", line 43, in test_composer_requires_prompt_and_model_footer
+    self.assertFalse(support.startup_composer(pane))
+                     ^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'support' has no attribute 'startup_composer'
+
+======================================================================
+ERROR: test_delayed_composer_gets_separate_onboarding_window (startup_test.StartupTests.test_delayed_composer_gets_separate_onboarding_window)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run4f/startup_test.py", line 37, in test_delayed_composer_gets_separate_onboarding_window
+    trial.startup_preflight()
+    ^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Trial' object has no attribute 'startup_preflight'
+
+======================================================================
+ERROR: test_failure_logs_retained_with_secrets_and_root_removed (startup_test.StartupTests.test_failure_logs_retained_with_secrets_and_root_removed)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run4f/startup_test.py", line 53, in test_failure_logs_retained_with_secrets_and_root_removed
+    support.retain_codex_logs(root,out)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'support' has no attribute 'retain_codex_logs'
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.004s
+
+FAILED (errors=4)

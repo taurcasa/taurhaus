@@ -1,0 +1,34 @@
+[
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789059214.4212132,
+    "exit": 0,
+    "pids": [
+      "3600251"
+    ]
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789059229.430467,
+    "exit": 1,
+    "pids": []
+  },
+  {
+    "command": "just build-daemon",
+    "cwd": "/home/mstie/projects/taurhaus-l2-tmux-busy",
+    "CARGO_TARGET_DIR": "/home/mstie/projects/taurhaus-l2-tmux-busy/src-tauri/target",
+    "exit": 0
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789059276.6344028,
+    "exit": 1,
+    "pids": []
+  },
+  {
+    "command": "cargo build --bin mesh",
+    "cwd": "/home/mstie/projects/mesh-l2",
+    "CARGO_TARGET_DIR": "/home/mstie/projects/mesh-l2/target",
+    "exit": 0
+  }
+]

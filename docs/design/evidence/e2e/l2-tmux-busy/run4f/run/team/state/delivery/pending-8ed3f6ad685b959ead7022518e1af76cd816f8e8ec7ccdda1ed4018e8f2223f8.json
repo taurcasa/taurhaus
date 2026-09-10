@@ -1,0 +1,24 @@
+[
+  {
+    "obligation": {
+      "message_id": "c3afc1a0-df35-4d1a-a21b-90c001cb5f9c",
+      "delivery_id": "af8e9787-2706-4297-9afa-b4fa58370aea",
+      "recipient": "alpha",
+      "source_generation": "1f31f05a-d80f-4948-ad72-f13a9061160e",
+      "source_position": 18,
+      "body": "ACTION REQUIRED: Read this message explicitly, then reply exactly Q2-cc0dd185."
+    },
+    "since": "2026-09-10T18:07:03.837257560+00:00"
+  },
+  {
+    "obligation": {
+      "message_id": "8645d625-c970-46a3-a336-a31040fe8156",
+      "delivery_id": "9d7fd351-1b2b-4112-b635-60ded7afbc8d",
+      "recipient": "alpha",
+      "source_generation": "1f31f05a-d80f-4948-ad72-f13a9061160e",
+      "source_position": 19,
+      "body": "[taurhaus] recovery_card\nIdentity: alpha on l2-busy; key={\"card_schema\":1,\"recipient\":[\"2eb66d6f68301472f19b17476130d667982e192a6b32a4ae68926fccfd6f3d2f\",\"0a6bec55-aa15-4ac7-a84b-155b771c2c67\"],\"context\":[2,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-l2-4maq2k8o/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-l2-4maq2k8o/claude\",\"harness_account_root\":\"/tmp/th-l2-4maq2k8o/codex\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-l2-4maq2k8o/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"bb80b8a0546ec4a737117a5e83df361adeb3072fc2e0f6bd1fe36379b172fa30\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: 198342bde5634b5dcee3d587e800585b55d51e5f1551fad4099a95a903efe603; source=682540e4a3f9cfbca660a5add5db7fa379ff474f5fe7c2f18798f74d7e72c755; audience=unavailable\nProject cwd: /tmp/th-l2-4maq2k8o/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: low; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-10 18:07:01.658366210 UTC\nCurrent task: # \u2014 \nExecution mode: ; Validation expectation: ; Response expectation: ; Adjacent fix policy: ; Override allowed: false; Override reason: none\nFocal files: unavailable\nRole: unavailable\nPurpose: For every inbox notification including onboarding, explicitly run mesh read --json --unread --mark-read --claude-dir \"$CLAUDE_DIR\" --team l2-busy --name alpha; follow returned --since cursors with the same filters until done. Reply briefly. When a message assigns you a task, run exactly the mesh lifecycle commands the message names, in order, then reply with the task id and the word done. Never modify files. For ACTION REQUIRED marker messages, read your inbox with mesh read --json --mark-read --claude-dir \"$CLAUDE_DIR\" --team l2-busy --name alpha and reply exactly with the requested marker. Follow every returned cursor until done. Do not send other messages.\n\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context."
+    },
+    "since": "2026-09-10T18:07:04.000742841+00:00"
+  }
+]
