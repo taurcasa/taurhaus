@@ -3999,44 +3999,76 @@ fn operator_resume_renders_recorded_session_for_capturing_harnesses() {
     // Regression: 4994b243 limited recorded-session resume to effort switches;
     // e2e lane 4 run 7 observed an operator resume lose the tmux conversation.
     for tool in [CliTool::Codex, CliTool::Claude, CliTool::Grok, CliTool::Agy] {
-        let tmp = TempDir::new().unwrap();
-        let runtime = Arc::new(RecordingCoordinationRuntime::default());
-        let mut orchestrator =
-            new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime.clone());
-        orchestrator.create_team("resume-recorded", None).unwrap();
-        orchestrator
-            .add_member(
-                "resume-recorded",
-                member("seat", MemberRole::Lead, tool, tmp.path().to_str().unwrap()),
-            )
-            .unwrap();
-        let mut record = MemberRuntimeStore::load(tmp.path(), "resume-recorded", "seat").unwrap();
-        record.session_id = Some("  recorded-session  ".into());
-        record.health = HealthState::SessionDead;
-        MemberRuntimeStore::save(tmp.path(), "resume-recorded", "seat", &record).unwrap();
+        for (session_id, effort) in [
+            (Some("  recorded-session  "), None),
+            (None, None),
+            (Some(""), None),
+            (Some(" \t "), None),
+            (Some("recorded-session"), Some("high")),
+        ] {
+            let tmp = TempDir::new().unwrap();
+            let runtime = Arc::new(RecordingCoordinationRuntime::default());
+            let mut orchestrator =
+                new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime.clone());
+            orchestrator.create_team("resume-recorded", None).unwrap();
+            orchestrator
+                .add_member(
+                    "resume-recorded",
+                    member("seat", MemberRole::Lead, tool, tmp.path().to_str().unwrap()),
+                )
+                .unwrap();
+            let mut record =
+                MemberRuntimeStore::load(tmp.path(), "resume-recorded", "seat").unwrap();
+            record.session_id = session_id.map(str::to_string);
+            record.health = HealthState::SessionDead;
+            MemberRuntimeStore::save(tmp.path(), "resume-recorded", "seat", &record).unwrap();
 
-        let report = orchestrator
-            .resume_member("resume-recorded", "seat")
-            .unwrap();
-        assert!(report.resumed, "{report:?}");
-        let calls = runtime.calls();
-        let launch = calls
-            .iter()
-            .find_map(|call| match call {
-                RuntimeCall::SendKeys { keys, .. } => Some(keys),
-                _ => None,
-            })
-            .unwrap();
-        let expected = match tool {
-            CliTool::Codex => "codex resume 'recorded-session' --yolo",
-            CliTool::Claude => "claude --dangerously-skip-permissions --resume 'recorded-session'",
-            CliTool::Grok => "grok --always-approve --resume 'recorded-session'",
-            CliTool::Agy => "agy --dangerously-skip-permissions --model",
-            _ => unreachable!(),
-        };
-        assert!(launch.contains(expected), "{tool}: {launch}");
-        if tool == CliTool::Agy {
-            assert!(!launch.contains("recorded-session"), "{launch}");
+            let report = orchestrator
+                .resume_member_with_cli_commands(
+                    &ResumeMemberRequest {
+                        team_name: "resume-recorded".into(),
+                        member_name: "seat".into(),
+                        reasoning_effort_override: effort.map(str::to_string),
+                    },
+                    &CliCommandSettings::default(),
+                )
+                .unwrap();
+            assert!(report.resumed, "{report:?}");
+            let calls = runtime.calls();
+            let launch = calls
+                .iter()
+                .find_map(|call| match call {
+                    RuntimeCall::SendKeys { keys, .. } => Some(keys),
+                    _ => None,
+                })
+                .unwrap();
+            let expected = match tool {
+                CliTool::Codex => "codex resume 'recorded-session' --yolo",
+                CliTool::Claude => {
+                    "claude --dangerously-skip-permissions --resume 'recorded-session'"
+                }
+                CliTool::Grok => "grok --always-approve --resume 'recorded-session'",
+                CliTool::Agy => "agy --dangerously-skip-permissions --model",
+                _ => unreachable!(),
+            };
+            let resumes =
+                tool != CliTool::Agy && session_id.is_some_and(|id| !id.trim().is_empty());
+            if resumes {
+                assert!(launch.contains(expected), "{tool}: {launch}");
+            } else {
+                assert!(!launch.contains("recorded-session"), "{launch}");
+                assert!(
+                    !launch.contains(" resume ")
+                        && !launch.contains(" --resume")
+                        && !launch.contains("--conversation"),
+                    "{launch}"
+                );
+            }
+            if let Some(effort) = effort {
+                let updated =
+                    MemberRuntimeStore::load(tmp.path(), "resume-recorded", "seat").unwrap();
+                assert_eq!(updated.applied_effort.as_deref(), Some(effort), "{launch}");
+            }
         }
     }
 }
