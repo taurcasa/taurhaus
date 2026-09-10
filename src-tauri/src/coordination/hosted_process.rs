@@ -910,7 +910,7 @@ with socket.socket(socket.AF_UNIX) as listener:
 
     #[test]
     fn hosted_idle_startup_card_and_transcript_use_real_thread_state() {
-        // Regression: 80290f36 rejected startup recovery by requesting unsupported includeTurns.
+        // Regression: cadd533e (still present in 80290f36) rejected startup recovery by requesting unsupported includeTurns.
         let tmp = tempfile::tempdir().unwrap();
         let launch = fixture(tmp.path());
         let guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
@@ -930,7 +930,7 @@ with socket.socket(socket.AF_UNIX) as listener:
 
     #[test]
     fn hosted_first_turn_read_is_pending_then_steers_tracked_id() {
-        // Regression: 80290f36 rejected transient rollout reads and derived active IDs from empty turns.
+        // Regression: cadd533e (still present in 80290f36) rejected transient rollout reads and derived active IDs from empty turns.
         let tmp = tempfile::tempdir().unwrap();
         let mut launch = fixture(tmp.path());
         launch
@@ -961,7 +961,7 @@ with socket.socket(socket.AF_UNIX) as listener:
 
     #[test]
     fn hosted_transcript_window_does_not_forget_active_turn() {
-        // Regression: 80290f36 used read history instead of connection state and events.
+        // Regression: cadd533e (still present in 80290f36) used read history instead of connection state and events.
         let tmp = tempfile::tempdir().unwrap();
         let launch = fixture(tmp.path());
         let guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
@@ -989,7 +989,7 @@ with socket.socket(socket.AF_UNIX) as listener:
 
     #[test]
     fn hosted_rpc_rejection_is_logged_without_params() {
-        // Regression: 80290f36 discarded the host error behind an opaque public refusal.
+        // Regression: cadd533e (still present in 80290f36) discarded the host error behind an opaque public refusal.
         let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         let tmp = tempfile::tempdir().unwrap();
         let sink =
