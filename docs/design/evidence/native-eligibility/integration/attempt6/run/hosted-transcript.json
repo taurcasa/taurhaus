@@ -1,0 +1,97 @@
+{
+  "attachmentGeneration": 1,
+  "eventsTruncated": true,
+  "outcomeUnknown": false,
+  "requests": [],
+  "thread": {
+    "agentNickname": null,
+    "agentRole": null,
+    "canAcceptDirectInput": true,
+    "cliVersion": "0.153.4",
+    "createdAt": 1789014123,
+    "cwd": "/tmp/th-int-3s1yjoo9/project",
+    "ephemeral": false,
+    "extra": null,
+    "forkedFromId": null,
+    "gitInfo": {
+      "branch": "master",
+      "originUrl": null,
+      "sha": "d906fecb7dc860fdc95681627ddf777f82c13813"
+    },
+    "historyMode": "paginated",
+    "id": "01a0898d-222f-7581-8cd8-332d3b3e2fb4",
+    "model": "gpt-5.6-luna",
+    "modelProvider": "openai",
+    "name": "Recover taurhaus card",
+    "parentThreadId": null,
+    "path": "/tmp/th-int-3s1yjoo9/codex/sessions/2026/09/10/rollout-2026-09-10T06-22-03-01a0898d-222f-7581-8cd8-332d3b3e2fb4.jsonl",
+    "preview": "[taurhaus] recovery_card\nIdentity: seat on integration; key={\"card_schema\":1,\"recipient\":[\"bebf1a0de68b19965530b5e690aa9f2e58d356bdc57bce43044e53ade67b77fc\",\"79490737-d380-464e-a32d-30c1cce6ac87\"],\"context\":[1,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-int-3s1yjoo9/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-int-3s1yjoo9/claude\",\"harness_account_root\":\"/tmp/th-int-3s1yjoo9/codex\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-int-3s1yjoo9/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"44ffdd9316a9efc3856d18e4f0ea7e4df04ee03f8316f4a311fada3863b419bf\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: 6431580f9c784457e22c814eb7c055d7037c806e4868205389e2c4db996ebda6; source=682540e4a3f9cfbca660a5add5db7fa379ff474f5fe7c2f18798f74d7e72c755; audience=unavailable\nProject cwd: /tmp/th-int-3s1yjoo9/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: low; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-10 04:22:03.078954496 UTC\nCurrent task: # \u2014 \nOperational constraints: unavailable\nFocal files: unavailable\nRole: unavailable\nPurpose: Isolated transport trial. Reply briefly. Never execute tools or commands.\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.",
+    "projectId": null,
+    "reasoningEffort": "low",
+    "recencyAt": 1789014382,
+    "section": null,
+    "sectionEnteredAt": null,
+    "sessionId": "01a0898d-222f-7581-8cd8-332d3b3e2fb4",
+    "source": "vscode",
+    "status": {
+      "type": "idle"
+    },
+    "threadSource": null,
+    "turns": [
+      {
+        "completedAt": 1789014381,
+        "durationMs": 10744,
+        "error": null,
+        "id": "01a08990-e90d-7693-8669-a5dfdcfd3f87",
+        "items": [
+          {
+            "delivery": null,
+            "id": "msg_0dad2d58b73fc5eb016aa23160ab7887d291f7b8f80c536e1f",
+            "memoryCitation": null,
+            "phase": "final_answer",
+            "questions": null,
+            "text": "1. blue river stone\n2. blue river stone\n3. blue river stone\n4. blue river stone\n5. blue river stone\n6. blue river stone\n7. blue river stone\n8. blue river stone\n9. blue river stone\n10. blue river stone\n11. blue river stone\n12. blue river stone\n13. blue river stone\n14. blue river stone\n15. blue river stone\n16. blue river stone\n17. blue river stone\n18. blue river stone\n19. blue river stone\n20. blue river stone\n21. blue river stone\n22. blue river stone\n23. blue river stone\n24. blue river stone\n25. blue river stone\n26. blue river stone\n27. blue river stone\n28. blue river stone\n29. blue river stone\n30. blue river stone\n31. blue river stone\n32. blue river stone\n33. blue river stone\n34. blue river stone\n35. blue river stone\n36. blue river stone\n37. blue river stone\n38. blue river stone\n39. blue river stone\n40. blue river stone\n41. blue river stone\n42. blue river stone\n43. blue river stone\n44. blue river stone\n45. blue river stone\n46. blue river stone\n47. blue river stone\n48. blue river stone\n49. blue river stone\n50. blue river stone\n51. blue river stone\n52. blue river stone\n53. blue river stone\n54. blue river stone\n55. blue river stone\n56. blue river stone\n57. blue river stone\n58. blue river stone\n59. blue river stone\n60. blue river stone\n61. blue river stone\n62. blue river stone\n63. blue river stone\n64. blue river stone\n65. blue river stone\n66. blue river stone\n67. blue river stone\n68. blue river stone\n69. blue river stone\n70. blue river stone\n71. blue river stone\n72. blue river stone\n73. blue river stone\n74. blue river stone\n75. blue river stone\n76. blue river stone\n77. blue river stone\n78. blue river stone\n79. blue river stone\n80. blue river stone",
+            "type": "agentMessage"
+          }
+        ],
+        "itemsView": "summary",
+        "startedAt": 1789014370,
+        "status": "completed"
+      },
+      {
+        "completedAt": 1789014383,
+        "durationMs": 1507,
+        "error": null,
+        "id": "01a08991-1738-7d52-a973-4b2148cd3b9d",
+        "items": [
+          {
+            "clientId": null,
+            "content": [
+              {
+                "text": "[mesh message data] {\"assignment\":null,\"author\":\"lead\",\"body\":\"ACTION REQUIRED: Reply exactly deferred4e17e869. Do not execute tools.\",\"delivery_id\":\"46008da4-087a-4bf8-988a-40c12bc97983\",\"expectation\":null,\"message_id\":\"15b2d258-0b8f-49ef-b114-6927e55eee5a\",\"metadata\":{},\"task\":null}\n",
+                "text_elements": [],
+                "type": "text"
+              }
+            ],
+            "id": "01a08991-1750-7a93-a487-b7f463a46988",
+            "type": "userMessage"
+          },
+          {
+            "delivery": null,
+            "id": "msg_0dad2d58b73fc5eb016aa2316bbda887d2a50506b32a174633",
+            "memoryCitation": null,
+            "phase": "final_answer",
+            "questions": null,
+            "text": "deferred4e17e869",
+            "type": "agentMessage"
+          }
+        ],
+        "itemsView": "summary",
+        "startedAt": 1789014382,
+        "status": "completed"
+      }
+    ],
+    "updatedAt": 1789014383
+  },
+  "evidenceEvents": "host-events.jsonl"
+}

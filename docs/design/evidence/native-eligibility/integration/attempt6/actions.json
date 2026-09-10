@@ -1,0 +1,148 @@
+[
+  {
+    "at": 1789014184.4030678,
+    "action": {
+      "op": "step",
+      "step": 2
+    }
+  },
+  {
+    "at": 1789014185.0193613,
+    "action": {
+      "op": "mesh",
+      "argv": [
+        "team-daemon",
+        "status",
+        "--team",
+        "integration"
+      ],
+      "save": "step2-status-before.txt"
+    }
+  },
+  {
+    "at": 1789014193.5348134,
+    "action": {
+      "op": "mesh",
+      "argv": [
+        "send",
+        "seat",
+        "ACTION REQUIRED: Reply exactly cobalta6e6c2cd57. Do not execute tools.",
+        "--team",
+        "integration",
+        "--name",
+        "lead",
+        "--summary",
+        "idle marker"
+      ],
+      "save": "step2-send.txt"
+    }
+  },
+  {
+    "at": 1789014204.6058402,
+    "action": {
+      "op": "mesh",
+      "argv": [
+        "team-daemon",
+        "status",
+        "--team",
+        "integration"
+      ],
+      "save": "step2-status-after.txt"
+    }
+  },
+  {
+    "at": 1789014205.7580447,
+    "action": {
+      "op": "capture",
+      "name": "step2"
+    }
+  },
+  {
+    "at": 1789014221.1063254,
+    "action": {
+      "op": "mesh",
+      "argv": [
+        "read",
+        "--unread",
+        "--mark-read",
+        "--team",
+        "integration",
+        "--name",
+        "seat"
+      ],
+      "save": "step2-explicit-read.txt"
+    }
+  },
+  {
+    "at": 1789014370.3300529,
+    "action": {
+      "op": "step",
+      "step": 3
+    }
+  },
+  {
+    "at": 1789014370.544936,
+    "action": {
+      "op": "rpc",
+      "method": "coordination.hosted_input",
+      "params": {
+        "team_name": "integration",
+        "member_name": "seat",
+        "generation": 1,
+        "text": "For this bounded transport timing probe, write exactly 80 numbered lines, each saying blue river stone. Do not execute tools."
+      },
+      "save": "step3-active-start.json"
+    }
+  },
+  {
+    "at": 1789014370.7943072,
+    "action": {
+      "op": "mesh",
+      "argv": [
+        "send",
+        "seat",
+        "ACTION REQUIRED: Reply exactly deferred4e17e869. Do not execute tools.",
+        "--team",
+        "integration",
+        "--name",
+        "lead",
+        "--summary",
+        "active deferred marker"
+      ],
+      "save": "step3-send.txt"
+    }
+  },
+  {
+    "at": 1789014370.925888,
+    "action": {
+      "op": "mesh",
+      "argv": [
+        "team-daemon",
+        "status",
+        "--team",
+        "integration"
+      ],
+      "save": "step3-active-status.txt"
+    }
+  },
+  {
+    "at": 1789014371.242971,
+    "action": {
+      "op": "capture",
+      "name": "step3-active"
+    }
+  },
+  {
+    "at": 1789014389.1745877,
+    "action": {
+      "op": "mesh",
+      "argv": [
+        "team-daemon",
+        "status",
+        "--team",
+        "integration"
+      ],
+      "save": "step3-status-later.txt"
+    }
+  }
+]

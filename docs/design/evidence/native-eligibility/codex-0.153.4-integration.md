@@ -1,4 +1,4 @@
-# Codex 0.153.4 integration — attempt 6 IN PROGRESS (steps 1–2 PASS)
+# Codex 0.153.4 integration — attempt 6 INCONCLUSIVE (stopped at step 3)
 
 2026-09-09. **Eligibility remains disabled.** The prescribed canonical setup
 stopped before member launch: the real Mesh command `team delivery --owner team`
@@ -1223,3 +1223,161 @@ The echo turn used 11,840 input (9,984 cached), 14 output, no reasoning:
 **2 turns, $0.00153132 / $0.02718960 conservative**.
 The send warned about absent formal task-assignment fields; it remained an
 authorized bounded echo message, accepted as actionable and wake-eligible.
+
+### Attempt 6 final outcome — INCONCLUSIVE
+
+| Ordered step | Verdict | Runtime evidence / boundary |
+|---|---|---|
+| 1. Production daemon launch + startup card | **PASS** | Runtime, strict config, child/TUI identities, pane and startup usage above. |
+| 2. Idle native delivery + explicit-read semantics | **PASS** | Config-selected app_server; one marker and reply; native enqueue precedes explicit read, above. |
+| 3. Active-thread deferral, then one idle delivery | **INCONCLUSIVE as a full step; protocol behavior PASS** | Five `pending: ... thread_active` receipts precede one `turn/start` enqueue; one user item and one reply. Active pane captured, final reply pane not captured before controller reserve stop. |
+| 4. Typed operator/socket ordering + both lock directions | **NOT RUN** | Controller already stopped; no holder contention claim. |
+| 5. Compaction and recovery boundary | **NOT RUN** | No compaction submitted. |
+| 6. Scratch daemon restart | **NOT RUN** | No restart submitted. |
+| 7. Operational rollback | **NOT RUN** | No in-place refusal, stop/remove/re-add or tmux delivery claimed. Final safety teardown did run. |
+
+**Stopping reason is a controller limit, not a product rejection.** The exact
+controller exception was `AssertionError: evidence reserve reached` at step 3,
+exit **1**, at epoch timestamp `1789014389.2898245`. The implementation added
+an 850,000-byte runtime-output reserve to protect the requested <1 MB retained
+sidecar ceiling. It successfully stopped further work, but counted unfiltered
+periodic daemon telemetry and stderr, so it stopped prematurely. This is an
+avoidable trial-controller deviation. No second paid run or product patch was
+made to work around it. The final retained evidence is below 1 MB after offline
+filtering; that does not retroactively complete the stopped trial.
+
+#### Step 3 observations
+
+The [exact action driver](integration/attempt6-step3.py) starts one bounded,
+80-line response through `coordination.hosted_input`, then sends random marker
+**deferred4e17e869** through the scratch Mesh binary while that turn is active.
+[Start result](integration/attempt6/run/step3-active-start.json),
+[send result](integration/attempt6/run/step3-send.txt),
+[active pane](integration/attempt6/run/step3-active-pane-2.txt),
+[active status](integration/attempt6/run/step3-active-status.txt).
+No observer connected; no observer turn/start, steer, or interrupt was used.
+
+The [canonical journal](integration/attempt6/run/team/state/messaging-v2/segments/000001.jsonl)
+retains message `15b2d258-0b8f-49ef-b114-6927e55eee5a`, delivery
+`46008da4-087a-4bf8-988a-40c12bc97983`. Receipt sequences **10, 12, 14, 16, 18**
+are pending, each with this exact evidence class:
+
+```text
+pending: pre_input_failure: IO error: delivery: thread_active
+```
+
+Each pending receipt has null method/request/turn fields because it is
+**pre-input**, not an unmetered model turn. Sequence **20** is the sole native
+enqueue for this obligation, with request `ea8dc458-d2e5-4b16-bcc3-0be38367a447`,
+method `turn/start`, turn `01a08991-1738-7d52-a973-4b2148cd3b9d`, and unchanged
+thread `01a0898d-222f-7581-8cd8-332d3b3e2fb4`. Its host start followed the
+active seed's completion. [Host events](integration/attempt6/run/host-events.jsonl)
+retain all four starts/completions and all four tokenUsage events, appended
+only once across rolling polls. `item/completed` contains exactly one user
+item and one exact reply for each random marker. The final
+[hosted state](integration/attempt6/run/hosted-transcript.json) is idle and
+contains the deferred reply; its bounded `eventsTruncated: true` view no longer
+contains early turns, which remain in the appended event archive.
+
+The active status capture reported `failed to acquire lock: delivery mirror
+busy`, and the later status reported `error=none deferred=none` after completion.
+Those are retained observations, not evidence for the separate Step 4 host-lock
+requirement. The journal provides the required named active deferral. There is
+**no `hosted.rpc.rejected` event and no host error object** in this run; none is
+fabricated for the controller stop. The final host turns report `error: null`.
+The stderr also repeatedly warns about `_active-project-teams/config.json`
+being absent; this is retained with counts, not patched or assigned causality.
+
+#### Complete cost ledger
+
+All generations used `gpt-5.6-luna`, low effort. Input includes the cached subset;
+output includes reasoning. Dollar figures are numerical API-equivalent estimates
+from the host's actual tokenUsage events and the attached-TUI packet's rates
+($0.20/$0.02/$1.20 per million input/cached/output), **not invoiced charges**.
+Conservative cost applies $1.20/M to every input and output token.
+
+| Input | Turn ID | Input / cached / output / reasoning | API-equivalent USD | Conservative USD |
+|---|---|---|---|---|
+| Startup | `01a0898d-225c-77a1-b591-bd7e93510d55` | 10,777 / 6,912 / 27 / 0 | 0.00094364 | 0.01296480 |
+| Idle Mesh echo | `01a0898e-39df-79e2-bf52-02e8ac1ca7bc` | 11,840 / 9,984 / 14 / 0 | 0.00058768 | 0.01422480 |
+| Step 3 active seed | `01a08990-e90d-7693-8669-a5dfdcfd3f87` | 11,885 / 11,008 / 519 / 34 | 0.00101836 | 0.01488480 |
+| Deferred Mesh echo | `01a08991-1738-7d52-a973-4b2148cd3b9d` | 12,508 / 11,008 / 11 / 0 | 0.00053336 | 0.01502280 |
+| **Total** | **4 / 8 turns; 4 generations; 0 compactions** | **47,010 / 38,912 / 571 / 34** | **0.00308304** | **0.05709720 / 3.00** |
+| Claude lead and unrun steps 4–7 | 0 turns | 0 / 0 / 0 / 0 | 0.00 | 0.00 |
+
+[Ledger](integration/attempt6/run/cost-ledger.json) and
+[rollout accounting events](integration/attempt6/run/usage-events.json) agree:
+`metering_complete: true`, no unmetered turn IDs. No tool-execution item occurred.
+
+#### Isolation, teardown, export, and gates
+
+Private scratch root `/tmp/th-int-3s1yjoo9`, mode 0700; private port **28897**.
+Only auth.json was copied into the initially empty CODEX_HOME. The allowlisted
+HOME, harness/data roots and TMUX_TMPDIR all remained beneath scratch, TMUX was
+absent from the parent environment, and bubblewrap hid operator homes, /tmp and
+/run while owning a private PID namespace. The Claude lead stayed at its
+credential-free setup screen. [Exact commands, requests, binary hashes and
+identities](integration/attempt6/run/events.jsonl).
+
+The controller's finally block terminated and waited only its own process
+groups; namespace teardown removed the daemon, child, attached TUI and private
+tmux server. [Cleanup](integration/attempt6/run/cleanup.json) records no
+survivors, closed port, and removed scratch root/auth copy. The final offline
+PID/start-tick audit independently found every recorded process absent, and
+checked that the private port and app socket were closed/absent. No operator
+process was killed. Descriptor restoration ran the exact authorized
+`git -C /home/mstie/projects/mesh-push checkout -- src/delivery/app_server/capabilities.rs`
+and exited **0**. Mesh is clean, its descriptor disabled, **no Mesh commit**.
+No Taurhaus registry entry is needed; no Taurhaus product code changed.
+
+Reproduction after the build/controller commands above: replay the
+[recorded actions](integration/attempt6/actions.json) one at a time through
+`action.json`, waiting for `action_done`; the Step 3 driver preserves the timed
+sequence. These scripts reproduce the executed portion only, not unrun steps.
+A new live run requires a newly authorized trial and a fresh output label.
+The executed controller is retained unchanged, including its premature reserve.
+Offline completion commands, from this checkout root:
+
+```sh
+TRIAL_EVIDENCE_LABEL=attempt6 python3 docs/design/evidence/native-eligibility/integration/attempt2-gates.py
+python3 docs/design/evidence/native-eligibility/integration/attempt6-export.py
+python3 docs/design/evidence/native-eligibility/integration/attempt6_test.py
+python3 docs/design/evidence/native-eligibility/integration/attempt6-audit.py
+```
+
+The exporter is a one-time post-teardown transform of the fresh run directory.
+It retains first/last periodic telemetry/stderr samples and all other structured
+records, with original counts in the [manifest](integration/attempt6/export-manifest.json).
+Identical frozen/final files are retained once and mapped there; final-view
+history points to the append-only event file. Redactions remove installation
+IDs, credentials/account metadata and disallowed operator-home paths. These
+are sanitized exports, not byte-identical journal checksum validation.
+Initial unfiltered evidence exceeded 1 MB (**1,163,225 bytes**, observed red);
+the final bounded export passes, including the scripts and audit. Frozen
+per-step snapshots remain distinct time-scoped evidence, not extra usage.
+
+| Exact gate, credential-free isolated environment at checkout root | Exit |
+|---|---|
+| `just check-quick` | **0** |
+| `just lint` | **0** |
+| `just test-contracts` | **0** |
+| `just test-rust-unit` | Not required: no `src-tauri/` diff |
+| Mesh `just check-quick`, `just lint`, `just test` | Not run: conditional all-seven-step PASS was not reached |
+| Offline overlapping-buffer regression / final audit | **0 / 0**; one regression test and 140 initial audit assertions |
+
+[Gate records](integration/attempt6/gates/gate-check-quick.json),
+[lint](integration/attempt6/gates/gate-lint.json),
+[contracts](integration/attempt6/gates/gate-test-contracts.json),
+[final audit](integration/attempt6/final-audit.json). Every gate's Cargo preflight
+exited 1 (no competing Cargo); gates used inert harness/tmux shims, no credentials,
+and private PID namespaces. Their scratch roots were removed.
+
+Remaining deviations: the reserve guard prematurely ended the run; Step 3's
+final pane was not captured; Steps 4–7 and the conditional Mesh named-refusal
+fix/descriptor flip were not reached. No Opus model/tool is callable here, so the
+requested independent Opus evidence lens remains unavailable. No review approval
+is claimed. The initial offline audit assumed full history in the bounded final
+view and user items in turn/completed; observed red corrected it to authoritative
+item/completed events in the complete append-only archive. No paid retry was used.
+Non-evidence product diff **0 lines**, no dependencies, installation, release,
+branch switch or plan-ledger edit.

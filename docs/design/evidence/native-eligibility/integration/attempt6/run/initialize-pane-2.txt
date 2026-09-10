@@ -1,0 +1,66 @@
+env -u TMUX 'CLAUDE_DIR=/tmp/th-int-3s1yjoo9/claude' 'CODEX_HOME=/tmp/th-int-3s1yjoo9/tmp/th-host-26b2cc283daa4090935a3b4f8fd5ea1b/tui' 'cod
+ex' '--remote' 'unix:///tmp/th-int-3s1yjoo9/tmp/th-host-26b2cc283daa4090935a3b4f8fd5ea1b/rpc.sock' 'resume' '01a0898d-222f-7581-8cd8-332d3b3
+e2fb4' '--no-alt-screen' '--strict-config'mstie@whocares:/tmp/th-int-3s1yjoo9/project$ env -u TMUX 'CLAUDE_DIR=/tmp/th-int-3s1yjoo9/claude'
+'CODEX_HOME=/tmp/th-int-3s1yjoo9/tmp/th-host-26b2cc283daa4090935a3b4f8fd5ea1b/tui' 'codex' '--remote' 'unix:///tmp/th-int-3s1yjoo9/tmp/th-ho
+st-26b2cc283daa4090935a3b4f8fd5ea1b/rpc.sock' 'resume' '01a0898d-222f-7581-8cd8-332d3b3e2fb4' '--no-alt-screen' '--strict-config'
+WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir "/tmp/th-int-3s1yj
+oo9/tmp" (codex_home: AbsolutePathBuf("/tmp/th-int-3s1yjoo9/tmp/th-host-26b2cc283daa4090935a3b4f8fd5ea1b/tui"))
+╭────────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.153.4)                     │
+│                                                │
+│ model:     gpt-5.6-luna low   /model to change │
+│ directory: /tmp/th-int-3s1yjoo9/project        │
+╰────────────────────────────────────────────────╯
+
+  To get started, describe a task or try one of these commands:
+
+  /init - create an AGENTS.md file with instructions for Codex
+  /status - show current session configuration
+  /permissions - choose what Codex is allowed to do
+  /model - choose what model and reasoning effort to use
+  /review - review any changes and find issues
+
+
+› [taurhaus] recovery_card
+  Identity: seat on integration; key={"card_schema":1,"recipient":
+  ["bebf1a0de68b19965530b5e690aa9f2e58d356bdc57bce43044e53ade67b77fc","79490737-d380-464e-a32d-30c1cce6ac87"],"context":[1,0],"roots":
+  {"root_authority_revision":"0","resolved_teams_root":"/tmp/th-int-3s1yjoo9/claude/teams","resolved_mesh_config_root":"/tmp/th-int-
+  3s1yjoo9/claude","harness_account_root":"/tmp/th-int-3s1yjoo9/codex","launch_namespace":"native","resolved_project_root":"/tmp/th-int-
+  3s1yjoo9/project"},"contract":
+  {"role_id":"","effective_role_revision":"44ffdd9316a9efc3856d18e4f0ea7e4df04ee03f8316f4a311fada3863b419bf","instruction_contract_revision
+  ":"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f","packet_revision":""}}
+  Coverage: 6431580f9c784457e22c814eb7c055d7037c806e4868205389e2c4db996ebda6;
+  source=682540e4a3f9cfbca660a5add5db7fa379ff474f5fe7c2f18798f74d7e72c755; audience=unavailable
+  Project cwd: /tmp/th-int-3s1yjoo9/project
+  Assignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned
+  Objective: unavailable
+  Deliverable: unavailable
+  First action: unavailable
+  Completion signal: unavailable
+  Review route: unavailable
+  Wait/release: unavailable
+  Candidate: unavailable
+  Rubric: unavailable
+  Restart cursor: unavailable
+  Requested effort: unavailable; effective effort: low; hold: none recorded
+  File boundary: unavailable
+  Evidence/handoff retention: unavailable; references do not prove archival preservation.
+  Generated: 2026-09-10 04:22:03.078954496 UTC
+  Current task: # —
+  Operational constraints: unavailable
+  Focal files: unavailable
+  Role: unavailable
+  Purpose: Isolated transport trial. Reply briefly. Never execute tools or commands.
+  work_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution
+  cannot begin. Report through its completion signal; no pure acknowledgment.
+  Corrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.
+  Next action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required
+  context.
+
+
+• Working (1s • esc to interrupt)
+
+
+› Ask Codex to do anything
+
+  gpt-5.6-luna low · /tmp/th-int-3s1yjoo9/project
