@@ -81,6 +81,14 @@ describe('HoverCard', () => {
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
   })
 
+  it('names the daemon-owned thread as the hosted activity authority', () => {
+    // Regression: 6f61f611 presented an attached TUI without naming its host authority.
+    render(HoverCard, { project: createProject(), visible: true,
+      sessions: [{ live: true, state: 'active', activity_attribution: 'attributed', source: 'host' }],
+    })
+    expect(screen.getByText('Working via daemon-owned thread')).toBeInTheDocument()
+  })
+
   it('shows the visible session account and why it will be used', async () => {
     previewAccount.mockResolvedValue({
       account: { id: 'work', display_name: 'Work' },

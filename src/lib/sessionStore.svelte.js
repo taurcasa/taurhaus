@@ -33,6 +33,7 @@
 
 import { listCliSessionSnapshot, listProjects, recordSessionActivity } from './ipc.js'
 import { normalizeProjectPath } from './pathUtils.js'
+import { withActivityFreshness } from './activitySignal.js'
 
 const POLL_INTERVAL_MS = 500
 const DEFAULT_TAURI_POLL_INTERVAL_MS = 5000
@@ -225,7 +226,9 @@ function readPollSnapshot(result) {
     return { list: result, freshness: 'fresh' }
   }
   return {
-    list: Array.isArray(result?.sessions) ? result.sessions : null,
+    list: Array.isArray(result?.sessions) ? result.sessions.map(session =>
+      withActivityFreshness(session, result.freshness)
+    ) : null,
     freshness: result?.freshness ?? 'fresh',
   }
 }

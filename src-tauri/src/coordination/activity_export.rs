@@ -216,6 +216,26 @@ fn export_activity_snapshots_for_team_locations_with_runtime(
             continue;
         }
 
+        let unavailable = |name: &str| {
+            sessions_by_member
+                .get(&(team_name.clone(), name.to_owned()))
+                .is_some_and(|session| session.source.as_deref() == Some("host_unavailable"))
+        };
+        for member in roster
+            .iter()
+            .filter(|member| unavailable(&member.member_name))
+        {
+            if let Err(error) = fs::remove_file(activity_snapshot_path(
+                teams_dir,
+                team_name,
+                &member.member_name,
+            )) {
+                if error.kind() != std::io::ErrorKind::NotFound {
+                    stats.write_failures += 1;
+                }
+            }
+        }
+
         // One identity probe per member; teams without any live pane are
         // skipped entirely (their last snapshot goes stale, which readers
         // already handle) instead of spawning several tmux probes per member.
@@ -238,6 +258,9 @@ fn export_activity_snapshots_for_team_locations_with_runtime(
         stats.teams_exported += 1;
         for (member, live_pane) in roster.iter().zip(live_panes) {
             let member_name = &member.member_name;
+            if unavailable(member_name) {
+                continue;
+            }
             let runtime_record = member.runtime_record().map(|mut record| {
                 record.cli_tool = Some(member.configured_cli_tool);
                 record.project_path = Some(member.configured_project_path.clone());
@@ -845,6 +868,7 @@ mod tests {
             last_output_age_secs: None,
             activity_confidence: ActivityConfidence::High,
             activity_attribution: ActivityAttribution::Attributed,
+            source: None,
             project_unattributed_active: false,
             group_kind: SessionGroupKind::Standalone,
             group_id: None,
@@ -938,6 +962,34 @@ mod tests {
         assert_eq!(stats.members_written, 2);
         assert!(activity_snapshot_path(&default_root, "default-team", "default-member").exists());
         assert!(activity_snapshot_path(&work_root, "work-team", "work-member").exists());
+    }
+
+    #[test]
+    fn unavailable_host_removes_export_instead_of_publishing_false_idle() {
+        // Regression: 1b19edd2 exported the idle backing state of an unavailable host.
+        let tmp = TempDir::new().unwrap();
+        TeamConfigStore::save(
+            tmp.path(),
+            "team",
+            &sample_team_config("team", "seat", "/fixture"),
+        )
+        .unwrap();
+        save_runtime(tmp.path(), "team", "seat", "%12");
+        let runtime = RecordingCoordinationRuntime::default();
+        runtime.set_pane_exists("%12", true);
+        runtime.set_pane_current_command("%12", Some("codex"));
+        let mut session = sample_session("/fixture", "%12", SessionState::Idle);
+        session.source = Some("host_unavailable".into());
+        let path = activity_snapshot_path(tmp.path(), "team", "seat");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, "stale activity").unwrap();
+        export_activity_snapshots_for_sessions_with_runtime(
+            tmp.path(),
+            &[session],
+            Utc::now(),
+            &runtime,
+        );
+        assert!(!path.exists());
     }
 
     #[test]

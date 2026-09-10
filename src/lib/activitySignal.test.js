@@ -17,6 +17,31 @@ import {
  * reordering of the derivation shows up as a table diff.
  */
 const DERIVATION_TABLE = [
+  // Regression: 6f61f611 hosted TUI activity fell through to heuristics.
+  [
+    'host authority survives a degraded process inventory',
+    { state: 'active', activity_attribution: 'attributed', source: 'host', degraded: true },
+    { level: 'working', label: 'Working', confidence: 'high', source: 'host' },
+  ],
+  [
+    'daemon restart invalidates retained host work',
+    { state: 'active', source: 'host', _presenceStale: true },
+    { level: 'uncertain', label: 'Uncertain', confidence: 'low', source: 'host_unavailable' },
+  ],
+  ...[
+    ['active', 'attributed', 'working', 'Working'],
+    ['active', 'none', 'active', 'Active'],
+    ['idle', 'attributed', 'idle', 'Idle'],
+  ].map(([state, activity_attribution, level, label]) => [
+    `host reports ${level}`,
+    { state, activity_attribution, activity_confidence: 'high', source: 'host' },
+    { level, label, confidence: 'high', source: 'host' },
+  ]),
+  [
+    'lost host cannot retain working or claim idle',
+    { state: 'active', activity_attribution: 'attributed', source: 'host_unavailable' },
+    { level: 'uncertain', label: 'Uncertain', confidence: 'low', source: 'host_unavailable' },
+  ],
   // --- pane liveness wins over everything (PR 7b evidence) ---
   [
     'foreign pane on an active record is offline, not uncertain',

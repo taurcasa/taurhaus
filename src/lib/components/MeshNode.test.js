@@ -5,6 +5,11 @@ import { readFileSync } from 'node:fs'
 import MeshNode from './MeshNode.svelte'
 
 describe('MeshNode', () => {
+  it('explains hosted thread activity', () => {
+    // Regression: 6f61f611 hid the hosted activity authority from the node.
+    render(MeshNode, { name: 'seat', status: 'working', source: 'host' })
+    expect(document.querySelector('[data-testid="mesh-node-agent"]')).toHaveAttribute('title', 'Working via daemon-owned thread')
+  })
   it('applies role and theme classes for node variants', async () => {
     const { rerender } = render(MeshNode, {
       props: {

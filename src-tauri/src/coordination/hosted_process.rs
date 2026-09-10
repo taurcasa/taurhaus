@@ -22,7 +22,10 @@ pub(crate) struct HostProcess {
     pub build: String,
     pub process_start: String,
     socket: PathBuf,
+    account_root: PathBuf,
     uncertain: bool,
+    reconnect_failures: u32,
+    reconnect_after: Option<Instant>,
     pub deferred_compaction: Option<chrono::DateTime<chrono::Utc>>,
 }
 
@@ -60,7 +63,10 @@ impl HostProcess {
             build: String::new(),
             process_start: String::new(),
             socket: socket.into(),
+            account_root: launch.account_root.clone(),
             uncertain: false,
+            reconnect_failures: 0,
+            reconnect_after: None,
             deferred_compaction: None,
         };
         host.process_start = taurhaus_lib::platform::process_start_ticks(host.child.id())
@@ -81,7 +87,8 @@ impl HostProcess {
             {
                 let stream: UnixStream = connection.into();
                 host.rpc = Some(Rpc {
-                    socket: WebSocket::connect(stream, guard)?,
+                    socket: Some(WebSocket::connect(stream, guard)?),
+                    activity_socket: socket.into(),
                     events: VecDeque::new(),
                     compactions: VecDeque::new(),
                     thread_id: String::new(),
@@ -197,6 +204,11 @@ impl HostProcess {
         Ok(host)
     }
 
+    #[cfg(test)]
+    pub fn disconnect_for_test(&mut self) {
+        self.rpc.as_mut().unwrap().socket = None;
+    }
+
     pub fn outcome_unknown(&self) -> bool {
         self.uncertain
     }
@@ -212,6 +224,25 @@ impl HostProcess {
                 == Some(&self.process_start)
     }
 
+    pub fn needs_reconnect(&self) -> bool {
+        self.rpc.as_ref().is_some_and(|rpc| rpc.socket.is_none())
+    }
+
+    pub fn activity_retry_due(&self) -> bool {
+        !self.needs_reconnect() || self.reconnect_after.is_none_or(|at| Instant::now() >= at)
+    }
+
+    /// Read the thread response and queued notifications, without cloning cached events/requests.
+    pub fn refresh_activity(&mut self, guard: &HostOperationLock) -> Result<(), String> {
+        self.reconnect(guard)?;
+        self.rpc
+            .as_mut()
+            .ok_or("host connection unavailable")?
+            .call("thread/read", json!({"threadId":self.thread_id}), guard)
+            .map(|_| ())
+            .map_err(String::from)
+    }
+
     pub fn transcript(&mut self, guard: &HostOperationLock) -> Result<Value, String> {
         self.transcript_with_retry(guard, true)
     }
@@ -224,6 +255,7 @@ impl HostProcess {
         if !self.alive() {
             return Err("owned host stopped".into());
         }
+        self.reconnect(guard)?;
         let rpc = self.rpc.as_mut().ok_or("host connection unavailable")?;
         let mut pending = false;
         let mut result = loop {
@@ -254,6 +286,91 @@ impl HostProcess {
         result["eventsTruncated"] = json!(rpc.truncated);
         result["outcomeUnknown"] = json!(self.uncertain);
         Ok(result)
+    }
+
+    /// A failed frame is never reused. Reinitialize and revalidate the same owned thread;
+    /// keep history and the unknown-input fence, but never replay an input or approval.
+    fn reconnect(&mut self, guard: &HostOperationLock) -> Result<(), String> {
+        let rpc = self.rpc.as_mut().ok_or("host connection unavailable")?;
+        if rpc.socket.is_some() {
+            return Ok(());
+        }
+        // Old approval IDs cannot be answered on the new connection. Surface the
+        // existing unknown-outcome fence so the operator can stop and re-trigger.
+        self.uncertain |= !rpc.requests.is_empty();
+        rpc.requests.clear();
+        let thread = std::mem::take(&mut rpc.thread_id);
+        rpc.repairing = true;
+        let result = (|| -> Result<Value, String> {
+            let connection =
+                socket2::Socket::new(socket2::Domain::UNIX, socket2::Type::STREAM, None)
+                    .map_err(|e| e.to_string())?;
+            connection
+                .connect_timeout(
+                    &socket2::SockAddr::unix(&self.socket).map_err(|e| e.to_string())?,
+                    guard.remaining().map_err(|e| e.to_string())?,
+                )
+                .map_err(|e| e.to_string())?;
+            rpc.socket = Some(WebSocket::connect(connection.into(), guard)?);
+            let handshake = rpc.call("initialize", json!({"clientInfo":{"name":"taurhaus_host","version":"1"},"capabilities":{"experimentalApi":true}}), guard)?;
+            if handshake["codexHome"].as_str().map(Path::new) != Some(&self.account_root)
+                || handshake["userAgent"]
+                    .as_str()
+                    .and_then(|s| s.strip_prefix("taurhaus_host/"))
+                    .and_then(|s| s.split_whitespace().next())
+                    != Some(&self.build)
+            {
+                return Err("app-server reconnect identity mismatch".into());
+            }
+            rpc.write(&json!({"method":"initialized"}), guard)?;
+            let (expected, resume, sources) =
+                rpc.policy.clone().ok_or("host policy unavailable")?;
+            let resumed = rpc.call("thread/resume", resume, guard)?;
+            if resumed["thread"]["id"] != thread
+                || resumed["model"] != expected["model"]
+                || resumed["reasoningEffort"] != expected["effort"]
+                || resumed["approvalPolicy"] != expected["approvalPolicy"]
+                || resumed["sandbox"] != expected["sandboxPolicy"]
+                || instruction_sources(&resumed) != sources
+            {
+                return Err("host did not restore owned thread policy".into());
+            }
+            Ok(resumed["thread"]["status"].clone())
+        })();
+        rpc.thread_id = thread;
+        rpc.repairing = false;
+        match result {
+            Ok(status) => {
+                self.reconnect_failures = 0;
+                self.reconnect_after = None;
+                rpc.policy_dirty = false;
+                rpc.set_status(&status);
+                rpc.publish_activity();
+                Ok(())
+            }
+            Err(error) => {
+                self.reconnect_failures = self.reconnect_failures.saturating_add(1);
+                let backoff =
+                    Duration::from_secs(1 << self.reconnect_failures.min(4).saturating_sub(1))
+                        .min(Duration::from_secs(5));
+                self.reconnect_after = Some(Instant::now() + backoff);
+                if self.reconnect_failures == 1 {
+                    tracing::warn!(event = "hosted.rpc.reconnect_failed", thread_id = %rpc.thread_id,
+                        "Host reconnect failed; background retries will back off");
+                    taurhaus_lib::logging::emit_global(
+                        "warn",
+                        "coordination",
+                        "hosted.rpc.reconnect_failed",
+                        Some("Host reconnect failed; background retries will back off".into()),
+                        serde_json::Map::from_iter([("thread_id".into(), json!(rpc.thread_id))]),
+                    );
+                }
+                rpc.socket = None;
+                rpc.set_status(&Value::Null);
+                rpc.publish_activity();
+                Err(error)
+            }
+        }
     }
 
     pub fn take_compactions(&mut self) -> VecDeque<Value> {
@@ -531,7 +648,8 @@ fn event_turns(events: &VecDeque<Value>, thread_id: &str) -> Vec<Value> {
 }
 
 struct Rpc {
-    socket: WebSocket,
+    activity_socket: PathBuf,
+    socket: Option<WebSocket>,
     events: VecDeque<Value>,
     compactions: VecDeque<Value>,
     thread_id: String,
@@ -545,6 +663,14 @@ struct Rpc {
     pending_read_logged: bool,
 }
 impl Rpc {
+    fn publish_activity(&self) {
+        taurhaus_lib::daemon::session_activity::SessionActivityHub::shared().publish_host_status(
+            &self.activity_socket,
+            &self.thread_id,
+            &self.status,
+        );
+    }
+
     fn observe(&mut self, frame: &Value) {
         let params = &frame["params"];
         if params["threadId"].as_str() != Some(self.thread_id.as_str()) {
@@ -572,6 +698,7 @@ impl Rpc {
             }
             _ => {}
         }
+        self.publish_activity();
     }
 
     fn set_status(&mut self, status: &Value) {
@@ -582,14 +709,21 @@ impl Rpc {
     }
 
     fn write(&mut self, value: &Value, guard: &HostOperationLock) -> Result<(), String> {
-        self.socket.send(
-            1,
-            &serde_json::to_vec(value).map_err(|e| e.to_string())?,
-            guard,
-        )
+        self.socket
+            .as_mut()
+            .ok_or("host connection unavailable")?
+            .send(
+                1,
+                &serde_json::to_vec(value).map_err(|e| e.to_string())?,
+                guard,
+            )
     }
     fn read(&mut self, guard: &HostOperationLock) -> Result<Value, String> {
-        let message = self.socket.read(guard)?;
+        let message = self
+            .socket
+            .as_mut()
+            .ok_or("host connection unavailable")?
+            .read(guard)?;
         let value: Value = serde_json::from_slice(&message).map_err(|_| "malformed host frame")?;
         if !value.is_object() {
             return Err("host frame must contain one JSON object".into());
@@ -597,6 +731,23 @@ impl Rpc {
         Ok(value)
     }
     fn call(
+        &mut self,
+        method: &str,
+        params: Value,
+        guard: &HostOperationLock,
+    ) -> Result<Value, RpcError> {
+        let result = self.call_inner(method, params, guard);
+        if matches!(result, Err(RpcError::Transport(_))) {
+            // Header/payload bytes or an RPC reply may already be consumed. Close
+            // the transport on every ambiguous failure; never parse its tail again.
+            self.socket = None;
+            self.set_status(&Value::Null);
+            self.publish_activity();
+        }
+        result
+    }
+
+    fn call_inner(
         &mut self,
         method: &str,
         params: Value,
@@ -728,6 +879,7 @@ impl Rpc {
                         }
                     }
                 }
+                self.publish_activity();
                 if self.policy_dirty && !self.repairing {
                     // Finish the in-flight response first: never lose correlation to a
                     // nested repair. One repair only, under this same bounded deadline.
@@ -792,6 +944,7 @@ if '--remote' in sys.argv:
         output.write(json.dumps({'argv':sys.argv, 'codexHome':root, 'tmux':os.environ.get('TMUX')})+'\n')
     signal.pause()
     sys.exit(0)
+with open(os.path.join(root, 'host-argv.json'), 'w') as output: json.dump(sys.argv, output)
 address = sys.argv[sys.argv.index('--listen')+1].removeprefix('unix://')
 saved = os.path.join(root, 'thread.json')
 thread = json.load(open(saved)) if os.path.exists(saved) else None
@@ -895,6 +1048,7 @@ def client(connection):
                 output.write(json.dumps(request)+'\n')
             with lock:
                 if method == 'initialize':
+                    if os.path.exists(os.path.join(root, 'fail-reconnect')): return
                     result = {'userAgent':'taurhaus_host/'+os.environ.get('FAKE_BUILD','0.153.4'), 'codexHome':root}
                     if os.environ.get('FAKE_RUNTIME'):
                         with open(os.environ['FAKE_RUNTIME'], 'r+') as runtime:

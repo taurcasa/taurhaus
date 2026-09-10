@@ -3246,6 +3246,7 @@ fn live_status_ignores_cached_snapshot_pane_when_record_has_newer_pane() {
         last_output_age_secs: None,
         activity_confidence: ActivityConfidence::High,
         activity_attribution: ActivityAttribution::Attributed,
+        source: None,
         project_unattributed_active: false,
         group_kind: SessionGroupKind::MeshTeam,
         group_id: Some(team_name.to_string()),

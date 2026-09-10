@@ -23,6 +23,7 @@ pub enum TeamMemberActivityState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TeamMemberView {
+    pub host_activity: Option<taurhaus_lib::session_scanner::HostActivity>,
     hosted_runtime: Option<MemberRuntimeRecord>,
     pub team_name: String,
     pub member_name: String,
@@ -203,13 +204,27 @@ pub fn get_team_roster_with_runtime_sessions(
             {
                 runtime = Some(hosted.clone());
             }
-            build_team_member_view(
+            let mut view = build_team_member_view(
                 team_name,
                 member,
                 runtime,
                 workflow_activity.flatten(),
                 None,
-            )
+            );
+            if view.host_activity.is_some() {
+                if let Some(activity) = runtime_sessions
+                    .iter()
+                    .find(|s| {
+                        s.group_id.as_deref() == Some(team_name)
+                            && s.member_name.as_deref() == Some(&view.member_name)
+                            && s.session_id == view.session_id
+                    })
+                    .and_then(taurhaus_lib::session_scanner::HostActivity::from_session)
+                {
+                    view.host_activity = Some(activity);
+                }
+            }
+            view
         })
         .collect())
 }
@@ -228,6 +243,15 @@ fn build_team_member_view(
         .unwrap_or_default();
 
     TeamMemberView {
+        host_activity: runtime
+            .as_ref()
+            .filter(|r| {
+                r.health != HealthState::SessionDead
+                    && r.app_server
+                        .as_ref()
+                        .is_some_and(|host| host.state == "ready")
+            })
+            .map(|_| taurhaus_lib::session_scanner::HostActivity::unavailable()),
         hosted_runtime: runtime.as_ref().filter(|r| r.app_server.is_some()).cloned(),
         team_name: team_name.to_string(),
         member_name: member.name,
@@ -350,6 +374,17 @@ mod tests {
 
     use crate::coordination::domain::MemberRole;
     use crate::coordination::stores::TeamConfig;
+
+    #[test]
+    fn stopped_hosted_roster_keeps_offline_without_activity_override() {
+        // Regression: 1b19edd2 treated every persisted attachment as a live host.
+        let tmp = tempfile::tempdir().unwrap();
+        let (registry, hosts) = super::super::hosted::tests::running(tmp.path());
+        hosts.stop(&registry, "team", "seat").unwrap();
+        let rows = get_team_roster_with_runtime_sessions(tmp.path(), "team", &[]).unwrap();
+        assert_eq!(rows[0].attached_health, Some(HealthState::SessionDead));
+        assert!(rows[0].host_activity.is_none());
+    }
 
     fn ts(value: &str) -> DateTime<Utc> {
         DateTime::parse_from_rfc3339(value)
@@ -551,6 +586,7 @@ mod tests {
             last_output_age_secs: None,
             activity_confidence: Default::default(),
             activity_attribution: Default::default(),
+            source: None,
             project_unattributed_active: false,
             group_kind: SessionGroupKind::MeshTeam,
             group_id: Some(team_name.to_string()),

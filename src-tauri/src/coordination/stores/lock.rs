@@ -103,6 +103,17 @@ impl HostOperationLock {
         Ok(guard)
     }
 
+    /// Background activity reads never consume a user-operation deadline.
+    pub fn acquire_for_activity(
+        root: &Path,
+        team: &str,
+        member: &str,
+    ) -> Result<Self, CoordinationError> {
+        let mut guard = Self::acquire(root, team, member, Duration::ZERO)?;
+        guard.deadline = std::time::Instant::now() + Duration::from_millis(250);
+        Ok(guard)
+    }
+
     pub fn remaining(&self) -> Result<Duration, CoordinationError> {
         let remaining = self
             .deadline

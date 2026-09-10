@@ -39,14 +39,15 @@ pub mod transcript_boundary;
 #[cfg(test)]
 pub(crate) use cache::{clear_scan_cache, state_tracker_snapshot};
 pub use cache::{latest_runtime_sessions, notify_tmux_changed};
+pub(crate) use classification::classify_host_activity;
 pub use cli_tool::CliTool;
 pub use scans::{
     scan_sessions_for_authoritative_snapshot, scan_sessions_for_display, scan_sessions_for_runtime,
     scan_sessions_with,
 };
 pub use types::{
-    ActivityAttribution, ActivityConfidence, DisplaySession, RuntimeSession, SessionGroupKind,
-    SessionState,
+    ActivityAttribution, ActivityConfidence, DisplaySession, HostActivity, RuntimeSession,
+    SessionGroupKind, SessionState,
 };
 
 /// Serializes tests that drive the scanner's process-global state (scan
@@ -86,12 +87,17 @@ impl StateChangeCapture {
         }
     }
 
-    /// Every `(from, to)` pair emitted for `pid`, in emission order.
+    /// Active/idle pairs for `pid`, in order; other sources have their own vocabulary.
     pub(crate) fn transitions_for(&self, pid: u32) -> Vec<(Option<SessionState>, SessionState)> {
         self.events
             .try_iter()
             .filter(|event| {
-                event["event"] == "activity.state.changed" && event["fields"]["pid"] == pid
+                event["event"] == "activity.state.changed"
+                    && event["fields"]["pid"] == pid
+                    && !matches!(
+                        event["fields"]["source"].as_str(),
+                        Some("host" | "host_unavailable")
+                    )
             })
             .map(|event| {
                 (
@@ -108,4 +114,41 @@ impl Drop for StateChangeCapture {
     fn drop(&mut self) {
         crate::commands::logging::clear_test_tap();
     }
+}
+
+#[cfg(test)]
+#[test]
+fn state_change_capture_rejects_malformed_scanner_rows() {
+    // Regression: 89baae73 silently discarded malformed scanner states with host levels.
+    let mut capture = StateChangeCapture::install();
+    let (sender, events) = std::sync::mpsc::channel();
+    capture.events = events;
+    for (source, to) in [
+        ("host", "working"),
+        ("host_unavailable", "uncertain"),
+        ("notify", "idle"),
+    ] {
+        sender
+            .send(
+                serde_json::json!({"event":"activity.state.changed", "fields": {
+                    "pid":42, "from":null, "to":to, "source":source
+                }}),
+            )
+            .unwrap();
+    }
+    assert_eq!(
+        capture.transitions_for(42),
+        vec![(None, SessionState::Idle)]
+    );
+    sender
+        .send(
+            serde_json::json!({"event":"activity.state.changed", "fields": {
+                "pid":42, "from":null, "to":"broken", "source":"notify"
+            }}),
+        )
+        .unwrap();
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| capture.transitions_for(42)))
+            .is_err()
+    );
 }

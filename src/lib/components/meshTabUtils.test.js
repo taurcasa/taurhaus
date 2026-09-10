@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { createMeshTabGate } from './meshTabGate.svelte.js'
 
 import { TEST_MODEL_CATALOG as CATALOG } from '../../test/fixtures/modelCatalog.js'
 import {
@@ -14,6 +15,62 @@ import {
 } from './meshTabUtils.js'
 
 describe('accountLineLabel', () => {
+  it('treats a cached direct snapshot as history even when originally fresh', () => {
+    // Regression: 1b19edd2 trusted the freshness saved before a project switch.
+    const state = {}
+    const snapshot = { teamName: 'team', warnings: [], teamStatus: {
+      runtimeSnapshotFreshness: 'fresh', members: [
+        { name: 'lead', role: 'lead', cliTool: 'codex', state: 'working', source: 'host' },
+      ],
+    } }
+    const gate = createMeshTabGate({ state, refs: { discoverySequence: 0 }, deps: {
+      inferTeamName: () => 'team', getProjectPath: () => '/fixture', untrack: fn => fn(),
+      getMeshCacheEntry: () => ({ snapshot, cachedAtMs: Date.now() }),
+      normalizeProjectMeshSnapshot: value => value, buildTeamConfigFromRuntimeStatus,
+    } })
+    try {
+      gate.ensureHydrated('/fixture')
+      expect(state.teamConfig.lead.status).toBe('uncertain')
+      expect(state.teamConfig.lead.source).toBe('host_unavailable')
+    } finally { gate.clearRuntimeTeamRefresh(); gate.clearProjectSnapshotRefresh() }
+  })
+  it('downgrades hosted activity after the live gate caches it', async () => {
+    // Regression: 1b19edd2 dropped source and freshness in the gate's cache write.
+    const members = ['lead', 'seat'].map((name, i) => ({
+      name, role: i ? 'member' : 'lead', cliTool: 'codex', state: 'working', source: 'host',
+    }))
+    let cached
+    const gate = createMeshTabGate({ state: {}, refs: { discoverySequence: 1 }, deps: {
+      getProjectPath: () => '/fixture',
+      normalizeProjectMeshSnapshot: value => value,
+      setMeshCache: (_, value) => { cached = value },
+      refreshRuntimeTeamConfigWorkflow: async ({ onTeamConfig }) => {
+        onTeamConfig(buildTeamConfigFromRuntimeStatus({ members }, '/fixture'))
+      },
+    } })
+    await gate.queueRuntimeTeamRefresh('team', 1, { teamName: 'team', warnings: [] })
+    const hydrated = buildTeamConfigFromRuntimeStatus(cached.teamStatus, '/fixture')
+    for (const member of [hydrated.lead, ...hydrated.agents]) {
+      expect(member.status).toBe('uncertain')
+      expect(member.source).toBe('host_unavailable')
+    }
+  })
+  it('preserves the host activity source through runtime member shaping', () => {
+    // Regression: 6f61f611 reduced host evidence to roster health.
+    const config = buildTeamConfigFromRuntimeStatus({ teamName: 'team', members: [
+      { name: 'lead', role: 'lead', cliTool: 'codex', state: 'working', source: 'host' },
+      { name: 'seat', role: 'member', cliTool: 'codex', state: 'uncertain', source: 'host_unavailable' },
+    ] }, '/fixture')
+    expect(config.lead.source).toBe('host')
+    expect(config.lead.status).toBe('working')
+    expect(config.agents[0].source).toBe('host_unavailable')
+    expect(config.agents[0].status).toBe('uncertain')
+    const cached = buildTeamConfigFromRuntimeStatus({ runtimeSnapshotFreshness: 'cached', members: [
+      { name: 'lead', role: 'lead', cliTool: 'codex', state: 'working', source: 'host' },
+    ] })
+    expect(cached.lead.status).toBe('uncertain')
+    expect(cached.lead.source).toBe('host_unavailable')
+  })
   it('uses one wording rule for account fallback and applied states', () => {
     expect(accountLineLabel({ accountLabel: 'Personal', accountApplied: true })).toBe(
       'Personal · applied'
