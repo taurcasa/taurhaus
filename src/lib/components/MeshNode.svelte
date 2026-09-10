@@ -1,6 +1,6 @@
 <script>
   import { accountState, opaqueBaseNotice } from '../accounts.svelte.js'
-  import { activityLevel } from '../activitySignal.js'
+  import { activityLevel, hostActivityExplanation } from '../activitySignal.js'
   import { getToolIcon } from '../toolLogos.js'
   import { normalizeTool } from '../toolRegistry.js'
   import { hasAccountLine, memberNodeHeight } from './meshLayout.js'
@@ -27,6 +27,7 @@
     accountLabel = '',
     accountFallbackFrom = '',
     status = 'offline',
+    source = null,
     isCrossProject = false,
     projectLabel = '',
     selected = false,
@@ -107,6 +108,8 @@
 
   const icon = $derived.by(() => getToolIcon(safeTool))
 
+  const activityTitle = $derived(hostActivityExplanation({ status, source }))
+
   const safeStatus = $derived(activityLevel({ status }))
 
   const STATUS_COLORS = {
@@ -143,6 +146,7 @@
   class:is-selected={selected}
   class:is-light={!dark}
   data-testid={`mesh-node-${normalizedRole}`}
+  title={activityTitle}
   data-node-id={String(nodeId || '')}
   data-center-x={centerX}
   data-center-y={centerY}

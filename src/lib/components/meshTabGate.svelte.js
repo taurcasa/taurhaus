@@ -94,6 +94,8 @@ export function createMeshTabGate({ state, refs, deps }) {
           contextSummary: member?.contextSummary ?? null,
           behaviorSummary: member?.behaviorSummary ?? null,
           sessionStatus: member?.sessionStatus ?? 'offline',
+          state: member?.state,
+          source: member?.source,
           paneId: member?.paneId ?? null,
         }))
       : []

@@ -2,7 +2,7 @@
   import { getLatestSession, getRecentCommits, getRelationships } from './ipc.js'
   import { formatDuration } from './format.js'
   import { groupedSessionIndicators, hasLiveSession, sessionBadge, toolIcon } from './sessionIndicator.js'
-  import { activitySignal, isActiveLevel, isRetainedSignal, workflowWriteAgeMs } from './activitySignal.js'
+  import { activitySignal, hostActivityExplanation, isActiveLevel, isRetainedSignal, workflowWriteAgeMs } from './activitySignal.js'
   import { currentWorkflowStep, formatWriteAge, workflowSessionId } from './workflowRuns.js'
   import { watchWorkflowSession, workflowSessionRuns } from './workflowRunStore.svelte.js'
   import { previewAccount } from './accounts.svelte.js'
@@ -305,12 +305,15 @@
     const icon = toolIcon(session)
     const extraSuffix = extraCount > 0 ? ` +${extraCount} more` : ''
     const signal = activitySignal(session)
+    const hostExplanation = hostActivityExplanation(session)
 
     if (isActiveLevel(signal.level)) {
       return {
         tone: LEVEL_TONE[signal.level],
-        body: `${badge.toolLabel} is working now${extraSuffix}`,
-        meta: session._duration != null ? `active ${formatDuration(session._duration)}` : 'Session is running',
+        body: signal.source === 'host' && signal.level === 'active'
+          ? `${badge.toolLabel} is waiting for input or approval${extraSuffix}`
+          : `${badge.toolLabel} is working now${extraSuffix}`,
+        meta: hostExplanation ?? (session._duration != null ? `active ${formatDuration(session._duration)}` : 'Session is running'),
         icon,
       }
     }
@@ -322,7 +325,7 @@
         body: retained
           ? `${badge.toolLabel} was live — the last reading is stale${extraSuffix}`
           : `${badge.toolLabel} is active but we can't tell what it's doing${extraSuffix}`,
-        meta: session._duration != null ? `active ${formatDuration(session._duration)}` : 'Something\'s happening',
+        meta: hostExplanation ?? (session._duration != null ? `active ${formatDuration(session._duration)}` : 'Something\'s happening'),
         icon,
       }
     }
@@ -334,7 +337,7 @@
     return {
       tone: LEVEL_TONE[signal.level] ?? 'waiting',
       body: `${badge.toolLabel} is waiting on input${extraSuffix}`,
-      meta: idleMeta,
+      meta: hostExplanation ?? idleMeta,
       icon,
     }
   }

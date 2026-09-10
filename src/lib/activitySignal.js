@@ -229,3 +229,11 @@ export function isActiveLevel(level) {
 export function isRetainedSignal(signal) {
   return signal?.source === 'stale' || signal?.source === 'degraded'
 }
+
+/** Optional explanation of the daemon authority, shared by activity surfaces. */
+export function hostActivityExplanation(record) {
+  const current = activitySignal(record)
+  if (current.source === 'host') return `${current.label} via daemon-owned thread`
+  if (current.source === 'host_unavailable') return 'Uncertain · daemon-owned thread unavailable'
+  return null
+}

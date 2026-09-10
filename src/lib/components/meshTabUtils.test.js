@@ -14,6 +14,17 @@ import {
 } from './meshTabUtils.js'
 
 describe('accountLineLabel', () => {
+  it('preserves the host activity source through runtime member shaping', () => {
+    // Regression: 6f61f611 reduced host evidence to roster health.
+    const config = buildTeamConfigFromRuntimeStatus({ teamName: 'team', members: [
+      { name: 'lead', role: 'lead', cliTool: 'codex', state: 'working', source: 'host' },
+      { name: 'seat', role: 'member', cliTool: 'codex', state: 'uncertain', source: 'host_unavailable' },
+    ] }, '/fixture')
+    expect(config.lead.source).toBe('host')
+    expect(config.lead.status).toBe('working')
+    expect(config.agents[0].source).toBe('host_unavailable')
+    expect(config.agents[0].status).toBe('uncertain')
+  })
   it('uses one wording rule for account fallback and applied states', () => {
     expect(accountLineLabel({ accountLabel: 'Personal', accountApplied: true })).toBe(
       'Personal · applied'
