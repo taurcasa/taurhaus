@@ -1,0 +1,32 @@
+......FE.....
+======================================================================
+ERROR: test_stopped_host_requires_supported_resume (support_test.RestartRegression.test_stopped_host_requires_supported_resume)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/run3/continuation/support_test.py", line 111, in test_stopped_host_requires_supported_resume
+    from support import host_needs_resume
+ImportError: cannot import name 'host_needs_resume' from 'support' (/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/run3/continuation/support.py)
+
+======================================================================
+FAIL: test_checkpoint_refreshes_owned_process_identities (support_test.RestartRegression.test_checkpoint_refreshes_owned_process_identities)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/run3/continuation/support_test.py", line 108, in test_checkpoint_refreshes_owned_process_identities
+    self.assertEqual(saved['step3-identity.json']['processes'],[{'pid':2}])
+AssertionError: Lists differ: [{'pid': 1}] != [{'pid': 2}]
+
+First differing element 0:
+{'pid': 1}
+{'pid': 2}
+
+- [{'pid': 1}]
+?          ^
+
++ [{'pid': 2}]
+?          ^
+
+
+----------------------------------------------------------------------
+Ran 13 tests in 0.021s
+
+FAILED (failures=1, errors=1)
