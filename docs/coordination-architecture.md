@@ -311,9 +311,9 @@ This means teams are not sourced from SQLite ownership records; visibility is pr
 - Types:
   - `ResumeMemberRequest { team_name, member_name }` / `ResumeAgentReport`
   - `ResumeTeamRequest` / `ResumeTeamReport`
-  - (`ResumeContextMode` was removed — resume always starts a fresh session)
+  - (`ResumeContextMode` was removed — resume uses the recorded session when available)
 - Runtime behavior:
-  - member resume resolves/reuses a pane when possible, always launches a fresh session, re-hydrates `model`/`reasoning_effort` from the persisted member, then the role template, then the catalog (never an empty string), restores mesh membership + per-agent daemon state for non-Claude members, and persists runtime attachment
+  - member resume resolves/reuses a pane when possible, relaunches the trimmed recorded session for harnesses with runtime session capture (missing/blank IDs and Antigravity launch new), re-hydrates `model`/`reasoning_effort` from the persisted member, then the role template, then the catalog (never an empty string), restores mesh membership + per-agent daemon state for non-Claude members, and persists the scanner's runtime attachment, including a rebound Codex rollout ID
   - team resume loads the persisted roster, resumes the lead first, then resumes the remaining members sequentially through the existing member-resume pipeline
   - partial success is preserved; already resumed members stay up while failed members remain retryable
 - Snapshot/UI contract:
