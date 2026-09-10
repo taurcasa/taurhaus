@@ -1628,7 +1628,7 @@ Pair: Taurhaus `47b7b8c2` (hosted merge `6f61f611`, protocol 27), Mesh
 | Step | Outcome | Evidence under integration/attempt8/run |
 |---|---|---|
 | 1. Hosted launch/startup | PASS | initialize-result.json; step1-runtime.json; step1-identities.json; generated-config-0.toml; step-1-pane-2.txt; host-events.jsonl |
-| 2. Idle delivery/read | Pending | |
+| 2. Idle delivery/read | PASS | step2-after-status.txt: app_server from config; step2-pane-2.txt: saffronb1f96e input/reply; step2-receipts.json: turn/start native_enqueued; step2-journal-before-read.json and -after-read.json: consumed_by_read only after explicit read |
 | 3. Active deferral | Pending | |
 | 4. Typed input/passive lock sampling | Pending | |
 | 5. Compaction | Pending | |
