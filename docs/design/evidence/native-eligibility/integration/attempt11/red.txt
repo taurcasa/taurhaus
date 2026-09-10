@@ -1,0 +1,13 @@
+..F
+======================================================================
+FAIL: test_rollback_requires_attributed_idle (__main__.TrialGuards.test_rollback_requires_attributed_idle)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt11_test.py", line 53, in test_rollback_requires_attributed_idle
+    with self.assertRaises(AssertionError): check(bad,'%18')
+AssertionError: AssertionError not raised
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.008s
+
+FAILED (failures=1)

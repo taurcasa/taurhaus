@@ -1,4 +1,4 @@
-# Codex 0.153.4 integration — INCONCLUSIVE: setup/activation race; hosted launch observed, attempt 10
+# Codex 0.153.4 integration — attempt 11 IN PROGRESS; eligibility disabled
 
 ## Attempt 1 — INCONCLUSIVE: setup FAIL (2026-09-09)
 
@@ -2455,3 +2455,22 @@ Only the four named evidence files changed; historical runtime sidecars and
 plan ledgers are untouched. The final regression comments identify their
 introducing commits via Git blame. This review correction spent **$0 / 0 turns**;
 the original one unmetered startup turn remains the only attempt-10 expenditure.
+
+## Attempt 11 — ordered integration trial (2026-09-10)
+
+Preparation: Taurhaus `8ac28c3e` on `feat/integration-trial` contains required
+base `1db4f9bf`; protocol 27. Mesh detached explicitly at `ed59187`.
+The attempt-10 controller/actions/steps are reused as `integration/attempt11-*`
+with a fresh 16-turn / USD 3 cap, zero prior spend, both native Codex siblings,
+production canonical initialize, and complete daemon JSONL retention.
+Only the authorized credential file is copied into the disposable paid home.
+No observer connects directly to the app-server socket.
+
+Offline red/green: `python3 docs/design/evidence/native-eligibility/integration/attempt11_test.py`
+first exited 1 (`test_rollback_requires_attributed_idle`: missing native readiness
+source was accepted), then 0 (3 tests). The guard now joins the daemon's attributed
+PID/tool/session/idle record with the Mesh activity snapshot's `launch_ready` or
+`notify` source. Synthetic files and snapshots only; no harness invoked.
+See [red](integration/attempt11/red.txt), [green](integration/attempt11/green.txt).
+Builds are waiting on the required Cargo preflight. Paid turns so far: 0 / USD 0.
+Numbered outcomes, spends, cleanup and gate exits will be appended as observed.
