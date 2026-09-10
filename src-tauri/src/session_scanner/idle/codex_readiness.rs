@@ -3,60 +3,26 @@ use super::*;
 use chrono::{DateTime, Utc};
 
 use super::ActivityObservation as Observation;
-use crate::session_scanner::proc_io;
-
-#[derive(Default)]
-struct Quiet {
-    previous: Option<(u64, DateTime<Utc>)>,
-    since: Option<DateTime<Utc>>,
-}
-
 fn sample(
-    quiet: &mut Quiet,
-    rchar: Option<u64>,
     prompt: bool,
     no_rollout: bool,
     notify: Option<&crate::daemon::codex_notify::CodexNotifyRecord>,
     launch: DateTime<Utc>,
     now: DateTime<Utc>,
 ) -> Option<Observation> {
-    let Some(rchar) = rchar else {
-        *quiet = Quiet::default();
-        return None;
-    };
-    // Share the calibrated rate and minimum cadence with working detection.
-    // Sub-threshold keep-alive reads must let the quiet window accrue; close
-    // polls retain the previous sample rather than amplifying noise into a burst.
-    let elapsed = quiet
-        .previous
-        .and_then(|(_, at)| now.signed_duration_since(at).to_std().ok());
-    if elapsed.is_none_or(|age| age >= proc_io::MIN_SAMPLE_INTERVAL) {
-        if quiet.previous.is_none_or(|(previous, _)| {
-            rchar < previous
-                || elapsed
-                    .is_none_or(|age| proc_io::is_active_rate(rchar.saturating_sub(previous), age))
-        }) {
-            quiet.since = Some(now);
-        }
-        quiet.previous = Some((rchar, now));
-    }
     let notify = notify.filter(|record| {
         record.ts >= launch && record.ts <= now && record.event == "agent-turn-complete"
     });
-    // refresh supplies only a completion validated against the bound transcript.
-    // Working remains the classifier's responsibility, using IO hysteresis and
-    // transcript activity; legacy Codex notify has no turn-start producer.
+    // Only a transcript-validated completion is passed here. Before any turn,
+    // the attributed pane decides readiness independently of process polling IO.
     let (state, source) = if notify.is_some() {
         (SessionState::Idle, "notify")
-    } else if no_rollout
-        && prompt
-        && quiet.since.is_some_and(|since| {
-            now.signed_duration_since(since)
-                .to_std()
-                .is_ok_and(|age| age >= CODEX_ACTIVE_THRESHOLD)
-        })
-    {
-        (SessionState::Idle, "launch_ready")
+    } else if no_rollout {
+        if prompt {
+            (SessionState::Idle, "launch_ready")
+        } else {
+            (SessionState::Active, "pane_working")
+        }
     } else {
         return None;
     };
@@ -66,6 +32,37 @@ fn sample(
         last_observed_at: now,
     })
 }
+
+fn idle_prompt(text: &str) -> bool {
+    let tail: Vec<_> = text
+        .trim_end()
+        .lines()
+        .rev()
+        .take(8)
+        .map(str::trim)
+        .collect();
+    let footer = tail.first().is_some_and(|line| {
+        line.split_once(" · ")
+            .is_some_and(|(model, directory)| model.starts_with("gpt-") && !directory.is_empty())
+    });
+    footer
+        && tail
+            .iter()
+            .any(|line| line.starts_with("› ") || *line == "›")
+        && !tail.iter().any(|line| {
+            let lower = line.to_lowercase();
+            lower.contains("esc to interrupt")
+                || lower.contains("working")
+                || lower.contains("thinking")
+                || line
+                    .chars()
+                    .any(|ch| ('\u{2800}'..='\u{28ff}').contains(&ch))
+        })
+}
+
+#[cfg(test)]
+pub(crate) const IDLE_PANE: &str =
+    "› Ask Codex to do anything\n\n  gpt-5.6-luna low · <scratch>/project\n";
 
 fn no_turn_yet(path: Option<&str>) -> bool {
     use std::io::Read;
@@ -94,10 +91,8 @@ fn prompt_before_first_turn(path: Option<&str>, probe: impl FnOnce() -> bool) ->
 }
 
 struct Seat {
-    identity: String,
     project: String,
     pane: String,
-    quiet: Quiet,
     observation: Option<Observation>,
     scanned: DateTime<Utc>,
 }
@@ -112,13 +107,6 @@ pub(super) fn invalidate(pid: u32) {
     {
         seat.observation = None;
     }
-}
-
-#[cfg(test)]
-pub(super) fn elapse_quiet_window(pid: u32) {
-    let mut guard = SEATS.lock().unwrap();
-    guard.as_mut().unwrap().get_mut(&pid).unwrap().quiet.since =
-        Some(Utc::now() - chrono::Duration::seconds(10));
 }
 
 #[cfg(test)]
@@ -137,10 +125,8 @@ pub(crate) fn seed_observation_for_test(
         .insert(
             pid,
             Seat {
-                identity: "test-seat".into(),
                 project: project.into(),
                 pane: pane.into(),
-                quiet: Quiet::default(),
                 observation: Some(Observation {
                     state,
                     source,
@@ -184,19 +170,6 @@ pub(super) fn refresh(
     else {
         return;
     };
-    // Capture only the explicitly attributed runtime socket, never a default server.
-    let socket_text = socket.to_string_lossy();
-    let args = ["-S", &socket_text, "capture-pane", "-p", "-t", pane];
-    let (no_rollout, prompt) = prompt_before_first_turn(result.jsonl_path.as_deref(), || {
-        super::super::process::run_with_timeout_within("tmux", &args, Duration::from_millis(200))
-            .is_some_and(|text| {
-                text.trim_end()
-                    .lines()
-                    .rev()
-                    .take(8)
-                    .any(|line| line.trim_start().starts_with("› ") || line.trim() == "›")
-            })
-    });
     // apply_notify_edge already checks the transcript boundary. Reattachment
     // cannot invalidate that completion; without a transcript there is no way
     // to tell an old completion from evidence for the current turn.
@@ -205,48 +178,46 @@ pub(super) fn refresh(
     } else {
         launch
     };
-    let notify = (result.jsonl_path.is_some() && result.authoritative)
-        .then(|| {
-            crate::daemon::codex_notify::latest_activity_record_for_session_after(
-                notify_path,
-                id,
-                notify_since.into(),
+    let completion = crate::daemon::codex_notify::latest_record_for_session_after(
+        notify_path,
+        id,
+        "agent-turn-complete",
+        notify_since.into(),
+    )
+    .filter(|record| record.ts <= now);
+    // Even an unvalidated completion ends the pre-turn probe. A writer lock
+    // alone cannot validate the completion or establish readiness for a later turn.
+    let (no_rollout, prompt) = if completion.is_none() {
+        let socket_text = socket.to_string_lossy();
+        let args = ["-S", &socket_text, "capture-pane", "-p", "-t", pane];
+        prompt_before_first_turn(result.jsonl_path.as_deref(), || {
+            super::super::process::run_with_timeout_within(
+                "tmux",
+                &args,
+                Duration::from_millis(200),
             )
+            .is_some_and(|text| idle_prompt(&text))
         })
-        .flatten();
-    let identity = format!(
-        "{id}:{:?}:{launch}:{socket:?}",
-        crate::platform::process_start_ticks(pid)
-    );
-    let rchar = crate::platform::process_rchar(pid);
+    } else {
+        (false, false)
+    };
+    let notify = completion
+        .as_ref()
+        .filter(|_| result.jsonl_path.is_some() && result.authoritative);
     let mut guard = SEATS.lock().unwrap_or_else(|e| e.into_inner());
     let seats = guard.get_or_insert_with(HashMap::new);
     seats
         .retain(|_, seat| now.signed_duration_since(seat.scanned) < chrono::Duration::seconds(120));
     let seat = seats.entry(pid).or_insert_with(|| Seat {
-        identity: identity.clone(),
         project: project.into(),
         pane: pane.clone(),
-        quiet: Quiet::default(),
         observation: None,
         scanned: now,
     });
-    if seat.identity != identity || seat.project != project || seat.pane != *pane {
-        seat.quiet = Quiet::default();
-        seat.identity = identity;
-        seat.project = project.into();
-        seat.pane = pane.clone();
-    }
+    seat.project = project.into();
+    seat.pane = pane.clone();
     seat.scanned = now;
-    seat.observation = sample(
-        &mut seat.quiet,
-        rchar,
-        prompt,
-        no_rollout,
-        notify.as_ref(),
-        notify_since,
-        now,
-    );
+    seat.observation = sample(prompt, no_rollout, notify, notify_since, now);
     if let Some(observed) = &seat.observation {
         result.state = observed.state;
         result.authoritative |= observed.source == "notify";
@@ -258,70 +229,41 @@ mod tests {
     use super::*;
     use crate::daemon::codex_notify::{append_event_at, latest_activity_record_for_session_after};
 
-    // Regression: b9e4a855 (still present in bb67081e) counted every idle
-    // keep-alive byte as work and restarted the launch quiet window forever.
+    // Regression: 6398bfa3 (#163), L2 run 3: a composer alone also appears
+    // during startup/working; readiness requires the loaded footer and no spinner.
     #[test]
-    fn codex_round3_idle_keepalive_trace_reaches_launch_ready() {
-        let launch = Utc::now();
-        let mut quiet = Quiet::default();
-        for tick in 0..=24 {
-            let now = launch + chrono::Duration::milliseconds(tick * 500);
-            let observed = sample(
-                &mut quiet,
-                Some(1000 + tick as u64 * 224),
-                true,
-                true,
-                None,
-                launch,
-                now,
-            );
-            if tick < 20 {
-                assert!(
-                    observed.is_none(),
-                    "idle noise became work at tick {tick}: {observed:?}"
-                );
-            } else {
-                let observed = observed.expect("idle TUI must accrue its quiet window");
-                assert_eq!(observed.state, SessionState::Idle);
-                assert_eq!(observed.source, "launch_ready");
-                assert_eq!(observed.last_observed_at, now);
-            }
+    fn codex_prompt_rejects_busy_and_incomplete_composer() {
+        assert!(idle_prompt(IDLE_PANE));
+        for status in [
+            "• Working (1s • esc to interrupt)",
+            "⠋ Thinking",
+            "⠙",
+            "• Booting MCP server: codex_apps (0s • esc to interrupt)",
+        ] {
+            assert!(!idle_prompt(&format!("{status}\n{IDLE_PANE}")), "{status}");
         }
+        assert!(!idle_prompt(
+            "› Ask Codex to do anything\n  ? for shortcuts"
+        ));
+        assert!(!idle_prompt("gpt-5.6-luna low · <scratch>/project"));
     }
 
-    // Regression: b9e4a855 promoted even a single read burst to authoritative
-    // work; only the classifier's calibrated hysteresis may make that claim.
+    // Regression: 6398bfa3 (#163), L2 run 3: idle-prompt polling repeatedly
+    // reset the quiet window, withholding onboarding despite an attributed pane.
     #[test]
-    fn codex_round3_readiness_does_not_claim_process_io_authority() {
+    fn codex_launch_ready_first_scan_ignores_io_and_non_prompt_is_working() {
         let launch = Utc::now();
-        let mut quiet = Quiet::default();
-        sample(&mut quiet, Some(1000), true, true, None, launch, launch);
-        let burst = launch + chrono::Duration::milliseconds(500);
-        assert!(sample(&mut quiet, Some(8000), true, true, None, launch, burst).is_none());
-        assert!(sample(
-            &mut quiet,
-            Some(8000),
-            true,
-            true,
-            None,
-            launch,
-            burst + chrono::Duration::seconds(9)
-        )
-        .is_none());
-        assert_eq!(
-            sample(
-                &mut quiet,
-                Some(8000),
-                true,
-                true,
-                None,
-                launch,
-                burst + chrono::Duration::seconds(10)
-            )
-            .unwrap()
-            .source,
-            "launch_ready"
-        );
+        let observed = sample(true, true, None, launch, launch)
+            .expect("the loaded pane prompt is ready on the first scan");
+        assert_eq!(observed.source, "launch_ready");
+        assert_eq!(observed.state, SessionState::Idle);
+        let now = launch + chrono::Duration::milliseconds(500);
+        let observed = sample(true, true, None, launch, now).unwrap();
+        assert_eq!(observed.state, SessionState::Idle);
+        assert_eq!(observed.last_observed_at, now);
+        let observed = sample(false, true, None, launch, now)
+            .expect("a missing composer must not be called idle");
+        assert_eq!(observed.state, SessionState::Active);
     }
 
     // Regression: b9e4a855's attachment floor hid a completion that the bound
@@ -383,18 +325,15 @@ mod tests {
     fn codex_review_completion_survives_post_turn_io_and_quiet_scans() {
         let launch = Utc::now();
         let completed = launch + chrono::Duration::seconds(1);
-        let mut quiet = Quiet::default();
         let record = crate::daemon::codex_notify::CodexNotifyRecord {
             ts: completed,
             session_id: Some("seat".into()),
             event: "agent-turn-complete".into(),
             turn_id: None,
         };
-        sample(&mut quiet, Some(100), false, false, None, launch, launch);
+        sample(false, false, None, launch, launch);
         // Establish idle after completion before a later keep-alive read.
         let idle = sample(
-            &mut quiet,
-            Some(100),
             false,
             false,
             Some(&record),
@@ -405,16 +344,7 @@ mod tests {
         assert_eq!(idle.state, SessionState::Idle);
         for seconds in [2, 3, 30] {
             let now = completed + chrono::Duration::seconds(seconds);
-            let observed = sample(
-                &mut quiet,
-                Some(101),
-                false,
-                false,
-                Some(&record),
-                launch,
-                now,
-            )
-            .unwrap();
+            let observed = sample(false, false, Some(&record), launch, now).unwrap();
             assert_eq!(observed.state, SessionState::Idle, "scan at {seconds}s");
             assert_eq!(observed.source, "notify");
             assert_eq!(observed.last_observed_at, now);
@@ -441,24 +371,14 @@ mod tests {
     fn codex_review_unknown_notify_is_not_working() {
         let launch = Utc::now() - chrono::Duration::seconds(20);
         for event in ["unknown", "", "future-event", "agent-turn-started"] {
-            let mut quiet = Quiet::default();
-            sample(&mut quiet, Some(1), true, true, None, launch, launch);
+            sample(true, true, None, launch, launch);
             let record = crate::daemon::codex_notify::CodexNotifyRecord {
                 ts: launch,
                 session_id: Some("seat".into()),
                 event: event.into(),
                 turn_id: None,
             };
-            let result = sample(
-                &mut quiet,
-                Some(1),
-                true,
-                true,
-                Some(&record),
-                launch,
-                Utc::now(),
-            )
-            .unwrap();
+            let result = sample(true, true, Some(&record), launch, Utc::now()).unwrap();
             assert_eq!(result.source, "launch_ready");
             assert_eq!(result.state, SessionState::Idle);
         }
@@ -467,36 +387,33 @@ mod tests {
     // Regression: 664feab6 attributed a pre-rollout seat but left its activity
     // uncertain, so team-owned delivery could never send its first card.
     #[test]
-    fn codex_launch_ready_quiet_prompt_and_notify_handoff() {
+    fn codex_launch_ready_prompt_and_notify_handoff() {
         let tmp = tempfile::tempdir().unwrap();
         let notify = tmp.path().join("notify.jsonl");
         let launch = Utc::now() - chrono::Duration::seconds(30);
-        let ready = launch + chrono::Duration::seconds(10);
-        let mut quiet = Quiet::default();
-        let mut poll = |io, record: Option<&crate::daemon::codex_notify::CodexNotifyRecord>, at| {
-            sample(&mut quiet, Some(io), true, true, record, launch, at)
+        let ready = launch;
+        let poll = |record: Option<&crate::daemon::codex_notify::CodexNotifyRecord>, at| {
+            sample(true, true, record, launch, at)
         };
-        assert!(poll(10, None, launch).is_none());
-        assert!(poll(10, None, ready - chrono::Duration::milliseconds(1)).is_none());
-        let idle = poll(10, None, ready).unwrap();
+        let idle = poll(None, ready).unwrap();
         assert_eq!(idle.state, SessionState::Idle);
         assert_eq!(idle.source, "launch_ready");
         assert_eq!(idle.last_observed_at, ready);
         let now = Utc::now();
-        assert_eq!(poll(10, None, now).unwrap().last_observed_at, now);
-        assert_eq!(poll(11, None, now).unwrap().state, SessionState::Idle);
+        assert_eq!(poll(None, now).unwrap().last_observed_at, now);
+        assert_eq!(poll(None, now).unwrap().state, SessionState::Idle);
         let raw =
             serde_json::json!({"type": "agent-turn-complete", "thread-id": "seat"}).to_string();
         append_event_at(&notify, &raw, now).unwrap();
         let record =
             latest_activity_record_for_session_after(&notify, "seat", launch.into()).unwrap();
-        let observed = poll(11, Some(&record), now + chrono::Duration::seconds(11)).unwrap();
+        let observed = poll(Some(&record), now + chrono::Duration::seconds(11)).unwrap();
         assert_eq!(observed.state, SessionState::Idle);
         assert_eq!(observed.source, "notify");
         // Regression: b9e4a855 timestamped an IO delta at the end of its
         // interval, hiding a completion that landed between those two polls.
         let later = now + chrono::Duration::seconds(20);
-        assert_eq!(poll(12, None, later).unwrap().state, SessionState::Idle);
+        assert_eq!(poll(None, later).unwrap().state, SessionState::Idle);
         let record = crate::daemon::codex_notify::CodexNotifyRecord {
             ts: now + chrono::Duration::seconds(15),
             session_id: Some("seat".into()),
@@ -504,24 +421,22 @@ mod tests {
             turn_id: None,
         };
         assert_eq!(
-            poll(12, Some(&record), later).unwrap().state,
+            poll(Some(&record), later).unwrap().state,
             SessionState::Idle
         );
     }
 
-    // Regression: 664feab6 must not turn unresolved or non-prompt quiet into readiness.
+    // Regression: 664feab6 must not turn unresolved rollout evidence into readiness.
     #[test]
-    fn codex_launch_ready_requires_readable_io_prompt_and_no_turn() {
-        let launch = Utc::now();
-        for (io, prompt, no_rollout) in [
-            (None, true, true),
-            (Some(1), false, true),
-            (Some(1), true, false),
-        ] {
-            let mut quiet = Quiet::default();
-            sample(&mut quiet, io, prompt, no_rollout, None, launch, launch);
-            let end = launch + chrono::Duration::seconds(10);
-            assert!(sample(&mut quiet, io, prompt, no_rollout, None, launch, end).is_none());
-        }
+    fn codex_launch_ready_requires_no_turn() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("rollout.jsonl");
+        assert!(!no_turn_yet(path.to_str()));
+        fs::write(&path, "not-json").unwrap();
+        assert!(!no_turn_yet(path.to_str()));
+        fs::write(&path, "{\"type\":\"session_meta\"}\n").unwrap();
+        assert!(no_turn_yet(path.to_str()));
+        let now = Utc::now();
+        assert!(sample(true, false, None, now, now).is_none());
     }
 }

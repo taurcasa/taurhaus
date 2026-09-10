@@ -166,7 +166,9 @@ where
                     &proc.project_path,
                     tmux_pane.map(|pane| pane.pane_id.as_str()),
                 )
-                .filter(|observed| matches!(observed.source, "launch_ready" | "notify"));
+                .filter(|observed| {
+                    matches!(observed.source, "launch_ready" | "pane_working" | "notify")
+                });
             let authoritative_state = tool_spec
                 .activity_source()
                 .authoritative_state(&proc.project_path, proc.pid, &idle_result)
@@ -255,7 +257,7 @@ where
             let (activity_confidence, activity_attribution, project_unattributed_active) =
                 if let Some(observed) = &seat_observation {
                     (
-                        if observed.source == "launch_ready" {
+                        if observed.source != "notify" {
                             ActivityConfidence::Medium
                         } else {
                             ActivityConfidence::High
@@ -570,6 +572,11 @@ mod tests {
             (
                 "launch_ready",
                 SessionState::Idle,
+                ActivityConfidence::Medium,
+            ),
+            (
+                "pane_working",
+                SessionState::Active,
                 ActivityConfidence::Medium,
             ),
             ("notify", SessionState::Idle, ActivityConfidence::High),
