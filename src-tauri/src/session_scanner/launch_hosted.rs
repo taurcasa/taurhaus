@@ -16,6 +16,10 @@ pub struct HostedDescriptor {
     pub attached_tui: String,
 }
 impl HostedDescriptor {
+    pub const HOST: &str = "taurhaus-daemon-owned-thread/1";
+    pub const CONFIGURATION: &str = "strict-config/1";
+    pub const TRUST: &str = "daemon-owned/1";
+
     pub fn codex() -> Self {
         Self {
             build: "0.153.4".into(),

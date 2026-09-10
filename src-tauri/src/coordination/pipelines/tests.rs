@@ -9784,3 +9784,32 @@ fn initialize_owner_race_success_tolerates_guard_cleanup_and_owner_skip() {
         assert!(report.failed_step.is_none(), "{case}: {report:?}");
     }
 }
+
+// Regression: 90f89257 defaulted legacy adds to hosted delivery without a target-team guard.
+#[cfg(target_os = "linux")]
+#[test]
+fn hosted_add_requires_target_team_canonical_messaging() {
+    for format in [None, Some(1), Some(2)] {
+        let tmp = TempDir::new().unwrap();
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let mut orchestrator = new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime.clone());
+        orchestrator.create_team("team", None).unwrap();
+        let mut config = TeamConfigStore::load(tmp.path(), "team").unwrap();
+        if let Some(format) = format {
+            config.extra.insert("messaging_format".into(), serde_json::json!(format));
+        }
+        TeamConfigStore::save(tmp.path(), "team", &config).unwrap();
+        for delivery in [None, Some("tmux"), Some("app_server")] {
+            let mut agent = setup_config("seat", "codex", "gpt-6-astra", tmp.path().to_str().unwrap());
+            agent.delivery = delivery.map(str::to_string);
+            let result = orchestrator.validate_add_agent_request(&AddAgentRequest { team_name: "team".into(), agent });
+            if delivery == Some("app_server") && format != Some(2) {
+                assert!(result.unwrap_err().to_string().contains("app_server_requires_canonical_messaging"));
+            } else {
+                result.unwrap();
+            }
+        }
+        assert!(runtime.calls().is_empty());
+        assert_eq!(TeamConfigStore::load(tmp.path(), "team").unwrap(), config);
+    }
+}

@@ -71,7 +71,11 @@ fn read_mesh_install_status(app: &tauri::AppHandle) -> Result<MeshInstallStatus,
         && status.canonical_messaging_supported
         && codex.is_some()
     {
-        read_hosted_capabilities(app, &status).unwrap_or_default()
+        read_hosted_capabilities(app, &status).unwrap_or_else(|reason| {
+            // Reasons are fixed labels: never log CLI stdout, stderr or credentials.
+            tracing::debug!(event = "mesh.hosted_capabilities.unavailable", reason);
+            serde_json::Value::Null
+        })
     } else {
         serde_json::Value::Null
     };
@@ -368,22 +372,21 @@ fn hosted_delivery_supported(
     codex: Option<&str>,
     capabilities: &serde_json::Value,
 ) -> bool {
+    use crate::session_scanner::launch::HostedDescriptor;
+    let paired = HostedDescriptor::codex();
     canonical_messaging_supported(version)
-        && codex.is_some_and(|build| {
-            capabilities["native_descriptors"]
-                .as_array()
-                .is_some_and(|descriptors| {
-                    descriptors.iter().any(|d| {
-                        d["enabled"] == true
-                            && d["adapter"] == "app_server"
-                            && d["harness"] == "codex"
-                            && d["build"] == build
-                            && d["host"] == "taurhaus-daemon-owned-thread/1"
-                            && d["configuration"] == "strict-config/1"
-                            && d["trust"] == "daemon-owned/1"
-                            && d["transport"] == "unix-websocket"
-                    })
-                })
+        && codex == Some(paired.build.as_str())
+        && capabilities["native_descriptors"].as_array().is_some_and(|descriptors| {
+            descriptors.iter().any(|d| {
+                d["enabled"] == true
+                    && d["adapter"] == "app_server"
+                    && d["harness"] == "codex"
+                    && d["build"] == paired.build
+                    && d["host"] == HostedDescriptor::HOST
+                    && d["configuration"] == HostedDescriptor::CONFIGURATION
+                    && d["trust"] == HostedDescriptor::TRUST
+                    && d["transport"] == paired.transport
+            })
         })
 }
 
@@ -405,30 +408,30 @@ fn with_hosted_delivery(
 fn read_hosted_capabilities(
     app: &tauri::AppHandle,
     status: &MeshInstallStatus,
-) -> Option<serde_json::Value> {
+) -> Result<serde_json::Value, &'static str> {
     let installed = status.installed_contract.is_some();
     let mut command = if is_native_daemon() {
         let binary = if installed {
-            dirs::home_dir()?.join(".local/bin/mesh")
+            native_mesh_binary_path().map_err(|_| "home_unavailable")?
         } else {
-            resolve_bundled_mesh_assets(app).ok()?.0
+            resolve_bundled_mesh_assets(app).map_err(|_| "bundled_assets_unavailable")?.0
         };
         let mut command = std::process::Command::new(binary);
         command.args(["delivery", "capabilities"]);
         command
     } else {
-        let distro = detect_default_distro().ok()??;
-        validate_wsl_distro(&distro).ok()?;
+        let distro = detect_default_distro().map_err(|_| "distro_probe_failed")?.ok_or("no_default_distro")?;
+        validate_wsl_distro(&distro).map_err(|_| "invalid_distro")?;
         let mut command = wsl_command();
         if installed {
             command.args(crate::daemon::launcher::wsl_shell_args(
                 &distro,
                 "-lc",
-                "\"$HOME/.local/bin/mesh\" delivery capabilities",
+                &format!("\"{WSL_MESH_BINARY_PATH}\" delivery capabilities"),
             ));
         } else {
-            let binary = resolve_bundled_mesh_assets(app).ok()?.0;
-            let linux = crate::provider::path::to_linux(&binary.to_string_lossy())?;
+            let binary = resolve_bundled_mesh_assets(app).map_err(|_| "bundled_assets_unavailable")?.0;
+            let linux = crate::provider::path::to_linux(&binary.to_string_lossy()).ok_or("bundled_path_unavailable")?;
             command.args(["-d", &distro, "--exec", &linux, "delivery", "capabilities"]);
         }
         command
@@ -439,11 +442,14 @@ fn read_hosted_capabilities(
         INSTALL_STATUS_TIMEOUT,
         "mesh delivery capabilities",
     )
-    .ok()?;
+    .map_err(|error| match error.kind() {
+        std::io::ErrorKind::TimedOut => "timeout",
+        _ => "command_failed",
+    })?;
     if !output.status.success() {
-        return None;
+        return Err("nonzero_exit");
     }
-    serde_json::from_slice(&output.stdout).ok()
+    serde_json::from_slice(&output.stdout).map_err(|_| "invalid_json")
 }
 
 fn mesh_status_not_installed(
@@ -548,14 +554,14 @@ fn mesh_status_for_native_binary(
     }
 }
 
+fn native_mesh_binary_path() -> Result<PathBuf, String> {
+    Ok(dirs::home_dir().ok_or("Could not determine home directory")?.join(".local/bin/mesh"))
+}
+
 fn check_mesh_install_native(
     bundled_contract: &MeshCompatibilityContract,
 ) -> Result<MeshInstallStatus, String> {
-    let home = dirs::home_dir().ok_or("Could not determine home directory")?;
-    Ok(mesh_status_for_native_binary(
-        bundled_contract,
-        &home.join(".local/bin/mesh"),
-    ))
+    Ok(mesh_status_for_native_binary(bundled_contract, &native_mesh_binary_path()?))
 }
 
 fn check_mesh_install_wsl(

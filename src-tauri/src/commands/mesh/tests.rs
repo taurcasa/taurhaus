@@ -57,11 +57,13 @@ fn canonical_capability_uses_installed_version_then_bundled_fallback() {
 }
 
 fn hosted_descriptor() -> serde_json::Value {
+    use crate::session_scanner::launch::HostedDescriptor;
+    let paired = HostedDescriptor::codex();
     serde_json::json!({"native_descriptors": [{
-        "adapter": "app_server", "harness": "codex", "build": "0.153.4",
-        "enabled": true, "host": "taurhaus-daemon-owned-thread/1",
-        "configuration": "strict-config/1", "trust": "daemon-owned/1",
-        "transport": "unix-websocket"
+        "adapter": "app_server", "harness": "codex", "build": paired.build,
+        "enabled": true, "host": HostedDescriptor::HOST,
+        "configuration": HostedDescriptor::CONFIGURATION, "trust": HostedDescriptor::TRUST,
+        "transport": paired.transport
     }]})
 }
 
@@ -131,4 +133,12 @@ fn hosted_status_uses_same_contract_fallback_and_camel_case_wire() {
                 .hosted_delivery_supported
         );
     }
+}
+
+// Regression: 2fcf7d65 trusted the probed build even when the daemon handshake rejects it.
+#[test]
+fn hosted_capability_rejects_cli_and_mesh_matching_an_unpaired_build() {
+    let mut capabilities = hosted_descriptor();
+    capabilities["native_descriptors"][0]["build"] = serde_json::json!("0.153.5");
+    assert!(!hosted_delivery_supported("0.3.0", Some("0.153.5"), &capabilities));
 }
