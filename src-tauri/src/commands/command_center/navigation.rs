@@ -47,7 +47,8 @@ pub(super) fn stop_cli_session_impl(
                 request_fields,
             );
             // Hosted stops confirm TUI exit and host reaping before replying.
-            let timeout = crate::session_scanner::cli_tool::spec(tool).stop_timeout + std::time::Duration::from_secs(5);
+            let timeout = crate::session_scanner::cli_tool::spec(tool).stop_timeout
+                + std::time::Duration::from_secs(5);
             match daemon.send_status_request_within(&request, timeout) {
                 Ok(response) if response.is_ok() => {
                     let mut success_fields = Map::new();
