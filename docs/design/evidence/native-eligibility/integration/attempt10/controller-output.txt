@@ -1,0 +1,51 @@
+{"kind": "binary"}
+{"kind": "binary"}
+{"kind": "binary"}
+{"kind": "binary"}
+{"kind": "binary"}
+{"kind": "command"}
+{"kind": "command_result"}
+{"kind": "command"}
+{"kind": "command_result"}
+{"kind": "command"}
+{"kind": "command_result"}
+{"kind": "isolation"}
+{"kind": "command"}
+{"kind": "command_result"}
+{"kind": "bootstrap_script"}
+{"kind": "daemon_spawn"}
+{"kind": "daemon_request"}
+{"kind": "daemon_response"}
+{"kind": "daemon_request"}
+{"kind": "daemon_response"}
+{"kind": "daemon_request"}
+{"kind": "daemon_response"}
+{"kind": "daemon_request"}
+{"kind": "daemon_response"}
+{"kind": "daemon_request"}
+{"kind": "daemon_response"}
+{"kind": "daemon_request"}
+{"kind": "daemon_response"}
+{"kind": "daemon_request"}
+{"kind": "daemon_response"}
+{"kind": "daemon_request"}
+{"kind": "daemon_response"}
+{"kind": "daemon_request"}
+{"kind": "daemon_response"}
+{"kind": "daemon_request"}
+{"kind": "daemon_response"}
+{"kind": "command"}
+{"kind": "command_result"}
+{"kind": "command"}
+{"kind": "command_result"}
+{"kind": "command"}
+{"kind": "command_result"}
+{"kind": "stopped", "error": "production initialize failed at {'failed_step': 'opt_in_delivery', 'message': 'Backend error: mesh team activation failed: error: IO error: delivery: quiescent required before opt-in: IO error: delivery: team owner already holds lifetime lock\\n', 'retryable': True, 'steps': [{'message': 'configuration validated', 'status': 'succeeded', 'step': 'validate_configuration'}, {'message': 'team created', 'status': 'succeeded', 'step': 'create_team'}, {'message': 'lead added', 'status': 'succeeded', 'step': 'add_lead'}, {'message': 'panes opened and sessions started', 'status': 'succeeded', 'step': 'create_panes'}, {'message': 'launched sessions verified', 'status': 'succeeded', 'step': 'launch_sessions'}, {'message': 'mesh joined', 'status': 'succeeded', 'step': 'join_mesh'}, {'message': 'mesh daemons started', 'status': 'succeeded', 'step': 'start_daemons'}, {'message': 'Backend error: mesh team activation failed: error: IO error: delivery: quiescent required before opt-in: IO error: delivery: team owner already holds lifetime lock\\n', 'status': 'failed', 'step': 'opt_in_delivery'}], 'succeeded_steps': ['validate_configuration', 'create_team', 'add_lead', 'create_panes', 'launch_sessions', 'join_mesh', 'start_daemons'], 'team_name': 'integration'}"}
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt10-controller.py", line 315, in <module>
+    assert report["failed_step"] is None, "production initialize failed at " + str(report)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: production initialize failed at {'failed_step': 'opt_in_delivery', 'message': 'Backend error: mesh team activation failed: error: IO error: delivery: quiescent required before opt-in: IO error: delivery: team owner already holds lifetime lock\n', 'retryable': True, 'steps': [{'message': 'configuration validated', 'status': 'succeeded', 'step': 'validate_configuration'}, {'message': 'team created', 'status': 'succeeded', 'step': 'create_team'}, {'message': 'lead added', 'status': 'succeeded', 'step': 'add_lead'}, {'message': 'panes opened and sessions started', 'status': 'succeeded', 'step': 'create_panes'}, {'message': 'launched sessions verified', 'status': 'succeeded', 'step': 'launch_sessions'}, {'message': 'mesh joined', 'status': 'succeeded', 'step': 'join_mesh'}, {'message': 'mesh daemons started', 'status': 'succeeded', 'step': 'start_daemons'}, {'message': 'Backend error: mesh team activation failed: error: IO error: delivery: quiescent required before opt-in: IO error: delivery: team owner already holds lifetime lock\n', 'status': 'failed', 'step': 'opt_in_delivery'}], 'succeeded_steps': ['validate_configuration', 'create_team', 'add_lead', 'create_panes', 'launch_sessions', 'join_mesh', 'start_daemons'], 'team_name': 'integration'}
+{"kind": "final_host_read_error", "error": "{'code': 'HOST_OPERATION_FAILED', 'message': 'host member busy'}"}
+{"kind": "cleanup"}
+{"kind": "descriptor_restored"}

@@ -1,0 +1,6 @@
+{
+  "step": 1,
+  "outcome": "FAIL",
+  "failed_pipeline_step": "opt_in_delivery",
+  "reason": "Backend error: mesh team activation failed: error: IO error: delivery: quiescent required before opt-in: IO error: delivery: team owner already holds lifetime lock\n"
+}

@@ -29,6 +29,16 @@ class TrialGuards(unittest.TestCase):
                 self.assertEqual((dst/name).read_text(), 'synthetic '+name)
                 self.assertEqual((dst/name).stat().st_mode & 0o777, 0o700)
 
+    def test_missing_metering_is_not_zero_spend(self):
+        # // Regression: 5c4132a9 ledger reports a zero sum when no usage was captured.
+        finalize = helper('attempt10_support.py', 'finalize_metering')
+        row = {'generations': [], 'unmetered_turn_ids': ['started'],
+               'api_equivalent_usd': 0, 'conservative_usd': 0}
+        result = finalize(row)
+        self.assertIsNone(result['api_equivalent_usd'])
+        self.assertIsNone(result['conservative_usd'])
+        self.assertFalse(result['metering_complete'])
+
     def test_rollback_requires_attributed_idle(self):
         # // Regression: e98ffd7a reached an unattributed pane; delivery stayed pending.
         check = helper('attempt10_support.py', 'validate_tmux_activity')

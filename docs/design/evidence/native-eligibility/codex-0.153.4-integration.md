@@ -1,4 +1,4 @@
-# Codex 0.153.4 integration — FAIL step 7: known defect (codex identity lane), attempt 9
+# Codex 0.153.4 integration — FAIL step 1: opt-in lifetime-lock refusal, attempt 10
 
 ## Attempt 1 — INCONCLUSIVE: setup FAIL (2026-09-09)
 
@@ -2199,3 +2199,168 @@ gate metadata remains historical. Rust unit execution is not required because
 there is no `src-tauri/` diff. The audit's read-only cleanup mode unpacks the
 retained event trace so this verification does not rerun the one-time finalizer
 or rewrite daemon evidence. The original daemon JSONL hash is unchanged.
+
+
+### Attempt 10 — FAIL step 1: production opt-in lifetime-lock refusal, 2026-09-10
+
+**Latest verdict: FAIL.** The production `coordination.initialize_team` RPC
+launched both seats, including the hosted Codex member and its attached TUI,
+but failed at `opt_in_delivery`. Stop-on-first-failure was applied; no retry,
+process intervention within a step, product patch, or descriptor flip occurred.
+[Initialize response](integration/attempt10/run/initialize-result.json),
+[final audit](integration/attempt10/final-audit.json).
+
+| Brief step | Outcome | S-runtime evidence |
+|---|---|---|
+| 1. Production hosted launch and activation | **FAIL** at `opt_in_delivery`: existing team owner holds lifetime lock. Host/TUI launch was observed, but initialization did not succeed. | [Runtime record](integration/attempt10/run/team/runtime/seat.json), [attached pane](integration/attempt10/run/initialize-pane-2.txt), [initialize report](integration/attempt10/run/initialize-result.json) |
+| 2. Idle Mesh send / explicit read | **NOT RUN**, stopped at step 1 | [Outcome](integration/attempt10/run/step2-outcome.json) |
+| 3. Active-thread deferral | **NOT RUN**, stopped at step 1 | [Outcome](integration/attempt10/run/step3-outcome.json) |
+| 4. Typed input / passive exclusion | **NOT RUN**, stopped at step 1 | [Outcome](integration/attempt10/run/step4-outcome.json) |
+| 5. Compaction recovery | **NOT RUN**, stopped at step 1 | [Outcome](integration/attempt10/run/step5-outcome.json) |
+| 6. Daemon restart | **NOT RUN**, stopped at step 1 | [Outcome](integration/attempt10/run/step6-outcome.json) |
+| 7. Operational tmux rollback | **NOT RUN**, stopped at step 1; #163 attribution fix not exercised | [Outcome](integration/attempt10/run/step7-outcome.json) |
+
+#### Pair and isolation
+
+Taurhaus source `5c4132a9` on `feat/integration-trial` includes identity merge
+`6398bfa3` as an ancestor; protocol 27. Controller preparation commit `b8149dd4`
+changes evidence only. Mesh stayed detached at `fcb9647`. Its disposable compiled
+0.153.4 descriptor used `trial`, `enabled: true`, with exact identities
+`taurhaus-daemon-owned-thread/1`, `strict-config/1`, `daemon-owned/1` and
+`unix-websocket`. The wildcard and all other descriptors remained disabled.
+[Scratch descriptor diff](integration/attempt10/mesh-trial-descriptor.diff).
+Both checkout-local builds exited **0**: [daemon](integration/attempt10/daemon-build.json),
+[Mesh](integration/attempt10/mesh-build.json). Cargo exclusion polled at 30-second
+intervals; daemon build waited 60 seconds for a competing build to clear.
+
+Scratch root `/tmp/th-int-yzuf3uvh`, private port **27742**, private tmux socket
+`/tmp/th-int-yzuf3uvh/tmux/tmux-1000/default`. The environment removed inherited
+`TMUX`; Bubblewrap isolated the PID namespace and hid operator homes and `/run`.
+Only the authorized auth file was copied into an initially empty Codex home,
+mode 0600; scratch root mode 0700. Both native siblings (`codex` and
+`codex-code-mode-host`) were copied from the resolved installation. Their hashes,
+the daemon/Mesh/Claude hashes, environment, complete initialize request and
+commands are in the losslessly packed [event trace](integration/attempt10/run/events.jsonl)
+with [payload dictionary](integration/attempt10/run/event-payloads.json).
+No observer connection was opened to the app-server socket. The only host
+inspection attempted was the daemon's read-only hosted transcript RPC.
+
+Production initialization used one credential-free Claude lead and one Codex
+member, `gpt-5.6-luna`, effort `low`, `delivery: app_server` at creation.
+The exact `DEFAULT_CANONICAL_POLICY` was parsed from MeshTeamBuilder's shared
+module and sent as canonical messaging [policy](integration/attempt10/run/policy.json).
+The scratch project was a git checkout with a short AGENTS.md. The runtime record
+and `hosted.instruction_sources.loaded` confirm that instruction source was loaded.
+The random reserved marker was `cobaltd495131153`; no marker send occurred.
+
+#### Exact failure and observed launch
+
+The initialize RPC's operation status was `completed`, meaning the operation
+finished; its report explicitly carries `failed_step: opt_in_delivery` and
+`retryable: true`. It is **not a successful initialization**. Exact refusal:
+
+```text
+Backend error: mesh team activation failed: error: IO error: delivery: quiescent required before opt-in: IO error: delivery: team owner already holds lifetime lock
+```
+
+Before that refusal, `launch_sessions`, `join_mesh` and `start_daemons` reported
+success. The retained daemon stderr records `team daemon ensured running`, PID
+**679 inside the private namespace**, at `12:39:00.354253Z`. The
+[owner epoch](integration/attempt10/run/team/state/delivery/epoch.json) records
+that same PID/start identity. [Process identities](integration/attempt10/run/identities.json)
+map it to host PID **1140030**, argv `mesh team-daemon start --team integration
+--name lead --claude-dir /tmp/th-int-yzuf3uvh/claude`. These observations establish
+an owner existed before opt-in; attribution to a specific race/code path remains
+an inference, not a diagnosed product fix.
+
+The Codex record had `terminalContract: 1`, `health: active`, attachment generation
+1 and app-server state `ready`, thread **01a08b54-1471-77a2-899b-f608bf08a8dd**.
+The child was namespace PID **126** / host PID **1138406**, start ticks
+**26447360**. Its command carried daemon-selected read-only sandbox, never
+approval, Luna/low overrides and the Unix socket. The attached TUI was host PID
+**1140108**, pane **%2**, `codex --remote unix://… resume <exact-thread>
+--no-alt-screen --strict-config`, using the daemon-generated per-member TUI home.
+The pane visibly displayed **OpenAI Codex v0.153.4**, **gpt-5.6-luna low** and
+`Working (1s)`. The generated config file itself was not retained: initialization
+failed before the controller's post-success config capture. The server argv did
+not include `--strict-config`; the TUI argv did. Neither fact is silently promoted
+to a full step-1 PASS.
+
+The complete [daemon JSONL](integration/attempt10/run/taurhaus.log.jsonl) retains
+**50 rows**, all event families, including scanner, inotify and self-heal rows.
+Its digest is in the final audit. `onboarding.delivery.observed` records a baseline
+card of **2172 offered bytes**, stage `submitted`, path `app_server`, delivery ID
+`7097619faf9c4f80dd2a7cbd420d45e80af59cb3d14578e5df721bf194d9d9f8`.
+No `hosted.rpc.*` wire events were emitted in the retained log. The final read-only
+hosted transcript attempt returned `HOST_OPERATION_FAILED: host member busy`.
+No host event stream was obtained; no fabricated `turn/start` response is claimed.
+No Mesh send receipts, explicit reads or holder samples exist for unrun steps;
+the retained canonical segment is empty.
+
+#### Every turn and spend
+
+Fresh authorization: **≤16 Codex turns and ≤USD 3**. One automatic startup turn
+was observed, with **zero manually submitted turns** and **zero Claude turns**.
+No continuation, retry or second paid run occurred.
+
+| Generation | Thread / turn | Input / cached / output | USD |
+|---|---|---|---|
+| Automatic startup recovery card | Thread `01a08b54-1471-77a2-899b-f608bf08a8dd`; turn `01a08b54-1a52-7971-b02e-39f42cc2edd3` | **Unreported**: only `task_started` was retained | **Unknown, not $0** |
+| Claude lead | No model turn | 0 / 0 / 0 | $0 |
+
+[Rollout usage evidence](integration/attempt10/run/usage-events.json) contains
+only that start. Neither a `token_count` nor host `thread/tokenUsage/updated`
+event was captured before failure teardown. The [final ledger](integration/attempt10/run/cost-ledger.json)
+therefore marks metering incomplete, with null total cost and actual billed USD.
+Its zero measured subtotal is an empty sum, **not proof of free execution**.
+The turn cap is verified; the actual USD cap cannot be verified from this run's
+missing usage data. No cost was invented and no additional paid call was made to
+fill that gap. The controller's final read-only drain failed immediately with
+`host member busy`, then its mandated failure cleanup ended the owned namespace.
+
+#### Reproduction and cleanup
+
+The attempt-9 controller/actions/steps/support were reused with attempt-10 output
+paths, the native sibling copy, and stronger step-7 activity assertions. New
+offline guards observed red, then green; their synthetic inputs never use a CLI
+or credential. The metering finalizer also observed red before preserving missing
+usage as unknown. [Tests](integration/attempt10_test.py),
+[red](integration/attempt10/red.txt), [green](integration/attempt10/green.txt),
+[metering red](integration/attempt10/metering-red.txt),
+[metering green](integration/attempt10/metering-green.txt).
+
+Exact controller invocation from the trial checkout root:
+
+```sh
+TRIAL_EVIDENCE_LABEL=attempt10 python3 docs/design/evidence/native-eligibility/integration/attempt10-build.py
+python3 docs/design/evidence/native-eligibility/integration/attempt10-controller.py attempt10/run
+# Actual run exited 1 before inspection_ready; no numbered action was sent.
+TRIAL_EVIDENCE_LABEL=attempt10 python3 docs/design/evidence/native-eligibility/integration/attempt2-gates.py
+python3 docs/design/evidence/native-eligibility/integration/attempt10-audit.py
+```
+
+Use a fresh output directory for any newly commissioned replay; do not overwrite
+this run. The retained numbered action script is
+[integration/attempt10-steps.py](integration/attempt10-steps.py).
+
+[Cleanup](integration/attempt10/run/cleanup.json) and the independent audit verify
+all **12 recorded PID/start identities** absent, no scratch daemon, child, TUI,
+Mesh owner or private tmux server, port 27742 closed, and scratch root/auth removed.
+The controller's `finally` restored `src/delivery/app_server/capabilities.rs` and
+removed `target/debug/mesh`; Mesh remains clean and detached at `fcb9647`.
+No process outside this run was signaled. No `just install-daemon`, live-daemon
+restart, operator tmux contact, or work in another Taurhaus checkout occurred.
+
+**Descriptor flip: none. Mesh commit: none.** The conditional missing-runtime
+named-refusal fix and Mesh flip gates are **not run**, because all seven passing
+steps are their authorization condition. No Taurhaus registry entry was needed:
+the existing launch path demonstrably created the host. No Taurhaus product or
+`src-tauri/` file changed, so `just test-rust-unit` is not required.
+
+Unpaid exact gates are in progress in a separate credential-free namespace;
+final exit codes will be appended after their Cargo preflight completes.
+
+**Deviations / limits:** step 1 prevents steps 2–7; missing startup token usage
+prevents a numeric spend total and USD-cap verification; config-file capture and
+host transcript were unavailable after initialize failed. No Opus evidence lens
+was run: this session exposes no Opus review model. No product defect was patched.
