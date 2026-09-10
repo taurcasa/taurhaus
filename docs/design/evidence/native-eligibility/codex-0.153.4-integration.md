@@ -3365,3 +3365,31 @@ trial-sequence deviation is recreated hosted setup followed by step 7 alone,
 as requested by the review; gate fixture corrections and the unchanged flaky
 suite rerun are retained explicitly. No planned feature, unrelated product
 work, installation, release, or ledger-row update was added.
+
+#### Round-2 review follow-ups (recorded 2026-09-10 21:55, no product change in this lane)
+
+Consumer of the renamed refusal: the flip commit (`99c9725` on
+`feat/descriptor-flip`) makes mesh's `compatible_team` return
+`runtime_record_missing:<member>` where it previously surfaced
+`pending: runtime <member>: … No such file or directory`. Taurhaus pins the
+OLD text in `src-tauri/src/coordination/runtime/team_activation.rs:279-280`
+(`canonical_activation_candidate_creates_and_round_trips_authority`, run by
+`just test-canonical-mesh-contract` with `MESH_CONTRACT_BIN`). That assertion
+must move to `runtime_record_missing:lead` in the same change that bumps
+`src-tauri/resources/mesh.lock.json` to a mesh carrying this commit; until
+then the canonical-candidate gate fails against the flipped candidate with
+`unexpected refusal: IO error: delivery: runtime_record_missing:lead`.
+
+Version gate: the enabled descriptor is necessary but not sufficient for the
+app. `commands/mesh.rs::hosted_delivery_supported` also requires a mesh
+version >= 0.3.0 (`canonical_messaging_supported`), and both the flipped
+candidate and the pinned lock are 0.2.29, so hosted delivery stays off in
+the app until the mesh release carrying this flip bumps its version and the
+lock is updated. This trial reached the hosted path by driving
+`coordination.initialize_team` directly, as its spec prescribed.
+
+Mesh 5a handoff: the sentences in `docs/design/native-push-5a-result.md`
+that described the descriptor as closed are marked as of 5a and carry a
+superseding note with the compiled evidence scope; the
+`prose.contains(evidence_scope)` sync assertion is restored in
+`tests/native_push.rs` (follow-up commit on `feat/descriptor-flip`).
