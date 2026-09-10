@@ -34,7 +34,7 @@ Naming constraints:
 
 - Use lowercase snake_case segments.
 - Prefer the lifecycle verbs: `started`, `completed`, `failed`, `received`, `sent`, `timeout`, `skipped`, `reconciled`, `dropped`.
-- State verbs are also in use where the event reports a condition rather than a step: `changed`, `degraded`, `recovered`, `resolved`, `delivered`, `selected`, `replayed`, `established`, `lost`, `reconnecting`, `rendered`, `ignored`, `invalid`, `deprecated`, `mismatch`, `foreign`, `corrupt`, `unresolved`, `opaque`, `appended`, `executable_missing`, `heartbeat`. Reach for a lifecycle verb first; add to this list rather than inventing a synonym for one already here.
+- State verbs are also in use where the event reports a condition rather than a step: `changed`, `degraded`, `recovered`, `resolved`, `delivered`, `selected`, `replayed`, `established`, `lost`, `reconnecting`, `rendered`, `ignored`, `invalid`, `deprecated`, `mismatch`, `foreign`, `corrupt`, `unresolved`, `opaque`, `appended`, `loaded`, `executable_missing`, `heartbeat`. Reach for a lifecycle verb first; add to this list rather than inventing a synonym for one already here.
 - Do not encode dynamic IDs into the event name; put them in fields.
 
 ## 3. Level Selection Policy

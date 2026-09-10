@@ -1586,6 +1586,7 @@ fn sample_preflight_request() -> InitializeTeamRequest {
             inherits_from: None,
             required_artifacts: None,
             capabilities: None,
+            delivery: None,
             account_id: None,
         },
         agents: vec![
@@ -1617,6 +1618,7 @@ fn sample_preflight_request() -> InitializeTeamRequest {
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                delivery: None,
                 account_id: None,
             },
             AgentSetupConfig {
@@ -1643,6 +1645,7 @@ fn sample_preflight_request() -> InitializeTeamRequest {
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                delivery: None,
                 account_id: None,
             },
         ],
@@ -1676,6 +1679,7 @@ fn sample_add_agent_request(team_name: &str, member_name: &str) -> AddAgentReque
             inherits_from: None,
             required_artifacts: None,
             capabilities: None,
+            delivery: None,
             account_id: None,
         },
     }
@@ -2203,6 +2207,7 @@ fn add_agent_and_reonboard_validate_empty_strings() {
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                delivery: None,
                 account_id: None,
             },
         },
@@ -3558,6 +3563,7 @@ fn project_mesh_snapshot_resolves_role_metadata_when_initialize_request_only_has
             inherits_from: None,
             required_artifacts: None,
             capabilities: None,
+            delivery: None,
             account_id: None,
         },
         agents: vec![
@@ -3585,6 +3591,7 @@ fn project_mesh_snapshot_resolves_role_metadata_when_initialize_request_only_has
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                delivery: None,
                 account_id: None,
             },
             AgentSetupConfig {
@@ -3611,6 +3618,7 @@ fn project_mesh_snapshot_resolves_role_metadata_when_initialize_request_only_has
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                delivery: None,
                 account_id: None,
             },
         ],
@@ -3777,6 +3785,7 @@ fn initialize_request_hydrates_from_preset_when_frontend_sends_minimal_payload()
             inherits_from: None,
             required_artifacts: None,
             capabilities: None,
+            delivery: None,
             account_id: None,
         },
         agents: vec![
@@ -3804,6 +3813,7 @@ fn initialize_request_hydrates_from_preset_when_frontend_sends_minimal_payload()
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                delivery: None,
                 account_id: None,
             },
             AgentSetupConfig {
@@ -3830,6 +3840,7 @@ fn initialize_request_hydrates_from_preset_when_frontend_sends_minimal_payload()
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                delivery: None,
                 account_id: None,
             },
         ],
@@ -4004,6 +4015,7 @@ fn initialize_team_request_round_trip() {
             inherits_from: None,
             required_artifacts: None,
             capabilities: None,
+            delivery: None,
             account_id: None,
         },
         agents: vec![
@@ -4031,6 +4043,7 @@ fn initialize_team_request_round_trip() {
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                delivery: None,
                 account_id: None,
             },
             AgentSetupConfig {
@@ -4057,6 +4070,7 @@ fn initialize_team_request_round_trip() {
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                delivery: None,
                 account_id: None,
             },
         ],
@@ -4128,6 +4142,7 @@ fn add_agent_request_and_report_round_trip() {
             inherits_from: None,
             required_artifacts: None,
             capabilities: None,
+            delivery: None,
             account_id: None,
         },
     };
@@ -5322,4 +5337,20 @@ fn canonical_initialize_ipc_maps_additive_policy_and_rejects_invalid_shapes() {
         value["messaging"] = invalid;
         assert!(serde_json::from_value::<InitializeTeamRequest>(value.clone()).is_err());
     }
+}
+
+#[test]
+fn seat_delivery_survives_ipc_to_daemon_mapping() {
+    let setup: AgentSetupConfig = serde_json::from_value(serde_json::json!({
+        "name": "seat", "cliTool": "codex", "model": "gpt-6-astra",
+        "projectId": "/scratch/project", "delivery": "app_server"
+    }))
+    .unwrap();
+    let mapped = super::mapping::map_agent_setup_to_contract(&setup);
+    assert_eq!(
+        serde_json::to_value(mapped).unwrap()["delivery"],
+        "app_server"
+    );
+    assert_eq!(taurhaus_lib::daemon::protocol::PROTOCOL_VERSION, 27);
+    assert!(include_str!("../../daemon/protocol.rs").contains("seat `delivery` choice binding"));
 }

@@ -146,7 +146,8 @@ pub struct MemberRuntimeRecord {
     pub extra: BTreeMap<String, Value>,
 }
 
-/// Owned native attachment. Legacy pane slots stay empty; this is never a tmux address.
+/// Owned native attachment; its socket is never a tmux address.
+/// Optional pane slots separately identify the attached operator TUI.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppServerAttachment {
@@ -161,6 +162,10 @@ pub struct AppServerAttachment {
     pub build: String,
     pub host: String,
     pub configuration: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub configuration_digest: Option<String>,
+    #[serde(default)]
+    pub instruction_sources: Vec<String>,
     pub trust: String,
     pub transport: String,
     /// Exact remote-resume argv; account environment stays with the daemon.

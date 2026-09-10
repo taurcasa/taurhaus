@@ -1172,6 +1172,19 @@ pub(super) fn member_from_agent_setup(
 ) -> Result<Member, CoordinationError> {
     validate_member_name(&setup.name)?;
     validate_non_empty("agent project id", &setup.project_id)?;
+    let mut extra = std::collections::BTreeMap::new();
+    match setup.delivery.as_deref() {
+        None | Some("tmux") => {}
+        Some("app_server") => {
+            extra.insert("adapter_mode".into(), serde_json::json!("app_server"));
+        }
+        Some(_) => {
+            return Err(CoordinationError::Validation(format!(
+            "member '{}' field 'delivery': unsupported seat delivery; choose tmux or app_server",
+            setup.name
+        )))
+        }
+    }
     let mut declared_model = ModelSpec::parse_legacy(&setup.model);
     if setup.reasoning_effort.is_some() {
         declared_model.reasoning_effort = setup.reasoning_effort.clone();
@@ -1204,6 +1217,6 @@ pub(super) fn member_from_agent_setup(
         account_id: setup.account_id.clone(),
         project_path: PathBuf::from(&setup.project_id),
         cli_tool: parse_cli_tool(&setup.cli_tool)?,
-        extra: Default::default(),
+        extra,
     })
 }

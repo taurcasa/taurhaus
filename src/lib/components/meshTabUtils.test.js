@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 
 import { TEST_MODEL_CATALOG as CATALOG } from '../../test/fixtures/modelCatalog.js'
 import {
+  createLead,
+  createAgent,
   accountLineLabel,
   canonicalMessagingSupported,
   buildInitializationRequest,
@@ -700,4 +702,14 @@ it('uses resolved runtime capability for initialization without a builder flag',
   expect(state.initProgress).toHaveProperty('messaging.mode', 'canonical')
   init.handleInitialize({ canonicalMessaging: false })
   expect(state.initProgress).not.toHaveProperty('messaging')
+})
+
+it('preserves per-seat delivery through normalization and initialization', () => {
+  const lead = createLead({ tool: 'codex', delivery: 'app_server' }, '/project')
+  const agent = createAgent(0, { tool: 'codex', delivery: 'app_server' }, '/project')
+  const request = buildInitializationRequest({ lead, agents: [agent] }, 'team', '/project', CATALOG)
+  expect(request.lead.delivery).toBe('app_server')
+  expect(request.agents[0].delivery).toBe('app_server')
+  const plain = buildInitializationRequest({ lead: createLead({}, '/project'), agents: [createAgent(0, {}, '/project')] }, 'team', '/project', CATALOG)
+  expect(plain.agents[0]).not.toHaveProperty('delivery')
 })

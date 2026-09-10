@@ -134,6 +134,7 @@ fn fully_populated_settings() -> Settings {
         // This older (0.150.1), synthetic descriptor exercises the optional-field
         // fallback. The live Codex conversion/build pin is covered by harness_conformance.
         app_server: None,
+        hosting_supported: false,
         id: CliTool::Codex,
         label: "Codex fixture".to_string(),
         display_name: "Codex fixture CLI".to_string(),

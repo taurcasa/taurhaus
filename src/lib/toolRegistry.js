@@ -28,6 +28,7 @@ const CAPABILITY_DEFAULTS = Object.freeze({
 export const FALLBACK_TOOLS = Object.freeze([
   {
     id: 'claude',
+    hostingSupported: false,
     label: 'Claude',
     displayName: 'Claude Code',
     accent: 'emerald',
@@ -63,6 +64,7 @@ export const FALLBACK_TOOLS = Object.freeze([
   },
   {
     id: 'codex',
+    hostingSupported: false, // Only the backend can attest daemon hosting availability.
     label: 'Codex',
     displayName: 'Codex',
     accent: 'sky',
@@ -103,6 +105,7 @@ export const FALLBACK_TOOLS = Object.freeze([
   },
   {
     id: 'agy',
+    hostingSupported: false,
     label: 'Antigravity',
     displayName: 'Antigravity CLI',
     accent: 'google-blue',
@@ -138,6 +141,7 @@ export const FALLBACK_TOOLS = Object.freeze([
   },
   {
     id: 'grok',
+    hostingSupported: false,
     label: 'Grok',
     displayName: 'Grok CLI',
     accent: 'graphite',
@@ -271,6 +275,7 @@ function normalizeDescriptor(raw) {
       raw.accountLoginCommand ?? raw.account_login_command
     ),
     accountDirName: stringOrNull(raw.accountDirName ?? raw.account_dir_name),
+    hostingSupported: raw.hostingSupported === true,
     aliases,
     capabilities: normalizeCapabilities(raw.capabilities),
   }, DESCRIPTOR_ALIASES)

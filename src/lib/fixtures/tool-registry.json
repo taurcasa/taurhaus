@@ -1,6 +1,7 @@
 [
   {
     "id": "claude",
+    "hostingSupported": false,
     "label": "Claude",
     "displayName": "Claude Code",
     "accent": "emerald",
@@ -36,6 +37,7 @@
   },
   {
     "id": "codex",
+    "hostingSupported": false,
     "label": "Codex",
     "displayName": "Codex",
     "accent": "sky",
@@ -76,6 +78,7 @@
   },
   {
     "id": "agy",
+    "hostingSupported": false,
     "label": "Antigravity",
     "displayName": "Antigravity CLI",
     "accent": "google-blue",
@@ -111,6 +114,7 @@
   },
   {
     "id": "grok",
+    "hostingSupported": false,
     "label": "Grok",
     "displayName": "Grok CLI",
     "accent": "graphite",

@@ -18,6 +18,7 @@ pub(crate) struct HostProcess {
     rpc: Option<Rpc>,
     pub thread_id: String,
     pub attach_config: Value,
+    pub instruction_sources: Vec<String>,
     pub build: String,
     pub process_start: String,
     socket: PathBuf,
@@ -54,6 +55,7 @@ impl HostProcess {
             rpc: None,
             thread_id: String::new(),
             attach_config: Value::Null,
+            instruction_sources: Vec::new(),
             build: String::new(),
             process_start: String::new(),
             socket: socket.into(),
@@ -119,11 +121,21 @@ impl HostProcess {
         if resume.is_some_and(|id| id != host.thread_id) {
             return Err("host resumed a different thread".into());
         }
-        if !result["instructionSources"]
-            .as_array()
-            .is_some_and(Vec::is_empty)
-        {
-            return Err("host loaded unexpected instruction sources".into());
+        host.instruction_sources = instruction_sources(&result);
+        if !host.instruction_sources.is_empty() {
+            tracing::info!(event = "hosted.instruction_sources.loaded",
+                thread_id = %host.thread_id, count = host.instruction_sources.len(),
+                "Host loaded project instructions; strict TUI policy remains enforced");
+            taurhaus_lib::logging::emit_global(
+                "info",
+                "coordination",
+                "hosted.instruction_sources.loaded",
+                Some("Host loaded project instructions; strict TUI policy remains enforced".into()),
+                serde_json::Map::from_iter([
+                    ("thread_id".into(), json!(host.thread_id)),
+                    ("count".into(), json!(host.instruction_sources.len())),
+                ]),
+            );
         }
         let sandbox = match result["sandbox"]["type"].as_str() {
             Some("readOnly") => "read-only",
@@ -148,8 +160,7 @@ impl HostProcess {
             _ => return Err("unsupported effective host approval policy".into()),
         };
         host.attach_config = json!({"model":model, "model_reasoning_effort":effort,
-            "sandbox_mode":sandbox, "approval_policy":approval,
-            "project_doc_max_bytes":0});
+            "sandbox_mode":sandbox, "approval_policy":approval});
         if sandbox == "workspace-write" {
             let mut workspace = serde_json::Map::new();
             for (wire, config) in [
@@ -170,7 +181,10 @@ impl HostProcess {
         let resume = json!({"threadId":host.thread_id, "cwd":cwd, "model":model,
             "approvalPolicy":approval, "sandbox":sandbox,
             "config":host.attach_config});
-        rpc.policy = Some((settings, resume));
+        // Only the attached view suppresses its own project-document discovery.
+        // Never push that suppression back into the daemon-owned thread.
+        host.attach_config["project_doc_max_bytes"] = json!(0);
+        rpc.policy = Some((settings, resume, host.instruction_sources.clone()));
         Ok(host)
     }
 
@@ -386,12 +400,22 @@ impl RpcError {
     }
 }
 
+fn instruction_sources(result: &Value) -> Vec<String> {
+    result["instructionSources"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(str::to_owned)
+        .collect()
+}
+
 struct Rpc {
     socket: WebSocket,
     events: VecDeque<Value>,
     requests: Vec<Value>,
     truncated: bool,
-    policy: Option<(Value, Value)>,
+    policy: Option<(Value, Value, Vec<String>)>,
     repairing: bool,
     policy_dirty: bool,
 }
@@ -429,7 +453,7 @@ impl Rpc {
                     self.requests.push(frame);
                 } else {
                     if frame["method"] == "thread/settings/updated" {
-                        if let Some((expected, resume)) = &self.policy {
+                        if let Some((expected, resume, _)) = &self.policy {
                             if frame["params"]["threadId"] == resume["threadId"] {
                                 let settings = &frame["params"]["threadSettings"];
                                 let differs = expected
@@ -481,12 +505,13 @@ impl Rpc {
                     let repaired = self.call("thread/resume", params, guard);
                     self.repairing = false;
                     let repaired = repaired?;
-                    let (expected, resume) = self.policy.as_ref().unwrap();
+                    let (expected, resume, sources) = self.policy.as_ref().unwrap();
                     if repaired["thread"]["id"] != resume["threadId"]
                         || repaired["model"] != expected["model"]
                         || repaired["reasoningEffort"] != expected["effort"]
                         || repaired["approvalPolicy"] != expected["approvalPolicy"]
                         || repaired["sandbox"] != expected["sandboxPolicy"]
+                        || instruction_sources(&repaired) != *sources
                     {
                         return Err("host did not restore owned thread policy".into());
                     }
@@ -629,6 +654,7 @@ def client(connection):
                             settings = json.load(open(marker)); os.unlink(marker)
                             emit({'method':'thread/settings/updated', 'params':{'threadId':thread['id'], 'threadSettings':settings}})
                         if method == 'thread/resume':
+                            if os.path.exists(os.path.join(root, 'changed-instructions')): result['instructionSources'] = []
                             if os.path.exists(os.path.join(root, 'reject-repair')): error = {'code':-32600,'message':'repair refused'}
                             with open(os.path.join(root, 'reassert.json'), 'w') as output: json.dump(params, output)
                 elif method == 'turn/start':
@@ -804,20 +830,108 @@ with socket.socket(socket.AF_UNIX) as listener:
     }
 
     #[test]
-    fn hosted_instruction_sources_refuse_before_attach() {
-        // Regression: efb1ddb8 introduced an untested instruction-source refusal.
+    fn hosted_instruction_sources_log_info_and_continue() {
+        // Regression: 9d358935 refused project instructions; ef8f6ce9 logged expected loading at WARN.
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         let tmp = tempfile::tempdir().unwrap();
+        let sink =
+            taurhaus_lib::logging::LogFileState::new(tmp.path().join("events.jsonl")).unwrap();
+        taurhaus_lib::logging::install_global_sink(&sink);
         let mut launch = fixture(tmp.path());
         launch.environment.insert(
             "FAKE_POLICY".into(),
             json!({"instructionSources":[tmp.path().join("AGENTS.md")]}).to_string(),
         );
         let guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
+        let host =
+            spawn(&launch, tmp.path(), None, &guard).expect("project instructions must be allowed");
         assert_eq!(
-            spawn(&launch, tmp.path(), None, &guard).err().as_deref(),
-            Some("host loaded unexpected instruction sources")
+            host.instruction_sources,
+            vec![tmp.path().join("AGENTS.md").to_string_lossy().into_owned()]
         );
-        assert!(!tmp.path().join("tui").exists());
+        assert_eq!(host.attach_config["model"], "fake-model");
+        assert_eq!(host.attach_config["model_reasoning_effort"], "low");
+        assert_eq!(host.attach_config["sandbox_mode"], "read-only");
+        assert_eq!(host.attach_config["approval_policy"], "never");
+        sink.flush_for_test().unwrap();
+        let events = std::fs::read_to_string(tmp.path().join("events.jsonl")).unwrap();
+        assert_eq!(
+            events.matches("hosted.instruction_sources.loaded").count(),
+            1
+        );
+        let event: Value = serde_json::from_str(
+            events
+                .lines()
+                .find(|line| line.contains("hosted.instruction_sources.loaded"))
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(event["level"], "INFO");
+        assert!(
+            !events.contains("AGENTS.md"),
+            "source contents/paths are not logged"
+        );
+    }
+
+    #[test]
+    fn hosted_instruction_sources_survive_settings_repair() {
+        // Regression: ef8f6ce9 allowed instructions but repair reused the TUI's discovery suppression.
+        for changed in [false, true] {
+            let tmp = tempfile::tempdir().unwrap();
+            let mut launch = fixture(tmp.path());
+            launch.environment.insert(
+                "FAKE_POLICY".into(),
+                json!({"instructionSources":["AGENTS.md"]}).to_string(),
+            );
+            let guard =
+                HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
+            let mut host = spawn(&launch, tmp.path(), None, &guard).unwrap();
+            std::fs::write(
+                tmp.path().join("drift.json"),
+                json!({"personality":"friendly"}).to_string(),
+            )
+            .unwrap();
+            if changed {
+                std::fs::write(tmp.path().join("changed-instructions"), "").unwrap();
+            }
+            let result = host.transcript(&guard);
+            if changed {
+                assert!(
+                    result.is_err(),
+                    "changed instruction evidence must fail closed"
+                );
+                assert!(host.rpc.as_ref().unwrap().policy_dirty);
+            } else {
+                assert_eq!(result.unwrap()["instructionSources"], json!(["AGENTS.md"]));
+                assert_eq!(
+                    serde_json::to_value(&host.instruction_sources).unwrap(),
+                    json!(["AGENTS.md"])
+                );
+                let params: Value = serde_json::from_str(
+                    &std::fs::read_to_string(tmp.path().join("reassert.json")).unwrap(),
+                )
+                .unwrap();
+                assert!(params["config"].get("project_doc_max_bytes").is_none());
+                assert_eq!(host.attach_config["project_doc_max_bytes"], 0);
+            }
+        }
+    }
+
+    #[test]
+    fn hosted_instruction_sources_drop_non_string_entries() {
+        // Regression: ef8f6ce9 copied untyped host objects into the string-array record contract.
+        let tmp = tempfile::tempdir().unwrap();
+        let mut launch = fixture(tmp.path());
+        launch.environment.insert(
+            "FAKE_POLICY".into(),
+            json!({"instructionSources":["AGENTS.md", {"path":"other"}, 7]}).to_string(),
+        );
+        let guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
+        let host = spawn(&launch, tmp.path(), None, &guard).unwrap();
+        assert_eq!(
+            serde_json::to_value(&host.instruction_sources).unwrap(),
+            json!(["AGENTS.md"])
+        );
     }
 
     #[test]

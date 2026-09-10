@@ -121,6 +121,7 @@ export function createLead(overrides = {}, projectPath = '') {
     accountApplied: overrides.accountApplied ?? overrides.account_applied ?? null,
     accountNote: optionalText(overrides.accountNote ?? overrides.account_note),
     accountNoteDetail: optionalText(overrides.accountNoteDetail ?? overrides.account_note_detail),
+    delivery: optionalText(overrides.delivery),
     accountId: optionalText(overrides.accountId ?? overrides.account_id),
     accountLabel: optionalText(overrides.accountLabel ?? overrides.account_label),
     accountFallbackFrom: optionalText(
@@ -159,6 +160,7 @@ export function createAgent(index, overrides = {}, projectPath = '') {
     accountApplied: overrides.accountApplied ?? overrides.account_applied ?? null,
     accountNote: optionalText(overrides.accountNote ?? overrides.account_note),
     accountNoteDetail: optionalText(overrides.accountNoteDetail ?? overrides.account_note_detail),
+    delivery: optionalText(overrides.delivery),
     accountId: optionalText(overrides.accountId ?? overrides.account_id),
     accountLabel: optionalText(overrides.accountLabel ?? overrides.account_label),
     accountFallbackFrom: optionalText(
@@ -559,6 +561,7 @@ export function buildInitializationRequest(
       ...messaging,
       presetId: String(config?.presetId ?? '').trim(),
       lead: {
+        ...(lead?.delivery ? { delivery: lead.delivery } : {}),
         name: lead?.name ?? 'team-lead',
         cliTool: '',
         model: '',
@@ -574,6 +577,7 @@ export function buildInitializationRequest(
         capabilities: null,
       },
       agents: agents.map((agent, index) => ({
+        ...(agent?.delivery ? { delivery: agent.delivery } : {}),
         name: agent?.name || `agent-${index + 1}`,
         cliTool: '',
         model: '',
@@ -601,6 +605,7 @@ export function buildInitializationRequest(
     leadMode: 'launch_new',
     ...messaging,
     lead: {
+      ...(lead?.delivery ? { delivery: lead.delivery } : {}),
       name: lead?.name ?? 'team-lead',
       cliTool: normalizeOptionalTool(lead?.tool),
       model: leadModel.model,
@@ -620,6 +625,7 @@ export function buildInitializationRequest(
     agents: agents.map((agent, index) => {
       const agentModel = resolveMemberModel(agent, null, catalog)
       return {
+        ...(agent?.delivery ? { delivery: agent.delivery } : {}),
         name: agent?.name || `agent-${index + 1}`,
         cliTool: normalizeTool(agent?.tool),
         model: agentModel.model,

@@ -52,6 +52,8 @@ use serde::{Deserialize, Serialize};
 /// v27: a canonical `messaging` initialize request must be honored by the daemon (create through
 /// `mesh team create --messaging-canonical`, then `opt_in_delivery`); a v26 daemon would drop the
 /// field and silently create a legacy team, so the pair must be rebuilt together.
+/// Unreleased v27 also makes the seat `delivery` choice binding on initialize/add-agent;
+/// dropping it would silently launch a tmux pane instead of the requested app-server host.
 pub const PROTOCOL_VERSION: u32 = 27;
 
 // ---------------------------------------------------------------------------
@@ -1635,6 +1637,7 @@ mod tests {
                     cli_tool: "claude".to_string(),
                     model: "sonnet".to_string(),
                     reasoning_effort: None,
+                    delivery: None,
                     account_id: None,
                     project_id: "/tmp/daemon-init".to_string(),
                     description: None,
@@ -1682,6 +1685,7 @@ mod tests {
             cli_tool: "codex".to_string(),
             model: "gpt-5.4".to_string(),
             reasoning_effort: Some("high".to_string()),
+            delivery: None,
             account_id: Some("codex-work".to_string()),
             project_id: "/tmp/builder".to_string(),
             description: None,

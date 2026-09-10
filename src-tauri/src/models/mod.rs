@@ -1032,7 +1032,15 @@ impl TerminalPlatformContract {
             cli_command_defaults: CliCommandSettings::default(),
             model_catalog: ModelCatalog::default(),
             cli_versions: CliVersions::default(),
-            tools: crate::session_scanner::cli_tool::descriptors(),
+            tools: crate::session_scanner::cli_tool::descriptors()
+                .into_iter()
+                .map(|mut tool| {
+                    // Windows launches through its Linux/WSL daemon.
+                    tool.hosting_supported = platform != AppPlatform::Macos
+                        && crate::session_scanner::launch::HostedLaunch::supports(tool.id);
+                    tool
+                })
+                .collect(),
         }
     }
 
@@ -1779,6 +1787,22 @@ mod tests {
     fn terminal_settings_default_includes_cli_commands() {
         let ts = TerminalSettings::default();
         assert_eq!(ts.cli_commands, CliCommandSettings::default());
+    }
+
+    #[test]
+    fn seat_delivery_hosting_contract_tracks_daemon_platform() {
+        for platform in [AppPlatform::Linux, AppPlatform::Windows, AppPlatform::Macos] {
+            let contract = TerminalPlatformContract::for_platform(platform);
+            for tool in contract.tools {
+                assert_eq!(
+                    tool.hosting_supported,
+                    platform != AppPlatform::Macos
+                        && crate::session_scanner::launch::HostedLaunch::supports(tool.id)
+                );
+                let wire = serde_json::to_value(&tool).unwrap();
+                assert_eq!(wire["hostingSupported"], tool.hosting_supported);
+            }
+        }
     }
 
     #[test]

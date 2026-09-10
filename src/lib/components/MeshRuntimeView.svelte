@@ -1,4 +1,5 @@
 <script>
+  import MemberDeliverySelect from './MemberDeliverySelect.svelte'
   import { normalizeTool } from '../meshDefaults.js'
   import { getModelCatalogContext } from '../context/ModelCatalogContext.js'
   import { EMPTY_MODEL_CATALOG, roleDeclaredEffort } from '../modelCatalog.js'
@@ -720,6 +721,10 @@ import MeshNodeDetail from './MeshNodeDetail.svelte'
             />
           </div>
         </div>
+
+        <MemberDeliverySelect tool={addAgentDraft?.tool ?? 'codex'} delivery={addAgentDraft?.delivery}
+          {dark} disabled={Boolean(addAgentDraft?.submitting)}
+          onchange={(next) => onUpdateAddAgentField('delivery', next.delivery)} />
 
         <div class="space-y-1.5">
           <label for="mesh-add-agent-project-select-input" class="block text-[10px] font-bold uppercase tracking-wide {t.textMuted} px-1">Project Binding</label>

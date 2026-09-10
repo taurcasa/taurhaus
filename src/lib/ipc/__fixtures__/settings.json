@@ -178,6 +178,7 @@
         },
         "defaultAgentRoleId": "fixture-developer",
         "displayName": "Codex fixture CLI",
+        "hostingSupported": false,
         "id": "codex",
         "label": "Codex fixture",
         "medallionAccent": "emerald"

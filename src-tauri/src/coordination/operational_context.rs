@@ -683,6 +683,7 @@ mod tests {
             cli_tool: "codex".to_string(),
             model: "gpt-5.4".to_string(),
             reasoning_effort: None,
+            delivery: None,
             account_id: None,
             project_id: project_id.to_string(),
             description: None,

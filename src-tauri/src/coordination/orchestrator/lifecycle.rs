@@ -162,6 +162,15 @@ impl CoordinationOrchestrator {
             )));
         }
 
+        if config.team_incarnation_id.is_none()
+            && member
+                .extra
+                .get("adapter_mode")
+                .and_then(serde_json::Value::as_str)
+                == Some("app_server")
+        {
+            config.team_incarnation_id = Some(uuid::Uuid::new_v4().to_string());
+        }
         config.members.push(member.clone());
         TeamConfigStore::save(&self.teams_dir, team_name, &config)?;
 

@@ -36,3 +36,19 @@ fn agent_setup_config_without_reasoning_effort_is_none() {
     .expect("deserialize without effort");
     assert!(config.reasoning_effort.is_none());
 }
+
+#[test]
+fn seat_delivery_is_additive_on_the_ipc_request() {
+    for choice in [None, Some("tmux"), Some("app_server")] {
+        let mut input = setup_config_json("reasoningEffort");
+        if let Some(choice) = choice {
+            input["delivery"] = serde_json::json!(choice);
+        }
+        let config: AgentSetupConfig = serde_json::from_value(input).unwrap();
+        let output = serde_json::to_value(config).unwrap();
+        assert_eq!(
+            output.get("delivery"),
+            choice.map(serde_json::Value::from).as_ref()
+        );
+    }
+}

@@ -2541,6 +2541,20 @@ describe('ipc module', () => {
       expect(result).toHaveProperty('retryable')
     })
 
+    it('keeps explicit delivery binding on initialize and add-agent IPC', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue({ steps: [] })
+      const agent = { name: 'seat', cliTool: 'codex', delivery: 'app_server' }
+      await ipc.coordinationInitializeTeam({ teamName: 'team', lead: agent, agents: [agent] })
+      expect(tauriCore.invoke).toHaveBeenLastCalledWith('coordination_initialize_team', {
+        request: expect.objectContaining({ agents: [expect.objectContaining(agent)] }),
+      })
+      await ipc.coordinationAddAgent({ teamName: 'team', agent })
+      expect(tauriCore.invoke).toHaveBeenLastCalledWith('coordination_add_agent', {
+        request: { teamName: 'team', agent },
+      })
+    })
+
     it('coordinationAddAgent calls invoke with request and returns mock report shape', async () => {
       const request = { teamName: 'arch', agent: { name: 'bob' } }
       const mockModeResult = await ipc.coordinationAddAgent(request)

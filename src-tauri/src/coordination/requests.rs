@@ -523,6 +523,9 @@ pub struct AgentDefinition {
     pub model: String,
     #[serde(default)]
     pub reasoning_effort: Option<String>,
+    /// Seat delivery at creation; omission preserves the tmux path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivery: Option<String>,
     #[serde(default, alias = "accountId", skip_serializing_if = "Option::is_none")]
     pub account_id: Option<String>,
     pub project_id: String,
@@ -987,6 +990,7 @@ mod tests {
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                delivery: None,
                 account_id: None,
             },
             agents: vec![AgentDefinition {
@@ -1013,6 +1017,7 @@ mod tests {
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                delivery: None,
                 account_id: None,
             }],
         };
@@ -1051,6 +1056,7 @@ mod tests {
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                delivery: None,
                 account_id: None,
             },
         };

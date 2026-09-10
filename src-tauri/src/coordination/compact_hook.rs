@@ -3698,6 +3698,8 @@ else: print(json.dumps({'protocol':protocol,'status':'recorded','text':'','deliv
             build: "fixture".into(),
             host: "fixture".into(),
             configuration: "fixture".into(),
+            configuration_digest: None,
+            instruction_sources: Vec::new(),
             trust: "fixture".into(),
             transport: "unix-websocket".into(),
             attach_argv: Vec::new(),

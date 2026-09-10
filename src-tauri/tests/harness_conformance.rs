@@ -204,6 +204,7 @@ fn registry_is_complete_and_drives_the_terminal_contract() {
     // Regression: 9a6b9596 repointed the backend defaults at the canonical
     // roles without updating either frontend mirror of this sealed contract.
     assert_eq!(
+        // Regression: 3d3a0f83 derived platform hosting in otherwise sealed fallback descriptors.
         taurhaus_lib::session_scanner::cli_tool::descriptors(),
         frontend_fixture,
         "Rust descriptors and the pre-settings frontend fallback must stay identical"
@@ -662,6 +663,7 @@ fn setup_config(tool: CliTool, project: &std::path::Path) -> AgentSetupConfig {
         cli_tool: tool.to_string(),
         model: default.id.clone(),
         reasoning_effort: default.default_effort.clone(),
+        delivery: None,
         account_id: None,
         project_id: project.display().to_string(),
         description: None,

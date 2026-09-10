@@ -353,6 +353,7 @@ mod tests {
             inherits_from: None,
             required_artifacts: None,
             capabilities: None,
+            delivery: None,
             account_id: None,
         }
     }
