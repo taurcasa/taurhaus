@@ -1,4 +1,4 @@
-# Codex 0.153.4 integration trial — INCONCLUSIVE at step 1 setup
+# Codex 0.153.4 integration — attempt 6 IN PROGRESS (step 1 PASS)
 
 2026-09-09. **Eligibility remains disabled.** The prescribed canonical setup
 stopped before member launch: the real Mesh command `team delivery --owner team`
@@ -1160,3 +1160,44 @@ Deviations/limits:
 
 Attempt-5 text logs and pane exports trim trailing whitespace/empty lines;
 JSONL retains the repeated daemon event snapshots, with documented redactions.
+
+
+## Attempt 6 — production paired selection candidate
+
+Taurhaus baseline `7fc64f0e` (includes hosted thread-state PR #159; protocol 27),
+Mesh `a6ee296`. Both checkout-local builds exited **0**, after Cargo preflight
+exit 1 (none running). The scratch-only compiled descriptor matches the daemon
+class identities; no registry entry is needed by the launch path.
+
+### Step 1 — PASS
+
+The production `coordination.initialize_team` request used the builder's exact
+DEFAULT_CANONICAL_POLICY, a credential-free Claude lead, and one
+`gpt-5.6-luna` low seat with `delivery: app_server` at creation. Every pipeline
+step completed, including `launch_sessions` and `opt_in_delivery`.
+[Request and outcomes](integration/attempt6/step1/initialize-result.json),
+[policy](integration/attempt6/step1/policy.json).
+
+The [runtime record](integration/attempt6/step1/step1-runtime.json) publishes
+terminalContract 1, thread `01a0898d-222f-7581-8cd8-332d3b3e2fb4`, Unix WebSocket
+host identity and the scratch project's AGENTS.md instruction source. The
+[process identities](integration/attempt6/step1/step1-identities.json) record
+the app-server child and attached TUI; the [strict config](integration/attempt6/step1/generated-config-0.toml)
+sets the matching model/effort/read-only/never policies.
+The [pane](integration/attempt6/step1/step-1-pane-2.txt) shows the startup card
+and the model reply. [Host events](integration/attempt6/step1/host-events.jsonl)
+and [structured log](integration/attempt6/step1/taurhaus.log.jsonl) retain
+turn/start acceptance, instruction loading, and onboarding delivery. No observer
+connection was opened.
+
+Startup turn `01a0898d-225c-77a1-b591-bd7e93510d55`: 10,777 input, 6,912 cached,
+27 output, zero reasoning; **$0.00094364 API-equivalent**, **$0.01296480
+conservative**. [Metered ledger](integration/attempt6/step1/cost-ledger.json).
+The host emits token counts, not invoiced USD; rates use the attached-TUI packet.
+
+Reproduction: `TRIAL_EVIDENCE_LABEL=attempt6 python3 docs/design/evidence/native-eligibility/integration/attempt3-build.py`,
+then `python3 docs/design/evidence/native-eligibility/integration/attempt6-controller.py attempt6/run`.
+The controller reuses attempt 5 with lossless overlapping-buffer export and
+retains only new host events. Its offline regression names `d3b95226`; red was
+`ModuleNotFoundError: attempt6_support`, then one passing regression test after
+implementation. No product code or product regression fix was made.
