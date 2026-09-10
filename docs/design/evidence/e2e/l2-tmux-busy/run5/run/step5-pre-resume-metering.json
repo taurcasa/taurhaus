@@ -1,5 +1,5 @@
 {
-  "paid_inputs": 6,
+  "paid_inputs": 4,
   "turns": [
     {
       "turn_id": "01a08d4b-9cb3-7813-b7b6-a07558315b2b",
@@ -42,25 +42,7 @@
       "classification": "interrupted, cost unknown"
     },
     {
-      "turn_id": "01a08d4c-a71d-7363-a33e-0b73e3f38c8a",
-      "usd": 0.005248280000000001,
-      "completed": true,
-      "usage": {
-        "input_tokens": 85813,
-        "cached_input_tokens": 70144,
-        "output_tokens": 593
-      },
-      "conservative_usd": 0.1036872
-    },
-    {
       "turn_id": "01a08d4b-a08d-7162-a0e6-ae11e3252ea5",
-      "usd": null,
-      "completed": true,
-      "source": "notify-only",
-      "classification": "unknown-but-not-a-model-input"
-    },
-    {
-      "turn_id": "01a08d4c-a8ec-72f3-824a-469cd3da0fff",
       "usd": null,
       "completed": true,
       "source": "notify-only",
@@ -147,71 +129,11 @@
         "output_tokens": 10
       },
       "usd": 0.00056608
-    },
-    {
-      "at": "2026-09-10T21:50:11.234Z",
-      "turn_id": "01a08d4c-a71d-7363-a33e-0b73e3f38c8a",
-      "usage": {
-        "input_tokens": 9422,
-        "cached_input_tokens": 3840,
-        "output_tokens": 175
-      },
-      "usd": 0.0014032
-    },
-    {
-      "at": "2026-09-10T21:50:14.631Z",
-      "turn_id": "01a08d4c-a71d-7363-a33e-0b73e3f38c8a",
-      "usage": {
-        "input_tokens": 11849,
-        "cached_input_tokens": 8960,
-        "output_tokens": 143
-      },
-      "usd": 0.0009286000000000001
-    },
-    {
-      "at": "2026-09-10T21:50:17.582Z",
-      "turn_id": "01a08d4c-a71d-7363-a33e-0b73e3f38c8a",
-      "usage": {
-        "input_tokens": 15482,
-        "cached_input_tokens": 11008,
-        "output_tokens": 98
-      },
-      "usd": 0.00123256
-    },
-    {
-      "at": "2026-09-10T21:50:19.365Z",
-      "turn_id": "01a08d4c-a71d-7363-a33e-0b73e3f38c8a",
-      "usage": {
-        "input_tokens": 15984,
-        "cached_input_tokens": 15104,
-        "output_tokens": 56
-      },
-      "usd": 0.00054528
-    },
-    {
-      "at": "2026-09-10T21:50:22.198Z",
-      "turn_id": "01a08d4c-a71d-7363-a33e-0b73e3f38c8a",
-      "usage": {
-        "input_tokens": 16376,
-        "cached_input_tokens": 15104,
-        "output_tokens": 110
-      },
-      "usd": 0.00068848
-    },
-    {
-      "at": "2026-09-10T21:50:23.283Z",
-      "turn_id": "01a08d4c-a71d-7363-a33e-0b73e3f38c8a",
-      "usage": {
-        "input_tokens": 16700,
-        "cached_input_tokens": 16128,
-        "output_tokens": 11
-      },
-      "usd": 0.00045016
     }
   ],
   "metering_complete": false,
-  "api_equivalent_usd": 0.01756232,
-  "conservative_usd": 0.232128,
+  "api_equivalent_usd": 0.01231404,
+  "conservative_usd": 0.1284408,
   "rates_usd_per_million": {
     "input": 0.2,
     "cached_input": 0.02,
@@ -252,8 +174,8 @@
       "generation": 1
     }
   ],
-  "rollout_turns": 5,
+  "rollout_turns": 4,
   "controller_input_attempts": 2,
   "controller_issued_inputs": 2,
-  "mesh_terminal_deliveries": 4
+  "mesh_terminal_deliveries": 2
 }
