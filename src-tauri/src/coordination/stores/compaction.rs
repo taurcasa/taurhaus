@@ -203,14 +203,18 @@ pub(crate) fn record_host_boundary(
         // Hooks have no turn/item IDs. Correlate known opposite observers within two seconds,
         // never merge conflicting known IDs or two distinct notifications by time alone.
         let close = ids.is_empty()
-            && matches!((previous.source.as_deref(), source),
-                (Some("hook"), "host_notification") | (Some("host_notification"), "hook"))
+            && matches!(
+                (previous.source.as_deref(), source),
+                (Some("hook"), "host_notification") | (Some("host_notification"), "hook")
+            )
             && (previous.last_compaction_timestamp - timestamp).abs()
                 <= chrono::Duration::seconds(2);
         if previous.last_session_id == thread
             && (same_id
                 || close
-                || (ids.is_empty() && previous.source.as_deref() == Some(source) && previous.last_compaction_timestamp == timestamp))
+                || (ids.is_empty()
+                    && previous.source.as_deref() == Some(source)
+                    && previous.last_compaction_timestamp == timestamp))
         {
             if source == "host_notification" {
                 previous.host_boundary = Some(boundary.clone());

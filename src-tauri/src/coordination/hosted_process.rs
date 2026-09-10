@@ -290,12 +290,17 @@ impl HostProcess {
                 "outcome_unknown: reconcile previous input before another submission".into(),
             );
         }
-        if text.trim().is_empty() || text.len() > 16_384 || text.chars().count() > crate::coordination::recovery_card::CARD_BYTE_CAP {
+        if text.trim().is_empty()
+            || text.len() > 16_384
+            || text.chars().count() > crate::coordination::recovery_card::CARD_BYTE_CAP
+        {
             return Err("input must contain 1–8192 characters within 16 KiB".into());
         }
         let thread = &state["thread"];
         if !Self::accepts_input(state) {
-            return Err("pending: thread is waiting for permission/input or has unverified state".into());
+            return Err(
+                "pending: thread is waiting for permission/input or has unverified state".into(),
+            );
         }
         let active = self.rpc.as_ref().unwrap().active_turn.clone();
         let mut params = json!({"threadId":self.thread_id,"input":[{"type":"text","text":text}]});
@@ -1042,8 +1047,14 @@ with socket.socket(socket.AF_UNIX) as listener:
         // Regression: 04128879 did not retry pre-card reads within the launch deadline.
         std::fs::write(tmp.path().join("pending-read-once"), "").unwrap();
         // Regression: cadd533e's 8000-char limit rejected the 8192-byte recovery cap.
-        let card = format!("[taurhaus] recovery_card {}", "x".repeat(crate::coordination::recovery_card::CARD_BYTE_CAP - 25));
-        assert_eq!(card.len(), crate::coordination::recovery_card::CARD_BYTE_CAP);
+        let card = format!(
+            "[taurhaus] recovery_card {}",
+            "x".repeat(crate::coordination::recovery_card::CARD_BYTE_CAP - 25)
+        );
+        assert_eq!(
+            card.len(),
+            crate::coordination::recovery_card::CARD_BYTE_CAP
+        );
         assert_eq!(host.input(&card, &guard).unwrap()["turn"]["id"], "1");
         let state = host.transcript(&guard).unwrap();
         let turn = &state["thread"]["turns"][0];

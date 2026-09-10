@@ -908,7 +908,11 @@ fn poll_compaction(
             emit(
                 &pending.host_boundary.clone().unwrap_or_default(),
                 "compaction.codex_host.deferred",
-                Some(if idle { "input_not_ready" } else { "thread_not_idle" }),
+                Some(if idle {
+                    "input_not_ready"
+                } else {
+                    "thread_not_idle"
+                }),
             );
         }
     }
@@ -1431,7 +1435,14 @@ pub(crate) mod tests {
     #[test]
     fn hosted_compaction_reads_survive_unknown_and_exhausted_recovery() {
         // Regression: 8fab0c8d, attempt-8 continuation: recovery errors hid the transcript.
-        for failure in ["input_unknown", "claim_unknown", "exhausted", "blocked", "requests", "bookkeeping"] {
+        for failure in [
+            "input_unknown",
+            "claim_unknown",
+            "exhausted",
+            "blocked",
+            "requests",
+            "bookkeeping",
+        ] {
             let tmp = tempfile::tempdir().unwrap();
             let root = tmp.path();
             let (reg, hosts) = running(root);
@@ -1473,7 +1484,9 @@ pub(crate) mod tests {
             }
             // Regression: d7aba13a / attempt-8 continuation: unattended pre-send refusals spent both attempts.
             let readiness = matches!(failure, "blocked" | "requests");
-            if readiness { std::fs::write(root.join("refuse-input"), failure).unwrap(); }
+            if readiness {
+                std::fs::write(root.join("refuse-input"), failure).unwrap();
+            }
             let claim = saved(root).recovery.claim;
             std::fs::write(root.join("compact.json"), "{}").unwrap();
             let before = starts(root);
@@ -1494,9 +1507,22 @@ pub(crate) mod tests {
             assert_eq!(before, starts(root));
             assert!(compaction(root).pending);
             if readiness {
-                assert_eq!(saved(root).recovery.claim, claim, "{failure} spent an attempt");
+                assert_eq!(
+                    saved(root).recovery.claim,
+                    claim,
+                    "{failure} spent an attempt"
+                );
                 std::fs::write(root.join("refuse-input"), "").unwrap();
-                hosts.operation(&reg, "team", "seat", gen, "approval", json!({"requestId":"lingering","accept":true})).ok();
+                hosts
+                    .operation(
+                        &reg,
+                        "team",
+                        "seat",
+                        gen,
+                        "approval",
+                        json!({"requestId":"lingering","accept":true}),
+                    )
+                    .ok();
                 transcript(&hosts, &reg, gen);
                 assert_eq!(starts(root), before + 1, "{failure}");
                 assert_eq!(saved(root).recovery.last_delivered.unwrap().attempt, 1);
