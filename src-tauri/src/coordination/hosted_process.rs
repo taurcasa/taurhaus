@@ -268,6 +268,16 @@ impl HostProcess {
         self.input_checked(text, &state, guard)
     }
 
+    pub fn accepts_input(state: &Value) -> bool {
+        let thread = &state["thread"];
+        thread["canAcceptDirectInput"] == true
+            && match thread["status"].get("activeFlags") {
+                None => thread["status"]["type"] == "idle",
+                Some(flags) => flags.as_array().is_some_and(Vec::is_empty),
+            }
+            && state["requests"].as_array().is_some_and(Vec::is_empty)
+    }
+
     /// Reuse the state validated under this same host lock; recovery never steers.
     pub fn input_checked(
         &mut self,
@@ -280,20 +290,12 @@ impl HostProcess {
                 "outcome_unknown: reconcile previous input before another submission".into(),
             );
         }
-        if text.trim().is_empty() || text.len() > 16_384 || text.chars().count() > 8000 {
-            return Err("input must contain 1–8000 characters within 16 KiB".into());
+        if text.trim().is_empty() || text.len() > 16_384 || text.chars().count() > crate::coordination::recovery_card::CARD_BYTE_CAP {
+            return Err("input must contain 1–8192 characters within 16 KiB".into());
         }
         let thread = &state["thread"];
-        if thread["canAcceptDirectInput"] != true
-            || !match thread["status"].get("activeFlags") {
-                None => thread["status"]["type"] == "idle",
-                Some(flags) => flags.as_array().is_some_and(Vec::is_empty),
-            }
-            || !state["requests"].as_array().is_some_and(Vec::is_empty)
-        {
-            return Err(
-                "pending: thread is waiting for permission/input or has unverified state".into(),
-            );
+        if !Self::accepts_input(state) {
+            return Err("pending: thread is waiting for permission/input or has unverified state".into());
         }
         let active = self.rpc.as_ref().unwrap().active_turn.clone();
         let mut params = json!({"threadId":self.thread_id,"input":[{"type":"text","text":text}]});
@@ -901,6 +903,12 @@ def client(connection):
                     thread = {'id':'owned-thread', 'status':{'type':'idle'}, 'canAcceptDirectInput':True, 'turns':[]}
                     result = dict(policy, thread=dict(thread, turns=[]))
                 elif method in ('thread/resume', 'thread/read'):
+                    refusal = os.path.join(root, 'refuse-input')
+                    reason = open(refusal).read() if os.path.exists(refusal) else ''
+                    if os.path.exists(refusal):
+                        thread['canAcceptDirectInput'] = reason != 'blocked'
+                        if not reason: notify('thread/status/changed', status=thread['status'])
+                    if reason == 'requests' and os.path.exists(os.path.join(root, 'compact.json')): emit({'id':'lingering','method':'item/commandExecution/requestApproval','params':{'threadId':thread['id']}})
                     boundary = os.path.join(root, 'compact.json')
                     if os.path.exists(boundary):
                         compact = json.load(open(boundary)); os.unlink(boundary)
@@ -1033,8 +1041,10 @@ with socket.socket(socket.AF_UNIX) as listener:
         let mut host = spawn(&launch, tmp.path(), None, &guard).unwrap();
         // Regression: 04128879 did not retry pre-card reads within the launch deadline.
         std::fs::write(tmp.path().join("pending-read-once"), "").unwrap();
-        let card = "[taurhaus] recovery_card startup";
-        assert_eq!(host.input(card, &guard).unwrap()["turn"]["id"], "1");
+        // Regression: cadd533e's 8000-char limit rejected the 8192-byte recovery cap.
+        let card = format!("[taurhaus] recovery_card {}", "x".repeat(crate::coordination::recovery_card::CARD_BYTE_CAP - 25));
+        assert_eq!(card.len(), crate::coordination::recovery_card::CARD_BYTE_CAP);
+        assert_eq!(host.input(&card, &guard).unwrap()["turn"]["id"], "1");
         let state = host.transcript(&guard).unwrap();
         let turn = &state["thread"]["turns"][0];
         assert_eq!(turn["status"], "completed");

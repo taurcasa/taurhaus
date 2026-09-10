@@ -689,6 +689,12 @@ impl HostedMembers {
                 })
                 .map_err(|e| e.to_string())?;
                 let result = seat.host.input_checked(&input, &state, &guard);
+                if result.is_ok() || !seat.host.outcome_unknown() {
+                    MemberRuntimeStore::update(&root, team, member, |r| {
+                        r.host_input_unknown = false;
+                    })
+                    .map_err(|e| e.to_string())?;
+                }
                 if let Some(card) = card {
                     let stage = if result.is_ok() {
                         ReceiptStage::Submitted
@@ -700,14 +706,10 @@ impl HostedMembers {
                     recovery_delivery::observe(registry, &root, team, member, &card.receipt, stage)
                         .map_err(|e| e.to_string())?;
                     if stage == ReceiptStage::Submitted {
-                        record_host_delivery(&root, team, member)?;
+                        if let Err(error) = record_host_delivery(&root, team, member) {
+                            tracing::warn!(team, member, %error, "confirmed recovery bookkeeping failed");
+                        }
                     }
-                }
-                if result.is_ok() || !seat.host.outcome_unknown() {
-                    MemberRuntimeStore::update(&root, team, member, |r| {
-                        r.host_input_unknown = false;
-                    })
-                    .map_err(|e| e.to_string())?;
                 }
                 result
             }
@@ -899,18 +901,19 @@ fn poll_compaction(
     let idle = state
         .as_ref()
         .is_ok_and(|s| s["thread"]["status"]["type"] == "idle");
+    let ready = idle && state.as_ref().is_ok_and(HostProcess::accepts_input);
     if let Some(pending) = &pending {
-        if !idle && host.deferred_compaction != Some(pending.last_compaction_timestamp) {
+        if !ready && host.deferred_compaction != Some(pending.last_compaction_timestamp) {
             host.deferred_compaction = Some(pending.last_compaction_timestamp);
             emit(
                 &pending.host_boundary.clone().unwrap_or_default(),
                 "compaction.codex_host.deferred",
-                Some("thread_not_idle"),
+                Some(if idle { "input_not_ready" } else { "thread_not_idle" }),
             );
         }
     }
     // No busy polling under exclusion; the next reconciliation/input can service the obligation.
-    state.map(|s| (s, idle && pending.is_some()))
+    state.map(|s| (s, ready && pending.is_some()))
 }
 
 fn record_host_delivery(root: &Path, team: &str, member: &str) -> Result<(), String> {
@@ -1428,7 +1431,7 @@ pub(crate) mod tests {
     #[test]
     fn hosted_compaction_reads_survive_unknown_and_exhausted_recovery() {
         // Regression: 8fab0c8d, attempt-8 continuation: recovery errors hid the transcript.
-        for failure in ["input_unknown", "claim_unknown", "exhausted"] {
+        for failure in ["input_unknown", "claim_unknown", "exhausted", "blocked", "requests", "bookkeeping"] {
             let tmp = tempfile::tempdir().unwrap();
             let root = tmp.path();
             let (reg, hosts) = running(root);
@@ -1456,7 +1459,7 @@ pub(crate) mod tests {
             if failure == "input_unknown" {
                 MemberRuntimeStore::update(root, "team", "seat", |r| r.host_input_unknown = true)
                     .unwrap();
-            } else {
+            } else if matches!(failure, "claim_unknown" | "exhausted") {
                 for _ in 0..2 {
                     let card = prepare(&reg, root, "team", "seat", "app_server")
                         .unwrap()
@@ -1468,8 +1471,20 @@ pub(crate) mod tests {
                     observe(&reg, root, "team", "seat", &card.receipt, stage).unwrap();
                 }
             }
+            // Regression: d7aba13a / attempt-8 continuation: unattended pre-send refusals spent both attempts.
+            let readiness = matches!(failure, "blocked" | "requests");
+            if readiness { std::fs::write(root.join("refuse-input"), failure).unwrap(); }
+            let claim = saved(root).recovery.claim;
             std::fs::write(root.join("compact.json"), "{}").unwrap();
             let before = starts(root);
+            if failure == "bookkeeping" {
+                // Regression: 8fab0c8d left confirmed recovery ambiguous after bookkeeping failed.
+                MemberRuntimeStore::update(root, "team", "seat", |r| r.cli_tool = None).unwrap();
+                assert!(input(&hosts, &reg, gen, "confirmed").is_ok());
+                assert_eq!(transcript(&hosts, &reg, gen)["outcomeUnknown"], false);
+                assert!(input(&hosts, &reg, gen, "next input").is_ok());
+                continue;
+            }
             for operation in ["transcript", "recover", "transcript"] {
                 let result = hosts.operation(&reg, "team", "seat", gen, operation, Value::Null);
                 let view = result.unwrap_or_else(|error| panic!("{failure}/{operation}: {error}"));
@@ -1478,6 +1493,15 @@ pub(crate) mod tests {
             }
             assert_eq!(before, starts(root));
             assert!(compaction(root).pending);
+            if readiness {
+                assert_eq!(saved(root).recovery.claim, claim, "{failure} spent an attempt");
+                std::fs::write(root.join("refuse-input"), "").unwrap();
+                hosts.operation(&reg, "team", "seat", gen, "approval", json!({"requestId":"lingering","accept":true})).ok();
+                transcript(&hosts, &reg, gen);
+                assert_eq!(starts(root), before + 1, "{failure}");
+                assert_eq!(saved(root).recovery.last_delivered.unwrap().attempt, 1);
+                assert!(!compaction(root).pending);
+            }
             let mut config = TeamConfigStore::load(root, "team").unwrap();
             config.members[0].extra.remove("adapter_mode");
             TeamConfigStore::save(root, "team", &config).unwrap();
@@ -1633,6 +1657,15 @@ pub(crate) mod tests {
             "completedAtMs":state.last_compaction_timestamp.timestamp_millis()});
         assert!(record_host_boundary(root, "team", "seat", &next, "host_notification").unwrap());
         assert_eq!(saved(root).context_generation, 2);
+        // Regression: 06b1510c merged later ID-less boundaries and legacy records for 30 seconds.
+        for (source, delay) in [(Some("host_notification"), 5000), (None, 1000)] {
+            let mut previous = compaction(root);
+            previous.source = source.map(str::to_owned);
+            MemberCompactionStore::save(root, "team", "seat", &previous).unwrap();
+            let later = json!({"threadId":"owned-thread", "completedAtMs":previous.last_compaction_timestamp.timestamp_millis()+delay});
+            assert!(record_host_boundary(root, "team", "seat", &later, "hook").unwrap());
+        }
+        assert_eq!(saved(root).context_generation, 4);
         drop(guard);
     }
     #[test]

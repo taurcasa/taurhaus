@@ -1,7 +1,7 @@
 > **Compaction recovery / round-1 amendment (2026-09-10).** Attempt-8 step 5 completed without a hook.
 > Owned-thread notifications now admit recovery, delivered under host exclusion on idle; busy recovery
 > defers, background pending reads try once, and recovery failures never abort team liveness.
-> ID-less opposite observers deduplicate within 30 seconds. This is fake-host coverage, not eligibility proof.
+> Round 3: ID-less known opposite observers deduplicate within two seconds; blocked polls spend no attempt. This is fake-host coverage, not eligibility proof.
 > See [Compaction boundary on 0.153.4](../../app-server-transport-amendment.md#compaction-boundary-on-01534).
 
 > **Thread-state correction (2026-09-10).** The orchestrator's real Codex

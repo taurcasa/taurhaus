@@ -227,12 +227,13 @@ turn/completed {threadId, turn:{id, status:"completed", items:[]}}
 ```
 
 The owned-thread item admits a generation-keyed obligation (`host_notification`). Dedup uses thread
-+ turn/item IDs, or a 30-second window between opposite observers lacking IDs (the hook envelope
++ turn/item IDs, or a two-second window between known opposite observers lacking IDs (the hook envelope
 has none). Known conflicts stay distinct; unread backlogs collapse before admission. Idle submits
 the canonical card alone via `turn/start` under exclusion, with a submitted receipt. Busy recovery
-defers; background pending reads try once. Later reconciliation or first input services the obligation.
+defers before claiming an attempt when input is blocked; later reconciliation or first input services it.
 Recovery errors never abort live-seat liveness; unknown inputs never replay. Hosted hooks log
 `received` plus `compaction.codex_host.*`, restoring the control contract without a task snapshot,
-like startup. The transcript retains boundary and card. Protocol 27 stays unreleased;
+like startup. Confirmed input stays confirmed if delivery bookkeeping fails; the card cap fits hosted input.
+The transcript distinguishes the boundary from messages and retains the card. Protocol 27 stays unreleased;
 `contextGeneration` stays a string. Neither checkout contains `attached-tui/installed-schema`;
 no separate `thread/compacted` shape is established. Only the evidenced completed item is used.
