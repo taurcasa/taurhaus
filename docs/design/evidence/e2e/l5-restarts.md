@@ -169,9 +169,9 @@ regression: missing-helper red **1** → five tests green **0**, with a
 | `just build-daemon` | **0**, 753.43 s, checkout-local target |
 | Mesh `cargo build --bin mesh` | **0**, 32.26 s, designated Mesh target |
 | `bun install --frozen-lockfile` | **0**, checkout dependencies |
-| `just check-quick` | Pending |
-| `just lint` | Pending |
-| `just test-contracts` | Pending |
+| `just check-quick` | **0**, 340.25 s; Rust test compilation, Svelte 0 errors/warnings, 150 files / 2,519 tests passed |
+| `just lint` | **0**, 75.72 s; Clippy, dependency/workflow/recipe checks passed |
+| `just test-contracts` | **0**, 252.38 s; 15 renderer, 20 harness and 33 module-boundary tests passed |
 | `just test-rust-unit` | Not required: no `src-tauri/` diff |
 
 Gates run **after teardown**, from the checkout root, inside a fresh credential-free

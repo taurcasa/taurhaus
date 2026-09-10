@@ -1,0 +1,14 @@
+{
+  "command": [
+    "just",
+    "test-contracts"
+  ],
+  "exit": 0,
+  "seconds": 252.37559677299578,
+  "cargo_preflight": [
+    {
+      "exit": 0,
+      "output": "2288442 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo build --release --bin taurhaus-daemon\n2307559 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --manifest-path src-tauri/Cargo.toml --lib operator_resume_renders_recorded_session_for_codex_and_claude --no-run\n"
+    }
+  ]
+}
