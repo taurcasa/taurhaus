@@ -17,12 +17,12 @@ import {
  * reordering of the derivation shows up as a table diff.
  */
 const DERIVATION_TABLE = [
+  // Regression: 6f61f611 hosted TUI activity fell through to heuristics.
   [
     'daemon restart invalidates retained host work',
     { state: 'active', source: 'host', _presenceStale: true },
     { level: 'uncertain', label: 'Uncertain', confidence: 'low', source: 'host_unavailable' },
   ],
-  // Regression: 6f61f611 hosted TUI activity fell through to heuristics.
   ...[
     ['active', 'attributed', 'working', 'Working'],
     ['active', 'none', 'active', 'Active'],

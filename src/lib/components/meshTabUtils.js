@@ -1,4 +1,4 @@
-import { activityLevel } from '../activitySignal.js'
+import { activityLevel, activitySignal } from '../activitySignal.js'
 import {
   toolOptions,
   applyNamePattern,
@@ -390,7 +390,11 @@ export function buildTeamConfigFromRuntimeStatus(status, projectPath = '') {
     }
     return null
   })()
-  const members = Array.isArray(status?.members) ? status.members : []
+  const members = (Array.isArray(status?.members) ? status.members : []).map((member) => {
+    if (member?.source !== 'host' || !runtimeSnapshotFreshness || runtimeSnapshotFreshness === 'fresh') return member
+    const signal = activitySignal({ ...member, _presenceStale: true })
+    return { ...member, state: signal.level, source: signal.source }
+  })
   const normalizedMembers = members.map((member, index) => ({
     ...member,
     name: String(member?.name ?? `member-${index + 1}`),
