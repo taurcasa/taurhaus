@@ -23,10 +23,12 @@
 //! Codex 0.153.4 (2026-09-10, isolated zero-turn pane, 500 ms samples):
 //! loaded-prompt background startup peaked at 779,043 B; after 11 s, median
 //! 416 B, isolated peak 123,392 B and a 46,848/22,784 B adjacent pair.
-//! Use 32 KiB/s for THREE consecutive polls for Codex only. This rejects the
+//! Use 32 KiB/s for FOUR consecutive polls for Codex only: two polls of headroom
+//! over the measured adjacent pair (2026-09-10 review). This rejects the
 //! settled noise at both scanner cadences; pane readiness also overrides startup
 //! IO. No real turn was captured: 64 KiB/s sustained is a synthetic margin check,
-//! not a measured turn floor. Smaller turns retain the transcript/notify signals.
+//! not a measured turn floor. Recheck both cadences on the next paid turn lane;
+//! smaller turns retain the transcript/notify signals.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -48,7 +50,7 @@ const ACTIVE_IO_RATE_BYTES_PER_SEC: u64 = 1_000;
 /// can poll the same PID milliseconds apart. Dividing an idle keep-alive read
 /// by a few milliseconds turns it into tens of kB/s, so a sample that close
 /// carries no new information and the stored one is kept.
-pub(super) const MIN_SAMPLE_INTERVAL: Duration = Duration::from_millis(250);
+const MIN_SAMPLE_INTERVAL: Duration = Duration::from_millis(250);
 
 /// Per-PID tracking state for IO activity detection (Claude only).
 struct IoState {
@@ -72,7 +74,7 @@ enum Poll {
 }
 
 /// Whether an rchar delta observed over `elapsed` clears the activity rate.
-pub(super) fn is_active_rate(delta_bytes: u64, elapsed: Duration) -> bool {
+fn is_active_rate(delta_bytes: u64, elapsed: Duration) -> bool {
     let elapsed_ms = u64::try_from(elapsed.as_millis())
         .unwrap_or(u64::MAX)
         .max(1);
@@ -163,7 +165,7 @@ impl CodexIoState {
         if let Some((previous, at)) = self.previous {
             let elapsed = now.saturating_duration_since(at);
             if elapsed < MIN_SAMPLE_INTERVAL {
-                return self.active_polls >= 3;
+                return self.active_polls >= 4;
             }
             let ms = u64::try_from(elapsed.as_millis())
                 .unwrap_or(u64::MAX)
@@ -171,13 +173,13 @@ impl CodexIoState {
             let active =
                 current.saturating_sub(previous).saturating_mul(1000) / ms >= CODEX_ACTIVE_IO_RATE;
             self.active_polls = if active {
-                self.active_polls.saturating_add(1).min(3)
+                self.active_polls.saturating_add(1).min(4)
             } else {
                 0
             };
         }
         self.previous = Some((current, now));
-        self.active_polls >= 3
+        self.active_polls >= 4
     }
 }
 static CODEX_IO_STATE: Mutex<Option<HashMap<u32, CodexIoState>>> = Mutex::new(None);
@@ -259,17 +261,17 @@ mod tests {
                     "idle burst at tick {tick}, stride {stride}"
                 );
             }
-            for tick in 1..=3 {
+            for tick in 1..=4 {
                 rchar += 32768 * stride as u64; // Synthetic 64 KiB/s, not a model turn.
                 assert_eq!(
                     state.sample(
                         Some(rchar),
                         start + Duration::from_millis(90000 + tick * stride as u64 * 500)
                     ),
-                    tick == 3
+                    tick == 4
                 );
             }
-            let end = start + Duration::from_millis(90000 + 3 * stride as u64 * 500);
+            let end = start + Duration::from_millis(90000 + 4 * stride as u64 * 500);
             assert!(state.sample(Some(rchar + 256), end + Duration::from_millis(5)));
             assert!(!state.sample(None, end + Duration::from_millis(10)));
             assert!(!state.sample(Some(1), end + Duration::from_millis(500)));
@@ -416,7 +418,15 @@ mod tests {
             );
         }
 
+        {
+            let mut guard = CODEX_IO_STATE.lock().unwrap();
+            let map = guard.get_or_insert_with(HashMap::new);
+            map.insert(777_777, CodexIoState::default());
+        }
         retain_pids(&[1]);
+        let codex = CODEX_IO_STATE.lock().unwrap();
+        assert!(!codex.as_ref().unwrap().contains_key(&777_777));
+        drop(codex);
 
         let guard = IO_STATE.lock().unwrap();
         let map = guard.as_ref().unwrap();

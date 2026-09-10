@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 
 use super::ActivityObservation as Observation;
 fn sample(
-    prompt: bool,
+    prompt: Option<bool>,
     no_rollout: bool,
     notify: Option<&crate::daemon::codex_notify::CodexNotifyRecord>,
     launch: DateTime<Utc>,
@@ -15,16 +15,11 @@ fn sample(
     });
     // Only a transcript-validated completion is passed here. Before any turn,
     // the attributed pane decides readiness independently of process polling IO.
-    let (state, source) = if notify.is_some() {
-        (SessionState::Idle, "notify")
-    } else if no_rollout {
-        if prompt {
-            (SessionState::Idle, "launch_ready")
-        } else {
-            (SessionState::Active, "pane_working")
-        }
-    } else {
-        return None;
+    let (state, source) = match (notify.is_some(), no_rollout, prompt) {
+        (true, _, _) => (SessionState::Idle, "notify"),
+        (false, true, Some(true)) => (SessionState::Idle, "launch_ready"),
+        (false, true, Some(false)) => (SessionState::Active, "pane_working"),
+        _ => return None,
     };
     Some(Observation {
         state,
@@ -33,7 +28,7 @@ fn sample(
     })
 }
 
-fn idle_prompt(text: &str) -> bool {
+fn idle_prompt(text: &str) -> Option<bool> {
     let tail: Vec<_> = text
         .trim_end()
         .lines()
@@ -41,27 +36,33 @@ fn idle_prompt(text: &str) -> bool {
         .take(8)
         .map(str::trim)
         .collect();
-    let footer = tail.first().is_some_and(|line| {
-        line.split_once(" · ")
-            .is_some_and(|(model, directory)| model.starts_with("gpt-") && !directory.is_empty())
-    });
-    footer
-        && tail
+    if tail.is_empty() {
+        return None;
+    }
+    // Status lines can sit ABOVE the composer (e.g. MCP startup). Match their
+    // chrome, not words in tips, warnings, the composer or directory footer.
+    let busy = tail
+        .iter()
+        .filter(|line| !line.starts_with('›'))
+        .any(|line| {
+            let lower = line.to_lowercase();
+            (line.starts_with('•')
+                && (lower.starts_with("• working")
+                    || lower.starts_with("• thinking")
+                    || lower.contains("esc to interrupt")))
+                || line.starts_with(|ch| ('\u{2800}'..='\u{28ff}').contains(&ch))
+        });
+    if busy
+        || !tail
             .iter()
             .any(|line| line.starts_with("› ") || *line == "›")
-        && !tail
-            .iter()
-            .skip(1)
-            .filter(|line| !line.starts_with('›'))
-            .any(|line| {
-                let lower = line.to_lowercase();
-                lower.contains("esc to interrupt")
-                    || lower.contains("working")
-                    || lower.contains("thinking")
-                    || line
-                        .chars()
-                        .any(|ch| ('\u{2800}'..='\u{28ff}').contains(&ch))
-            })
+    {
+        return Some(false);
+    }
+    tail[0]
+        .split_once(" · ")
+        .filter(|(model, directory)| !model.is_empty() && !directory.is_empty())
+        .map(|_| true)
 }
 
 #[cfg(test)]
@@ -89,9 +90,12 @@ fn no_turn_yet(path: Option<&str>) -> bool {
         })
 }
 
-fn prompt_before_first_turn(path: Option<&str>, probe: impl FnOnce() -> bool) -> (bool, bool) {
+fn prompt_before_first_turn(
+    path: Option<&str>,
+    probe: impl FnOnce() -> Option<bool>,
+) -> (bool, Option<bool>) {
     let no_rollout = no_turn_yet(path);
-    (no_rollout, no_rollout && probe())
+    (no_rollout, no_rollout.then(probe).flatten())
 }
 
 struct Seat {
@@ -199,10 +203,10 @@ pub(super) fn refresh(
                 &args,
                 Duration::from_millis(200),
             )
-            .is_some_and(|text| idle_prompt(&text))
+            .and_then(|text| idle_prompt(&text))
         })
     } else {
-        (false, false)
+        (false, None)
     };
     let notify = completion
         .as_ref()
@@ -232,16 +236,28 @@ mod tests {
     use super::*;
     use crate::daemon::codex_notify::{append_event_at, latest_activity_record_for_session_after};
 
+    // Regression: 36c5da85 collapsed failed/unrecognized captures into pane_working,
+    // recreating L2 run 3's onboarding hang and idle→active→idle flap.
+    #[test]
+    fn codex_unavailable_or_unrecognized_pane_has_no_observation() {
+        let now = Utc::now();
+        let unknown = "› Ask Codex to do anything\n  local-model";
+        for text in [None, Some(""), Some(unknown)] {
+            let (no_turn, prompt) = prompt_before_first_turn(None, || text.and_then(idle_prompt));
+            assert!(sample(prompt, no_turn, None, now, now).is_none());
+        }
+    }
+
     // Regression: 6398bfa3 (#163), L2 run 3: IO flapping blocked onboarding.
-    // Replay all 60 measured seconds + 30 repeated seconds with a captured pane;
-    // then replay settled noise without pane authority to exercise the IO fallback.
+    // Pane authority pre-empts IO (including startup); injected samples are unused.
+    // Then replay 90 s of settled noise without pane authority to exercise IO.
     #[test]
     fn codex_prompt_replay_is_idle_fresh_and_event_silent_for_90_seconds() {
         use crate::coordination::activity_export::{
             build_member_activity_snapshot, PaneActivityProbe,
         };
         use crate::session_scanner::{
-            cache, classification, proc_io, process::ProcessInfo, tmux::TmuxPane, CliTool,
+            cache, classification, proc_io, process::ProcessInfo, tmux::parse_tmux_output, CliTool,
             StateChangeCapture, SCANNER_TEST_LOCK,
         };
         let _lock = SCANNER_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
@@ -258,9 +274,6 @@ mod tests {
         classification::set_runtime_idle_detector_override(Some(|_| IdleResult::idle()));
         let tmp = tempfile::tempdir().unwrap();
         let project = tmp.path().to_str().unwrap();
-        let pane_file = tmp.path().join("pane.txt");
-        fs::write(&pane_file, IDLE_PANE).unwrap();
-        let text = fs::read_to_string(&pane_file).unwrap();
         let proc = ProcessInfo {
             pid: 941_035,
             project_path: project.into(),
@@ -268,16 +281,7 @@ mod tests {
             args: "codex".into(),
             cli_tool: CliTool::Codex,
         };
-        let panes = HashMap::from([(
-            "replay".into(),
-            TmuxPane {
-                pane_id: "%replay".into(),
-                tty: "replay".into(),
-                window_index: "0".into(),
-                window_name: "test".into(),
-                session_name: "test".into(),
-            },
-        )]);
+        let panes = parse_tmux_output("%replay replay 0 test test");
         let probe = PaneActivityProbe {
             pane_alive: true,
             active_non_shell_process: true,
@@ -290,15 +294,11 @@ mod tests {
             let mut rchar = 1000;
             for (tick, delta) in deltas.iter().cycle().take(180).enumerate() {
                 rchar += delta;
-                proc_io::CODEX_TEST_SAMPLE.set(Some((
-                    proc.pid,
-                    rchar,
-                    start + Duration::from_millis((tick as u64 + 1) * 500),
-                )));
+                let at = start + Duration::from_millis((tick as u64 + 1) * 500);
+                proc_io::CODEX_TEST_SAMPLE.set(Some((proc.pid, rchar, at)));
                 let now = Utc::now();
                 if pane_ready {
-                    let o = sample(idle_prompt(&text), true, None, launch, now).unwrap();
-                    assert_eq!(o.last_observed_at, now);
+                    let o = sample(idle_prompt(IDLE_PANE), true, None, launch, now).unwrap();
                     seed_observation_for_test(proc.pid, project, "%replay", o.source, o.state, now);
                 } else {
                     invalidate(proc.pid);
@@ -309,11 +309,7 @@ mod tests {
                     &HashMap::new(),
                     &|_| IdleResult::idle(),
                 );
-                assert_eq!(
-                    sessions[0].state,
-                    SessionState::Idle,
-                    "tick {tick}, pane {pane_ready}"
-                );
+                assert_eq!(sessions[0].state, SessionState::Idle, "tick {tick}");
                 assert!(!sessions[0].recent_io);
                 if pane_ready {
                     let display = sessions[0].clone().into();
@@ -333,41 +329,29 @@ mod tests {
     // during startup/working; readiness requires the loaded footer and no spinner.
     #[test]
     fn codex_prompt_rejects_busy_and_incomplete_composer() {
-        assert!(idle_prompt(IDLE_PANE));
-        // Regression: 36c5da85 searched status words inside the directory footer.
-        assert!(idle_prompt(
-            &IDLE_PANE.replace("<scratch>/project", "/tmp/thinking-working")
-        ));
+        // Regression: 36c5da85 treated banner prose/model names/directories as busy.
+        for text in [
+            IDLE_PANE.to_owned(),
+            format!("Tip: Try thinking hard while working.\n⚠ --dangerously-bypass-hook-trust is enabled.\n{IDLE_PANE}"),
+            IDLE_PANE.replace("gpt-5.6-luna", "local-model"),
+            IDLE_PANE.replace("<scratch>/project", "/tmp/thinking-working"),
+        ] {
+            assert_eq!(idle_prompt(&text), Some(true));
+        }
         for status in [
             "• Working (1s • esc to interrupt)",
             "⠋ Thinking",
             "⠙",
             "• Booting MCP server: codex_apps (0s • esc to interrupt)",
         ] {
-            assert!(!idle_prompt(&format!("{status}\n{IDLE_PANE}")), "{status}");
+            let now = Utc::now();
+            let prompt = idle_prompt(&format!("{status}\n{IDLE_PANE}"));
+            let observed = sample(prompt, true, None, now, now).unwrap();
+            assert_eq!(observed.state, SessionState::Active);
+            assert_eq!(observed.source, "pane_working");
         }
-        assert!(!idle_prompt(
-            "› Ask Codex to do anything\n  ? for shortcuts"
-        ));
-        assert!(!idle_prompt("gpt-5.6-luna low · <scratch>/project"));
-    }
-
-    // Regression: 6398bfa3 (#163), L2 run 3: idle-prompt polling repeatedly
-    // reset the quiet window, withholding onboarding despite an attributed pane.
-    #[test]
-    fn codex_launch_ready_first_scan_ignores_io_and_non_prompt_is_working() {
-        let launch = Utc::now();
-        let observed = sample(true, true, None, launch, launch)
-            .expect("the loaded pane prompt is ready on the first scan");
-        assert_eq!(observed.source, "launch_ready");
-        assert_eq!(observed.state, SessionState::Idle);
-        let now = launch + chrono::Duration::milliseconds(500);
-        let observed = sample(true, true, None, launch, now).unwrap();
-        assert_eq!(observed.state, SessionState::Idle);
-        assert_eq!(observed.last_observed_at, now);
-        let observed = sample(false, true, None, launch, now)
-            .expect("a missing composer must not be called idle");
-        assert_eq!(observed.state, SessionState::Active);
+        assert_eq!(idle_prompt("› Ask Codex\n  ? for shortcuts"), None);
+        assert_eq!(idle_prompt("gpt-5.6-luna low · /tmp"), Some(false));
     }
 
     // Regression: b9e4a855's attachment floor hid a completion that the bound
@@ -435,10 +419,10 @@ mod tests {
             event: "agent-turn-complete".into(),
             turn_id: None,
         };
-        sample(false, false, None, launch, launch);
+        sample(Some(false), false, None, launch, launch);
         // Establish idle after completion before a later keep-alive read.
         let idle = sample(
-            false,
+            None,
             false,
             Some(&record),
             launch,
@@ -448,7 +432,7 @@ mod tests {
         assert_eq!(idle.state, SessionState::Idle);
         for seconds in [2, 3, 30] {
             let now = completed + chrono::Duration::seconds(seconds);
-            let observed = sample(false, false, Some(&record), launch, now).unwrap();
+            let observed = sample(Some(false), false, Some(&record), launch, now).unwrap();
             assert_eq!(observed.state, SessionState::Idle, "scan at {seconds}s");
             assert_eq!(observed.source, "notify");
             assert_eq!(observed.last_observed_at, now);
@@ -465,9 +449,12 @@ mod tests {
             prompt_before_first_turn(rollout.to_str(), || panic!(
                 "must not capture a pane after a turn"
             )),
-            (false, false)
+            (false, None)
         );
-        assert_eq!(prompt_before_first_turn(None, || true), (true, true));
+        assert_eq!(
+            prompt_before_first_turn(None, || Some(true)),
+            (true, Some(true))
+        );
     }
 
     // Regression: b9e4a855 treated every unknown notification as authoritative working.
@@ -475,14 +462,13 @@ mod tests {
     fn codex_review_unknown_notify_is_not_working() {
         let launch = Utc::now() - chrono::Duration::seconds(20);
         for event in ["unknown", "", "future-event", "agent-turn-started"] {
-            sample(true, true, None, launch, launch);
             let record = crate::daemon::codex_notify::CodexNotifyRecord {
                 ts: launch,
                 session_id: Some("seat".into()),
                 event: event.into(),
                 turn_id: None,
             };
-            let result = sample(true, true, Some(&record), launch, Utc::now()).unwrap();
+            let result = sample(Some(true), true, Some(&record), launch, Utc::now()).unwrap();
             assert_eq!(result.source, "launch_ready");
             assert_eq!(result.state, SessionState::Idle);
         }
@@ -497,7 +483,7 @@ mod tests {
         let launch = Utc::now() - chrono::Duration::seconds(30);
         let ready = launch;
         let poll = |record: Option<&crate::daemon::codex_notify::CodexNotifyRecord>, at| {
-            sample(true, true, record, launch, at)
+            sample(Some(true), true, record, launch, at)
         };
         let idle = poll(None, ready).unwrap();
         assert_eq!(idle.state, SessionState::Idle);
@@ -541,6 +527,6 @@ mod tests {
         fs::write(&path, "{\"type\":\"session_meta\"}\n").unwrap();
         assert!(no_turn_yet(path.to_str()));
         let now = Utc::now();
-        assert!(sample(true, false, None, now, now).is_none());
+        assert!(sample(Some(true), false, None, now, now).is_none());
     }
 }
