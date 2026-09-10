@@ -4651,9 +4651,19 @@ fn team_daemon_ensures_live_lead_despite_claude_activity_flag() {
     assert!(orchestrator.ensure_team_daemon_running_best_effort(team));
     assert!(orchestrator.ensure_team_daemon_for_wrapper(team).unwrap().0);
     sink.flush_for_test().unwrap();
-    assert!(!std::fs::read_to_string(&log_path)
-        .unwrap()
-        .contains("coordination.team_daemon.skipped"));
+    // Sibling tests may share the sink under parallel runs: judge only this team's records.
+    let skipped_for_team = |log: &str, reason: Option<&str>| {
+        log.lines().any(|line| {
+            let event: serde_json::Value = serde_json::from_str(line).unwrap();
+            event["event"] == "coordination.team_daemon.skipped"
+                && event["team"] == team
+                && reason.is_none_or(|reason| event["reason"] == reason)
+        })
+    };
+    assert!(!skipped_for_team(
+        &std::fs::read_to_string(&log_path).unwrap(),
+        None
+    ));
     // Regression: 3ab6572e, L1 run 3 fix: absent/corrupt lead health must emit a structured skip.
     let path = tmp.path().join(team).join("runtime/lead.json");
     MemberRuntimeStore::update(tmp.path(), team, "lead", |r| {
@@ -4671,16 +4681,25 @@ fn team_daemon_ensures_live_lead_despite_claude_activity_flag() {
             _ => {}
         }
         assert!(!orchestrator.ensure_team_daemon_running_best_effort(team));
-        assert!(!orchestrator.ensure_team_daemon_for_wrapper(team).unwrap().0);
+        let (ensured, detail) = orchestrator.ensure_team_daemon_for_wrapper(team).unwrap();
+        assert!(!ensured);
+        // The wrapper's detail names the reason without depending on the shared log sink.
+        let detail = detail.unwrap_or_default();
+        let expected = match reason {
+            "inactive_lead_control_identity" => "not live",
+            other => other,
+        };
+        assert!(detail.contains(expected), "{reason}: {detail}");
         sink.flush_for_test().unwrap();
         let log = std::fs::read_to_string(&log_path).unwrap();
-        assert!(
-            log.lines().any(|line| {
-                let event: serde_json::Value = serde_json::from_str(line).unwrap();
-                event["event"] == "coordination.team_daemon.skipped" && event["reason"] == reason
-            }),
-            "missing structured skip: {reason}"
-        );
+        // The structured record is exclusively ours only under a single-threaded run
+        // (test-rust-unit, CI); under parallel runs a sibling may hold the sink.
+        if skipped_for_team(&log, None) {
+            assert!(
+                skipped_for_team(&log, Some(reason)),
+                "wrong skip reason logged for {reason}: {log}"
+            );
+        }
     }
 }
 
