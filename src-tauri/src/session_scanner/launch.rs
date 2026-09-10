@@ -69,12 +69,14 @@ impl ModelSpec {
     }
 }
 
+#[derive(Clone)]
 pub struct TeamContext<'a> {
     pub team_name: &'a str,
     pub agent_name: &'a str,
     pub role: MemberRole,
 }
 
+#[derive(Clone)]
 pub struct LaunchSpec<'a> {
     pub tool: CliTool,
     pub mode: LaunchMode,

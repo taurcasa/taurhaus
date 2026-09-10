@@ -41,7 +41,12 @@ impl LaunchSpec<'_> {
             return Err("this harness has no owned app-server launch capability".into());
         }
         HostedLaunch::from_rendered(
-            &self.render().command,
+            &LaunchSpec {
+                codex_notify_executable: None,
+                ..self.clone()
+            }
+            .render()
+            .command,
             self.account_dir
                 .ok_or("hosted launch requires an explicit account root")?,
             session,
@@ -221,6 +226,27 @@ mod tests {
     use super::*;
     use crate::daemon::protocol::LaunchMode;
     use crate::session_scanner::launch::ModelSpec;
+
+    #[test]
+    fn hosted_render_suppresses_managed_notify() {
+        // Regression: 6f61f611 rendered the ordinary notify edge into hosted launches.
+        let tmp = tempfile::tempdir().unwrap();
+        let daemon = tmp.path().join("fake-daemon");
+        let spec = LaunchSpec {
+            tool: CliTool::Codex,
+            mode: LaunchMode::Fresh,
+            base: "codex",
+            model: ModelSpec::default(),
+            team: None,
+            codex_bypass_hook_trust: false,
+            codex_notify_executable: Some(&daemon),
+            account_dir: Some(tmp.path()),
+            selector: Some("CODEX_HOME"),
+        };
+        assert!(spec.render().command.contains("notify="));
+        let hosted = spec.render_app_server(None).unwrap();
+        assert!(!hosted.arguments.iter().any(|arg| arg.contains("notify=")));
+    }
 
     #[test]
     fn hosted_render_preserves_account_model_effort_and_explicit_policy() {
