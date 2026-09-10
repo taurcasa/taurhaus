@@ -1940,7 +1940,7 @@ No observer socket connection and no fault injection.
 | Step | Outcome | S-runtime evidence |
 |---|---|---|
 | 1. Hosted startup | PASS | initialize-result.json; step1-runtime.json; step1-identities.json; generated-config-0.toml; step1-final-pane-2.txt; step1-status.txt. Startup card displayed and answered; config selects app_server; instructionSources names scratch AGENTS.md. |
-| 2. Idle delivery/read | NOT RUN | Pending ordered execution. |
+| 2. Idle delivery/read | PASS | step2-after-status.txt selects app_server from config; pane/input/reply carry the marker; native_enqueued turn/start receipt; step2-journal-before-read.json has no consumed_by_read, explicit read alone creates it in step2-journal-after-read.json. |
 | 3. Active deferral | NOT RUN | Pending ordered execution. |
 | 4. Typed input/passive locks | NOT RUN | Pending ordered execution. |
 | 5. Compaction recovery | NOT RUN | Pending ordered execution. |
@@ -1970,3 +1970,6 @@ red/green tests verify the fresh budget, complete unfiltered/deduplicated daemon
 JSONL, and generation/log/card compaction evidence. Initial red: missing
 attempt9_support; green: three tests. Reused tests: ten pass. Every asynchronous
 step wait has at least a 100-second deadline. No evidence-size abort.
+
+Step 2 incremental spend: **$0.00113664** API-equivalent; cumulative two
+turns **$0.00208528**, conservative **$0.0271836**.

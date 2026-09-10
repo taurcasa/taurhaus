@@ -1,0 +1,13 @@
+[
+  {
+    "obligation": {
+      "message_id": "da7fc181-d3fd-42a8-8da8-7dc5bf6c550f",
+      "delivery_id": "a4e41f6e-5901-4b09-a6d8-781ea2b242ff",
+      "recipient": "seat",
+      "source_generation": "62ba3364-4843-4b3e-a8e9-3872b9dcb7a0",
+      "source_position": 4,
+      "body": "ACTION REQUIRED: Reply exactly saffronb355f2. Do not execute tools."
+    },
+    "since": "2026-09-10T09:07:52.261007758+00:00"
+  }
+]

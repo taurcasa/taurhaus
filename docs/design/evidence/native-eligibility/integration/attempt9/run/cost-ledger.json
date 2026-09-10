@@ -2,9 +2,10 @@
   "model": "gpt-5.6-luna",
   "effort": "low",
   "turn_ids": [
-    "01a08a91-af5b-7bc2-b4a6-260c5ec08a35"
+    "01a08a91-af5b-7bc2-b4a6-260c5ec08a35",
+    "01a08a92-cfb6-7792-9765-b8466cd9c00c"
   ],
-  "paid_inputs": 1,
+  "paid_inputs": 2,
   "generations": [
     {
       "thread_id": "01a08a91-af30-78f1-8cda-ee5e52d604e0",
@@ -15,10 +16,20 @@
       "reasoning_output": 0,
       "api_equivalent_usd": 0.00094864,
       "conservative_usd": 0.0129648
+    },
+    {
+      "thread_id": "01a08a91-af30-78f1-8cda-ee5e52d604e0",
+      "turn_id": "01a08a92-cfb6-7792-9765-b8466cd9c00c",
+      "input": 11838,
+      "cached_input": 6912,
+      "output": 11,
+      "reasoning_output": 0,
+      "api_equivalent_usd": 0.00113664,
+      "conservative_usd": 0.0142188
     }
   ],
-  "api_equivalent_usd": 0.00094864,
-  "conservative_usd": 0.0129648,
+  "api_equivalent_usd": 0.00208528,
+  "conservative_usd": 0.0271836,
   "metering_complete": true,
   "unmetered_turn_ids": [],
   "basis": "Host tokenUsage.last via daemon hosted_transcript; packet rates $0.20/$0.02/$1.20 per million input/cached/output. Estimate, not invoice."
