@@ -214,7 +214,11 @@ impl HostProcess {
         self.transcript_with_retry(guard, true)
     }
 
-    pub fn transcript_with_retry(&mut self, guard: &HostOperationLock, retry: bool) -> Result<Value, String> {
+    pub fn transcript_with_retry(
+        &mut self,
+        guard: &HostOperationLock,
+        retry: bool,
+    ) -> Result<Value, String> {
         if !self.alive() {
             return Err("owned host stopped".into());
         }
