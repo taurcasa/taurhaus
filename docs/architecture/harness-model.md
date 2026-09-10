@@ -177,18 +177,13 @@ After the thread is ready, the daemon opens a real TUI in the member pane using 
 
 Closing the pane closes a view; it does not stop the daemon-owned child. Resume of an unchanged live host verifies its thread and reattaches the pane without thread creation or a new host generation. An already attached live pane is reused without another command. Missing threads never open a picker or substitute a fresh conversation. Explicit member teardown stops the owned child and closes only the matching attached pane. The app transcript/input panel remains the second view, and controlled opt-out still performs the stage-5b named-thread relaunch into a plain pane.
 
-Published `hosted` status gates transcript/input/approval/cancel controls. The host lock revalidates attachment/root authority, excludes compaction through stdout/bookkeeping, and defers busy liveness. Ordinary operations get five seconds, cold launch thirty. Send starts an idle turn or steers an active one; pending recovery waits for the next idle turn, preserving the draft without queuing. Hosted compaction is notification-detected and hook-deduplicated: an owned-thread
-`item/completed` with `type: "contextCompaction"` admits one context generation and
-pending obligation (`source: host_notification`). Daemon reconciliation services
-this connection even without the panel open. On tracked idle, the daemon submits
-the same recovery card as a card-only `turn/start`, recording `injected` with
-`delivery: host_turn` and a submitted receipt. If the host stays busy through the
-first read, recovery defers to later reconciliation or the next operator input.
-Thread plus matching turn/item IDs deduplicates either observer order; when IDs are
-absent, opposite observers use a 30-second timestamp window (known conflicts stay separate).
-Hosted hooks restore the control contract without the pane hook's resumable-task gate;
-their logging is `received` plus `compaction.codex_host.*`.
-The transcript shows the compaction note and card turn.
+Published `hosted` status gates transcript/input/approval/cancel controls. The host lock revalidates attachment/root authority, excludes compaction through stdout/bookkeeping, and defers busy liveness. Ordinary operations get five seconds, cold launch thirty. Send starts an idle turn or steers an active one; pending recovery waits for the next idle turn, preserving the draft without queuing. Hosted compaction is notification-detected and hook-deduplicated: completed owned-thread
+`contextCompaction` admits a generation and pending obligation (`host_notification`).
+Reconciliation services the connection without the panel. Idle submits the canonical card alone
+via `turn/start`, with `injected` / `host_turn` and a submitted receipt; busy recovery defers.
+Dedup uses thread and matching turn/item IDs, or 30 seconds between ID-less opposite observers,
+preserving known conflicts. Hosted hooks restore the control contract without a task snapshot,
+logging `received` plus `compaction.codex_host.*`. The transcript shows boundary and card.
 
 On Codex 0.153.4, plain `thread/read` verifies identity, status, direct-input
 readiness and settings; `includeTurns` is unsupported and returned turns are always

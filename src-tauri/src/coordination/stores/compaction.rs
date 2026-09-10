@@ -8,6 +8,7 @@ use crate::coordination::errors::CoordinationError;
 use crate::session_scanner::cli_tool::CliTool;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 const COMPACTION_SCHEMA_VERSION: u32 = 1;
 const RESERVED_COMPACTION_STATE_BASENAMES: &[&str] = &["extractor-state", "signal-watcher-state"];
@@ -178,9 +179,10 @@ pub(crate) fn record_host_boundary(
     root: &Path,
     team: &str,
     member: &str,
-    boundary: &serde_json::Value,
+    boundary: &Value,
     source: &str,
 ) -> Result<bool, CoordinationError> {
+    use CompactionDeliveryResult::Skipped;
     let thread = boundary["threadId"].as_str().unwrap_or_default();
     let mut timestamp = boundary["completedAtMs"]
         .as_i64()
@@ -202,10 +204,8 @@ pub(crate) fn record_host_boundary(
         // never merge conflicting known IDs or two distinct notifications by time alone.
         let close = ids.is_empty()
             && previous.source.as_deref() != Some(source)
-            && (previous.last_compaction_timestamp - timestamp)
-                .num_milliseconds()
-                .abs()
-                <= 30_000;
+            && (previous.last_compaction_timestamp - timestamp).abs()
+                <= chrono::Duration::seconds(30);
         if previous.last_session_id == thread
             && (same_id
                 || close
@@ -225,15 +225,7 @@ pub(crate) fn record_host_boundary(
     let tool = super::MemberRuntimeStore::load(root, team, member)?
         .cli_tool
         .ok_or_else(|| CoordinationError::Conflict("host harness identity missing".into()))?;
-    record_delivery_at(
-        root,
-        team,
-        member,
-        tool,
-        thread,
-        timestamp,
-        CompactionDeliveryResult::Skipped,
-    )?;
+    record_delivery_at(root, team, member, tool, thread, timestamp, Skipped)?;
     let mut state = MemberCompactionStore::load(root, team, member)?
         .ok_or_else(|| CoordinationError::Conflict("host compaction state missing".into()))?;
     state.source = Some(source.into());
@@ -245,30 +237,25 @@ pub(crate) fn record_host_boundary(
 pub(crate) fn emit_host_compaction(
     team: &str,
     member: &str,
-    boundary: &serde_json::Value,
+    boundary: &Value,
     event: &str,
     reason: Option<&str>,
 ) {
     let mut fields = serde_json::Map::new();
+    let id = |key: &str| boundary[key].as_str().unwrap_or_default();
     for (key, value) in [
         ("team", team),
         ("member", member),
-        (
-            "thread_id",
-            boundary["threadId"].as_str().unwrap_or_default(),
-        ),
-        ("turn_id", boundary["turnId"].as_str().unwrap_or_default()),
-        ("item_id", boundary["itemId"].as_str().unwrap_or_default()),
+        ("thread_id", id("threadId")),
+        ("turn_id", id("turnId")),
+        ("item_id", id("itemId")),
     ] {
-        fields.insert(
-            key.into(),
-            serde_json::Value::String(value.chars().take(256).collect()),
-        );
+        fields.insert(key.into(), Value::String(value.chars().take(256).collect()));
     }
     if let Some(reason) = reason {
         fields.insert(
             "reason".into(),
-            serde_json::Value::String(reason.chars().take(256).collect()),
+            Value::String(reason.chars().take(256).collect()),
         );
     }
     taurhaus_lib::logging::emit_global("info", "coordination", event, None, fields);
@@ -421,7 +408,7 @@ pub(crate) fn record_delivery_with_transport_at(
     };
     MemberCompactionStore::save_locked(&guard, teams_dir, team_name, member_name, &state)?;
     drop(guard);
-    emit_compaction_delivery_with_transport(
+    emit_compaction_delivery_event(
         team_name,
         member_name,
         tool,
@@ -462,30 +449,6 @@ pub fn prune_state_if_session_mismatch(
 
 #[allow(clippy::too_many_arguments)]
 pub fn emit_compaction_delivery_event(
-    team_name: &str,
-    member_name: &str,
-    tool: CliTool,
-    session_id: &str,
-    compaction_timestamp: DateTime<Utc>,
-    result: CompactionDeliveryResult,
-    skip_reason: Option<&str>,
-    fail_reason: Option<&str>,
-) {
-    emit_compaction_delivery_with_transport(
-        team_name,
-        member_name,
-        tool,
-        session_id,
-        compaction_timestamp,
-        result,
-        skip_reason,
-        fail_reason,
-        None,
-    );
-}
-
-#[allow(clippy::too_many_arguments)]
-fn emit_compaction_delivery_with_transport(
     team_name: &str,
     member_name: &str,
     tool: CliTool,
@@ -676,6 +639,7 @@ mod tests {
             CompactionDeliveryResult::Failed,
             Some("intervening_user_message"),
             Some("append_inbox_failed"),
+            None,
         );
 
         let contents = wait_for_log_contains(&log_path, "\"event\":\"compaction.failed\"");

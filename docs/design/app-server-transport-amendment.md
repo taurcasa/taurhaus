@@ -212,12 +212,9 @@ rate-limit/account-plan metadata (account-linked, not credentials).
 
 ## Compaction boundary on 0.153.4
 
-2026-09-10: attempt-8 continuation passed steps 1–4, but step 5 completed
-`/compact` on the same daemon-owned thread without firing the Codex hook.
-Source: trial checkout HEAD,
-`docs/design/evidence/native-eligibility/codex-0.153.4-integration.md`
-(attempt-8 continuation) and
-`integration/attempt8/continuation/run/step5-boundary-events.json` beside it.
+2026-09-10: attempt-8 continuation passed steps 1–4; step 5 completed `/compact` without a hook.
+Sources in trial HEAD: `docs/design/evidence/native-eligibility/codex-0.153.4-integration.md`
+(continuation) and `integration/attempt8/continuation/run/step5-boundary-events.json` beside it.
 The daemon's own connection received:
 
 ```text
@@ -229,21 +226,13 @@ thread/status/changed {threadId, status:{type:"idle"}}
 turn/completed {threadId, turn:{id, status:"completed", items:[]}}
 ```
 
-The completed item is authoritative for the owned thread. Daemon reconciliation
-and hosted operations admit a generation-keyed pending obligation with source
-`host_notification`; hook and notification identities deduplicate by thread and
-matching turn/item IDs, or a 30-second timestamp window between opposite observers
-when IDs are absent (the documented hook envelope has none). Conflicting known IDs
-remain distinct. Under host exclusion, idle permits a card-only `turn/start` using
-the existing recovery renderer and submitted receipt. Busy recovery defers immediately;
-background pending reads try once, preserving the obligation for later reconciliation
-or first operator input. Recovery errors never abort an alive seat's team liveness pass.
-An unread boundary backlog collapses to the newest context before admission.
-Hosted hooks emit `received` plus the `compaction.codex_host.*` family. They restore
-the hosted control contract even without a resumable task snapshot, like startup;
-the shared card then describes the current idle/wait state. Unknown input outcomes never replay.
-The transcript retains the compaction item and recovery turn. No wire change or
-protocol bump: `contextGeneration` remains a string, protocol 27 remains unreleased.
-The requested `attached-tui/installed-schema` directory is absent in both supplied
-checkouts; no separate `thread/compacted` notification is established by that
-schema evidence. This change uses the recorded completed-item shape.
+The owned-thread item admits a generation-keyed obligation (`host_notification`). Dedup uses thread
++ turn/item IDs, or a 30-second window between opposite observers lacking IDs (the hook envelope
+has none). Known conflicts stay distinct; unread backlogs collapse before admission. Idle submits
+the canonical card alone via `turn/start` under exclusion, with a submitted receipt. Busy recovery
+defers; background pending reads try once. Later reconciliation or first input services the obligation.
+Recovery errors never abort live-seat liveness; unknown inputs never replay. Hosted hooks log
+`received` plus `compaction.codex_host.*`, restoring the control contract without a task snapshot,
+like startup. The transcript retains boundary and card. Protocol 27 stays unreleased;
+`contextGeneration` stays a string. Neither checkout contains `attached-tui/installed-schema`;
+no separate `thread/compacted` shape is established. Only the evidenced completed item is used.

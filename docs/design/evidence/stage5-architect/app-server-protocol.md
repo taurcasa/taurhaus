@@ -1,12 +1,8 @@
-> **Compaction recovery amendment (2026-09-10).** Attempt-8 continuation step 5
-> proved that hosted `/compact` completes without the Codex hook. The daemon now
-> admits owned-thread `item/completed` contextCompaction notifications, deduplicates
-> hook boundaries, and submits the canonical recovery card on idle under host
-> exclusion. Round-1 correction (2026-09-10): busy recovery defers immediately,
-> background pending reads try once, and recovery failure does not abort team liveness.
-> ID-less hooks deduplicate opposite observers within 30 seconds on the same thread.
+> **Compaction recovery / round-1 amendment (2026-09-10).** Attempt-8 step 5 completed without a hook.
+> Owned-thread notifications now admit recovery, delivered under host exclusion on idle; busy recovery
+> defers, background pending reads try once, and recovery failures never abort team liveness.
+> ID-less opposite observers deduplicate within 30 seconds. This is fake-host coverage, not eligibility proof.
 > See [Compaction boundary on 0.153.4](../../app-server-transport-amendment.md#compaction-boundary-on-01534).
-> This is fake-host software coverage, not a new real-host eligibility verdict.
 
 > **Thread-state correction (2026-09-10).** The orchestrator's real Codex
 > 0.153.4 probe supersedes the `includeTurns` and read-derived active-turn rules
