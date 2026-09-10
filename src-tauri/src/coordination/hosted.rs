@@ -1111,6 +1111,16 @@ pub(crate) mod tests {
         launch_retry_case("once");
     }
 
+    #[test]
+    fn hosted_launch_retry_stops_after_two_exits() {
+        launch_retry_case("twice");
+    }
+
+    #[test]
+    fn hosted_launch_retry_excludes_readiness_timeout() {
+        launch_retry_case("timeout");
+    }
+
     fn launch_retry_case(mode: &str) {
         // Regression: cadd533e failed fresh-account initialization races without a bounded retry.
         let _logs = taurhaus_lib::test_support::acquire_global_log_test_guard();
