@@ -1788,3 +1788,9 @@ Continuation step 3 **PASS**: message `2954e62b-f51f-4e1e-ab4d-3c857f4450cb`
 recorded pending/thread_active, then exactly one native_enqueued turn/start
 after idle. Completed user/reply items prove one exposure. See
 `continuation/run/step3-pending.json`, `step3-receipts.json`, `step3-exposure.json`.
+
+Continuation step 4 **PASS**: typed `maple84cf3a` while `cedar430145` was pending.
+Both completed once, operator reply before socket delivery, captured in
+`step4-final-pane-2.txt` and `step4-exposure.json`. `step4-locks.jsonl` passively
+records daemon PID 1908030 and Mesh PID 1909718 holding stable inode 1158695,
+with matching kernel fdinfo. No process interference or extra paid lock marker.

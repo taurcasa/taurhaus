@@ -15,7 +15,7 @@
       "tmuxPaneId": "%1",
       "backendType": "external",
       "isActive": true,
-      "lastActivityAt": "2026-09-10T05:24:05.647Z",
+      "lastActivityAt": "2026-09-10T05:24:39.822Z",
       "lastActivityReason": "message_sent",
       "cli_tool": "claude",
       "controlAuthTokenHash": "<redacted>",
