@@ -1,0 +1,8 @@
+  Give it a hard problem, a half-formed idea, or anything you've been meaning to build. See where it takes you.
+
+• Booting MCP server: codex_apps (0s • esc to interrupt)
+
+
+› Ask Codex to do anything
+
+  gpt-5.6-luna low · <scratch>/project
