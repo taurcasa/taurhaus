@@ -1,4 +1,4 @@
-# Codex 0.153.4 integration — INCONCLUSIVE: step 6 metering-ID mismatch, attempt 12
+# Codex 0.153.4 integration — attempt 13 IN PROGRESS
 
 ## Attempt 1 — INCONCLUSIVE: setup FAIL (2026-09-09)
 
@@ -2926,3 +2926,32 @@ The wrapper exited 0; independent checks confirmed its scratch root was removed,
 all children were waited, no process retained its ownership token, and retained
 logs contained no credential-shaped JWT or disallowed operator-home path.
 `just test-rust-unit` was not required: this review touches no `src-tauri/` file.
+
+
+## Attempt 13 — fresh isolated trial (2026-09-10)
+
+Binding attempt-13 specification; Taurhaus product base `206f88b0`, protocol 27,
+checkout `/home/mstie/projects/taurhaus-trial` on `feat/integration-trial`.
+Mesh `/home/mstie/projects/mesh-trial` detached at `ed59187`; scratch-only
+descriptor admission uses the daemon's exact host/configuration/trust classes.
+No Taurhaus product change or registry entry is needed by this launch path.
+
+Controller copied from the corrected attempt-12 scripts into `integration/attempt13-*`.
+Offline guard suite copied first: exit 1 (missing attempt-13 implementation files);
+then copied controller: exit 0, 15 tests. This is setup red, not a newly discovered
+product regression. Existing regression comments and guards remain intact.
+Fresh budget: at most 16 Codex turns and USD 3; previous attempts are history.
+Step predicates use reply plus idle; token-usage gaps remain ledger limitations.
+Both named transient hosted-read refusals retry with the observation cursor intact.
+All gate runs use credential-free isolated homes and inert external CLI shims.
+
+### Step 1 — PASS (S-runtime)
+
+Production initialize completed canonical creation, both seat launches, delivery opt-in
+and owner startup. The runtime pins terminalContract 1, the exact strict-config
+classes and loaded instruction sources. App-server socket and attached pane observed;
+startup recovery card completed. Thread `01a08c8a-29ea-7cc2-8a4e-b000b9317bbd`, pane `%2`.
+Evidence: `integration/attempt13/run/step1-runtime.json`, `step1-identities.json`,
+`generated-config-0.toml`, `initialize-result.json`, `step1-final-pane-2.txt`,
+complete `taurhaus.log.jsonl`, and `host-events.jsonl`. Both builds exited 0.
+

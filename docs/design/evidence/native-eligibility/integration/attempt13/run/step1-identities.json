@@ -1,0 +1,190 @@
+[
+  {
+    "pid": 248555,
+    "start_ticks": "28479440",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-int-4fvqnzt5",
+      "/tmp/th-int-4fvqnzt5",
+      "--chdir",
+      "/tmp/th-int-4fvqnzt5/project",
+      "/bin/bash",
+      "/tmp/th-int-4fvqnzt5/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 248556,
+    "start_ticks": "28479440",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-int-4fvqnzt5",
+      "/tmp/th-int-4fvqnzt5",
+      "--chdir",
+      "/tmp/th-int-4fvqnzt5/project",
+      "/bin/bash",
+      "/tmp/th-int-4fvqnzt5/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 248557,
+    "start_ticks": "28479440",
+    "argv": [
+      "/bin/bash",
+      "/tmp/th-int-4fvqnzt5/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 248558,
+    "start_ticks": "28479440",
+    "argv": [
+      "tmux",
+      "-D",
+      "-f",
+      "/dev/null",
+      ""
+    ]
+  },
+  {
+    "pid": 248571,
+    "start_ticks": "28479451",
+    "argv": [
+      "/bin/bash",
+      ""
+    ]
+  },
+  {
+    "pid": 248573,
+    "start_ticks": "28479451",
+    "argv": [
+      "/tmp/th-int-4fvqnzt5/home/.local/bin/taurhaus-daemon",
+      "--port",
+      "25438",
+      "--data-dir",
+      "/tmp/th-int-4fvqnzt5/data",
+      ""
+    ]
+  },
+  {
+    "pid": 248944,
+    "start_ticks": "28479513",
+    "argv": [
+      "/bin/bash",
+      "-ic",
+      "cd '/tmp/th-int-4fvqnzt5/project' && CLAUDE_DIR='/tmp/th-int-4fvqnzt5/claude' CLAUDE_CONFIG_DIR='/tmp/th-int-4fvqnzt5/claude' CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions --model 'claude-haiku-4-5' --team-name 'integration' --agent-name 'lead' --agent-id 'lead@integration' --agent-type 'orchestrator' -n 'lead'; exec \"$SHELL\"",
+      ""
+    ]
+  },
+  {
+    "pid": 248947,
+    "start_ticks": "28479513",
+    "argv": [
+      "claude",
+      "--dangerously-skip-permissions",
+      "--model",
+      "claude-haiku-4-5",
+      "--team-name",
+      "integration",
+      "--agent-name",
+      "lead",
+      "--agent-id",
+      "lead@integration",
+      "--agent-type",
+      "orchestrator",
+      "-n",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 248953,
+    "start_ticks": "28479515",
+    "argv": [
+      "codex",
+      "-c",
+      "sandbox_mode=\"read-only\"",
+      "-c",
+      "approval_policy=\"never\"",
+      "-c",
+      "model=\"gpt-5.6-luna\"",
+      "-c",
+      "model_reasoning_effort=\"low\"",
+      "app-server",
+      "--listen",
+      "unix:///tmp/th-int-4fvqnzt5/tmp/th-host-55ebcffa184e4332a75078d2fae9f2bc/rpc.sock",
+      ""
+    ]
+  },
+  {
+    "pid": 254304,
+    "start_ticks": "28480009",
+    "argv": [
+      "-bash",
+      ""
+    ]
+  },
+  {
+    "pid": 254337,
+    "start_ticks": "28480046",
+    "argv": [
+      "codex",
+      "--remote",
+      "unix:///tmp/th-int-4fvqnzt5/tmp/th-host-55ebcffa184e4332a75078d2fae9f2bc/rpc.sock",
+      "resume",
+      "01a08c8a-29ea-7cc2-8a4e-b000b9317bbd",
+      "--no-alt-screen",
+      "--strict-config",
+      ""
+    ]
+  },
+  {
+    "pid": 255735,
+    "start_ticks": "28480164",
+    "argv": [
+      "/tmp/th-int-4fvqnzt5/home/.local/bin/mesh",
+      "team-daemon",
+      "start",
+      "--team",
+      "integration",
+      "--name",
+      "lead",
+      "--claude-dir",
+      "/tmp/th-int-4fvqnzt5/claude",
+      ""
+    ]
+  }
+]
