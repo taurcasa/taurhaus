@@ -897,6 +897,7 @@ if '--remote' in sys.argv:
         output.write(json.dumps({'argv':sys.argv, 'codexHome':root, 'tmux':os.environ.get('TMUX')})+'\n')
     signal.pause()
     sys.exit(0)
+with open(os.path.join(root, 'host-argv.json'), 'w') as output: json.dump(sys.argv, output)
 address = sys.argv[sys.argv.index('--listen')+1].removeprefix('unix://')
 saved = os.path.join(root, 'thread.json')
 thread = json.load(open(saved)) if os.path.exists(saved) else None
