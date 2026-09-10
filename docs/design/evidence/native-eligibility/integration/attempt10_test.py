@@ -38,6 +38,7 @@ class TrialGuards(unittest.TestCase):
         self.assertIsNone(result['api_equivalent_usd'])
         self.assertIsNone(result['conservative_usd'])
         self.assertFalse(result['metering_complete'])
+        self.assertEqual(finalize(result), result)
 
     def test_rollback_requires_attributed_idle(self):
         # // Regression: e98ffd7a reached an unattributed pane; delivery stayed pending.

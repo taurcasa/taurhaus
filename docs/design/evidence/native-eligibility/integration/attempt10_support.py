@@ -54,7 +54,7 @@ def finalize_metering(ledger):
     result['metering_complete'] = not result['unmetered_turn_ids']
     result['actual_billed_usd'] = None
     if not result['metering_complete']:
-        result['measured_api_equivalent_subtotal_usd'] = result['api_equivalent_usd']
+        result.setdefault('measured_api_equivalent_subtotal_usd', result['api_equivalent_usd'])
         result['api_equivalent_usd'] = None
         result['conservative_usd'] = None
         result['limitation'] = 'Started turn has no retained tokenUsage event; total spend unknown, not zero.'

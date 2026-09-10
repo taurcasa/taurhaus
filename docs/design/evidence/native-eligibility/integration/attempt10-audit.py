@@ -62,6 +62,17 @@ for path in OUT.rglob('*'):
     assert not re.search(r'eyJ[A-Za-z0-9_-]{30,}\.[A-Za-z0-9_-]{20,}',data),path
     assert not re.search(r'(?<![\w/-])/home/[^/\s]+/(?!projects/(?:taurhaus-trial|mesh-trial)(?:/|(?![\w.-])))',data),path
     assert 'item/agentMessage/delta' not in data,path
+    if path.suffix == '.log': path.rename(path.with_suffix('.txt'))
+gate_cleanup = OUT/'gates/gate-cleanup.json'
+if gate_cleanup.exists():
+    assert read(gate_cleanup)['children_waited'] and read(gate_cleanup)['root_removed']
+    env = read(OUT/'gates/gate-isolation.json')['environment']
+    assert not Path(env['HOME']).exists()
+    owned = ('TAURHAUS_TRIAL_ID='+env['TAURHAUS_TRIAL_ID']).encode()+b'\0'
+    for process in Path('/proc').iterdir():
+        if not process.name.isdigit(): continue
+        try: assert owned not in (process/'environ').read_bytes(), 'gate process survived'
+        except (PermissionError, FileNotFoundError, ProcessLookupError): pass
 logs = rows(RUN/'taurhaus.log.jsonl')
 assert len(logs)==len({json.dumps(r,sort_keys=True) for r in logs})
 save(OUT/'final-audit.json', {

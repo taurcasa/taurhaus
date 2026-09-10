@@ -2270,8 +2270,11 @@ success. The retained daemon stderr records `team daemon ensured running`, PID
 that same PID/start identity. [Process identities](integration/attempt10/run/identities.json)
 map it to host PID **1140030**, argv `mesh team-daemon start --team integration
 --name lead --claude-dir /tmp/th-int-yzuf3uvh/claude`. These observations establish
-an owner existed before opt-in; attribution to a specific race/code path remains
-an inference, not a diagnosed product fix.
+an owner existed before opt-in. Complete daemon JSONL row 32 also records
+`self_heal.pass.completed`, `team_daemons_ensured: 1`, at `12:39:00.354Z`;
+row 47 records `coordination.step.failed` / `opt_in_delivery` at
+`12:39:02.183Z`. A self-heal/initialization ordering race is the evidence-backed
+inference; this lane does not patch or independently reproduce that diagnosis.
 
 The Codex record had `terminalContract: 1`, `health: active`, attachment generation
 1 and app-server state `ready`, thread **01a08b54-1471-77a2-899b-f608bf08a8dd**.
@@ -2357,8 +2360,23 @@ steps are their authorization condition. No Taurhaus registry entry was needed:
 the existing launch path demonstrably created the host. No Taurhaus product or
 `src-tauri/` file changed, so `just test-rust-unit` is not required.
 
-Unpaid exact gates are in progress in a separate credential-free namespace;
-final exit codes will be appended after their Cargo preflight completes.
+All unpaid exact gates ran from this checkout root in a separate credential-free
+Bubblewrap namespace with inert harness/tmux/Mesh shims. No paid CLI was invoked.
+Cargo preflight waited 450 seconds before check-quick and 60 seconds before lint;
+contracts needed no additional wait. Each recipe exited **0**:
+
+| Exact command | Exit | Evidence |
+|---|---|---|
+| `just check-quick` | **0**; 46.24s, typecheck and 150 frontend files / 2509 tests passed | [Exit record](integration/attempt10/gates/gate-check-quick.json), [complete output](integration/attempt10/gates/gate-check-quick.txt) |
+| `just lint` | **0**; 37.27s | [Exit record](integration/attempt10/gates/gate-lint.json), [complete output](integration/attempt10/gates/gate-lint.txt) |
+| `just test-contracts` | **0**; 9.60s | [Exit record](integration/attempt10/gates/gate-test-contracts.json), [complete output](integration/attempt10/gates/gate-test-contracts.txt) |
+| `python3 docs/design/evidence/native-eligibility/integration/attempt10_test.py` | **0**; 3 offline guards | [Output](integration/attempt10/final-tests.txt) |
+| `python3 docs/design/evidence/native-eligibility/integration/attempt10-audit.py` | **0** | [Audit](integration/attempt10/final-audit.json) |
+
+[Gate teardown](integration/attempt10/gates/gate-cleanup.json) confirms waited
+children and removed scratch root; the independent audit also found no process
+carrying the gate namespace's run token. The complete daemon JSONL remains
+byte-identical to its pre-audit hash. Non-evidence inserted lines: **0/200**.
 
 **Deviations / limits:** step 1 prevents steps 2–7; missing startup token usage
 prevents a numeric spend total and USD-cap verification; config-file capture and

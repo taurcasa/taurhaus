@@ -48,5 +48,9 @@
   "model_turns": 1,
   "metering_complete": false,
   "total_usd": null,
-  "gates": {}
+  "gates": {
+    "gate-check-quick": 0,
+    "gate-lint": 0,
+    "gate-test-contracts": 0
+  }
 }
