@@ -72,4 +72,3 @@ class SharedHarnessTests(unittest.TestCase):
 
     def test_journal_export_is_complete_jsonl(self):
         self.assertEqual(evidence_jsonl([{'a':1},{'a':2}]),'{"a": 1}\n{"a": 2}\n')
-

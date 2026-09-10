@@ -1,0 +1,25 @@
+{
+  "exit": 0,
+  "owned_survivors": [],
+  "cleanup_verified": true,
+  "files_verified": 69,
+  "jsonl_rows": {
+    "events.jsonl": 216,
+    "sessions/rollout-2026-09-11T01-03-10-01a08d8f-8beb-7731-96ef-a3f92eb457f4.jsonl": 53,
+    "taurhaus.log.jsonl": 101,
+    "team/state/messaging-v2/segments/000001.jsonl": 12,
+    "team/state/workflow_events.jsonl": 6,
+    "terminal-locks.jsonl": 6
+  },
+  "pane_lines": {
+    "B-work-composer.txt": 48,
+    "final-pane-0.txt": 1,
+    "final-pane-1.txt": 37,
+    "final-pane-2.txt": 60,
+    "startup-000-pane-2.txt": 12,
+    "step1-delivered-pane-2.txt": 60,
+    "step1-initial-pane-2.txt": 23,
+    "step1-ready-pane-2.txt": 60
+  },
+  "aliases_verified": 13
+}

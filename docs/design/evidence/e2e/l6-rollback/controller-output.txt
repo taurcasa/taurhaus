@@ -1,0 +1,2 @@
+Step 1 PASS and committed
+{"step": 2, "classification": "mesh", "error": "permanent ownership refusal: error: IO error: delivery: canonical_downgrade_required\n"}
