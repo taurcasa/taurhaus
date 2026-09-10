@@ -1,4 +1,4 @@
-# Codex 0.153.4 integration — INCONCLUSIVE: step 1 transcript observation busy, attempt 11
+# Codex 0.153.4 integration — IN PROGRESS: attempt 12
 
 ## Attempt 1 — INCONCLUSIVE: setup FAIL (2026-09-09)
 
@@ -2659,3 +2659,20 @@ The historical 81-row daemon JSONL still hashes to
 `00a94ee5e093cd19fb35114504e685147a80048e2ef2019a6363f0876459acd2`.
 Additional gate spend: **0 turns / USD 0**. No Mesh gate or descriptor decision
 was re-executed; the recorded disabled descriptor and inconclusive verdict stand.
+
+## Attempt 12 — controller prepared (2026-09-10)
+
+Reuses the review-fixed attempt-11 controller from `19ffe981` / `3a3d2517`,
+against production base `1db4f9bf`, protocol 27, with Mesh detached at `ed59187`.
+Fresh hard budget: 16 Codex model turns / USD 3; previous attempts excluded.
+The sole controller behavior change admits exactly both `HOST_OPERATION_FAILED`
+messages `host member busy` and `Conflict: host operation deferred: lock busy`
+as transient reads, keeping the cursor and one-second backoff inside the 120-second
+startup / 100–120-second step windows. All other refusals remain fatal.
+
+Offline red: three errors across the new flock/cursor and deadline subtests;
+green: all 11 tests pass. Synthetic data only, AST-extracted helpers, no live
+controller import or harness invocation. See [red](integration/attempt12/red.txt),
+[green](integration/attempt12/green.txt), [tests](integration/attempt12_test.py),
+and [controller](integration/attempt12-controller.py). Gate logs will be retained
+under `integration/attempt12/gates/`. No Taurhaus product change.
