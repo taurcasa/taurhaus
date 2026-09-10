@@ -119,6 +119,11 @@ fn descriptors(
     Some(pins.into_iter().filter(Descriptor::supported).collect())
 }
 
+fn member_present(config: &Value, member: &Value) -> bool {
+    member.get("removedAt").is_none()
+        && (config["messaging_format"] == 2 || member["isActive"] != false)
+}
+
 /// Only exact runtime session identity can authorize a drain. The compaction
 /// resolver's historical unique-cwd fallback is deliberately insufficient here.
 fn candidate(teams: &Path, payload: &CompactHookInput) -> Option<(HookMemberMatch, Value, Value)> {
@@ -179,7 +184,7 @@ fn candidate(teams: &Path, payload: &CompactHookInput) -> Option<(HookMemberMatc
         .as_array()?
         .iter()
         .find(|m| m["name"] == matched.member.name)?;
-    if member["isActive"] == false {
+    if !member_present(&config, member) {
         return None;
     }
     let member_id = member["agentId"].as_str()?;
@@ -601,7 +606,7 @@ pub fn reconcile_home(
             if !config["members"].as_array().is_some_and(|members| {
                 members
                     .iter()
-                    .any(|m| m["name"] == *member && m["isActive"] != false)
+                    .any(|m| m["name"] == *member && member_present(&config, m))
             }) {
                 continue;
             }
