@@ -1,0 +1,18 @@
+{
+  "command": [
+    "cargo",
+    "build",
+    "--bin",
+    "mesh"
+  ],
+  "cwd": "<operator-path-redacted>",
+  "target": "<operator-path-redacted>",
+  "exit": 0,
+  "cargo_preflight": [
+    {
+      "at": 1789031174.4783583,
+      "exit": 1,
+      "output": ""
+    }
+  ]
+}

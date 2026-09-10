@@ -1,0 +1,23 @@
+"""Attempt-9 evidence policy; reuses receipt and transcript helpers from attempt 8."""
+import json
+from attempt8_continuation_support import wait_receipt, compaction_metering_gaps
+from attempt5_support import clean, ledger
+
+PRIOR_TURNS = 0
+PRIOR_CONSERVATIVE_USD = 0
+
+def enforce_budget(turns, conservative_usd):
+    assert turns <= 16, 'turn budget reached'
+    assert conservative_usd <= 3, 'cost budget reached'
+
+def retained_log(rows):
+    unique={json.dumps(row,sort_keys=True):row for row in rows}
+    return list(unique.values()), {'raw_rows':len(rows),'unique_rows':len(unique)}
+
+def validate_compaction(before, after, rows, events, pane):
+    assert before['appServer']['threadId']==after['appServer']['threadId'], 'compaction changed thread identity'
+    assert before['contextGeneration']!=after['contextGeneration'], 'contextGeneration did not advance'
+    for suffix in ['received','delivered']:
+        assert any(r.get('event')=='compaction.codex_host.'+suffix for r in rows), 'missing host compaction '+suffix
+    assert any(e.get('params',{}).get('item',{}).get('type')=='userMessage' and '[taurhaus] recovery_card' in json.dumps(e) for e in events), 'no recovery card user item'
+    assert '[taurhaus] recovery_card' in pane, 'attached pane did not show recovery card'

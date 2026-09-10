@@ -1,4 +1,4 @@
-# Codex 0.153.4 integration — FAIL step 5 (attempt 8 continuation)
+# Codex 0.153.4 integration — IN PROGRESS (attempt 9)
 
 2026-09-09. **Eligibility remains disabled.** The prescribed canonical setup
 stopped before member launch: the real Mesh command `team delivery --owner team`
@@ -1920,3 +1920,53 @@ Taurhaus registry change or product patch; non-evidence insertions **0/200**.
 Opus evidence review remains unavailable in this session. The remaining limits
 are the step-5 recovery failure, unrun lifecycle steps, and unreported compact
 billing; the earlier step-3 harness limitation has been resolved by this run.
+
+
+### Attempt 9 — isolated production integration, 2026-09-10
+
+Pair: Taurhaus `ddb7aef1` (contains hosted-compaction PR #160 / `06031992`,
+protocol **27**); Mesh detached RC `a6ee296`. Both checkout-local builds exit 0.
+The temporary compiled descriptor admits only 0.153.4 with
+`taurhaus-daemon-owned-thread/1`, `strict-config/1`, `daemon-owned/1`,
+transport `unix-websocket`. No Taurhaus product changes.
+
+Evidence paths below are relative to [attempt9/run](integration/attempt9/run/).
+Fresh authorization: at most 16 Codex turns and USD 3; Luna/low only, no Claude
+model turn. Only the explicitly authorized auth file was copied into scratch.
+Private root `/tmp/th-int-1vc78b94`, private tmux/PID namespace, scratch project
+AGENTS.md, production canonical initialize with the UI default retention policy.
+No observer socket connection and no fault injection.
+
+| Step | Outcome | S-runtime evidence |
+|---|---|---|
+| 1. Hosted startup | PASS | initialize-result.json; step1-runtime.json; step1-identities.json; generated-config-0.toml; step1-final-pane-2.txt; step1-status.txt. Startup card displayed and answered; config selects app_server; instructionSources names scratch AGENTS.md. |
+| 2. Idle delivery/read | NOT RUN | Pending ordered execution. |
+| 3. Active deferral | NOT RUN | Pending ordered execution. |
+| 4. Typed input/passive locks | NOT RUN | Pending ordered execution. |
+| 5. Compaction recovery | NOT RUN | Pending ordered execution. |
+| 6. Daemon restart | NOT RUN | Pending ordered execution. |
+| 7. Operational rollback | NOT RUN | Pending ordered execution. |
+
+Thread: `01a08a91-af30-78f1-8cda-ee5e52d604e0`.
+Step 1: one generation, 10,772 input / 6,912 cached / 32 output tokens;
+API-equivalent **$0.00094864**, conservative **$0.0129648**. Actual billing is
+not exposed by the host. The cumulative host-event ledger is cost-ledger.json.
+
+Exact reproduction (each numbered step is inspected and committed before next):
+
+```sh
+just ensure-tauri-resources
+TRIAL_EVIDENCE_LABEL=attempt9 python3 docs/design/evidence/native-eligibility/integration/attempt9-build.py
+python3 docs/design/evidence/native-eligibility/integration/attempt9_test.py
+python3 docs/design/evidence/native-eligibility/integration/attempt9-controller.py attempt9/run
+# Separate shell, after inspection_ready:
+python3 docs/design/evidence/native-eligibility/integration/attempt9-steps.py 1
+# Then steps 2 through 7, in order while passing.
+TRIAL_EVIDENCE_LABEL=attempt9 python3 docs/design/evidence/native-eligibility/integration/attempt2-gates.py
+```
+
+The controller/actions/steps reuse attempt-8 continuation modules; new offline
+red/green tests verify the fresh budget, complete unfiltered/deduplicated daemon
+JSONL, and generation/log/card compaction evidence. Initial red: missing
+attempt9_support; green: three tests. Reused tests: ten pass. Every asynchronous
+step wait has at least a 100-second deadline. No evidence-size abort.
