@@ -2632,4 +2632,30 @@ green with `python3 docs/design/evidence/native-eligibility/integration/attempt1
 Only the named controller, steps, tests, red capture and this evidence file change.
 The complete historical daemon JSONL and runtime/cost/cleanup sidecars are untouched.
 This repair prepares a newly commissioned attempt 12; it establishes no new
-S-runtime proof. Requested unpaid gate rerun results follow when complete.
+S-runtime proof. The unpaid gate rerun results follow below.
+
+
+#### Controller review gate rerun and cleanup
+
+All exact commands ran from `/home/mstie/projects/taurhaus-trial` through the
+unchanged `attempt2-gates.py` wrapper, with
+`TRIAL_EVIDENCE_LABEL=/tmp/attempt11-review-gates-rPmI8E`.
+
+| Command | Exit | Observed result |
+|---|---|---|
+| `just check-quick` | **0** | 19.40s; Rust tests compiled, typecheck passed, 150 frontend files / 2,518 tests passed. |
+| `just lint` | **0** | 19.72s; all lint lanes passed. |
+| `just test-contracts` | **0** | 5.43s; 15 + 20 + 33 = 68 tests passed. |
+
+Complete gate logs and command/exit JSON records remain under
+`/tmp/attempt11-review-gates-rPmI8E/gates/`. Cargo preflight waited one 30-second
+interval before check-quick; both later preflights found no competing Cargo.
+The wrapper exited 0, waited all three children and removed its credential-free
+scratch root `/tmp/th-int-gates-0y50_kp1`. An independent `/proc` check found no
+process carrying that gate run token. Operator homes were hidden and external
+harness/tmux/Mesh commands shadowed by inert shims. No paid runtime was started.
+No Rust diff, so `just test-rust-unit` was not required. `git diff --check` passed.
+The historical 81-row daemon JSONL still hashes to
+`00a94ee5e093cd19fb35114504e685147a80048e2ef2019a6363f0876459acd2`.
+Additional gate spend: **0 turns / USD 0**. No Mesh gate or descriptor decision
+was re-executed; the recorded disabled descriptor and inconclusive verdict stand.
