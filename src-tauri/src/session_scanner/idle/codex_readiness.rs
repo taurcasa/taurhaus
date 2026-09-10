@@ -175,7 +175,10 @@ pub(super) fn refresh(
         id,
         "",
         launch.into(),
-    );
+    )
+    .filter(|record| {
+        record.event != "agent-turn-complete" || result.jsonl_path.is_none() || result.authoritative
+    });
     let identity = format!(
         "{id}:{:?}:{launch}:{socket:?}",
         crate::platform::process_start_ticks(pid)

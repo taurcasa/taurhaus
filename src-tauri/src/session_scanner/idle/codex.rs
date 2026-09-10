@@ -1055,6 +1055,22 @@ mod tests {
                 .num_seconds()
                 < 2
         );
+        // Regression: c5941e20 let an old completion override a newer turn's rollout.
+        let event = r#"{"type":"agent-turn-complete","thread-id":"seat-thread"}"#;
+        crate::daemon::codex_notify::append_event_at(
+            &resolver.notify_path,
+            event,
+            Utc::now() - chrono::Duration::seconds(1),
+        )
+        .unwrap();
+        fs::write(&file, r#"{"type":"response_item"}"#).unwrap();
+        let result = resolver.detect_idle_for_pid_in(
+            project.to_str().unwrap(),
+            pid,
+            Some(parts[1]),
+            &records,
+        );
+        assert!(!result.authoritative);
         drop(server);
     }
 

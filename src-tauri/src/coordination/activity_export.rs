@@ -488,15 +488,10 @@ fn build_member_activity_snapshot(
             s.tmux_pane.as_deref(),
         )
     });
-    build_member_activity_snapshot_with_observation(
-        session,
-        pane_probe,
-        observed_at,
-        observation.as_ref(),
-    )
+    snapshot_with_evidence(session, pane_probe, observed_at, observation.as_ref())
 }
 
-fn build_member_activity_snapshot_with_observation(
+fn snapshot_with_evidence(
     session: Option<&DisplaySession>,
     pane_probe: &PaneActivityProbe,
     observed_at: DateTime<Utc>,
@@ -1016,12 +1011,7 @@ mod tests {
             source: "launch_ready",
             last_observed_at: now,
         };
-        let snapshot = build_member_activity_snapshot_with_observation(
-            Some(&session),
-            &probe,
-            now,
-            Some(&observation),
-        );
+        let snapshot = snapshot_with_evidence(Some(&session), &probe, now, Some(&observation));
         write_member_activity_snapshot(tmp.path(), "team", "seat", &snapshot).unwrap();
         let bytes = fs::read(activity_snapshot_path(tmp.path(), "team", "seat")).unwrap();
         assert!(accepts(&bytes, now));
