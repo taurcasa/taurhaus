@@ -1783,3 +1783,8 @@ One additional metered turn ($0.00094644 API-equivalent); cumulative five turns.
 Continuation step 2 **PASS**: saffronaf494b appeared in attached pane and reply;
 native turn/start receipt and explicit-read-only journal consumption verified
 in `continuation/run/step2-*`.
+
+Continuation step 3 **PASS**: message `2954e62b-f51f-4e1e-ab4d-3c857f4450cb`
+recorded pending/thread_active, then exactly one native_enqueued turn/start
+after idle. Completed user/reply items prove one exposure. See
+`continuation/run/step3-pending.json`, `step3-receipts.json`, `step3-exposure.json`.
