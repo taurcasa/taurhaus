@@ -146,7 +146,6 @@ where
                 return session;
             }
             let idle_started = Instant::now();
-            let tool_spec = crate::session_scanner::cli_tool::spec(proc.cli_tool);
             let idle_result = if tool_spec.pane_binding {
                 detect_runtime_idle_for_process_with_pane(
                     &proc,

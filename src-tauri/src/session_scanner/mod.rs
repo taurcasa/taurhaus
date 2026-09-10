@@ -87,18 +87,18 @@ impl StateChangeCapture {
         }
     }
 
-    /// Every `(from, to)` pair emitted for `pid`, in emission order.
+    /// Active/idle pairs for `pid`, in order; other sources have their own vocabulary.
     pub(crate) fn transitions_for(&self, pid: u32) -> Vec<(Option<SessionState>, SessionState)> {
         self.events
             .try_iter()
             .filter(|event| {
                 event["event"] == "activity.state.changed" && event["fields"]["pid"] == pid
             })
-            .map(|event| {
-                (
-                    serde_json::from_value(event["fields"]["from"].clone()).expect("from state"),
-                    serde_json::from_value(event["fields"]["to"].clone()).expect("to state"),
-                )
+            .filter_map(|event| {
+                Some((
+                    serde_json::from_value(event["fields"]["from"].clone()).ok()?,
+                    serde_json::from_value(event["fields"]["to"].clone()).ok()?,
+                ))
             })
             .collect()
     }

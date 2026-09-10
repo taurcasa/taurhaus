@@ -189,6 +189,7 @@ impl From<RuntimeSession> for DisplaySession {
 
 /// Additive hosted evidence for roster consumers; ordinary rows omit it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct HostActivity {
     pub state: String,
     pub source: String,

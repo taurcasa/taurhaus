@@ -42,11 +42,7 @@ impl SessionSource for CodexSessionSource {
         else {
             return Some(remote_session(process, pane, thread));
         };
-        if session
-            .jsonl_path
-            .as_deref()
-            .is_none_or(|p| !Path::new(p).is_file())
-        {
+        if let Some(account) = account {
             let suffix = format!("-{thread}.jsonl");
             session.jsonl_path = ignore::WalkBuilder::new(account.join("sessions"))
                 .standard_filters(false)

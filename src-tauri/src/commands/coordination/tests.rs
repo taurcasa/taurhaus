@@ -4277,7 +4277,7 @@ fn live_team_status_round_trip() {
             crate::commands::coordination_types::LiveRuntimeSnapshotFreshness::Fresh,
         members: vec![
             LiveAgentStatus {
-                host_activity: None,
+                host_activity: Some(taurhaus_lib::session_scanner::HostActivity::unavailable()),
                 hosted: false,
                 name: "team-lead".to_string(),
                 role: AgentRole::Lead,
@@ -4340,6 +4340,10 @@ fn live_team_status_round_trip() {
     };
 
     let json = serde_json::to_string(&value).expect("serialize live team status");
+    // Regression: 1b19edd2 flattened snake_case activity into camelCase roster IPC.
+    let wire: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(wire["members"][0]["activityConfidence"], "low");
+    assert!(wire["members"][0].get("activity_confidence").is_none());
     let decoded: LiveTeamStatus =
         serde_json::from_str(&json).expect("deserialize live team status");
     assert_eq!(decoded, value);

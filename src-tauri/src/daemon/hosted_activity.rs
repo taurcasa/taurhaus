@@ -8,6 +8,7 @@ use std::sync::Arc;
 pub(super) struct HostedEntry {
     pub session: RuntimeSession,
     pub account_root: PathBuf,
+    transcript_attempt: Option<std::time::Instant>,
     pub refresh: Arc<dyn Fn() + Send + Sync>,
 }
 
@@ -53,6 +54,14 @@ pub(super) fn overlay_hosted(state: &mut HubState, sessions: &mut Vec<RuntimeSes
             entry.session.tmux_session = scanned.tmux_session.clone();
             entry.session.tmux_window = scanned.tmux_window.clone();
             entry.session.tmux_window_name = scanned.tmux_window_name.clone();
+        } else {
+            entry.session.pid = 0;
+            entry.session.tty.clear();
+            entry.session.args.clear();
+            entry.session.tmux_pane = None;
+            entry.session.tmux_session = None;
+            entry.session.tmux_window = None;
+            entry.session.tmux_window_name = None;
         }
         sessions.retain(|s| !same_seat(s, &entry.session));
         sessions.push(entry.session.clone());
@@ -95,6 +104,7 @@ impl SessionActivityHub {
                 HostedEntry {
                     session,
                     account_root,
+                    transcript_attempt: None,
                     refresh,
                 },
             );
@@ -138,7 +148,7 @@ impl SessionActivityHub {
         thread: &str,
         process: &ProcessInfo,
         pane: Option<&str>,
-    ) -> Option<(RuntimeSession, PathBuf)> {
+    ) -> Option<(RuntimeSession, Option<PathBuf>)> {
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         let entry = state.hosted.get_mut(socket).filter(|e| {
             e.session.session_id.as_deref() == Some(thread)
@@ -152,7 +162,10 @@ impl SessionActivityHub {
         entry.session.tty = process.tty.clone();
         entry.session.args = process.args.clone();
         entry.session.tmux_pane = pane.map(str::to_owned);
-        Some((entry.session.clone(), entry.account_root.clone()))
+        let needs_transcript = entry.session.jsonl_path.as_deref().is_none_or(|p| !Path::new(p).is_file());
+        let account = (needs_transcript && entry.transcript_attempt.is_none_or(|at| at.elapsed() >= std::time::Duration::from_secs(30)))
+            .then(|| { entry.transcript_attempt = Some(std::time::Instant::now()); entry.account_root.clone() });
+        Some((entry.session.clone(), account))
     }
 
     pub fn attach_host_pane(&self, socket: &Path, pane: &str, pid: Option<u32>) {
@@ -182,7 +195,48 @@ impl SessionActivityHub {
 mod tests {
     use super::*;
     #[test]
-    fn hosted_teardown_rejects_in_flight_working_scan() {
+    fn missing_hosted_transcript_is_not_walked_each_cycle() {
+        // Regression: 1b19edd2 walked the account history at scanner frequency after a miss.
+        let hub = SessionActivityHub::shared();
+        let tmp = tempfile::tempdir().unwrap();
+        let socket = tmp.path().join("socket");
+        let _lease = hub.register_host(socket.clone(), tmp.path().into(), RuntimeSession {
+            session_id: Some("thread".into()), project_path: tmp.path().to_string_lossy().into_owned(),
+            ..Default::default()
+        }, Arc::new(|| {}));
+        let process = ProcessInfo { pid: 42, project_path: tmp.path().to_string_lossy().into_owned(),
+            tty: "pts/42".into(), args: format!("codex --remote unix://{} resume thread", socket.display()),
+            cli_tool: crate::session_scanner::cli_tool::CliTool::Codex };
+        let source = crate::session_scanner::cli_tool::spec(process.cli_tool).session_source();
+        assert!(source.process_session(&process, None).unwrap().jsonl_path.is_none());
+        std::fs::create_dir(tmp.path().join("sessions")).unwrap();
+        std::fs::write(tmp.path().join("sessions/rollout-thread.jsonl"),
+            serde_json::json!({"type":"session_meta","payload":{"id":"thread","cwd":tmp.path()}}).to_string()).unwrap();
+        assert!(source.process_session(&process, None).unwrap().jsonl_path.is_none());
+        hub.state.lock().unwrap().hosted.get_mut(&socket).unwrap().transcript_attempt =
+            Some(std::time::Instant::now() - std::time::Duration::from_secs(31));
+        assert!(source.process_session(&process, None).unwrap().jsonl_path.is_some());
+    }
+
+    #[test]
+    fn absent_tui_clears_process_and_pane_identity() {
+        // Regression: 1b19edd2 replayed a dead TUI pid/pane from the owned entry.
+        let hub = Arc::new(SessionActivityHub::new());
+        let tmp = tempfile::tempdir().unwrap();
+        let _lease = hub.register_host(tmp.path().join("socket"), tmp.path().into(), RuntimeSession {
+            session_id: Some("thread".into()), pid: 42, tty: "pts/42".into(), args: "remote".into(),
+            tmux_pane: Some("%42".into()), ..Default::default()
+        }, Arc::new(|| {}));
+        let mut sessions = Vec::new();
+        overlay_hosted(&mut hub.state.lock().unwrap(), &mut sessions);
+        assert_eq!(sessions[0].pid, 0);
+        assert!(sessions[0].tty.is_empty() && sessions[0].args.is_empty());
+        assert!(sessions[0].tmux_pane.is_none());
+        assert_eq!(sessions[0].session_id.as_deref(), Some("thread"));
+    }
+
+    #[test]
+    fn orphaned_host_row_is_downgraded_to_unavailable() {
         // Regression: 6f61f611 had no host authority fence for in-flight scanner results.
         let mut state = HubState::default();
         let mut sessions = vec![RuntimeSession {
