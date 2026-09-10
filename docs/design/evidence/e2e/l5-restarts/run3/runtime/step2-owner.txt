@@ -1,8 +1,0 @@
-[mesh] team-daemon is running for team l5-restarts (PID 2961)
-[mesh] delivery owner=team epoch=2 live=true
-[mesh] adapter lead: mode=tmux source=default diagnostic=none
-[mesh] adapter alpha: mode=tmux source=default diagnostic=none
-[mesh] adapter beta: mode=app_server source=config diagnostic=none
-[mesh] delivery lead: root=/tmp/th-l5-v02j5kyb/claude incarnation=d79b1746ddc491577e13ad39cb25d3c32e160680bf6e81b70741bc5fedf7bbf6 epoch=2 heartbeat=2026-09-10T23:34:55.615703871+00:00 pending_since=none pending_age_secs=unknown stuck=false failures=0 completed=1 error=none deferred=none stale=false
-[mesh] delivery alpha: root=/tmp/th-l5-v02j5kyb/claude incarnation=d79b1746ddc491577e13ad39cb25d3c32e160680bf6e81b70741bc5fedf7bbf6 epoch=2 heartbeat=2026-09-10T23:34:55.909144625+00:00 pending_since=none pending_age_secs=unknown stuck=false failures=0 completed=2 error=none deferred=none stale=false
-[mesh] delivery beta: root=/tmp/th-l5-v02j5kyb/claude incarnation=d79b1746ddc491577e13ad39cb25d3c32e160680bf6e81b70741bc5fedf7bbf6 epoch=2 heartbeat=2026-09-10T23:34:55.630536321+00:00 pending_since=none pending_age_secs=unknown stuck=false failures=0 completed=1 error=none deferred=none stale=false

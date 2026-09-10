@@ -1,0 +1,18 @@
+{
+  "command": [
+    "cargo",
+    "build",
+    "--bin",
+    "mesh"
+  ],
+  "cwd": "/home/mstie/projects/mesh-l5",
+  "exit": 0,
+  "seconds": 2.482983112335205,
+  "cargo_preflight": [
+    {
+      "at": 1789083254.7301195,
+      "exit": 1,
+      "output": ""
+    }
+  ]
+}

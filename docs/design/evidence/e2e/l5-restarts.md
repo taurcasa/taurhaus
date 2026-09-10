@@ -1,7 +1,10 @@
-# Lane 5 run2 — UNAVAILABLE: pending backlog unproved; neither restart exercised
+# Lane 5 run3 — UNAVAILABLE: step 3 harness failure after the Taurhaus restart
 
-Latest attempt: **run2, step 1 PASS; step 2 FAIL (harness); steps 3–6 NOT RUN.**
-All three required gates pass. See [run2 evidence](#run2-second-attempt-evidence) below.
+Latest attempt: **run3; step 1 PASS; step 2 pending-state PASS with a duration
+shortfall; step 3 FAIL (harness); steps 4–6 NOT RUN.** Both markers were pending
+when the Taurhaus restart began. The Mesh restart and complete cross-boundary
+reconciliation remain unproved. All required gates and cleanup pass.
+See [run3 evidence](#run3-third-attempt-evidence) below. Prior attempts remain history.
 
 ## Historical first attempt and offline continuation
 
@@ -383,3 +386,200 @@ lane's committed repaired controller and messaging run2 sources were reused;
 (3) an independent Opus review was unavailable in this session and remains for the
 orchestrator. No full-workflow PASS or release approval is claimed. No product,
 Mesh descriptor, installed binary, or plan-ledger changes were made.
+
+
+## Run3 — third-attempt evidence
+
+**UNAVAILABLE; no product defect or full restart-survival PASS established.**
+The fresh attempt ran once, stopped at its first assertion failure, and used
+no paid retry. Raw step-2 checkpoint says PASS for the pending predicate; the
+final assessment qualifies that with the subsequently measured duration shortfall.
+[Final assessment](l5-restarts/run3/final-audit.json),
+[exact controller](l5-restarts/run3/controller.py),
+[ordered driver](l5-restarts/run3/steps.py),
+[supervisor and checkpoint commits](l5-restarts/run3/execute.py).
+
+Taurhaus product code remains **a7e6db7e**, protocol **27**, on the requested
+`feat/e2e-l5-restarts` checkout. Mesh remains **310144d** in the designated
+`mesh-l5` worktree: shipped 0.153.4 descriptor **enabled and unchanged**.
+`just ensure-tauri-resources`, `just build-daemon`, and the designated Mesh
+`cargo build --bin mesh` all exited **0**, with checkout-local targets and
+`CARGO_BUILD_JOBS=1`. Binary SHA-256s are in the final assessment and raw trace.
+Both native Codex siblings were copied; `codex --version` verified **0.153.4**.
+Alpha used tmux; beta used app_server; both used **gpt-5.6-luna / low**.
+The Claude lead remained in credential-free first-run setup, with zero observed
+paid Claude turns. Production initialize used the builder's canonical policy.
+
+### Ordered outcomes and spend
+
+| Step | Outcome / classification | Evidence and spend |
+|---|---|---|
+| 1. Initialize and complete/read baselines | **PASS — runtime** | Both distinct baseline replies, one transport receipt each, attributed fresh idle and explicit `consumed_by_read`. 5 inputs; $0.00497156 metered plus one unknown-cost startup turn. Green commit `703163fd`. |
+| 2. Busy turns and pending samples | **Pending PASS; duration PARTIAL — harness timing** | Both markers accepted, no submitted/consumed/native_enqueued receipt, both matching sessions attributed `active` at the same sample. +2 inputs; alpha $0.00148456, beta interrupted/unmetered. Green pending checkpoint `8413214e`; later measured alpha duration only 17.492 s. |
+| 3. Normal Taurhaus stop/restart and recovery | **FAIL — harness** | Actual SIGINT, new daemon PID/start ticks, protocol 27. Checkpoint asserted against cached old identities. Hosted `stopped:true` was wrongly treated as readable and no supported resume was invoked. +1 alpha backlog input during failure cleanup, cost unknown. |
+| 4. Both backlog deliveries; stable identities/no replay | **NOT RUN — blocked by step 3** | No acceptance-window assertion or explicit read. Cleanup happened to observe one alpha `submitted`; beta had no native_enqueued receipt. This incidental evidence is not step 4 PASS. +0 additional inputs / $0. |
+| 5. Fresh backlog and Mesh restart-self | **NOT RUN — blocked by step 3** | Zero restart-self commands; no second owner boundary or fresh markers. +0 inputs / $0. |
+| 6. Read/reconcile both boundaries | **NOT RUN — blocked by step 3** | No cross-boundary no-loss/no-duplicate verdict. Cleanup is separately proven. +0 inputs / $0. |
+
+The run-3 ruling's fresh caps were **20 inputs / $0.30 metered / 15 minutes**.
+Metering did not gate any observer, restart, lifecycle action or teardown.
+[All turn/generation rows](l5-restarts/run3/runtime/cost-ledger.json),
+[raw token evidence](l5-restarts/run3/runtime/usage-events.json),
+[commands, RPC results and timestamps](l5-restarts/run3/runtime/events.jsonl).
+The per-step checkpoint costs are observation-time values: step 2's preparatory
+checkpoint precedes its inputs, and alpha's bounded-turn usage arrived during
+failure cleanup. The causal spend allocation above uses the final ledger.
+
+### Pending sample and actual restart
+
+Runtime: **2026-09-10T23:34:29.216403+00:00 → 2026-09-10T23:35:17.023507+00:00**, **47.807 seconds**, including teardown.
+
+At **23:34:58.837 UTC**, both sessions were attributed `active`. Alpha's
+snapshot had only `message_accepted`; beta also had an app-server
+`pending: pre_input_failure: IO error: delivery: thread_active` receipt.
+The predicate did **not** require a `stage: pending` row. The complete final
+journal confirms neither marker had a transport receipt before shutdown.
+
+The controller initiated SIGINT at **23:34:58.841 UTC**, **3.906 ms** after the
+retained joint sample. No capture, receipt wait or git commit separated them.
+The step-2 commit happened after restart initiation so it could not delay the
+boundary. Pre-turn identity/pane checkpoints are explicitly preparatory snapshots;
+the separate pending samples are the authoritative boundary evidence.
+
+| Seat | Session / thread | Backlog message ID | Delivery ID |
+|---|---|---|---|
+| alpha | `01a08dac-3cd3-7100-b8c6-1208790bbd70` | `b58995a3-928d-411f-a954-e6e99f722079` | `2a22bb2a-855c-4023-9236-0fbcd41ad090` |
+| beta | `01a08dac-438b-7373-a5ed-0039c754dfc4` | `b5463bda-d143-455d-b35c-b06a3e50ad78` | `821f2712-574a-4f19-b4bc-7ac40b96fd1f` |
+
+Team incarnation remained
+`d79b1746ddc491577e13ad39cb25d3c32e160680bf6e81b70741bc5fedf7bbf6`.
+Mesh owner epoch stayed **2**, namespace PID **2961**, start ticks **30381396**.
+This is distinct from the Taurhaus host-owner PID. The latter changed from
+**2712203 / 30380669** to **2720701 / 30383685**, using identical executable,
+`--port 29285`, and scratch `--data-dir` arguments; the replacement ping
+reported protocol **27**. The old daemon and its owned app-server stopped.
+Alpha kept generation **1**; beta retained its logical thread but transitioned
+from generation **1** to **2**, with app-server state **stopped**.
+
+The failure was the assertion at `steps.py:146`: `checkpoint()` reused
+`identities.json`, which is refreshed only by a `snapshot` action. Its `capture`
+action refreshed runtime files but not this process list. Consequently both
+step-2 and step-3 identity packets contained the old daemon PID. The controller's
+independent `post_daemon_restart` event and `step3-identities.json` show the real
+replacement. This is an evidence-instrument failure, not a failed daemon restart.
+The inherited controller also treated a successful hosted RPC containing
+`{attachmentGeneration:2, orphanProcessId:null, outcomeUnknown:false, stopped:true}`
+as “host transcript readable without resume.” No `resume_member` was called.
+That is a second harness recovery omission; beta delivery survival is unproved.
+No controller repair or second paid replay was performed after the failure.
+
+Both prompts requested **1 to 400, one number per line, then done**, and at least
+30 seconds without tools. Alpha nevertheless completed in **17.492 s**; beta
+was interrupted by the immediate ordinary shutdown. The requested >=30-second
+working duration was not demonstrated. This does not erase the measured pending
+sample, but it is an explicit deviation from the third-attempt duration requirement.
+
+During cleanup alpha's same backlog ID received one `submitted` receipt at
+**23:35:15.239 UTC**, after restart. Its new turn had no completion before teardown.
+Beta retained its accepted obligation and pending diagnostic with no
+`native_enqueued` receipt. Each baseline still had exactly one transport receipt
+and one explicit-read receipt in the final journal. These are bounded incidental
+observations, not proof of step 4 or both-boundary exactly-once delivery.
+
+### Every observed turn and metered spend
+
+Amounts use the inherited packet's API-equivalent token rates
+($0.20 / $0.02 / $1.20 per million input / cached / output); they are estimates,
+not invoice charges. Unknown turns count as inputs and are never priced at zero.
+
+| Turn ID | Attribution / purpose | Metered generations | USD |
+|---|---|---:|---:|
+| `01a08dac-4c24-7992-bf8c-64105030d585` | beta onboarding | 1 | $0.00230820 |
+| `01a08dac-586e-7e81-b32c-d1144f8dfc3e` | alpha onboarding | 2 | $0.00131504 |
+| `01a08dac-5ae5-74a2-b20e-5a4a4d78065e` | notify-only startup; seat unproved | 0 | unknown |
+| `01a08dac-6d08-7d73-8fe3-90eb825936e3` | alpha baseline | 2 | $0.00105016 |
+| `01a08dac-8796-7cc3-a61c-eb6919043690` | beta baseline | 1 | $0.00029816 |
+| `01a08dac-a44a-71a1-92d8-011764cbe849` | alpha 400-line turn | 1 | $0.00148456 |
+| `01a08dac-a554-7661-8c90-6e8facc50c77` | beta 400-line turn, interrupted | 0 | unknown |
+| `01a08dac-ec14-7d03-9d6e-4b15d006e420` | alpha backlog turn, interrupted by cleanup | 0 | unknown |
+
+**Total: 8 inputs, 7 metered generations, $0.00645612 metered, 3 unknown-cost
+turns.** The conservative estimate for the metered subset is **$0.09387120**.
+The metered cap passed; complete billed spend remains unverified. Each of the
+seven generation token counts and costs is retained in `cost-ledger.json`.
+Workflow implementer/reviewer spend is outside this seat ledger and remains
+orchestrator-owned; no unavailable review spend is represented as measured zero.
+
+### Retention, cleanup and required gates
+
+The [snapshot packet](l5-restarts/run3/runtime/snapshots.json) losslessly interns
+**101 files into 76 unique payloads**. `pack.unpack(packet)` restores exact text,
+including commands/exits, message IDs, baseline reads and journal pages, pending
+samples, identity/epoch/config snapshots, passive `/proc/locks`, and bounded pane
+captures (at most 60 lines each). The primary JSONL/accounting/outcome records
+remain direct. The preserved controller is the exact instrument that ran, including
+its two identified step-3 faults. The raw assertion/exit remain in
+[step3-console.txt](l5-restarts/run3/step3-console.txt); the separate final assessment
+qualifies rather than overwrites the original step outcomes.
+
+[Complete daemon JSONL](l5-restarts/run3/runtime/taurhaus.log.jsonl): **199 rows**, SHA-256
+`4a1c079e1599c388635d45dc28f6082c7ffc0c03078c935050de8af27656f03b`.
+No evidence-size abort or omitted daemon tail. Account secrets and operator paths
+were sanitized; auth contents, installation IDs and account usage rows are absent.
+The explicit authorized auth source was copied alone, mode 0600, into scratch
+CODEX_HOME. Both runtime and unpaid gates hid operator homes in private PID/mount
+namespaces. Private tmux, harness roots, project, temp/data roots and the probed
+nondefault daemon port were used; inherited TMUX was absent. Only the daemon RPC
+observed hosted transcripts. No observer connected to the app-server socket.
+
+[Cleanup](l5-restarts/run3/runtime/cleanup.json) confirms **zero survivors**, port
+closed, scratch auth explicitly removed before root removal, and root removed.
+The parent reaped the controller with exit **1**. All owned daemon, host, TUI,
+Codex and tmux descendants were gone; no foreign process was killed. There were
+**zero transient busy refusals** in this attempt; the 65-second refusal-retry
+branches were available but were not exercised. Positive polls used 120–180-second
+windows; the failure was an immediate deterministic cached-identity assertion,
+not an early timeout.
+
+| Exact command, after teardown | Exit | Duration |
+|---|---:|---:|
+| `just check-quick` | **0** | 35.95 s |
+| `just lint` | **0** | 38.32 s |
+| `just test-contracts` | **0** | 18.66 s |
+| Offline controller tests | **0** | 11 tests |
+| `just test-rust-unit` | NOT REQUIRED | No `src-tauri/` diff |
+
+[Gate logs and Cargo preflights](l5-restarts/run3/gates/).
+Preflight exits were **1, 0, 1**; lint saw one foreign Cargo check and proceeded
+within the three-process limit. No process-cap wait was needed. Each gate used
+this checkout's target, one Cargo job, credential-free roots and blocked real
+CLI wrappers. Gate cleanup reaped its children and removed its scratch root.
+No full serialized `just check`, install, release or product edit was performed.
+
+### Red-first verification and deviations
+
+The pending observer test first failed with the old one-argument predicate
+(`TypeError`); after implementing accepted-target + no transport receipt +
+attributed working, it passed all positive/negative cases. A separate test for
+bounded busy refusals first failed because `retry_busy` was absent, then passed.
+[Pending red](l5-restarts/run3/red.txt), [busy red](l5-restarts/run3/busy-red.txt),
+[11-test green](l5-restarts/run3/green.txt). The pending regression comment names
+`92108455`, which inherited the incorrect stage requirement. No product regression
+fix is included.
+
+Deviations/limits: (1) the cached identity assertion and stopped-host recovery
+omission ended step 3, so steps 4–6 were not run; (2) alpha completed the requested
+400 lines in less than 30 seconds; (3) three inputs have unknown cost, with the
+metered sum below the fresh cap; (4) the referenced `taurhaus-trial` checkout was
+absent, so its committed attempt9 controller/actions/steps/support were read from
+this checkout, alongside the available messaging run2 evidence; (5) no Opus model
+was callable in this session, so the independent evidence lens remains outstanding
+with the invoking orchestrator. No alternate review or product change is claimed.
+The step-2 commit followed immediate restart initiation to preserve the ruling's
+timing; it did not introduce a pre-restart pause. No plan ledger row was edited.
+
+Reproduction order: `build.py`, offline unittest discovery, `execute.py`, then
+(after confirmed teardown) `gates.py`, `audit.py`, and `pack.py`. The packing step
+removes duplicate direct files; rerunning the read-only audit requires unpacking
+them first. **This is a failed instrument run to inspect, not a certified passing
+controller to replay unchanged.**
