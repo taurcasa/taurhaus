@@ -706,7 +706,9 @@ impl HostedMembers {
             match cell.try_lock() {
                 Ok(owned) => break owned,
                 Err(std::sync::TryLockError::WouldBlock) if read_deadline.is_some() => {
-                    let remaining = read_deadline.unwrap().saturating_duration_since(std::time::Instant::now());
+                    let remaining = read_deadline
+                        .unwrap()
+                        .saturating_duration_since(std::time::Instant::now());
                     if remaining.is_zero() {
                         return Err("host member busy".into());
                     }
@@ -1148,16 +1150,107 @@ pub(crate) mod tests {
             std::thread::scope(|scope| {
                 scope.spawn(|| {
                     let mut owned = cell.lock().unwrap();
-                    let guard = HostOperationLock::acquire_for_activity(root, "team", "seat").unwrap();
+                    let guard =
+                        HostOperationLock::acquire_for_activity(root, "team", "seat").unwrap();
                     held.send(()).unwrap();
                     std::thread::sleep(Duration::from_millis(100));
-                    owned.as_mut().unwrap().host.refresh_activity(&guard).unwrap();
+                    owned
+                        .as_mut()
+                        .unwrap()
+                        .host
+                        .refresh_activity(&guard)
+                        .unwrap();
                 });
                 ready.recv_timeout(Duration::from_secs(1)).unwrap();
                 let started = std::time::Instant::now();
-                let result = hosts.operation(&registry, "team", "seat", generation, operation, Value::Null);
+                let result = hosts.operation(
+                    &registry,
+                    "team",
+                    "seat",
+                    generation,
+                    operation,
+                    Value::Null,
+                );
                 assert!(result.is_ok(), "{operation}: {result:?}");
                 assert!(started.elapsed() < Duration::from_millis(1500));
+            });
+        }
+        hosts.stop(&registry, "team", "seat").unwrap();
+    }
+
+    #[test]
+    fn hosted_read_busy_bounds_contention_without_queueing_mutations() {
+        // Regression: 3000bc3e (#161) refused cell reads instantly but allowed a 2s file-lock wait.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let registry = seat(root);
+        let hosts = HostedMembers::default();
+        let launch = fixture(root);
+        let script = std::fs::read_to_string(&launch.program).unwrap().replace(
+            "                elif method == 'turn/interrupt':",
+            "                elif method == 'turn/interrupt':\n                    open(os.path.join(root, 'interrupt-held'), 'w').close(); time.sleep(4)",
+        );
+        std::fs::write(&launch.program, script).unwrap();
+        hosts.launch(&registry, "team", "seat", &launch).unwrap();
+        let generation = saved(root).attachment_generation;
+        input(&hosts, &registry, generation, "active").unwrap();
+        transcript(&hosts, &registry, generation);
+        let run = |operation| {
+            hosts.operation(
+                &registry,
+                "team",
+                "seat",
+                generation,
+                operation,
+                Value::Null,
+            )
+        };
+        for hold_cell in [true, false] {
+            let (held, ready) = std::sync::mpsc::channel();
+            let (release, released) = std::sync::mpsc::channel();
+            std::thread::scope(|scope| {
+                scope.spawn(move || {
+                    if hold_cell {
+                        run("interrupt").unwrap();
+                    } else {
+                        let _guard =
+                            HostOperationLock::acquire(root, "team", "seat", Duration::ZERO)
+                                .unwrap();
+                        held.send(()).unwrap();
+                        let _ = released.recv_timeout(Duration::from_secs(10));
+                    }
+                });
+                if hold_cell {
+                    let deadline = std::time::Instant::now() + Duration::from_secs(1);
+                    while !root.join("interrupt-held").exists() {
+                        assert!(std::time::Instant::now() < deadline);
+                        std::thread::sleep(Duration::from_millis(10));
+                    }
+                    for operation in ["input", "interrupt", "approval"] {
+                        let started = std::time::Instant::now();
+                        assert_eq!(run(operation).unwrap_err(), "host member busy");
+                        assert!(started.elapsed() < Duration::from_millis(100));
+                    }
+                } else {
+                    ready.recv_timeout(Duration::from_secs(1)).unwrap();
+                }
+                for operation in ["transcript", "recover"] {
+                    let started = std::time::Instant::now();
+                    assert_eq!(run(operation).unwrap_err(), "host member busy");
+                    let elapsed = started.elapsed();
+                    assert!(
+                        elapsed >= Duration::from_millis(1450),
+                        "{operation}: {elapsed:?}"
+                    );
+                    // Allow scheduler jitter around the 1.5s acquisition deadline.
+                    assert!(
+                        elapsed < Duration::from_millis(1750),
+                        "{operation}: {elapsed:?}"
+                    );
+                }
+                if !hold_cell {
+                    release.send(()).unwrap();
+                }
             });
         }
         hosts.stop(&registry, "team", "seat").unwrap();
