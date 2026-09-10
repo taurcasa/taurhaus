@@ -10,6 +10,7 @@ use super::stores::runtime::{
     AppServerAttachment, LaunchRoot, MemberRuntimeSnapshot, RuntimeCommitOutcome,
 };
 use super::stores::{MemberRuntimeStore, TeamConfigStore, TeamRootRegistry};
+use crate::daemon::session_activity::{hosted_activity::HostedActivityLease, SessionActivityHub};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -20,6 +21,7 @@ use taurhaus_lib::session_scanner::launch::HostedLaunch;
 type SeatKey = (PathBuf, String, String);
 type Seat = Arc<Mutex<Option<OwnedSeat>>>;
 struct OwnedSeat {
+    _activity: HostedActivityLease,
     host: HostProcess,
     launch: HostedLaunch,
     pane_attached: bool,
@@ -240,6 +242,36 @@ impl HostedMembers {
         if !matches!(outcome, RuntimeCommitOutcome::Committed) {
             return Err("host attachment changed during launch".into());
         }
+        let weak = Arc::downgrade(&cell);
+        let (refresh_root, refresh_team, refresh_member) =
+            (root.clone(), team.to_owned(), member.to_owned());
+        record.member_name = member.into();
+        let activity = SessionActivityHub::shared().register_host(
+            &record,
+            team,
+            Arc::new(move || {
+                let Some(cell) = weak.upgrade() else { return };
+                let Ok(mut owned) = cell.try_lock() else {
+                    return;
+                };
+                let Some(seat) = owned.as_mut() else { return };
+                let Ok(guard) = HostOperationLock::acquire(
+                    &refresh_root,
+                    &refresh_team,
+                    &refresh_member,
+                    Duration::ZERO,
+                ) else {
+                    return;
+                };
+                if !seat.attachment.socket_path.exists() || seat.host.transcript(&guard).is_err() {
+                    SessionActivityHub::shared().publish_host_status(
+                        &seat.attachment.socket_path,
+                        &seat.host.thread_id,
+                        &Value::Null,
+                    );
+                }
+            }),
+        );
         let ready = (|| -> Result<(), String> {
             let card = recovery_delivery::prepare(registry, &root, team, member, "app_server")
                 .map_err(|e| e.to_string())?
@@ -284,6 +316,7 @@ impl HostedMembers {
         let mut attachment = record.app_server.clone().ok_or("host attachment missing")?;
         attachment.state = "ready".into();
         *owned = Some(OwnedSeat {
+            _activity: activity,
             host,
             launch: launch.clone(),
             pane_attached: false,
@@ -418,6 +451,11 @@ impl HostedMembers {
             }
             return Err("host changed during TUI attach".into());
         }
+        SessionActivityHub::shared().attach_host_pane(
+            &seat.attachment.socket_path,
+            &resolution.pane_id,
+            live.pane_pid,
+        );
         seat.pane_attached = true;
         Ok((resolution.pane_id, resolution.reused_pane))
     }
@@ -833,6 +871,124 @@ pub(crate) mod tests {
     }
     pub(crate) fn saved(root: &Path) -> MemberRuntimeRecord {
         MemberRuntimeStore::load(root, "team", "seat").unwrap()
+    }
+
+    #[test]
+    fn hosted_activity_tracks_turns_waits_disconnect_and_teardown() {
+        // Regression: 6f61f611 kept owned thread activity private to the host client.
+        let _log_guard = crate::test_support::acquire_global_log_test_guard();
+        let tmp = tempfile::tempdir().unwrap();
+        let sink = crate::logging::LogFileState::new(tmp.path().join("events.jsonl")).unwrap();
+        crate::logging::install_global_sink(&sink);
+        let (registry, hosts) = running(tmp.path());
+        let generation = saved(tmp.path()).attachment_generation;
+        let hub = SessionActivityHub::shared();
+        let op =
+            |method, params| hosts.operation(&registry, "team", "seat", generation, method, params);
+        let snapshot = || {
+            let rows = hub.runtime_snapshot().runtime_sessions;
+            serde_json::to_value(
+                rows.iter()
+                    .find(|s| s.project_path == tmp.path().to_str().unwrap())
+                    .expect("host must publish its session identity"),
+            )
+            .unwrap()
+        };
+        transcript(&hosts, &registry, generation);
+        assert_eq!(snapshot()["source"], "host");
+        assert_eq!(snapshot()["session_id"], "owned-thread");
+        assert_eq!(snapshot()["group_label"], "team");
+        assert_eq!(snapshot()["member_name"], "seat");
+        let socket = saved(tmp.path()).app_server.unwrap().socket_path;
+        let hidden_socket = socket.with_extension("hidden");
+        std::fs::rename(&socket, &hidden_socket).unwrap();
+        hub.refresh_hosts();
+        assert_eq!(snapshot()["source"], "host_unavailable");
+        std::fs::rename(&hidden_socket, &socket).unwrap();
+        hub.refresh_hosts();
+        assert_eq!(snapshot()["source"], "host");
+        let version = hub.snapshot().version;
+        input(&hosts, &registry, generation, "active").unwrap();
+        assert!(hub.wait_for_update(version, 0, Duration::ZERO).changed);
+        let sessions = tmp.path().join("sessions").join("2020/01/01");
+        std::fs::create_dir_all(&sessions).unwrap();
+        let transcript_path = sessions.join("rollout-fixture-owned-thread.jsonl");
+        std::fs::write(
+            &transcript_path,
+            json!({"type":"session_meta","payload":{"id":"owned-thread","cwd":tmp.path()}})
+                .to_string(),
+        )
+        .unwrap();
+        let process = crate::session_scanner::process::ProcessInfo {
+            pid: 941_091,
+            project_path: tmp.path().to_string_lossy().into_owned(),
+            tty: "/dev/pts/fake".into(),
+            args: saved(tmp.path()).app_server.unwrap().attach_argv.join(" "),
+            cli_tool: crate::session_scanner::cli_tool::CliTool::Codex,
+        };
+        let resolved = crate::session_scanner::cli_tool::spec(process.cli_tool)
+            .session_source()
+            .process_session(&process, Some("%fixture"))
+            .unwrap();
+        assert_eq!(resolved.session_id.as_deref(), Some("owned-thread"));
+        assert_eq!(resolved.jsonl_path.as_deref(), transcript_path.to_str());
+        assert_eq!(resolved.tmux_pane.as_deref(), Some("%fixture"));
+        assert_eq!(resolved.pid, process.pid);
+        let roster = super::super::roster::get_team_roster_with_runtime_sessions(
+            tmp.path(),
+            "team",
+            &[resolved],
+        )
+        .unwrap();
+        assert_eq!(roster[0].host_activity.as_ref().unwrap().state, "working");
+        assert_eq!(snapshot()["state"], "active");
+        assert_eq!(snapshot()["activity_attribution"], "attributed");
+        assert_eq!(snapshot()["activity_confidence"], "high");
+        op("interrupt", Value::Null).unwrap();
+        assert_eq!(snapshot()["state"], "idle");
+        input(&hosts, &registry, generation, "approval").unwrap();
+        hub.refresh_hosts();
+        assert_eq!(snapshot()["state"], "active");
+        assert_eq!(snapshot()["activity_attribution"], "none");
+        assert_eq!(snapshot()["activity_confidence"], "high");
+        op(
+            "approval",
+            json!({"requestId":"permission-1","accept":false}),
+        )
+        .unwrap();
+        op("interrupt", Value::Null).unwrap();
+        assert!(input(&hosts, &registry, generation, "disconnect").is_err());
+        assert_eq!(snapshot()["source"], "host_unavailable");
+        assert_eq!(snapshot()["activity_confidence"], "low");
+        hosts.stop(&registry, "team", "seat").unwrap();
+        assert!(!hub
+            .runtime_snapshot()
+            .runtime_sessions
+            .iter()
+            .any(|s| s.project_path == tmp.path().to_str().unwrap()));
+        sink.flush_for_test().unwrap();
+        let events: Vec<Value> = std::fs::read_to_string(tmp.path().join("events.jsonl"))
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .filter(|row: &Value| row["event"] == "activity.state.changed")
+            .collect();
+        let edges: Vec<Value> = events
+            .into_iter()
+            .filter(|row| row["pid"] == process.pid)
+            .map(|row| json!([row["from"], row["to"], row["source"]]))
+            .collect();
+        assert_eq!(
+            json!(edges),
+            json!([
+                ["working", "idle", "host"],
+                ["idle", "working", "host"],
+                ["working", "active", "host"],
+                ["active", "working", "host"],
+                ["working", "idle", "host"],
+                ["idle", "uncertain", "host_unavailable"]
+            ])
+        );
     }
     fn transcript(hosts: &HostedMembers, registry: &TeamRootRegistry, generation: u64) -> Value {
         hosts

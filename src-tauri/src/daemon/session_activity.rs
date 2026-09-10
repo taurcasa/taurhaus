@@ -1,3 +1,5 @@
+#[path = "hosted_activity.rs"]
+pub(crate) mod hosted_activity;
 #[cfg(test)]
 use std::path::Path;
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
@@ -82,6 +84,7 @@ pub struct SessionUpdate {
 
 #[derive(Default)]
 struct HubState {
+    hosted: std::collections::HashMap<std::path::PathBuf, hosted_activity::HostedEntry>,
     initialized: bool,
     version: u64,
     display_sessions: Vec<DisplaySession>,
@@ -116,6 +119,7 @@ struct SessionEventSignature {
     state: SessionState,
     activity_confidence: ActivityConfidence,
     activity_attribution: ActivityAttribution,
+    source: Option<String>,
     project_unattributed_active: bool,
     workflow_live_runs: Option<u32>,
     workflow_write_bucket: Option<i64>,
@@ -134,6 +138,7 @@ fn event_signature(session: &DisplaySession) -> SessionEventSignature {
         state: session.state,
         activity_confidence: session.activity_confidence,
         activity_attribution: session.activity_attribution,
+        source: session.source.clone(),
         project_unattributed_active: session.project_unattributed_active,
         workflow_live_runs: session
             .workflow_activity
@@ -383,6 +388,7 @@ fn scanner_loop(hub: std::sync::Weak<SessionActivityHub>, stop: Arc<ScannerStop>
                     Vec::new()
                 }
             };
+            hub.refresh_hosts();
             let cycle = scan_cycle_for_team_locations(&team_locations);
 
             let decision = hub.commit_cycle(
@@ -434,12 +440,16 @@ impl SessionActivityHub {
 
     /// Return the global hub instance and ensure its scanner thread is running.
     pub fn global() -> Arc<Self> {
-        static HUB: OnceLock<Arc<SessionActivityHub>> = OnceLock::new();
-        let hub = HUB
-            .get_or_init(|| Arc::new(SessionActivityHub::new()))
-            .clone();
+        let hub = Self::shared();
         hub.ensure_scanner_thread();
         hub
+    }
+
+    /// Access publication without starting process/tmux discovery.
+    pub(crate) fn shared() -> Arc<Self> {
+        static HUB: OnceLock<Arc<SessionActivityHub>> = OnceLock::new();
+        HUB.get_or_init(|| Arc::new(SessionActivityHub::new()))
+            .clone()
     }
 
     /// Get the latest snapshot immediately (non-blocking).
@@ -517,7 +527,7 @@ impl SessionActivityHub {
     /// and that is news the app cannot wait 20 s for.
     fn commit_cycle(
         &self,
-        cycle: ScanCycle,
+        mut cycle: ScanCycle,
         cadence: &mut ScannerCadence,
         last_activity_export_at: Option<Instant>,
         now: Instant,
@@ -539,6 +549,16 @@ impl SessionActivityHub {
         }
 
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        hosted_activity::overlay_hosted(&mut state, &mut cycle.runtime_sessions);
+        cycle.display_sessions.retain(|s| s.source.is_none());
+        cycle.display_sessions.extend(
+            cycle
+                .runtime_sessions
+                .iter()
+                .filter(|s| s.source.is_some())
+                .cloned()
+                .map(Into::into),
+        );
         // Both halves version the snapshot, but only activity is worth an
         // export: a focus move touches no member's activity file.
         let activity_moved = !state.initialized
@@ -688,6 +708,7 @@ mod tests {
             last_output_age_secs: None,
             activity_confidence: ActivityConfidence::Low,
             activity_attribution: ActivityAttribution::None,
+            source: None,
             project_unattributed_active: false,
             group_kind: crate::session_scanner::SessionGroupKind::Standalone,
             group_id: None,

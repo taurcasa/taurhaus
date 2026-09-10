@@ -135,6 +135,16 @@ where
         .map(|proc| {
             let tmux_pane = pane_map.get(&proc.tty);
 
+            let tool_spec = crate::session_scanner::cli_tool::spec(proc.cli_tool);
+            if let Some(mut session) = tool_spec
+                .session_source()
+                .process_session(&proc, tmux_pane.map(|p| p.pane_id.as_str()))
+            {
+                session.tmux_session = tmux_pane.map(|p| p.session_name.clone());
+                session.tmux_window = tmux_pane.map(|p| p.window_index.clone());
+                session.tmux_window_name = tmux_pane.map(|p| p.window_name.clone());
+                return session;
+            }
             let idle_started = Instant::now();
             let tool_spec = crate::session_scanner::cli_tool::spec(proc.cli_tool);
             let idle_result = if tool_spec.pane_binding {
@@ -264,6 +274,7 @@ where
                 last_output_age_secs: idle_result.last_output_age_secs,
                 activity_confidence,
                 activity_attribution,
+                source: None,
                 project_unattributed_active,
                 group_kind: SessionGroupKind::Standalone,
                 group_id: None,
@@ -300,11 +311,11 @@ fn activity_source(
     }
 }
 
-fn emit_activity_state_changed(
+fn emit_activity_state_changed<T: serde::Serialize + std::fmt::Debug>(
     pid: u32,
     cli_tool: CliTool,
-    from: Option<SessionState>,
-    to: SessionState,
+    from: Option<T>,
+    to: T,
     source: &'static str,
 ) {
     tracing::info!(pid, tool = %cli_tool, ?from, ?to, source, "session activity state changed");
@@ -351,6 +362,50 @@ pub(crate) fn set_runtime_idle_detector_override(
         .unwrap_or_else(|error| error.into_inner()) = detector;
 }
 
+/// The host uses the same classification emitter; its semantic levels include waiting/unavailable.
+pub(crate) fn classify_host_activity(session: &mut RuntimeSession, status: &serde_json::Value) {
+    use super::HostActivity;
+    let previous = HostActivity::from_session(session);
+    let kind = status["type"].as_str();
+    let available = matches!(kind, Some("active" | "idle"));
+    let working = kind == Some("active")
+        && status["activeFlags"]
+            .as_array()
+            .is_none_or(|flags| flags.is_empty());
+    session.state = if kind == Some("active") {
+        SessionState::Active
+    } else {
+        SessionState::Idle
+    };
+    session.activity_confidence = if available {
+        ActivityConfidence::High
+    } else {
+        ActivityConfidence::Low
+    };
+    session.activity_attribution = if working || kind == Some("idle") {
+        ActivityAttribution::Attributed
+    } else {
+        ActivityAttribution::None
+    };
+    session.recent_io = working;
+    let source = if available {
+        "host"
+    } else {
+        "host_unavailable"
+    };
+    session.source = Some(source.into());
+    let next = HostActivity::from_session(session).unwrap();
+    if previous.as_ref() != Some(&next) {
+        emit_activity_state_changed(
+            session.pid,
+            session.cli_tool,
+            previous.map(|s| s.state),
+            next.state,
+            source,
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -374,6 +429,7 @@ mod tests {
             last_output_age_secs: None,
             activity_confidence: ActivityConfidence::Low,
             activity_attribution: ActivityAttribution::None,
+            source: None,
             project_unattributed_active: false,
             group_kind: SessionGroupKind::Standalone,
             group_id: None,
@@ -418,6 +474,39 @@ mod tests {
             &move |_: &process::ProcessInfo| result.clone(),
         );
         sessions.into_iter().next().expect("one session")
+    }
+
+    #[test]
+    fn hosted_remote_inventory_never_uses_notify_or_io() {
+        // Regression: 6f61f611 classified the private attached TUI as an ordinary Codex CLI.
+        let _lock = SCANNER_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let tmp = tempfile::tempdir().unwrap();
+        let proc = process::ProcessInfo {
+            pid: 941_090,
+            project_path: tmp.path().to_string_lossy().into_owned(),
+            tty: "/dev/pts/fixture".into(),
+            args: format!(
+                "codex --remote unix://{}/rpc.sock resume exact-thread --no-alt-screen",
+                tmp.path().display()
+            ),
+            cli_tool: CliTool::Codex,
+        };
+        // Prevent the pre-fix path from discovering any real account files.
+        set_runtime_idle_detector_override(Some(|_| idle_result(SessionState::Active, true)));
+        let (sessions, _, _, _) = classify_display_runtime_sessions_with(
+            vec![proc],
+            HashMap::new(),
+            &HashMap::new(),
+            &|_| unreachable!(),
+        );
+        set_runtime_idle_detector_override(None);
+        assert_eq!(sessions[0].session_id.as_deref(), Some("exact-thread"));
+        assert!(!sessions[0].recent_io);
+        assert_eq!(
+            serde_json::to_value(&sessions[0]).unwrap()["source"],
+            "host_unavailable"
+        );
+        assert!(cache::state_tracker_snapshot(941_090).is_none());
     }
 
     // Regression: PR 2 commit 06b432d added `activity.state.changed` and gated

@@ -388,6 +388,7 @@ fn build_runtime_session_with_idle(
         last_output_age_secs: idle_result.last_output_age_secs,
         activity_confidence: ActivityConfidence::Low,
         activity_attribution: ActivityAttribution::None,
+        source: None,
         project_unattributed_active: false,
         group_kind: SessionGroupKind::Standalone,
         group_id: None,

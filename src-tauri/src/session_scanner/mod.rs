@@ -39,14 +39,15 @@ pub mod transcript_boundary;
 #[cfg(test)]
 pub(crate) use cache::{clear_scan_cache, state_tracker_snapshot};
 pub use cache::{latest_runtime_sessions, notify_tmux_changed};
+pub(crate) use classification::classify_host_activity;
 pub use cli_tool::CliTool;
 pub use scans::{
     scan_sessions_for_authoritative_snapshot, scan_sessions_for_display, scan_sessions_for_runtime,
     scan_sessions_with,
 };
 pub use types::{
-    ActivityAttribution, ActivityConfidence, DisplaySession, RuntimeSession, SessionGroupKind,
-    SessionState,
+    ActivityAttribution, ActivityConfidence, DisplaySession, HostActivity, RuntimeSession,
+    SessionGroupKind, SessionState,
 };
 
 /// Serializes tests that drive the scanner's process-global state (scan

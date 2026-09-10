@@ -845,6 +845,7 @@ mod tests {
             last_output_age_secs: None,
             activity_confidence: ActivityConfidence::High,
             activity_attribution: ActivityAttribution::Attributed,
+            source: None,
             project_unattributed_active: false,
             group_kind: SessionGroupKind::Standalone,
             group_id: None,

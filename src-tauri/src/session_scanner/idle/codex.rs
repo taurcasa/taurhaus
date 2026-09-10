@@ -1,8 +1,9 @@
 use super::*;
+use crate::daemon::session_activity::{hosted_activity::remote_session, SessionActivityHub};
 use crate::provider::path::normalize_project_path;
 use crate::provider::platform_paths::PlatformPaths;
-use crate::session_scanner::process::ProcessInfo;
 use crate::session_scanner::tmux::TmuxPane;
+use crate::session_scanner::{process::ProcessInfo, RuntimeSession};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -29,6 +30,42 @@ pub struct CodexResolver {
 pub struct CodexSessionSource;
 
 impl SessionSource for CodexSessionSource {
+    fn process_session(&self, process: &ProcessInfo, pane: Option<&str>) -> Option<RuntimeSession> {
+        let words = crate::session_scanner::shell_words::words(&process.args);
+        let socket = words.windows(2).find(|w| w[0].text == "--remote")?[1]
+            .text
+            .strip_prefix("unix://")?;
+        let thread = &words.windows(2).find(|w| w[0].text == "resume")?[1].text;
+        let hub = SessionActivityHub::shared();
+        let Some((mut session, account)) =
+            hub.host_session(Path::new(socket), thread, process, pane)
+        else {
+            return Some(remote_session(process, pane, thread));
+        };
+        if session
+            .jsonl_path
+            .as_deref()
+            .is_none_or(|p| !Path::new(p).is_file())
+        {
+            let suffix = format!("-{thread}.jsonl");
+            session.jsonl_path = ignore::WalkBuilder::new(account.join("sessions"))
+                .standard_filters(false)
+                .max_depth(Some(4))
+                .build()
+                .filter_map(Result::ok)
+                .find(|entry| {
+                    entry.file_type().is_some_and(|ty| ty.is_file())
+                        && entry
+                            .file_name()
+                            .to_str()
+                            .is_some_and(|name| name.ends_with(&suffix))
+                        && codex_session_matches_project(entry.path(), &process.project_path)
+                })
+                .map(|entry| entry.path().to_string_lossy().into_owned());
+        }
+        Some(session)
+    }
+
     fn resolve(&self, project_path: &str, pid: u32, pane_id: Option<&str>) -> IdleResult {
         static RESOLVER: OnceLock<CodexResolver> = OnceLock::new();
         RESOLVER

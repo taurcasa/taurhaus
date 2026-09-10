@@ -2060,6 +2060,7 @@ mod tests {
             last_output_age_secs: None,
             activity_confidence: ActivityConfidence::High,
             activity_attribution: ActivityAttribution::Attributed,
+            source: None,
             project_unattributed_active: false,
             group_kind: crate::session_scanner::SessionGroupKind::Standalone,
             group_id: None,

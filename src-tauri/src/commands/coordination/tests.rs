@@ -4277,6 +4277,7 @@ fn live_team_status_round_trip() {
             crate::commands::coordination_types::LiveRuntimeSnapshotFreshness::Fresh,
         members: vec![
             LiveAgentStatus {
+                host_activity: None,
                 hosted: false,
                 name: "team-lead".to_string(),
                 role: AgentRole::Lead,
@@ -4306,6 +4307,7 @@ fn live_team_status_round_trip() {
                 account_fallback_from: None,
             },
             LiveAgentStatus {
+                host_activity: None,
                 hosted: false,
                 name: "frontend-dev".to_string(),
                 role: AgentRole::Member,
@@ -4353,6 +4355,7 @@ fn project_mesh_snapshot_round_trip() {
         team_status: Some(FastTeamSnapshot {
             lead_name: "team-lead".to_string(),
             members: vec![FastAgentSnapshot {
+                host_activity: None,
                 hosted: false,
                 name: "frontend-dev".to_string(),
                 role: AgentRole::Member,
@@ -5173,6 +5176,7 @@ fn daemon_runtime_session(
         last_output_age_secs: None,
         activity_confidence: Default::default(),
         activity_attribution: Default::default(),
+        source: None,
         project_unattributed_active: false,
         group_kind: crate::session_scanner::SessionGroupKind::MeshTeam,
         group_id: Some(team_name.to_string()),

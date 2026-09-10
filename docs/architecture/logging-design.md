@@ -55,7 +55,7 @@ The daemon binary and the compact-hook CLI install the *same* sink (`install_glo
 
 | Family | Level | Notes |
 |---|---|---|
-| `activity.state.changed` | info | `{pid, tool, from, to, source}`. Not emitted on first sight of an already-idle process. |
+| `activity.state.changed` | info | `{pid, tool, from, to, source}`; sources: `registry`, `notify`, `agy_hooks`, `grok_events`, `process_io`, `transcript`, `none`, `host`, `host_unavailable`. Hosted transitions use presented levels (`working`, `active`, `idle`, `uncertain`). Not emitted on first sight of an already-idle process. |
 | `session_scanner.process_scan.degraded` / `.recovered` | warn / info | Blackout edge plus a 60 s reminder while degraded. |
 | `launch.command.rendered` | info | The rendered launch command. Carries notes: `launch.flag.deprecated`, `launch.model.ignored`, `launch.model.deprecated`, `launch.effort.ignored`, `launch.effort.invalid`, `launch.selector.ignored` (the base command already sets the tool's account selector), `launch.notify.ignored` (warn when attached to a launch). |
 | `launch.model.invalid` | warn | Configured model is not in the catalog. |
