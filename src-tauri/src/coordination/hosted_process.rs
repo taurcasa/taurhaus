@@ -24,6 +24,8 @@ pub(crate) struct HostProcess {
     socket: PathBuf,
     account_root: PathBuf,
     uncertain: bool,
+    reconnect_failures: u32,
+    reconnect_after: Option<Instant>,
 }
 
 impl HostProcess {
@@ -62,6 +64,8 @@ impl HostProcess {
             socket: socket.into(),
             account_root: launch.account_root.clone(),
             uncertain: false,
+            reconnect_failures: 0,
+            reconnect_after: None,
         };
         host.process_start = taurhaus_lib::platform::process_start_ticks(host.child.id())
             .ok_or("host process identity unavailable")?
@@ -197,6 +201,11 @@ impl HostProcess {
         Ok(host)
     }
 
+    #[cfg(test)]
+    pub fn disconnect_for_test(&mut self) {
+        self.rpc.as_mut().unwrap().socket = None;
+    }
+
     pub fn outcome_unknown(&self) -> bool {
         self.uncertain
     }
@@ -210,6 +219,14 @@ impl HostProcess {
                 .map(|v| v.to_string())
                 .as_deref()
                 == Some(&self.process_start)
+    }
+
+    pub fn needs_reconnect(&self) -> bool {
+        self.rpc.as_ref().is_some_and(|rpc| rpc.socket.is_none())
+    }
+
+    pub fn activity_retry_due(&self) -> bool {
+        !self.needs_reconnect() || self.reconnect_after.is_none_or(|at| Instant::now() >= at)
     }
 
     /// Read the thread response and queued notifications, without cloning cached events/requests.
@@ -267,7 +284,10 @@ impl HostProcess {
         if rpc.socket.is_some() {
             return Ok(());
         }
-        rpc.requests.clear(); // Request IDs belong to the old connection.
+        // Old approval IDs cannot be answered on the new connection. Surface the
+        // existing unknown-outcome fence so the operator can stop and re-trigger.
+        self.uncertain |= !rpc.requests.is_empty();
+        rpc.requests.clear();
         let thread = std::mem::take(&mut rpc.thread_id);
         rpc.repairing = true;
         let result = (|| -> Result<Value, String> {
@@ -310,12 +330,30 @@ impl HostProcess {
         rpc.repairing = false;
         match result {
             Ok(status) => {
+                self.reconnect_failures = 0;
+                self.reconnect_after = None;
                 rpc.policy_dirty = false;
                 rpc.set_status(&status);
                 rpc.publish_activity();
                 Ok(())
             }
             Err(error) => {
+                self.reconnect_failures = self.reconnect_failures.saturating_add(1);
+                let backoff =
+                    Duration::from_secs(1 << self.reconnect_failures.min(4).saturating_sub(1))
+                        .min(Duration::from_secs(5));
+                self.reconnect_after = Some(Instant::now() + backoff);
+                if self.reconnect_failures == 1 {
+                    tracing::warn!(event = "hosted.rpc.reconnect_failed", thread_id = %rpc.thread_id,
+                        "Host reconnect failed; background retries will back off");
+                    taurhaus_lib::logging::emit_global(
+                        "warn",
+                        "coordination",
+                        "hosted.rpc.reconnect_failed",
+                        Some("Host reconnect failed; background retries will back off".into()),
+                        serde_json::Map::from_iter([("thread_id".into(), json!(rpc.thread_id))]),
+                    );
+                }
                 rpc.socket = None;
                 rpc.set_status(&Value::Null);
                 rpc.publish_activity();
@@ -957,6 +995,7 @@ def client(connection):
                 output.write(json.dumps(request)+'\n')
             with lock:
                 if method == 'initialize':
+                    if os.path.exists(os.path.join(root, 'fail-reconnect')): return
                     result = {'userAgent':'taurhaus_host/'+os.environ.get('FAKE_BUILD','0.153.4'), 'codexHome':root}
                     if os.environ.get('FAKE_RUNTIME'):
                         with open(os.environ['FAKE_RUNTIME'], 'r+') as runtime:

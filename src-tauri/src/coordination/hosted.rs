@@ -279,13 +279,26 @@ impl HostedMembers {
                     return;
                 };
                 let Some(seat) = owned.as_mut() else { return };
-                let Ok(guard) = HostOperationLock::acquire_for_activity(
-                    &refresh_root,
-                    &refresh_team,
-                    &refresh_member,
-                ) else {
+                if !seat.host.activity_retry_due() {
                     return;
+                }
+                // Reinitializing/resuming needs multiple round trips. Keep the lock
+                // non-blocking, but give reconnect its own full five-second budget.
+                let guard = if seat.host.needs_reconnect() {
+                    HostOperationLock::acquire(
+                        &refresh_root,
+                        &refresh_team,
+                        &refresh_member,
+                        Duration::ZERO,
+                    )
+                } else {
+                    HostOperationLock::acquire_for_activity(
+                        &refresh_root,
+                        &refresh_team,
+                        &refresh_member,
+                    )
                 };
+                let Ok(guard) = guard else { return };
                 let disconnected = !seat.attachment.socket_path.exists() || !seat.host.alive();
                 let closed = !disconnected
                     && seat
@@ -924,6 +937,10 @@ pub(crate) mod tests {
             "                emit(reply)",
             "                marker = os.path.join(root, 'split-frame')\n                if method == 'thread/read' and os.path.exists(marker):\n                    os.unlink(marker)\n                    payload = json.dumps(reply).encode()\n                    stream.write(b'\\x81\\x7e'+struct.pack('!H', len(payload))+payload[:1]); stream.flush()\n                    import time; time.sleep(0.4)\n                    stream.write(payload[1:]); stream.flush()\n                    continue\n                emit(reply)",
         );
+        let script = script.replace(
+            "                elif method in ('thread/resume', 'thread/read'):",
+            "                elif method in ('thread/resume', 'thread/read'):\n                    if method == 'thread/resume' and os.path.exists(os.path.join(root, 'slow-resume')):\n                        import time; time.sleep(0.4)",
+        );
         std::fs::write(&launch.program, script).unwrap();
         hosts.launch(&registry, "team", "seat", &launch).unwrap();
         let generation = saved(tmp.path()).attachment_generation;
@@ -941,16 +958,9 @@ pub(crate) mod tests {
         std::fs::write(tmp.path().join("split-frame"), "").unwrap();
         hub.refresh_hosts();
         let after_timeout = source();
-        // A new user deadline must recover the socket without replaying any input.
-        let recovered = hosts.operation(
-            &registry,
-            "team",
-            "seat",
-            generation,
-            "transcript",
-            Value::Null,
-        );
-        assert!(recovered.is_ok(), "failed to recover: {recovered:?}");
+        // Regression: 4ad65497 retried background reconnect under the failed 250ms budget.
+        std::fs::write(tmp.path().join("slow-resume"), "").unwrap();
+        hub.refresh_hosts();
         assert_eq!(after_timeout.as_deref(), Some("host_unavailable"));
         assert_eq!(source().as_deref(), Some("host"));
         hosts
@@ -967,6 +977,70 @@ pub(crate) mod tests {
         assert!(transcript(&hosts, &registry, generation)
             .to_string()
             .contains("after timeout"));
+        hosts.stop(&registry, "team", "seat").unwrap();
+    }
+
+    #[test]
+    fn hosted_activity_reconnect_failures_back_off() {
+        // Regression: 4ad65497 resumed a failed connection on every background tick.
+        let tmp = tempfile::tempdir().unwrap();
+        let (registry, hosts) = running(tmp.path());
+        let generation = saved(tmp.path()).attachment_generation;
+        assert!(input(&hosts, &registry, generation, "disconnect").is_err());
+        // The fake host uses this marker to refuse initialize on new connections.
+        std::fs::write(tmp.path().join("fail-reconnect"), "").unwrap();
+        let hub = SessionActivityHub::shared();
+        let attempts = || {
+            std::fs::read_to_string(tmp.path().join("requests.jsonl"))
+                .unwrap()
+                .lines()
+                .filter(|line| line.contains("initialize"))
+                .count()
+        };
+        let before = attempts();
+        hub.refresh_hosts();
+        assert_eq!(attempts(), before + 1);
+        for _ in 0..3 {
+            std::thread::sleep(Duration::from_millis(500));
+            hub.refresh_hosts();
+        }
+        assert!(
+            attempts() < before + 4,
+            "reconnect must skip ticks after failures"
+        );
+        hosts.stop(&registry, "team", "seat").unwrap();
+    }
+
+    #[test]
+    fn hosted_activity_reconnect_flags_lost_approval() {
+        // Regression: 4ad65497 silently discarded connection-scoped approval IDs.
+        let tmp = tempfile::tempdir().unwrap();
+        let (registry, hosts) = running(tmp.path());
+        let generation = saved(tmp.path()).attachment_generation;
+        input(&hosts, &registry, generation, "approval").unwrap();
+        let pending = transcript(&hosts, &registry, generation);
+        assert!(!pending["requests"].as_array().unwrap().is_empty());
+        // Drop the owned client transport without killing the host or its pending turn.
+        hosts
+            .seats
+            .lock()
+            .unwrap()
+            .values()
+            .next()
+            .unwrap()
+            .lock()
+            .unwrap()
+            .as_mut()
+            .unwrap()
+            .host
+            .disconnect_for_test();
+        SessionActivityHub::shared().refresh_hosts();
+        let recovered = transcript(&hosts, &registry, generation);
+        assert!(
+            recovered["outcomeUnknown"] == true
+                || !recovered["requests"].as_array().unwrap().is_empty(),
+            "lost approval must remain answerable or explicitly uncertain"
+        );
         hosts.stop(&registry, "team", "seat").unwrap();
     }
 
