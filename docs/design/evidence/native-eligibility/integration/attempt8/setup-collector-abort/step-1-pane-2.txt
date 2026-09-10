@@ -1,0 +1,60 @@
+╭────────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.153.4)                     │
+│                                                │
+│ model:     gpt-5.6-luna low   /model to change │
+│ directory: /tmp/th-int-6rz5c0xy/project        │
+╰────────────────────────────────────────────────╯
+
+  To get started, describe a task or try one of these commands:
+
+  /init - create an AGENTS.md file with instructions for Codex
+  /status - show current session configuration
+  /permissions - choose what Codex is allowed to do
+  /model - choose what model and reasoning effort to use
+  /review - review any changes and find issues
+
+
+› [taurhaus] recovery_card
+  Identity: seat on integration; key={"card_schema":1,"recipient":
+  ["fef3c581ecf17557dd5aa7984c0c309ccaa3ce7b2174d39a462a41bb4f148ec1","a3d277e1-5c59-413e-ab92-d5bd5a2d97e3"],"context":[1,0],"roots":
+  {"root_authority_revision":"0","resolved_teams_root":"/tmp/th-int-6rz5c0xy/claude/teams","resolved_mesh_config_root":"/tmp/th-int-
+  6rz5c0xy/claude","harness_account_root":"/tmp/th-int-6rz5c0xy/codex","launch_namespace":"native","resolved_project_root":"/tmp/th-int-
+  6rz5c0xy/project"},"contract":
+  {"role_id":"","effective_role_revision":"44ffdd9316a9efc3856d18e4f0ea7e4df04ee03f8316f4a311fada3863b419bf","instruction_contract_revision
+  ":"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f","packet_revision":""}}
+  Coverage: 482731eae45846f472ace9f8c7b70b22682a686a4150376c5f32389e884c8523;
+  source=682540e4a3f9cfbca660a5add5db7fa379ff474f5fe7c2f18798f74d7e72c755; audience=unavailable
+  Project cwd: /tmp/th-int-6rz5c0xy/project
+  Assignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned
+  Objective: unavailable
+  Deliverable: unavailable
+  First action: unavailable
+  Completion signal: unavailable
+  Review route: unavailable
+  Wait/release: unavailable
+  Candidate: unavailable
+  Rubric: unavailable
+  Restart cursor: unavailable
+  Requested effort: unavailable; effective effort: low; hold: none recorded
+  File boundary: unavailable
+  Evidence/handoff retention: unavailable; references do not prove archival preservation.
+  Generated: 2026-09-10 05:08:27.533362994 UTC
+  Current task: # —
+  Operational constraints: unavailable
+  Focal files: unavailable
+  Role: unavailable
+  Purpose: Isolated transport trial. Reply briefly. Never execute tools or commands.
+  work_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution
+  cannot begin. Report through its completion signal; no pure acknowledgment.
+  Corrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.
+  Next action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required
+  context.
+
+
+• Team lead: this assignment is unassigned and lacks identity, release, objective, and required context. Please provide the missing
+  assignment details before work can begin.
+
+
+› Ask Codex to do anything
+
+  gpt-5.6-luna low · /tmp/th-int-6rz5c0xy/project

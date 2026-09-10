@@ -1,0 +1,55 @@
+[
+  {
+    "timestamp": "2026-09-10T05:08:27.566Z",
+    "ordinal": 1,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_started",
+      "turn_id": "01a089b7-9f21-7ce3-9e85-5802747ef36b",
+      "started_at": 1789016907,
+      "model_context_window": 31129,
+      "collaboration_mode_kind": "default"
+    }
+  },
+  {
+    "timestamp": "2026-09-10T05:08:31.152Z",
+    "ordinal": 11,
+    "type": "event_msg",
+    "payload": {
+      "type": "token_count",
+      "info": {
+        "total_token_usage": {
+          "input_tokens": 10783,
+          "cached_input_tokens": 6912,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 35,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 10818
+        },
+        "last_token_usage": {
+          "input_tokens": 10783,
+          "cached_input_tokens": 6912,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 35,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 10818
+        },
+        "model_context_window": 31129
+      }
+    }
+  },
+  {
+    "timestamp": "2026-09-10T05:08:31.157Z",
+    "ordinal": 12,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_complete",
+      "turn_id": "01a089b7-9f21-7ce3-9e85-5802747ef36b",
+      "last_agent_message": "Team lead: this assignment is unassigned and lacks identity, release, objective, and required context. Please provide the missing assignment details before work can begin.",
+      "started_at": 1789016907,
+      "completed_at": 1789016911,
+      "duration_ms": 3602,
+      "time_to_first_token_ms": 2962
+    }
+  }
+]

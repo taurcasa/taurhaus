@@ -1,4 +1,4 @@
-# Codex 0.153.4 integration — FAIL step 4 (attempt 7)
+# Codex 0.153.4 integration — IN PROGRESS (attempt 8)
 
 2026-09-09. **Eligibility remains disabled.** The prescribed canonical setup
 stopped before member launch: the real Mesh command `team delivery --owner team`
@@ -1616,3 +1616,35 @@ foreign process was signalled. Mesh restoration used the exact authorized
 and exited 0; its whole working tree is clean. Deduplicated retained evidence
 is about **372 KB**, excluding controller scripts. Latest verdict remains
 **FAIL step 4**, with steps 5–7 unrun and eligibility disabled.
+
+
+## Attempt 8 — in progress, 2026-09-10
+
+Fresh 16-turn / $3 budget, including every setup generation. No product change.
+Pair: Taurhaus `47b7b8c2` (hosted merge `6f61f611`, protocol 27), Mesh
+`a6ee296`; both checkout-local builds passed after Cargo exclusion. The temporary
+0.153.4 descriptor pins the three published class identities and unix-websocket.
+
+| Step | Outcome | Evidence under integration/attempt8/run |
+|---|---|---|
+| 1. Hosted launch/startup | PASS | initialize-result.json; step1-runtime.json; step1-identities.json; generated-config-0.toml; step-1-pane-2.txt; host-events.jsonl |
+| 2. Idle delivery/read | Pending | |
+| 3. Active deferral | Pending | |
+| 4. Typed input/passive lock sampling | Pending | |
+| 5. Compaction | Pending | |
+| 6. Normal daemon restart | Pending | |
+| 7. Operational rollback | Pending | |
+
+The first setup launched successfully and showed its startup card/reply, then the
+evidence collector parsed a concurrently appended partial JSONL row and exited.
+`attempt8/setup-collector-abort` retains that complete metered startup generation
+($0.00095444 API-equivalent; $0.0129816 conservative) and verified teardown. This
+was no failed product assertion. The collector now reads complete JSONL rows;
+an offline test observed red then green. Repeated setup is charged to this same
+attempt's budget. The controller reserves that turn and conservative spend.
+
+The continuing setup passed all step-1 assertions. The production canonical
+initialize RPC launched the Claude login-only lead and one Luna/low hosted seat.
+Scratch AGENTS.md is in instructionSources; generated strict view config and the
+app-server child/attached TUI identities are retained. No observer connection.
+No Taurhaus registry entry is needed.
