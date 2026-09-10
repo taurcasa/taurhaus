@@ -73,10 +73,42 @@ Build and gate children are waited to completion separately.
 
 ## Builds, gates and review
 
-Build and gate evidence will be appended when the required commands finish.
-No `src-tauri/` source diff is intended; `just test-rust-unit` is conditional on
-that diff. An independent Opus lens has not run in this implementer session and
-remains with the surrounding workflow; this packet grants no review approval.
+The exact [build/gate driver](l2-tmux-busy/checks.py) ran as:
+
+```sh
+python3 -B docs/design/evidence/e2e/l2-tmux-busy/checks.py
+```
+
+It sets `CARGO_TARGET_DIR` to this checkout's `src-tauri/target`, or the
+designated Mesh worktree's `target`. Before each build it polls
+`pgrep -af '(^|/)cargo( |$)'`, with a 30-minute deadline and no interference with
+other lanes. Initial wait: 90 seconds; retry wait: 180 seconds; Mesh wait:
+290 seconds. These are build queue waits, not seat runtime or idle waits.
+
+| Command | Exit | Observed result |
+| --- | --- | --- |
+| `bun install --frozen-lockfile` | 0 | Installed missing checkout-local frontend dependencies |
+| `just build-daemon` — initial attempt | 101 | Fresh checkout lacked ignored `resources/mesh` placeholder |
+| `just ensure-tauri-resources` | 0 | Repository-supported placeholder preparation; no source change |
+| `just build-daemon` — retry | 0 | Release binary built from recorded checkout |
+| `cargo build --bin mesh` — only in `mesh-l2` | 0 | Requested `target/debug/mesh` built; never executed or installed |
+| `just check-quick` | 0 | Rust test compilation, typecheck, 150 frontend test files / 2,495 tests passed |
+| `just lint` | 0 | Rust/frontend/workflow/recipe lint passed |
+| `just test-contracts` | 0 | 15 renderer + 20 harness + 33 module-boundary tests passed |
+
+[Preparation evidence](l2-tmux-busy/preparation.json) retains the initial build
+failure and deduplicated wait observations. [Final check results](l2-tmux-busy/checks-result.json)
+retain exact commands, exits, bounded log excerpts and both SHA-256 digests:
+
+- Daemon: `0fdde7d6b7b88126c83c4d9adac950e47b2c195a65dcca4ab60a64b4cdd19811`.
+- Mesh: `e2eeb78c86b275d8678bba2131e466fa809d9bb6067269db0aeb677211de96fd`.
+
+No `src-tauri/` diff exists, so the conditional `just test-rust-unit` gate does
+not apply. [Cleanup audit](l2-tmux-busy/cleanup-audit.json) records the completed
+driver and absence of surviving lane-built executables. No scratch credentials
+were copied; none needed removal. An independent Opus lens has not run in this
+implementer session and remains with the surrounding workflow; this packet
+grants no review approval.
 
 ## Deviations
 
@@ -84,4 +116,6 @@ remains with the surrounding workflow; this packet grants no review approval.
   initialization; all six runtime steps remain unverified.
 - Consequently, no green numbered runtime step exists to commit. Only the
   tested preflight and truthful unavailable evidence are committed.
+- One build-setup correction: ran the repository resource-placeholder recipe
+  after initial `just build-daemon` exit 101, then observed the retry pass.
 - No independent Opus evidence result is present in this packet.
