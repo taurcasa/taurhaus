@@ -928,7 +928,11 @@ fn mesh_compatible_wire(
             } else {
                 Some("external".to_string())
             };
-            let is_active = if member.role == MemberRole::Lead {
+            // Format 2: Claude Code owns activity for every member. Format 1
+            // retains the non-lead repair required by legacy member daemons.
+            let is_active = if config.extra.get("messaging_format") == Some(&Value::from(2))
+                || member.role == MemberRole::Lead
+            {
                 None
             } else {
                 Some(true)
@@ -940,18 +944,25 @@ fn mesh_compatible_wire(
             if backend_type.is_some() {
                 extra.remove("backendType");
             }
-            if is_active.is_some() {
-                // Tripwire for the fastbreak broadcast incident: something
-                // outside taurhaus and mesh flipped a member inactive (both
-                // only write true for live non-leads). This save repairs it,
-                // but the flip must be visible with a timestamp so the
-                // external writer can be caught in the act next time.
-                if extra.remove("isActive").and_then(|value| value.as_bool()) == Some(false) {
-                    tracing::warn!(
-                        member = %member.name,
-                        "member was marked inactive by an external writer; repairing to active on save"
-                    );
+            if extra.get("isActive") == Some(&Value::Bool(false)) {
+                let mut fields = serde_json::Map::new();
+                fields.insert("member".into(), Value::String(member.name.clone()));
+                if let Some(reason) = extra.get("lastActivityReason") {
+                    fields.insert("lastActivityReason".into(), reason.clone());
                 }
+                tracing::debug!(member = %member.name,
+                    lastActivityReason = ?extra.get("lastActivityReason"),
+                    "member activity flag observed");
+                emit_global(
+                    "debug",
+                    "coordination",
+                    "coordination.member.activity_flag_observed",
+                    Some("Member activity flag observed".into()),
+                    fields,
+                );
+            }
+            if is_active.is_some() {
+                extra.remove("isActive");
             }
             MeshCompatibleMemberWire {
                 name: member.name.clone(),
@@ -986,7 +997,8 @@ fn mesh_compatible_wire(
                 account_id: member.account_id.clone(),
                 joined_at_millis: (config.extra.get("messaging_format") == Some(&Value::from(2)))
                     .then(|| member.extra.get("joinedAt").and_then(Value::as_i64))
-                    .flatten().unwrap_or(created_at_millis),
+                    .flatten()
+                    .unwrap_or(created_at_millis),
                 project_path_camel: project_path.clone(),
                 cwd: project_path,
                 tmux_pane_id: runtime.and_then(|state| state.pane_id.clone()),
@@ -1660,6 +1672,53 @@ mod tests {
             loaded.members[0].account_id.as_deref(),
             Some("work-account")
         );
+    }
+
+    #[test]
+    fn save_activity_flags_preserves_format_two_and_repairs_legacy() {
+        // Regression: 5cebfef8, L1 run 3: repair-on-save overwrote Claude activity.
+        for format in [1, 2] {
+            for flag in [None, Some(false), Some(true)] {
+                let tmp = TempDir::new().unwrap();
+                let team = "activity-flags";
+                let mut config = sample_config(team);
+                config.members[0].project_path = tmp.path().to_path_buf();
+                let mut agent = config.members[0].clone();
+                agent.name = "agent".into();
+                agent.role = MemberRole::Agent;
+                config.members.push(agent);
+                config
+                    .extra
+                    .insert("messaging_format".into(), Value::from(format));
+                TeamConfigStore::save(tmp.path(), team, &config).unwrap();
+                let path = config_path(tmp.path(), team);
+                let mut wire: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+                for member in wire["members"].as_array_mut().unwrap() {
+                    member.as_object_mut().unwrap().remove("isActive");
+                    if let Some(flag) = flag {
+                        member["isActive"] = Value::Bool(flag);
+                    }
+                    member["lastActivityReason"] = Value::from("message_sent");
+                }
+                fs::write(&path, wire.to_string()).unwrap();
+                let config = TeamConfigStore::load(tmp.path(), team).unwrap();
+                TeamConfigStore::save(tmp.path(), team, &config).unwrap();
+                let saved: Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+                for i in 0..2 {
+                    let expected = if format == 1 && i == 1 {
+                        Some(true)
+                    } else {
+                        flag
+                    };
+                    assert_eq!(
+                        saved["members"][i]["isActive"].as_bool(),
+                        expected,
+                        "format {format}, member {i}"
+                    );
+                    assert_eq!(saved["members"][i]["lastActivityReason"], "message_sent");
+                }
+            }
+        }
     }
 
     #[test]
