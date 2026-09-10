@@ -9263,6 +9263,8 @@ fn seat_delivery_canonical_creation_and_operational_rollback() {
         tmp.path().display(),
         launch.program.display()
     );
+    // Regression: 6f61f611 also forwarded the managed notify override to the host.
+    commands.codex_notify_executable = Some(tmp.path().join("fake-notify"));
     // Regression: 3d3a0f83 rejected the default managed hook flag before spawning a host.
     commands.codex_bypass_hook_trust = true;
     commands

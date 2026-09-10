@@ -699,6 +699,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                 // Managed hook trust is a TUI-only flag, not an app-server argument.
                 let mut commands = self.cli_commands.clone();
                 commands.codex_bypass_hook_trust = false;
+                commands.codex_notify_executable = None;
                 let mut context = prepared.activation_context.clone();
                 context.resume_session_id = prepared
                     .previous_runtime
