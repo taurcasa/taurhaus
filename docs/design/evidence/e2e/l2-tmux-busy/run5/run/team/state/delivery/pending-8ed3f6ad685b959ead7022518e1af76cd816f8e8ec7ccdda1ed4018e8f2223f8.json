@@ -1,13 +1,13 @@
 [
   {
     "obligation": {
-      "message_id": "b2b13364-fba2-46a8-b2e5-d32a0eb2ae27",
-      "delivery_id": "7fcfc9ad-53cc-41da-9ebc-b81ea40a61b4",
+      "message_id": "3bb37236-22fd-4b9b-a6d4-a41f0f861048",
+      "delivery_id": "fb23e970-e539-4049-9b30-78d1ab3dc220",
       "recipient": "alpha",
       "source_generation": "ee5f281a-59f4-40fb-ab7c-9b6c0a23754b",
-      "source_position": 2,
-      "body": "[taurhaus] recovery_card\nIdentity: alpha on l2-busy; key={\"card_schema\":1,\"recipient\":[\"5f43c2bffd5b9d9d983aa90e99fbb76065ca6024d62374e7b867ed0e5d20385f\",\"5f7eeadc-e679-4f81-ac44-0f77b41adc06\"],\"context\":[1,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-l2-d9vmymco/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-l2-d9vmymco/claude\",\"harness_account_root\":\"/tmp/th-l2-d9vmymco/codex\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-l2-d9vmymco/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"bb80b8a0546ec4a737117a5e83df361adeb3072fc2e0f6bd1fe36379b172fa30\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: cf1d8a3c119f1b2497e3f898f76d96e636ad20f30b0d9de367e5b01eef314111; source=682540e4a3f9cfbca660a5add5db7fa379ff474f5fe7c2f18798f74d7e72c755; audience=unavailable\nProject cwd: /tmp/th-l2-d9vmymco/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: low; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-10 21:48:55.937803562 UTC\nCurrent task: # \u2014 \nExecution mode: ; Validation expectation: ; Response expectation: ; Adjacent fix policy: ; Override allowed: false; Override reason: none\nFocal files: unavailable\nRole: unavailable\nPurpose: For every inbox notification including onboarding, explicitly run mesh read --json --unread --mark-read --claude-dir \"$CLAUDE_DIR\" --team l2-busy --name alpha; follow returned --since cursors with the same filters until done. Reply briefly. When a message assigns you a task, run exactly the mesh lifecycle commands the message names, in order, then reply with the task id and the word done. Never modify files. For ACTION REQUIRED marker messages, read your inbox with mesh read --json --mark-read --claude-dir \"$CLAUDE_DIR\" --team l2-busy --name alpha and reply exactly with the requested marker. Follow every returned cursor until done. Do not send other messages.\n\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context."
+      "source_position": 11,
+      "body": "ACTION REQUIRED: Read this message explicitly, then reply exactly Q-38d97181."
     },
-    "since": "2026-09-10T21:48:57.726184573+00:00"
+    "since": "2026-09-10T21:49:43.530851411+00:00"
   }
 ]
