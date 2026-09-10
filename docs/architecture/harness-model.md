@@ -183,7 +183,7 @@ On Codex 0.153.4, plain `thread/read` verifies identity, status, direct-input
 readiness and settings; `includeTurns` is unsupported and returned turns are always
 empty. The daemon tracks turn IDs and status per connection from notifications,
 steers/interrupts the tracked active turn, and starts recovery on idle threads.
-First-turn read errors (-32603) return `pending:` for bounded retry before input;
+First-turn read errors (-32603) retry within the host deadline, then return `pending:`;
 only a turn-result receipt clears input uncertainty. Hosted UI `thread.turns`
 is synthesized from the existing bounded event deque (including completed items),
 so history before this connection or outside that window is unavailable. Rejections
@@ -191,7 +191,6 @@ emit `hosted.rpc.rejected` with method, numeric code and at most 256 message
 characters, without request params; public errors stay generic. The
 [binding probe facts](../design/app-server-transport-amendment.md) define this build's
 contract; the tmux path and protocol 27 remain unchanged.
-
 
 Definite steer rejection permits a newly validated attempt; ambiguous input blocks replay. After stop, an explicit **abandon without replay** decision records the attachment generation and permits named relaunch without changing recovery receipts. Controlled opt-out rollback validates the dead child/root/account/thread, refuses unknown input or retained native attempts, and closes the owned attached pane under `detach_tui` exclusion before clearing `appServer` and the retained TUI pane identity at a new fence, forcing plain-session recovery into a fresh pane. A reused foreign pane is left untouched while its stale recorded identity is cleared. `hostRollback` retains old/new modes, opt-in, attachment tuple and unresolved attempts. Failed pane recovery retains that boundary; wrong-thread panes are cleaned up. Team-owned Mesh switching still needs the unbuilt paired packet; hot conversion
 refuses. On `delivery_owner: team`, direct rollback returns

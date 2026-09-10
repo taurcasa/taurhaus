@@ -203,3 +203,9 @@ an auth file but contain no credentials. No real host was run for this fix.
 The supplied installed-schema snapshot contains only JSONRPCRequest and RequestId;
 it establishes no separate `turn/failed` or `turn/cancelled` notification.
 Terminal statuses on `turn/completed` (including interrupted/failed) clear activity.
+
+Round-1 correction (2026-09-10): tracked turns survive lagging read/resume idle
+snapshots. Transient reads retry within the existing host deadline and log one
+`hosted.rpc.pending` per episode; exhausted reads stay pending without submission.
+The byte-identical wire evidence deliberately retains installation UUID and
+rate-limit/account-plan metadata (account-linked, not credentials).

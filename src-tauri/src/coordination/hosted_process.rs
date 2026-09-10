@@ -89,6 +89,7 @@ impl HostProcess {
                     policy: None,
                     repairing: false,
                     policy_dirty: false,
+                    pending_read_logged: false,
                 });
                 break;
             }
@@ -213,7 +214,25 @@ impl HostProcess {
             return Err("owned host stopped".into());
         }
         let rpc = self.rpc.as_mut().ok_or("host connection unavailable")?;
-        let mut result = rpc.call("thread/read", json!({"threadId":self.thread_id}), guard)?;
+        let mut pending = false;
+        let mut result = loop {
+            if pending && guard.remaining().is_err() {
+                return Err(RpcError::PendingRead.into());
+            }
+            match rpc.call("thread/read", json!({"threadId":self.thread_id}), guard) {
+                Ok(result) => break result,
+                Err(RpcError::PendingRead) => {
+                    pending = true;
+                    if let Ok(remaining) = guard.remaining() {
+                        std::thread::sleep(remaining.min(Duration::from_millis(50)));
+                    }
+                }
+                Err(_) if pending && guard.remaining().is_err() => {
+                    return Err(RpcError::PendingRead.into())
+                }
+                Err(error) => return Err(error.into()),
+            }
+        };
         if result["thread"]["id"] != self.thread_id {
             return Err("host thread identity changed".into());
         }
@@ -487,6 +506,7 @@ struct Rpc {
     policy: Option<(Value, Value, Vec<String>)>,
     repairing: bool,
     policy_dirty: bool,
+    pending_read_logged: bool,
 }
 impl Rpc {
     fn observe(&mut self, frame: &Value) {
@@ -601,9 +621,16 @@ impl Rpc {
             } else if frame["id"] == id {
                 if frame.get("error").is_some() {
                     let error = &frame["error"];
-                    if method == "thread/read" && error["code"] == -32603 {
+                    let pending = method == "thread/read" && error["code"] == -32603;
+                    if pending && self.pending_read_logged {
                         return Err(RpcError::PendingRead);
                     }
+                    self.pending_read_logged |= pending;
+                    let event = if pending {
+                        "hosted.rpc.pending"
+                    } else {
+                        "hosted.rpc.rejected"
+                    };
                     let code = error["code"].as_i64();
                     let message: String = error["message"]
                         .as_str()
@@ -611,22 +638,32 @@ impl Rpc {
                         .chars()
                         .take(256)
                         .collect();
-                    tracing::warn!(event = "hosted.rpc.rejected", method, code, message = %message);
+                    tracing::warn!(event, method, code, message = %message);
                     taurhaus_lib::logging::emit_global(
                         "warn",
                         "coordination",
-                        "hosted.rpc.rejected",
+                        event,
                         Some(message),
                         serde_json::Map::from_iter([
                             ("method".into(), json!(method)),
                             ("code".into(), json!(code)),
                         ]),
                     );
-                    return Err(RpcError::Rejected(error.clone()));
+                    return Err(if pending {
+                        RpcError::PendingRead
+                    } else {
+                        RpcError::Rejected(error.clone())
+                    });
                 }
                 let result = frame.get("result").cloned().ok_or("missing host result")?;
+                if method == "thread/read" {
+                    self.pending_read_logged = false;
+                }
                 if matches!(method, "thread/read" | "thread/resume")
                     && result["thread"]["id"] == self.thread_id
+                    // Snapshots can lag a start receipt/notification. Only live
+                    // notifications may retire the connection's tracked turn.
+                    && self.active_turn.is_none()
                 {
                     self.set_status(&result["thread"]["status"]);
                 }
@@ -769,6 +806,8 @@ def client(connection):
             agent['text'] = 'fixture reply'
             notify('item/completed', turnId=turn['id'], item=agent)
             if turn['status'] != 'inProgress':
+                thread['status'] = {'type':'idle'}
+                with open(saved, 'w') as output: json.dump(thread, output)
                 notify('thread/status/changed', status={'type':'idle'})
                 # Like the probe, completion summarizes the agent item only.
                 notify('turn/completed', turn=dict(turn, items=[agent]))
@@ -796,6 +835,7 @@ def client(connection):
                 thread['approvalDecision'] = request['result']['decision']
                 thread['canAcceptDirectInput'] = True
                 thread['status']['activeFlags'] = []
+                notify('thread/status/changed', status=thread['status'])
                 continue
             method, params = request.get('method'), request.get('params', {})
             result, error, approval = {}, None, None
@@ -818,11 +858,15 @@ def client(connection):
                 elif method in ('thread/resume', 'thread/read'):
                     if 'includeTurns' in params:
                         error = {'code':-32601,'message':'list_turns is not supported yet'}
-                    elif method == 'thread/read' and pending_items:
-                        error = {'code':-32603,'message':'failed to read thread: rollout at fixture/sessions/first.jsonl is empty'}
+                    elif method == 'thread/read' and (pending_items or any(os.path.exists(os.path.join(root, name)) for name in ('pending-read', 'pending-read-once'))):
+                        error = {'code':-32603,'message':os.environ.get('FAKE_ERROR_MESSAGE', 'failed to read thread: rollout at fixture/sessions/first.jsonl is empty')}
+                        once = os.path.join(root, 'pending-read-once')
+                        if os.path.exists(once): os.unlink(once)
                     elif thread is None or params['threadId'] != thread['id']: error = {'code':-32600,'message':'unknown thread'}
                     else:
                         result = dict(policy, thread=dict(thread, turns=[]))
+                        if os.environ.get('FAKE_STALE_IDLE') and thread['status']['type'] == 'active':
+                            result['thread']['status'] = {'type':'idle'}
                         marker = os.path.join(root, 'drift.json')
                         if method == 'thread/read' and os.path.exists(marker):
                             settings = json.load(open(marker)); os.unlink(marker)
@@ -835,6 +879,7 @@ def client(connection):
                     assert params['threadId'] == thread['id']
                     turn = {'id':str(len(thread['turns'])+1), 'status':'completed', 'items':[{'id':'user-'+str(len(thread['turns'])+1),'type':'userMessage','content':params['input']}]}
                     thread['turns'].append(turn)
+                    thread['status'] = {'type':'active','activeFlags':[]}
                     text = params['input'][0]['text']
                     if text == 'active':
                         turn['status'] = 'inProgress'
@@ -874,12 +919,12 @@ def client(connection):
                 reply = {'id':request['id'], 'error':error} if error else {'id':request['id'], 'result':result}
                 emit(reply)
                 if method == 'turn/start':
-                    notify('thread/status/changed', status={'type':'active','activeFlags':[]})
+                    notify('thread/status/changed', status=thread['status'])
                     notify('turn/started', turn=dict(turn, status='inProgress', items=[], itemsView='notLoaded'))
-                    if len(thread['turns']) == 1 and os.environ.get('FAKE_FIRST_ITEM_PENDING'):
+                    if len(thread['turns']) == 1:
                         pending_items = turn
                     else: items_and_completion(turn)
-                elif method == 'thread/read' and error and error['code'] == -32603:
+                elif method == 'thread/read' and error and error['code'] == -32603 and pending_items:
                     items_and_completion(pending_items)
                     pending_items = None
                 if approval: emit(approval)
@@ -915,6 +960,8 @@ with socket.socket(socket.AF_UNIX) as listener:
         let launch = fixture(tmp.path());
         let guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
         let mut host = spawn(&launch, tmp.path(), None, &guard).unwrap();
+        // Regression: 04128879 did not retry pre-card reads within the launch deadline.
+        std::fs::write(tmp.path().join("pending-read-once"), "").unwrap();
         let card = "[taurhaus] recovery_card startup";
         assert_eq!(host.input(card, &guard).unwrap()["turn"]["id"], "1");
         let state = host.transcript(&guard).unwrap();
@@ -932,15 +979,17 @@ with socket.socket(socket.AF_UNIX) as listener:
     fn hosted_first_turn_read_is_pending_then_steers_tracked_id() {
         // Regression: cadd533e (still present in 80290f36) rejected transient rollout reads and derived active IDs from empty turns.
         let tmp = tempfile::tempdir().unwrap();
-        let mut launch = fixture(tmp.path());
-        launch
-            .environment
-            .insert("FAKE_FIRST_ITEM_PENDING".into(), "1".into());
+        let launch = fixture(tmp.path());
         let guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
         let mut host = spawn(&launch, tmp.path(), None, &guard).unwrap();
         host.input("active", &guard).unwrap();
-        let error = host.input("not submitted", &guard).unwrap_err();
-        assert!(error.starts_with("pending:"), "{error}");
+        let error = host
+            .rpc
+            .as_mut()
+            .unwrap()
+            .call("thread/read", json!({"threadId":host.thread_id}), &guard)
+            .unwrap_err();
+        assert!(matches!(error, RpcError::PendingRead));
         assert!(!host.outcome_unknown());
         assert_eq!(host.input("steer marker", &guard).unwrap()["turnId"], "1");
         let state = host.transcript(&guard).unwrap();
@@ -988,6 +1037,38 @@ with socket.socket(socket.AF_UNIX) as listener:
     }
 
     #[test]
+    fn hosted_stale_idle_snapshot_preserves_steer_and_interrupt() {
+        // Regression: 04128879 let lagging read/resume snapshots erase a tracked turn.
+        let tmp = tempfile::tempdir().unwrap();
+        let mut launch = fixture(tmp.path());
+        launch
+            .environment
+            .insert("FAKE_STALE_IDLE".into(), "1".into());
+        let guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
+        let mut host = spawn(&launch, tmp.path(), None, &guard).unwrap();
+        host.input("first", &guard).unwrap();
+        host.transcript(&guard).unwrap();
+        host.input("active", &guard).unwrap();
+        assert_eq!(
+            host.transcript(&guard).unwrap()["thread"]["status"]["type"],
+            "active"
+        );
+        let rpc = host.rpc.as_mut().unwrap();
+        rpc.call(
+            "thread/resume",
+            rpc.policy.as_ref().unwrap().1.clone(),
+            &guard,
+        )
+        .unwrap();
+        assert_eq!(host.input("steer", &guard).unwrap()["turnId"], "2");
+        host.interrupt(&guard).unwrap();
+        assert_eq!(
+            host.transcript(&guard).unwrap()["thread"]["status"]["type"],
+            "idle"
+        );
+    }
+
+    #[test]
     fn hosted_rpc_rejection_is_logged_without_params() {
         // Regression: cadd533e (still present in 80290f36) discarded the host error behind an opaque public refusal.
         let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
@@ -1001,21 +1082,42 @@ with socket.socket(socket.AF_UNIX) as listener:
             .insert("FAKE_ERROR_MESSAGE".into(), "é".repeat(300));
         let guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
         let mut host = spawn(&launch, tmp.path(), None, &guard).unwrap();
-        let error = host
-            .rpc
-            .as_mut()
-            .unwrap()
+        // Regression: 04128879 selected a foreign rejection from the global sink.
+        let rpc = host.rpc.as_mut().unwrap();
+        let _ = rpc.call("thread/read", json!({"threadId":"foreign"}), &guard);
+        let error = rpc
             .call("unsupported", json!({"private":"do not log"}), &guard)
             .unwrap_err();
         assert_eq!(
             String::from(error),
             "host rejected request; reconcile before retrying"
         );
+        // Regression: 04128879 surfaced the first transient without using the host deadline.
+        std::fs::write(tmp.path().join("pending-read"), "").unwrap();
+        let started = std::time::Instant::now();
+        assert!(host
+            .input("not submitted", &guard)
+            .unwrap_err()
+            .starts_with("pending:"));
+        assert!(started.elapsed() >= Duration::from_secs(4));
+        assert!(!host.outcome_unknown());
+        std::fs::remove_file(tmp.path().join("pending-read")).unwrap();
+        drop(guard);
+        let guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
+        assert_eq!(
+            host.input("recovery card", &guard).unwrap()["turn"]["id"],
+            "1"
+        );
+        let requests = std::fs::read_to_string(tmp.path().join("requests.jsonl")).unwrap();
+        assert!(!requests.contains("not submitted"));
         sink.flush_for_test().unwrap();
         let logs = std::fs::read_to_string(tmp.path().join("events.jsonl")).unwrap();
         let event: Value = serde_json::from_str(
             logs.lines()
-                .find(|line| line.contains("hosted.rpc.rejected"))
+                .find(|line| {
+                    line.contains("hosted.rpc.rejected")
+                        && line.contains("\"method\":\"unsupported\"")
+                })
                 .expect("rejection must be logged"),
         )
         .unwrap();
@@ -1023,6 +1125,15 @@ with socket.socket(socket.AF_UNIX) as listener:
         assert_eq!(event["code"], -32601);
         assert_eq!(event["message"], "é".repeat(256));
         assert!(!logs.contains("do not log"));
+        let pending: Vec<Value> = logs
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .filter(|event: &Value| {
+                event["event"] == "hosted.rpc.pending" && event["message"] == "é".repeat(256)
+            })
+            .collect();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0]["code"], -32603);
     }
     #[test]
     fn hosted_workspace_write_config_round_trips_optional_fields() {
