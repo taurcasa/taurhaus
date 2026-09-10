@@ -29,3 +29,7 @@ for that line to disappear. All three launches used no model input and cleaned u
 The requested runtime-exclusion document is absent; Mesh's actual Record::idle
 reader was inspected (activity_confidence idle; observed_at age 0–120 s).
 `red.json` retains the first-scan regression failure (exit 101).
+
+Invocation: native Codex `--yolo --no-alt-screen -m gpt-5.6-luna -c model_reasoning_effort="low" -c projects."<scratch>/project".trust_level="trusted"`; private tmux `-f /dev/null`, 140×45 pane. Trust-screen Enter was the only input.
+
+Final verification: `gates.json` records all four required gates at exit 0, Cargo queue polls, the corrected lint/branch-count failures, and cleanup. The 90 s replay emits no activity transitions; the settled trace passes at 500/1500 ms cadence, while synthetic sustained 64 KiB/s confirms activity. The exported idle snapshot stays fresh. No real model-turn rate was measured; `harness-model.md` documents the chosen 32 KiB/s × 3-poll margin.
