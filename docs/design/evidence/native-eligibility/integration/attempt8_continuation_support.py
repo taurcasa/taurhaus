@@ -20,3 +20,13 @@ def wait_receipt(snapshot, message_id, timeout=100, sleep=time.sleep):
         assert not any(r.get('stage')=='native_enqueued' for r in rows), 'enqueued without thread_active evidence'
         sleep(.1)
     raise AssertionError('no thread_active receipt within step deadline')
+
+
+def compaction_metering_gaps(events):
+    gaps=[]
+    for event in events:
+        if event.get('method') != 'thread/tokenUsage/updated': continue
+        params=event['params']; usage=params['tokenUsage']['last']
+        if usage.get('totalTokens',0)>0 and usage['inputTokens']==0 and usage['outputTokens']==0:
+            gaps.append(params['turnId'])
+    return sorted(set(gaps))

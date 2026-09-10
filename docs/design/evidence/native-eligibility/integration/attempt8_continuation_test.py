@@ -1,8 +1,13 @@
 """Offline regression checks; no subprocess, socket, real CLI or credential access."""
 import unittest
-from attempt8_continuation_support import wait_receipt, enforce_budget
+from attempt8_continuation_support import wait_receipt, enforce_budget, compaction_metering_gaps
 
 class ContinuationTests(unittest.TestCase):
+    def test_compaction_counter_reset_is_not_zero_billed_usage(self):
+        # // Regression: cd07ae6f inherited accounting that called any tokenUsage row complete.
+        e={'method':'thread/tokenUsage/updated','params':{'turnId':'compact','tokenUsage':{'last':{'inputTokens':0,'cachedInputTokens':0,'outputTokens':0,'totalTokens':6344}}}}
+        self.assertEqual(compaction_metering_gaps([e]), ['compact'])
+
     def test_mirror_busy_then_journal_pending_is_not_an_early_failure(self):
         # // Regression: 4ff2ac17 asserted on the first snapshot before a scheduler retry.
         snapshots=iter([[], [{'payload':{'message_id':'m','stage':'pending','evidence':'thread_active'}}]])

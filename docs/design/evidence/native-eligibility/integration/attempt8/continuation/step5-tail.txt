@@ -1,0 +1,14 @@
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt8-continuation-steps.py", line 114, in <module>
+    assert any('[taurhaus] recovery_card' in json.dumps(e) for e in boundary_events), 'no recovery card at compaction boundary or first following input'
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: no recovery card at compaction boundary or first following input
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt8-continuation-steps.py", line 120, in <module>
+    action({'op':'fail','reason':'step '+str(step)+': '+str(e)})
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt8-continuation-actions.py", line 20, in action
+    raise RuntimeError(rows[-1])
+RuntimeError: {'at': 1789017967.7567677, 'kind': 'stopped', 'step': 5, 'error': 'step 5: no recovery card at compaction boundary or first following input', 'type': 'RuntimeError'}

@@ -93,6 +93,26 @@ if __name__=='__main__':
                 assert len([i for i in exposures(marker) if i['type']=='agentMessage'])==1
             replies=[e['params']['item']['text'] for e in events() if e.get('method')=='item/completed' and e['params']['item']['type']=='agentMessage']
             assert next(i for i,t in enumerate(replies) if typed in t)<next(i for i,t in enumerate(replies) if pending in t)
+        elif step==5:
+            assert idle()
+            action({'op':'snapshot'})
+            before=read_json(OUT/'team/runtime/seat.json');save('step5-runtime-before.json',before)
+            boundary_index=len(events())
+            action({'op':'tmux','argv':['send-keys','-t','%2','-l','/compact']})
+            action({'op':'tmux','argv':['send-keys','-t','%2','Enter']})
+            time.sleep(2);capture('step5-compacting')
+            def compacted():
+                return any(e.get('method')=='item/completed' and e.get('params',{}).get('item',{}).get('type')=='contextCompaction' for e in events()[boundary_index:])
+            wait_for(lambda:compacted() and idle(), 'compaction did not complete', timeout=120)
+            capture('step5-compacted');action({'op':'snapshot'})
+            after=read_json(OUT/'team/runtime/seat.json');save('step5-runtime-boundary.json',after)
+            assert before['appServer']['threadId']==after['appServer']['threadId'], 'compaction changed thread identity'
+            marker='hazel'+secrets.token_hex(3);save('step5-marker.json',marker)
+            start('Reply exactly '+marker+'. Do not execute tools.','step5')
+            wait_reply(marker);capture('step5-final')
+            boundary_events=events()[boundary_index:];save('step5-boundary-events.json',boundary_events)
+            assert any('[taurhaus] recovery_card' in json.dumps(e) for e in boundary_events), 'no recovery card at compaction boundary or first following input'
+            assert '[taurhaus] recovery_card' in (OUT/'step5-final-pane-2.txt').read_text(), 'attached pane did not show recovery card'
         else: raise ValueError(step)
         save('step'+str(step)+'-outcome.json',{'step':step,'outcome':'PASS','at':time.time()})
     except BaseException as e:

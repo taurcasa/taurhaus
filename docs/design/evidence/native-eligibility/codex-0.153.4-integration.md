@@ -1,4 +1,4 @@
-# Codex 0.153.4 integration — IN PROGRESS (attempt 8 continuation)
+# Codex 0.153.4 integration — FAIL step 5 (attempt 8 continuation)
 
 2026-09-09. **Eligibility remains disabled.** The prescribed canonical setup
 stopped before member launch: the real Mesh command `team delivery --owner team`
@@ -1765,32 +1765,158 @@ exited 0; the Mesh working tree is clean. Retained sidecars are about **379 KB**
 excluding scripts. The two collector/timing failures are explicit harness
 deviations, not evidence against native eligibility under ordinary scheduling.
 
-### Attempt 8 continuation — user-authorized, 2026-09-10
+### Attempt 8 continuation — FAIL step 5, 2026-09-10
 
-The user requested continuation from the committed tree. The earlier four turns
-and $0.0550068 conservative spend remain charged to attempt 8; no budget reset.
-The corrected driver waits for current-message journal receipts through ordinary
-scheduler retries. It refuses to count enqueue without thread_active as deferral.
-Four offline regression/budget tests observed red then green. Earlier controllers
-remain unchanged as evidence; continuation uses `attempt8-continuation-*.py` and
-sidecars under `integration/attempt8/continuation/`. Steps remain unclaimed until
-re-observed. The sampler still has no process-control or app-server socket calls.
+**Latest verdict: FAIL step 5 — no recovery card at compaction or first following
+input.** The user authorized continuation from the committed tree. Steps 1–4
+passed on a fresh isolated setup; actual `/compact` completed on the same thread,
+and the next input/reply succeeded, but neither contained a recovery card.
+Runtime contextGeneration remained `"0"`, admitted_boundary remained null, and
+the recovery receipt still referenced the startup card. Steps 6–7 were not run.
+No product defect was patched. The Mesh descriptor was restored to disabled;
+there is no flip/fix commit. The existing Taurhaus registry needs no addition.
 
-Continuation step 1 **PASS**: fresh hosted thread `01a089c5-2225-7bb3-973a-2a77719269f1`,
-startup card/reply, strict config, app-server child and attached TUI verified.
-One additional metered turn ($0.00094644 API-equivalent); cumulative five turns.
+The earlier four turns and $0.0550068 conservative subtotal remain charged to
+attempt 8; **no budget reset**. The corrected driver waits for current-message
+**journal** receipts through ordinary scheduler retries. The earlier driver had
+both checked too soon and checked only delivery-state files. Four offline tests
+covered retry waiting, message identity, refusing enqueue as proof of deferral,
+and the cumulative budget. Earlier controllers remain unchanged as evidence.
 
-Continuation step 2 **PASS**: saffronaf494b appeared in attached pane and reply;
-native turn/start receipt and explicit-read-only journal consumption verified
-in `continuation/run/step2-*`.
+Pair: Taurhaus `4ff2ac17` at continuation start (same product code from hosted
+merge `6f61f611`, protocol 27), Mesh `a6ee296`. Both checkout-local builds exited
+0 after no-Cargo preflights. The temporary 0.153.4 descriptor used the same three
+class identities and unix-websocket transport; only the scratch copy ran.
 
-Continuation step 3 **PASS**: message `2954e62b-f51f-4e1e-ab4d-3c857f4450cb`
-recorded pending/thread_active, then exactly one native_enqueued turn/start
-after idle. Completed user/reply items prove one exposure. See
-`continuation/run/step3-pending.json`, `step3-receipts.json`, `step3-exposure.json`.
+#### Ordered outcomes (S runtime)
 
-Continuation step 4 **PASS**: typed `maple84cf3a` while `cedar430145` was pending.
-Both completed once, operator reply before socket delivery, captured in
-`step4-final-pane-2.txt` and `step4-exposure.json`. `step4-locks.jsonl` passively
-records daemon PID 1908030 and Mesh PID 1909718 holding stable inode 1158695,
-with matching kernel fdinfo. No process interference or extra paid lock marker.
+Paths below are relative to [continuation/run](integration/attempt8/continuation/run/).
+[Duplicate aliases](integration/attempt8/continuation/duplicate-aliases.json)
+resolve byte-identical snapshots. Each completed step was separately committed.
+
+| Step | Outcome | Evidence |
+|---|---|---|
+| 1. Hosted startup | **PASS** | initialize-result.json, step1-runtime.json, step1-identities.json, generated-config-0.toml, step-1-pane-2.txt. Production canonical initialize launched the login-only Claude lead and Luna/low hosted seat, loaded scratch AGENTS.md, delivered the startup card and attached the strict-config TUI. |
+| 2. Idle delivery/read | **PASS** | step2-after-status.txt shows mode=app_server source=config. saffronaf494b appears once in input/reply; native_enqueued via turn/start; explicit mesh read alone creates consumed_by_read. step2-receipts.json and before/after journal snapshots. |
+| 3. Active deferral | **PASS** | Message 2954e62b-f51f-4e1e-ab4d-3c857f4450cb first pending/thread_active, then exactly one native_enqueued turn/start after idle. step3-pending.json, step3-receipts.json, step3-exposure.json, step3-final-pane-2.txt. |
+| 4. Typed input/passive locks | **PASS** | maple84cf3a typed into the private pane while cedar430145 pending; operator reply precedes socket delivery, each once. step4-exposure.json, step4-final-pane-2.txt, step4-receipts.json. Kernel holder samples in step4-locks.jsonl identify both daemon and Mesh on the same stable inode. |
+| 5. Compaction recovery | **FAIL** | contextCompaction item completed; pane says Context compacted; thread unchanged. The first following daemon hosted_input and hazel12976c reply succeed without a recovery card. step5-boundary-events.json, step5-runtime-before.json, step5-runtime-boundary.json, step5-active-start.json, step5-final-pane-2.txt. |
+| 6. Normal daemon restart | **NOT RUN** | Stop-on-failure at step 5. |
+| 7. Operational rollback | **NOT RUN** | Stop-on-failure; no in-place refusal or remove/re-add claimed. Process teardown verified separately. |
+
+Thread: `01a089c5-2225-7bb3-973a-2a77719269f1`; private port **26777**;
+scratch root `/tmp/th-int-u97c8_bn`. Auth-only credential copy, private HOME,
+harness roots, TMUX_TMPDIR, PID namespace and scratch project preserved the
+packet's isolation. No observer connected to the app-server socket. The only
+signal use was final teardown; no process pause/fault injection during any step.
+The lead consumed zero model turns.
+
+Passive step-4 holder excerpts, inode **1158695**:
+
+```text
+1789017879.496476  FLOCK ADVISORY WRITE 1908030 08:30:1158695 0 EOF  # taurhaus-daemon
+1789017880.917861  FLOCK ADVISORY WRITE 1909718 08:30:1158695 0 EOF  # Mesh team owner
+```
+
+Both observations have matching `/proc/<pid>/fdinfo` lock records and PID/start
+ticks. Later Mesh holds are retained too. Nothing was frozen to manufacture
+contention. Ordinary pending receipts, eventual submission and transcript order
+provide delivery evidence alongside those passive holder records.
+
+#### Exact step-5 failure
+
+Compaction turn `01a089c7-9994-7261-afcc-082ec2169813`, item
+`01a089c7-999e-70f1-a754-565f2eb7ec7a`: started at **1789017954718 ms**, completed
+at **1789017963589 ms**. The next turn was
+`01a089c7-c0d9-7420-b3dc-f1c8cc3fca51`. The input/reply was:
+
+```text
+• Context compacted
+› Reply exactly hazel12976c. Do not execute tools.
+• hazel12976c
+```
+
+No new `[taurhaus] recovery_card` occurs in the retained boundary events or
+completed next-turn user item. The next-input RPC returned an inProgress turn,
+not an error. The controller then stopped with:
+
+```text
+AssertionError: no recovery card at compaction boundary or first following input
+```
+
+`hosted.rpc.rejected` rows: **none**. Host error object: **none emitted**.
+Daemon `compaction.*` log rows: **none**. Mesh health at failure had `error: null`,
+`last_defer_reason: null`, `pending_since: null`, completed 3. These absence
+observations are retained in final-audit.json; there was no rejected Mesh input
+or host RPC to quote. The unchanged context/recovery record demonstrates the
+missing recovery transition; its deeper cause was not patched or established.
+
+#### Spend and accounting limit
+
+[Continuation and cumulative ledger](integration/attempt8/continuation/cost-ledger.json).
+All values below come from actual host tokenUsage.last. Rates remain the packet's
+$0.20/$0.02/$1.20 per million input/cached/output tokens, API-equivalent estimates.
+
+| Generation | Turn ID | Input / cached / output | Metered USD |
+|---|---|---|---|
+| Startup | `01a089c5-2251-7860-9837-bb2c3e888f0a` | 10773 / 6912 / 30 | $0.00094644 |
+| Idle marker | `01a089c5-8802-78e2-bcfa-01f4a26b1f38` | 11828 / 9984 / 10 | $0.00058048 |
+| Active timing input | `01a089c5-ee6d-73f3-a929-05463b4292f6` | 11869 / 11008 / 523 | $0.00101996 |
+| Deferred marker | `01a089c6-1d81-7681-8c6e-68d2fa02b715` | 12499 / 6912 / 12 | $0.00127004 |
+| Typed-order timing input | `01a089c6-73c4-7221-ab29-d6206ff53dce` | 12542 / 6912 / 495 | $0.00185824 |
+| Typed operator steer, same turn | `01a089c6-73c4-7221-ab29-d6206ff53dce` | 13056 / 12032 / 10 | $0.00045744 |
+| Pending socket marker | `01a089c6-a319-7372-9dcb-6d6bec6b32cb` | 13170 / 12032 / 8 | $0.00047784 |
+| Compaction | `01a089c7-9994-7261-afcc-082ec2169813` | 0 / 0 / 0; totalTokens 6344 | **Unreported cost; counter reset** |
+| First input after compact | `01a089c7-c0d9-7420-b3dc-f1c8cc3fca51` | 11967 / 6912 / 19 | $0.00117204 |
+
+Continuation: **8 protocol turns**, including compaction, with one extra typed
+steer generation. Cumulative attempt 8: **12 protocol turns / 13 paid inputs
+including the steer**, within 16. Ordinary-generation subtotal **$0.00778248**
+for this continuation; with the prior $0.00404988, **$0.01183236 cumulative
+metered subtotal**. Conservative ordinary-token subtotal: **$0.17358**.
+
+The compaction event's token classes are all zero while totalTokens is 6344 and
+cumulative usage is unchanged. This is retained exactly, but is **not proof of
+zero billed compaction usage**. The inherited ledger initially marked any token
+event complete; the final audit corrects that claim and an additional offline
+red/green test guards this reset shape. Full compaction cost and therefore the
+full-run dollar cap cannot be independently verified from these counters.
+There is no fabricated count or zero-charge claim, and no further turn after
+the failure. All ordinary turns have real non-null token/cost numbers.
+
+#### Reproduction, gates and teardown
+
+```sh
+TRIAL_EVIDENCE_LABEL=attempt8/continuation python3 docs/design/evidence/native-eligibility/integration/attempt3-build.py
+python3 docs/design/evidence/native-eligibility/integration/attempt8_continuation_test.py
+python3 docs/design/evidence/native-eligibility/integration/attempt8-continuation-controller.py attempt8/continuation/run
+# Separate shell after inspection_ready; inspect and commit after each:
+python3 docs/design/evidence/native-eligibility/integration/attempt8-continuation-steps.py 2
+python3 docs/design/evidence/native-eligibility/integration/attempt8-continuation-steps.py 3
+python3 docs/design/evidence/native-eligibility/integration/attempt8-continuation-steps.py 4
+python3 docs/design/evidence/native-eligibility/integration/attempt8-continuation-steps.py 5
+# Step 5 stops the controller and tears down. Then:
+TRIAL_EVIDENCE_LABEL=attempt8/continuation python3 docs/design/evidence/native-eligibility/integration/attempt2-gates.py
+python3 docs/design/evidence/native-eligibility/integration/attempt8-continuation-audit.py
+```
+
+| Exact gate from checkout root, isolated credential-free homes/inert CLI shims | Exit |
+|---|---|
+| `just check-quick` | **0** |
+| `just lint` | **0** |
+| `just test-contracts` | **0** |
+| Offline continuation regressions | **0**, 5 tests after red |
+| `just test-rust-unit` | Not required: no src-tauri diff |
+| Mesh `just check-quick`, `just lint`, `just test` | Not run: passing flip/fix condition not met |
+
+[Final audit](integration/attempt8/continuation/final-audit.json) verifies no
+PID/start-tick survivors, port 26777 closed, root/auth removed, and Mesh tree
+clean after the authorized descriptor checkout. Gate children were waited and
+their isolated root removed. Earlier runs' cleanup remains in their audits.
+Sidecars are deduplicated (about **500 KB** for the continuation), panes capped
+at 60 lines, deltas dropped; size never stopped a step. Credential/operator-path
+checks passed. No new dependencies, install/release action, plan-ledger edits,
+Taurhaus registry change or product patch; non-evidence insertions **0/200**.
+Opus evidence review remains unavailable in this session. The remaining limits
+are the step-5 recovery failure, unrun lifecycle steps, and unreported compact
+billing; the earlier step-3 harness limitation has been resolved by this run.
