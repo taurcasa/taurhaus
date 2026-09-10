@@ -1,4 +1,4 @@
-# IN PROGRESS — latest run 6, L4 step 1 passed
+# IN PROGRESS — latest run 6, L4 steps 1–2 passed
 
 Run 6 uses taurhaus `a7e6db7e` and the unmodified Mesh `310144d` candidate.
 See [Run 6](#run-6) for the latest checkpoints.
@@ -673,3 +673,8 @@ code-mode sibling. No product or descriptor change.
 Four fully metered turns at step 1: API-equivalent $0.00423052; conservative
 all-output-rate $0.079704. Two start reservations make 6 inputs including starts.
 [Cost ledger](l4-resume-team/run6/cost-ledger.json). Later steps remain unverified.
+
+Step 2 **PASS** (runtime): supported stops ended every recorded seat pane and
+all Codex/native-sibling processes. Beta attachment advanced to 2; no extra
+turn or spend. [Stop census](l4-resume-team/run6/step2-stop-poll.json),
+[retained state](l4-resume-team/run6/step2-state.json).
