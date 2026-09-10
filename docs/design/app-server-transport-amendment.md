@@ -209,3 +209,34 @@ snapshots. Transient reads retry within the existing host deadline and log one
 `hosted.rpc.pending` per episode; exhausted reads stay pending without submission.
 The byte-identical wire evidence deliberately retains installation UUID and
 rate-limit/account-plan metadata (account-linked, not credentials).
+
+## Compaction boundary on 0.153.4
+
+2026-09-10: attempt-8 continuation passed steps 1–4, but step 5 completed
+`/compact` on the same daemon-owned thread without firing the Codex hook.
+Source: trial checkout HEAD,
+`docs/design/evidence/native-eligibility/codex-0.153.4-integration.md`
+(attempt-8 continuation) and
+`integration/attempt8/continuation/run/step5-boundary-events.json` beside it.
+The daemon's own connection received:
+
+```text
+thread/status/changed {threadId, status:{type:"active", activeFlags:[]}}
+item/started {threadId, turnId, item:{id, type:"contextCompaction"}}
+thread/tokenUsage/updated {threadId, turnId, tokenUsage:{...}}
+item/completed {threadId, turnId, item:{id, type:"contextCompaction"}, completedAtMs}
+thread/status/changed {threadId, status:{type:"idle"}}
+turn/completed {threadId, turn:{id, status:"completed", items:[]}}
+```
+
+The completed item is authoritative for the owned thread. Daemon reconciliation
+and hosted operations admit a generation-keyed pending obligation with source
+`host_notification`; hook and notification identities deduplicate by thread and
+turn/item. Under host exclusion, idle permits a card-only `turn/start` using the
+existing recovery renderer and submitted receipt. A bounded busy wait preserves
+the obligation for the first operator input. Unknown input outcomes never replay.
+The transcript retains the compaction item and recovery turn. No wire change or
+protocol bump: `contextGeneration` remains a string, protocol 27 remains unreleased.
+The requested `attached-tui/installed-schema` directory is absent in both supplied
+checkouts; no separate `thread/compacted` notification is established by that
+schema evidence. This change uses the recorded completed-item shape.

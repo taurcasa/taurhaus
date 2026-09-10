@@ -1,3 +1,11 @@
+> **Compaction recovery amendment (2026-09-10).** Attempt-8 continuation step 5
+> proved that hosted `/compact` completes without the Codex hook. The daemon now
+> admits owned-thread `item/completed` contextCompaction notifications, deduplicates
+> hook boundaries, and submits the canonical recovery card on idle under host
+> exclusion. A bounded busy wait leaves recovery pending for first operator input.
+> See [Compaction boundary on 0.153.4](../../app-server-transport-amendment.md#compaction-boundary-on-01534).
+> This is fake-host software coverage, not a new real-host eligibility verdict.
+
 > **Thread-state correction (2026-09-10).** The orchestrator's real Codex
 > 0.153.4 probe supersedes the `includeTurns` and read-derived active-turn rules
 > below. Neither client sends `includeTurns`; plain reads return empty turns and

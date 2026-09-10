@@ -22,7 +22,7 @@ Adding a CLI must touch only the slices where that tool differs; the rest of the
 | Session identity | sessions registry | fd-verified rollout binding | `last_conversations.json` + presence lock | `active_sessions.json` row bound by pid and cwd | `/proc` + tmux pane, no session id |
 | Busy / idle | registry status (authoritative) | turn-complete notify (authoritative) | hooks sink, default on, needs workspace trust and agy 1.1.10; process-IO floor otherwise | `events.jsonl` turn lifecycle (authoritative) | rchar-rate hysteresis + pane liveness |
 | Message delivery + wake | native inbox poller | inbox + tmux wake | inbox + tmux wake | inbox + tmux wake (plain Enter queues, Ctrl+Enter interjects) | inbox + tmux wake |
-| Compaction signal | `SessionStart(source=compact)` hook | managed `SessionStart(source=compact)` hook by default on Codex >= 0.147; older versions log `compaction.codex_hook.unsupported` once and receive no reinjection | unavailable, `compaction.unsupported` logged once | own file in the always-trusted `~/.grok/hooks`; `PostCompact` fires the bridge (grok's start source is never `compact`), `SessionStart(compact)` catches the registration grok imports from Claude and is deduped; hooks are registered under PascalCase names but grok's envelope spells the `hookEventName` **value** in snake_case (`post_compact`), so the bridge matches either spelling; the card is queued in the mesh inbox because grok discards passive-hook stdout | none, logged once |
+| Compaction signal | `SessionStart(source=compact)` hook | hosted: completed `contextCompaction` on the owned connection, deduplicated with hooks; pane: managed `SessionStart(source=compact)` hook by default on Codex >= 0.147; older versions log `compaction.codex_hook.unsupported` once and receive no reinjection | unavailable, `compaction.unsupported` logged once | own file in the always-trusted `~/.grok/hooks`; `PostCompact` fires the bridge (grok's start source is never `compact`), `SessionStart(compact)` catches the registration grok imports from Claude and is deduped; hooks are registered under PascalCase names but grok's envelope spells the `hookEventName` **value** in snake_case (`post_compact`), so the bridge matches either spelling; the card is queued in the mesh inbox because grok discards passive-hook stdout | none, logged once |
 | Transcript parser | JSONL | rollout JSONL | none | none | none |
 | Account selection | config-dir identities + selector | `auth.json` identities + selector | one implicit OAuth account under the shared Google tooling root | `auth.json` identities + `GROK_HOME` | implicit single account |
 | Usage | OAuth usage windows | native 5-hour + weekly windows | native `/usage` command through an isolated provider process | unavailable; no quota endpoint, per-turn cost is in-band | unavailable |
@@ -103,7 +103,7 @@ Usage is a second provider slice attached to each detected account as an in-memo
 
 ## App and daemon move together
 
-The daemon (WSL2 on Windows, native elsewhere) owns process inventory, session identity, activity, tmux focus and the JSONL log sink. Native harness hook processes own compaction detection and call the same taurhaus hook bridge on every platform. The app and daemon speak a versioned JSON-line protocol; **the app validates the exact protocol version on every connect path** (startup, health, inline reconnects, the focus bridge's own socket) and refuses a mismatched daemon rather than half-working. Consequences:
+The daemon (WSL2 on Windows, native elsewhere) owns process inventory, session identity, activity, tmux focus and the JSONL log sink. Native harness hook processes call the same taurhaus compaction bridge on every platform; hosted Codex also uses completed compaction notifications on the daemon-owned connection. The app and daemon speak a versioned JSON-line protocol; **the app validates the exact protocol version on every connect path** (startup, health, inline reconnects, the focus bridge's own socket) and refuses a mismatched daemon rather than half-working. Consequences:
 
 - New methods and fields are additive (`#[serde(default)]`) and do not bump the version; a changed contract does.
 - A version bump means the app release and `just install-daemon` ship together. Reinstalling only the daemon under an older app leaves the app daemon-less.
@@ -177,7 +177,15 @@ After the thread is ready, the daemon opens a real TUI in the member pane using 
 
 Closing the pane closes a view; it does not stop the daemon-owned child. Resume of an unchanged live host verifies its thread and reattaches the pane without thread creation or a new host generation. An already attached live pane is reused without another command. Missing threads never open a picker or substitute a fresh conversation. Explicit member teardown stops the owned child and closes only the matching attached pane. The app transcript/input panel remains the second view, and controlled opt-out still performs the stage-5b named-thread relaunch into a plain pane.
 
-Published `hosted` status gates transcript/input/approval/cancel controls. The host lock revalidates attachment/root authority, excludes compaction through stdout/bookkeeping, and defers busy liveness. Ordinary operations get five seconds, cold launch thirty. Send starts an idle turn or steers an active one; pending recovery waits for the next idle turn, preserving the draft without queuing. The existing detector supplies compaction state; fallback prepends the recovery card to next-turn input. No new boundary is inferred from native output.
+Published `hosted` status gates transcript/input/approval/cancel controls. The host lock revalidates attachment/root authority, excludes compaction through stdout/bookkeeping, and defers busy liveness. Ordinary operations get five seconds, cold launch thirty. Send starts an idle turn or steers an active one; pending recovery waits for the next idle turn, preserving the draft without queuing. Hosted compaction is notification-detected and hook-deduplicated: an owned-thread
+`item/completed` with `type: "contextCompaction"` admits one context generation and
+pending obligation (`source: host_notification`). Daemon reconciliation services
+this connection even without the panel open. On tracked idle, the daemon submits
+the same recovery card as a card-only `turn/start`, recording `injected` with
+`delivery: host_turn` and a submitted receipt. If the host stays busy through the
+bounded deadline, fallback prepends the pending card to the next operator input.
+Thread plus turn/item identity deduplicates a matching hook in either order.
+The transcript shows the compaction note and card turn.
 
 On Codex 0.153.4, plain `thread/read` verifies identity, status, direct-input
 readiness and settings; `includeTurns` is unsupported and returned turns are always

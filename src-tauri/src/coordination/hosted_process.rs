@@ -247,7 +247,10 @@ impl HostProcess {
     }
 
     pub fn take_compactions(&mut self) -> VecDeque<Value> {
-        self.rpc.as_mut().map(|rpc| std::mem::take(&mut rpc.compactions)).unwrap_or_default()
+        self.rpc
+            .as_mut()
+            .map(|rpc| std::mem::take(&mut rpc.compactions))
+            .unwrap_or_default()
     }
 
     pub fn input(&mut self, text: &str, guard: &HostOperationLock) -> Result<Value, String> {
@@ -256,7 +259,12 @@ impl HostProcess {
     }
 
     /// Reuse the state validated under this same host lock; recovery never steers.
-    pub fn input_checked(&mut self, text: &str, state: &Value, guard: &HostOperationLock) -> Result<Value, String> {
+    pub fn input_checked(
+        &mut self,
+        text: &str,
+        state: &Value,
+        guard: &HostOperationLock,
+    ) -> Result<Value, String> {
         if self.uncertain {
             return Err(
                 "outcome_unknown: reconcile previous input before another submission".into(),
@@ -622,12 +630,15 @@ impl Rpc {
                             }
                         }
                     }
-                    if frame["method"] == "item/completed" && frame["params"]["item"]["type"] == "contextCompaction" {
+                    if frame["method"] == "item/completed"
+                        && frame["params"]["item"]["type"] == "contextCompaction"
+                    {
                         if self.compactions.len() == 64 {
                             return Err("host compaction notification limit reached".into());
                         }
                         let p = &frame["params"];
-                        self.compactions.push_back(json!({"threadId":p["threadId"], "turnId":p["turnId"],
+                        self.compactions
+                            .push_back(json!({"threadId":p["threadId"], "turnId":p["turnId"],
                             "itemId":p["item"]["id"], "completedAtMs":p["completedAtMs"]}));
                     }
                     self.observe(&frame);

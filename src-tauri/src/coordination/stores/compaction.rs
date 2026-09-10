@@ -175,38 +175,72 @@ impl MemberCompactionStore {
 
 /// Caller holds host exclusion through admission and delivery (also in the native hook).
 pub(crate) fn record_host_boundary(
-    root: &Path, team: &str, member: &str, boundary: &serde_json::Value, source: &str,
+    root: &Path,
+    team: &str,
+    member: &str,
+    boundary: &serde_json::Value,
+    source: &str,
 ) -> Result<bool, CoordinationError> {
     let thread = boundary["threadId"].as_str().unwrap_or_default();
-    let timestamp = boundary["completedAtMs"].as_i64()
-        .and_then(DateTime::from_timestamp_millis).unwrap_or_else(Utc::now);
+    let timestamp = boundary["completedAtMs"]
+        .as_i64()
+        .and_then(DateTime::from_timestamp_millis)
+        .unwrap_or_else(Utc::now);
     if let Some(previous) = MemberCompactionStore::load(root, team, member)? {
         let same_id = previous.host_boundary.as_ref().is_some_and(|old| {
-            ["turnId", "itemId"].iter().any(|key| boundary[key].as_str()
-                .filter(|v| !v.is_empty()).is_some_and(|v| old[key] == v))
+            ["turnId", "itemId"].iter().any(|key| {
+                boundary[key]
+                    .as_str()
+                    .filter(|v| !v.is_empty())
+                    .is_some_and(|v| old[key] == v)
+            })
         });
         if previous.last_session_id == thread
-            && (same_id || previous.last_compaction_timestamp == timestamp) {
+            && (same_id || previous.last_compaction_timestamp == timestamp)
+        {
             return Ok(false);
         }
     }
-    record_delivery_at(root, team, member, CliTool::Codex, thread, timestamp,
-        CompactionDeliveryResult::Skipped)?;
-    let mut state = MemberCompactionStore::load(root, team, member)?.ok_or_else(||
-        CoordinationError::Conflict("host compaction state missing".into()))?;
+    record_delivery_at(
+        root,
+        team,
+        member,
+        CliTool::Codex,
+        thread,
+        timestamp,
+        CompactionDeliveryResult::Skipped,
+    )?;
+    let mut state = MemberCompactionStore::load(root, team, member)?
+        .ok_or_else(|| CoordinationError::Conflict("host compaction state missing".into()))?;
     state.source = Some(source.into());
     state.host_boundary = Some(boundary.clone());
     MemberCompactionStore::save(root, team, member, &state)?;
     Ok(true)
 }
 
-pub(crate) fn emit_host_compaction(team: &str, member: &str, boundary: &serde_json::Value, event: &str, reason: &str) {
+pub(crate) fn emit_host_compaction(
+    team: &str,
+    member: &str,
+    boundary: &serde_json::Value,
+    event: &str,
+    reason: &str,
+) {
     let mut fields = serde_json::Map::new();
-    for (key, value) in [("team", team), ("member", member),
-        ("thread_id", boundary["threadId"].as_str().unwrap_or_default()),
+    for (key, value) in [
+        ("team", team),
+        ("member", member),
+        (
+            "thread_id",
+            boundary["threadId"].as_str().unwrap_or_default(),
+        ),
         ("turn_id", boundary["turnId"].as_str().unwrap_or_default()),
-        ("item_id", boundary["itemId"].as_str().unwrap_or_default()), ("reason", reason)] {
-        fields.insert(key.into(), serde_json::Value::String(value.chars().take(256).collect()));
+        ("item_id", boundary["itemId"].as_str().unwrap_or_default()),
+        ("reason", reason),
+    ] {
+        fields.insert(
+            key.into(),
+            serde_json::Value::String(value.chars().take(256).collect()),
+        );
     }
     taurhaus_lib::logging::emit_global("info", "coordination", event, None, fields);
 }
@@ -296,8 +330,14 @@ pub(crate) fn record_delivery_with_journal_at(
     // Only a new skipped boundary replaces the obligation; receipt observation satisfies it.
     let preserve_obligation = same_boundary || result != CompactionDeliveryResult::Skipped;
     let state = MemberCompactionState {
-        source: previous.as_ref().filter(|_| same_boundary).and_then(|s| s.source.clone()),
-        host_boundary: previous.as_ref().filter(|_| same_boundary).and_then(|s| s.host_boundary.clone()),
+        source: previous
+            .as_ref()
+            .filter(|_| same_boundary)
+            .and_then(|s| s.source.clone()),
+        host_boundary: previous
+            .as_ref()
+            .filter(|_| same_boundary)
+            .and_then(|s| s.host_boundary.clone()),
         journal: journal.or_else(|| {
             previous
                 .as_ref()
