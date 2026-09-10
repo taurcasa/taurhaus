@@ -218,7 +218,7 @@ ownership-checked reuse or retirement; it does not leave an unrecorded old view.
 `appServer.host` is `taurhaus-daemon-owned-thread/1`, `configuration` is
 `strict-config/1`, and `trust` is `daemon-owned/1`. `configurationDigest`
 is the separate per-launch argument digest, not an admission class.
-`instructionSources` retains loaded project sources. The once-per-launch
-`hosted.instruction_sources.loaded` warning carries only `thread_id` and
+`instructionSources` retains loaded project source strings (non-string entries are dropped). The once-per-launch
+`hosted.instruction_sources.loaded` info event carries only `thread_id` and
 `count`; no instruction bodies, config contents or account secrets are logged.
 Native eligibility still requires the compiled paired descriptor and trial.

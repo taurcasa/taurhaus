@@ -10,7 +10,7 @@
 > **Paired identity amendment (2026-09-10).** The JSON example now names the
 > daemon's stable host/configuration/trust classes. The argument digest is additive
 > launch evidence, not descriptor admission authority. Loaded project instruction
-> sources are recorded and warned about; they do not refuse hosting. Fresh seats
+> sources are recorded and logged at info; they do not refuse hosting. Fresh seats
 > may choose delivery at creation; hot switches still require the unbuilt packet.
 > No native eligibility is enabled by this amendment.
 

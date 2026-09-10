@@ -192,9 +192,9 @@ The paired record identities are `host: "taurhaus-daemon-owned-thread/1"`,
 These classes permit an exact compiled Mesh pin after the integration trial;
 they do not enable native delivery eligibility. Project instructions are allowed:
 `appServer.instructionSources` records the host's sources and one
-`hosted.instruction_sources.loaded` warning logs the thread ID and source count.
+`hosted.instruction_sources.loaded` info event logs the thread ID and source count.
 The strict per-member view config still carries and reasserts the thread's model,
-effort, sandbox and approval policy.
+effort, sandbox and approval policy. Only the TUI config disables its own project-document discovery; thread policy repair omits that key and verifies instruction-source parity before allowing further input.
 
 The Codex `0.153.4` transport pin is `unix-websocket`: HTTP/1.1 Upgrade with a random 16-byte key and verified RFC 6455 accept, then masked client text frames and unmasked server text frames. Each message is one JSON object without `jsonrpc`; `initialize` with `clientInfo` and `capabilities.experimentalApi: true` comes first, with per-connection request IDs. Fragmentation and ping/pong are supported; close, malformed frames and messages over 64 KiB fail closed. Every read/write uses the remaining host-operation deadline. Raw NDJSON produces EOF on this build (stage-5b regression `cadd533e`).
 

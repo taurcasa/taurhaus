@@ -165,7 +165,7 @@ pub struct AppServerAttachment {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub configuration_digest: Option<String>,
     #[serde(default)]
-    pub instruction_sources: Vec<Value>,
+    pub instruction_sources: Vec<String>,
     pub trust: String,
     pub transport: String,
     /// Exact remote-resume argv; account environment stays with the daemon.

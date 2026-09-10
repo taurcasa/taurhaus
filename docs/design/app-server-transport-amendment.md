@@ -126,7 +126,10 @@ No bundled lock/hash or runtime choice enables native eligibility.
 
 Loaded project instructions (including AGENTS.md) are allowed, recorded in
 `appServer.instructionSources`, and logged once per launch as
-`hosted.instruction_sources.loaded`. The generated view config and policy
+`hosted.instruction_sources.loaded` at info. Only the view config sets
+`project_doc_max_bytes = 0`; thread policy repair omits that discovery override
+and fails closed if repaired instruction sources differ from the recorded strings.
+The generated view config and policy
 reassertion still enforce model/effort/sandbox/approval. This supersedes the
 empty-instruction-source refusal; it makes no claim that instruction loading or
 the attached TUI's settings push is a no-op.
