@@ -113,11 +113,6 @@ impl CoordinationOrchestrator {
             }
 
             runtime.health = HealthState::SessionDead;
-            runtime.session_id = None;
-            runtime.jsonl_path = None;
-            if runtime.pane_id.is_none() {
-                runtime.pane_id = snapshot_pane_id;
-            }
 
             let mut daemon_pid_to_terminate = None;
             if !spec(member.cli_tool).capabilities.native_inbox_poller
@@ -148,10 +143,10 @@ impl CoordinationOrchestrator {
                 &member_name,
                 &expected,
                 |current| {
-                    current.pane_id = runtime.pane_id.clone();
-                    current.session_id = runtime.session_id.clone();
-                    current.jsonl_path = runtime.jsonl_path.clone();
-                    current.daemon_pid = runtime.daemon_pid;
+                    current.pane_id = None;
+                    current.pane_pid = None;
+                    current.pane_start_time = None;
+                    current.daemon_pid = None;
                     current.health = runtime.health;
                 },
             )?;
@@ -256,8 +251,6 @@ impl CoordinationOrchestrator {
                 }
 
                 runtime.health = HealthState::SessionDead;
-                runtime.session_id = None;
-                runtime.jsonl_path = None;
 
                 let mut daemon_pid_to_terminate = None;
                 if !spec(member.cli_tool).capabilities.native_inbox_poller
@@ -294,9 +287,10 @@ impl CoordinationOrchestrator {
                         if current.project_path.is_none() {
                             current.project_path = runtime.project_path.clone();
                         }
-                        current.session_id = runtime.session_id.clone();
-                        current.jsonl_path = runtime.jsonl_path.clone();
-                        current.daemon_pid = runtime.daemon_pid;
+                        current.pane_id = None;
+                        current.pane_pid = None;
+                        current.pane_start_time = None;
+                        current.daemon_pid = None;
                         current.health = runtime.health;
                     },
                 )?;

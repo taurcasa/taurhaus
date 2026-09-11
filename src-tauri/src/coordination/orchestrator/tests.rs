@@ -2912,7 +2912,7 @@ fn liveness_reconcile_marks_missing_pane_id_offline() {
 
     let updated = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("reload");
     assert_eq!(updated.health, HealthState::SessionDead);
-    assert_eq!(updated.session_id, None);
+    assert_eq!(updated.session_id, record.session_id);
     assert!(
         !runtime.calls().iter().any(|call| matches!(
             call,
@@ -2953,7 +2953,7 @@ fn liveness_reconcile_marks_missing_pane_target_offline() {
 
     let updated = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("reload");
     assert_eq!(updated.health, HealthState::SessionDead);
-    assert_eq!(updated.session_id, None);
+    assert_eq!(updated.session_id, record.session_id);
     let calls = runtime.calls();
     assert!(calls
         .iter()
@@ -2996,7 +2996,7 @@ fn liveness_reconcile_marks_dead_pane_offline() {
 
     let updated = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("reload");
     assert_eq!(updated.health, HealthState::SessionDead);
-    assert_eq!(updated.session_id, None);
+    assert_eq!(updated.session_id, record.session_id);
     let calls = runtime.calls();
     assert!(calls
         .iter()
@@ -3040,7 +3040,7 @@ fn liveness_reconcile_marks_shell_pane_offline() {
 
     let updated = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("reload");
     assert_eq!(updated.health, HealthState::SessionDead);
-    assert_eq!(updated.session_id, None);
+    assert_eq!(updated.session_id, record.session_id);
     assert!(runtime
         .calls()
         .iter()
@@ -3176,7 +3176,7 @@ fn liveness_reconcile_quarantines_foreign_member_without_blocking_team_daemon() 
 
     let updated = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("reload");
     assert_eq!(updated.health, HealthState::SessionDead);
-    assert_eq!(updated.session_id, None);
+    assert_eq!(updated.session_id, record.session_id);
     assert_eq!(updated.daemon_pid, None);
     assert!(runtime
         .calls()
@@ -3942,7 +3942,7 @@ fn liveness_reconcile_terminates_running_non_claude_daemon() {
 
     let updated = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("reload");
     assert_eq!(updated.health, HealthState::SessionDead);
-    assert_eq!(updated.session_id, None);
+    assert_eq!(updated.session_id, record.session_id);
     assert_eq!(updated.daemon_pid, None);
     let calls = runtime.calls();
     assert!(calls
@@ -3981,7 +3981,7 @@ fn liveness_reconcile_clears_non_running_non_claude_daemon_pid_without_terminate
 
     let updated = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("reload");
     assert_eq!(updated.health, HealthState::SessionDead);
-    assert_eq!(updated.session_id, None);
+    assert_eq!(updated.session_id, record.session_id);
     assert_eq!(updated.daemon_pid, None);
 
     let calls = runtime.calls();
@@ -4023,8 +4023,8 @@ fn liveness_reconcile_skips_daemon_cleanup_for_claude_members() {
 
     let updated = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("reload");
     assert_eq!(updated.health, HealthState::SessionDead);
-    assert_eq!(updated.session_id, None);
-    assert_eq!(updated.daemon_pid, Some(4242));
+    assert_eq!(updated.session_id, record.session_id);
+    assert_eq!(updated.daemon_pid, None);
     assert!(
         !runtime.calls().iter().any(|call| matches!(
             call,
@@ -4121,7 +4121,7 @@ fn liveness_reconcile_updates_only_drifted_members() {
     let drifted_updated =
         MemberRuntimeStore::load(tmp.path(), team_name, drifted_member).expect("reload drifted");
     assert_eq!(drifted_updated.health, HealthState::SessionDead);
-    assert_eq!(drifted_updated.session_id, None);
+    assert_eq!(drifted_updated.session_id, drifted.session_id);
 
     let healthy_updated =
         MemberRuntimeStore::load(tmp.path(), team_name, healthy_member).expect("reload healthy");
@@ -6026,4 +6026,48 @@ fn team_owned_inbox_append_does_not_wake_member_executor() {
         .iter()
         .any(|c| matches!(c, RuntimeCall::SpawnDaemon { .. })));
     assert_one_inbox_append(tmp.path(), "team-owned", "seat");
+}
+
+#[test]
+fn stopped_and_offline_seats_retain_resumable_identity() {
+    // Regression: 39eeb33a erased the conversation on quarantine; e2e lane 4
+    // run 9 (106f06c7) reproduced a supported stop followed by a fresh resume.
+    for mode in ["missing", "shell", "foreign", "presence"] {
+        let tmp = TempDir::new().unwrap();
+        let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+        orchestrator.create_team("retained", None).unwrap();
+        orchestrator
+            .add_member("retained", sample_member("seat", CliTool::Codex))
+            .unwrap();
+        let path = tmp.path().join("rollout.jsonl");
+        std::fs::write(&path, "").unwrap();
+        MemberRuntimeStore::update(tmp.path(), "retained", "seat", |r| {
+            r.health = HealthState::Healthy;
+            r.session_id = Some("recorded-session".into());
+            r.jsonl_path = Some(path.clone());
+            r.pane_id = Some("%9".into());
+            r.pane_pid = Some(901);
+            r.pane_start_time = Some(1);
+        })
+        .unwrap();
+        runtime.set_pane_exists("%9", mode != "missing" && mode != "presence");
+        runtime.set_pane_current_command("%9", Some(if mode == "shell" { "zsh" } else { "codex" }));
+        runtime.set_pane_identity("%9", Some(902), Some(2));
+        if mode == "presence" {
+            orchestrator
+                .reconcile_team_presence_for_live_status_with_runtime_sessions("retained", &[])
+                .unwrap();
+        } else {
+            orchestrator.reconcile_team_liveness("retained").unwrap();
+        }
+        let r = MemberRuntimeStore::load(tmp.path(), "retained", "seat").unwrap();
+        assert_eq!(r.health, HealthState::SessionDead, "{mode}");
+        assert_eq!(r.session_id.as_deref(), Some("recorded-session"), "{mode}");
+        assert_eq!(r.jsonl_path, Some(path), "{mode}");
+        assert_eq!(
+            (r.pane_id, r.pane_pid, r.pane_start_time, r.daemon_pid),
+            (None, None, None, None),
+            "{mode}"
+        );
+    }
 }
