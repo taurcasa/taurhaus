@@ -427,7 +427,7 @@ class Lane:
             # Native context must carry the recovery card; record only new-turn messages.
             delivered=recovery.get('last_delivered') or {}
             key=delivered.get('card_key')
-            assert key and key['context']==[new['attachmentGeneration'],new['contextGeneration']], member+' recovery receipt generation mismatch'
+            assert key and key['context']==[int(new['attachmentGeneration']),int(new['contextGeneration'])], member+' recovery receipt generation mismatch'
             cards=[]
             for row in self.rollouts.get(new['session_id'],[]):
                 payload=row.get('payload',{})
@@ -547,7 +547,7 @@ class Lane:
         self.export_daemon_log()
         shutil.rmtree(self.root)
         mesh_diff=subprocess.run(['git','-C',str(MESH),'diff','--exit-code'],capture_output=True)
-        result={'survivors':survivors,'port_closed':closed,'root_removed':not self.root.exists(),'auth_removed':not (self.root/'codex/auth.json').exists(),'mesh_source_unchanged':mesh_diff.returncode==0}
+        result={'survivors':survivors,'port_closed':closed,'root_removed':not self.root.exists(),'mesh_source_unchanged':mesh_diff.returncode==0}
         save('cleanup.json',result); self.event('cleanup',**result)
         assert not survivors and closed and mesh_diff.returncode==0, 'cleanup verification failed'
 
