@@ -644,5 +644,411 @@
     "params": {
       "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1"
     }
+  },
+  {
+    "emittedAtMs": 1789110780244,
+    "method": "remoteControl/status/changed",
+    "params": {
+      "environmentId": null,
+      "serverName": "whocares",
+      "status": "disabled"
+    }
+  },
+  {
+    "emittedAtMs": 1789110780306,
+    "method": "deprecationNotice",
+    "params": {
+      "details": null,
+      "summary": "Full-history hydration is deprecated for paginated threads; use `excludeTurns: true`, then page with `thread/turns/list` and `thread/items/list`."
+    }
+  },
+  {
+    "emittedAtMs": 1789110782706,
+    "method": "mcpServer/startupStatus/updated",
+    "params": {
+      "error": null,
+      "failureReason": null,
+      "name": "codex_apps",
+      "status": "starting",
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1"
+    }
+  },
+  {
+    "emittedAtMs": 1789110782805,
+    "method": "thread/status/changed",
+    "params": {
+      "status": {
+        "type": "idle"
+      },
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1"
+    }
+  },
+  {
+    "emittedAtMs": 1789110782811,
+    "method": "mcpServer/startupStatus/updated",
+    "params": {
+      "error": null,
+      "failureReason": null,
+      "name": "codex_apps",
+      "status": "ready",
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1"
+    }
+  },
+  {
+    "emittedAtMs": 1789110782905,
+    "method": "thread/goal/cleared",
+    "params": {
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1"
+    }
+  },
+  {
+    "emittedAtMs": 1789110783306,
+    "method": "thread/status/changed",
+    "params": {
+      "status": {
+        "activeFlags": [],
+        "type": "active"
+      },
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1"
+    }
+  },
+  {
+    "emittedAtMs": 1789110783306,
+    "method": "turn/started",
+    "params": {
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1",
+      "turn": {
+        "completedAt": null,
+        "durationMs": null,
+        "error": null,
+        "id": "01a08f50-0c1f-7570-9170-48b31ff5d363",
+        "items": [],
+        "itemsView": "notLoaded",
+        "startedAt": 1789110783,
+        "status": "inProgress"
+      }
+    }
+  },
+  {
+    "emittedAtMs": 1789110784205,
+    "method": "thread/goal/cleared",
+    "params": {
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1"
+    }
+  },
+  {
+    "emittedAtMs": 1789110784507,
+    "method": "item/started",
+    "params": {
+      "item": {
+        "clientId": null,
+        "content": [
+          {
+            "text": "[taurhaus] recovery_card\nIdentity: beta on l4-resume; key={\"card_schema\":1,\"recipient\":[\"7d7450a4f6d88d6b91a3b52f13e8d5845f6f139c220d4af726d790d7b0dea3a4\",\"0de5e518-37d2-475c-94a2-c924019734f5\"],\"context\":[3,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-l4-run13-y3brga1b/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-l4-run13-y3brga1b/claude\",\"harness_account_root\":\"/tmp/th-l4-run13-y3brga1b/codex\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-l4-run13-y3brga1b/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"66cbae1331c74e3410154db1011b7b55d2ac62b7a5876c76e15a2fe75e7d8824\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: 275beaad4d9ac4a13f186d717d44827e9491b69e1d3675d2b8b1e92656b92b4c; source=682540e4a3f9cfbca660a5add5db7fa379ff474f5fe7c2f18798f74d7e72c755; audience=unavailable\nProject cwd: /tmp/th-l4-run13-y3brga1b/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: low; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-11 07:13:02.913333745 UTC\nCurrent task: # \u2014 \nExecution mode: ; Validation expectation: ; Response expectation: ; Adjacent fix policy: ; Override allowed: false; Override reason: none\nFocal files: unavailable\nRole: unavailable\nPurpose: This is an isolated messaging trial. Reply briefly (at most 40 words). When a message assigns you a task, run exactly the mesh lifecycle commands it names. Never touch files. Do not send unsolicited messages.\n\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.",
+            "text_elements": [],
+            "type": "text"
+          }
+        ],
+        "id": "01a08f50-11fb-7082-aae4-cc81183c6f22",
+        "type": "userMessage"
+      },
+      "startedAtMs": 1789110784507,
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1",
+      "turnId": "01a08f50-0c1f-7570-9170-48b31ff5d363"
+    }
+  },
+  {
+    "emittedAtMs": 1789110785708,
+    "method": "remoteControl/status/changed",
+    "params": {
+      "environmentId": null,
+      "serverName": "whocares",
+      "status": "disabled"
+    }
+  },
+  {
+    "emittedAtMs": 1789110785809,
+    "method": "deprecationNotice",
+    "params": {
+      "details": null,
+      "summary": "Full-history hydration is deprecated for paginated threads; use `excludeTurns: true`, then page with `thread/turns/list` and `thread/items/list`."
+    }
+  },
+  {
+    "emittedAtMs": 1789110786308,
+    "method": "thread/goal/cleared",
+    "params": {
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1"
+    }
+  },
+  {
+    "emittedAtMs": 1789110786910,
+    "method": "item/started",
+    "params": {
+      "item": {
+        "delivery": null,
+        "id": "msg_0898e4da6591452e016aa3a9fcf18887d296a9fa4de60c20a2",
+        "memoryCitation": null,
+        "phase": "final_answer",
+        "questions": null,
+        "text": "",
+        "type": "agentMessage"
+      },
+      "startedAtMs": 1789110786909,
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1",
+      "turnId": "01a08f50-0c1f-7570-9170-48b31ff5d363"
+    }
+  },
+  {
+    "emittedAtMs": 1789110787297,
+    "method": "item/completed",
+    "params": {
+      "completedAtMs": 1789110787295,
+      "item": {
+        "delivery": null,
+        "id": "msg_0898e4da6591452e016aa3a9fcf18887d296a9fa4de60c20a2",
+        "memoryCitation": null,
+        "phase": "final_answer",
+        "questions": null,
+        "text": "Unassigned state preserved. Team lead, please provide the assignment identity, release signal, and required context.",
+        "type": "agentMessage"
+      },
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1",
+      "turnId": "01a08f50-0c1f-7570-9170-48b31ff5d363"
+    }
+  },
+  {
+    "emittedAtMs": 1789110787612,
+    "method": "thread/tokenUsage/updated",
+    "params": {
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1",
+      "tokenUsage": {
+        "last": {
+          "cacheWriteInputTokens": 0,
+          "cachedInputTokens": 11008,
+          "inputTokens": 12113,
+          "outputTokens": 25,
+          "reasoningOutputTokens": 0,
+          "totalTokens": 12138
+        },
+        "modelContextWindow": 31129,
+        "total": {
+          "cacheWriteInputTokens": 0,
+          "cachedInputTokens": 11008,
+          "inputTokens": 12113,
+          "outputTokens": 25,
+          "reasoningOutputTokens": 0,
+          "totalTokens": 12138
+        }
+      },
+      "turnId": "01a08f50-0c1f-7570-9170-48b31ff5d363"
+    }
+  },
+  {
+    "emittedAtMs": 1789110787812,
+    "method": "thread/status/changed",
+    "params": {
+      "status": {
+        "type": "idle"
+      },
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1"
+    }
+  },
+  {
+    "emittedAtMs": 1789110787812,
+    "method": "turn/completed",
+    "params": {
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1",
+      "turn": {
+        "completedAt": 1789110787,
+        "durationMs": 4606,
+        "error": null,
+        "id": "01a08f50-0c1f-7570-9170-48b31ff5d363",
+        "items": [
+          {
+            "delivery": null,
+            "id": "msg_0898e4da6591452e016aa3a9fcf18887d296a9fa4de60c20a2",
+            "memoryCitation": null,
+            "phase": "final_answer",
+            "questions": null,
+            "text": "Unassigned state preserved. Team lead, please provide the assignment identity, release signal, and required context.",
+            "type": "agentMessage"
+          }
+        ],
+        "itemsView": "summary",
+        "startedAt": 1789110783,
+        "status": "completed"
+      }
+    }
+  },
+  {
+    "emittedAtMs": 1789110788313,
+    "method": "thread/status/changed",
+    "params": {
+      "status": {
+        "activeFlags": [],
+        "type": "active"
+      },
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1"
+    }
+  },
+  {
+    "emittedAtMs": 1789110788313,
+    "method": "turn/started",
+    "params": {
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1",
+      "turn": {
+        "completedAt": null,
+        "durationMs": null,
+        "error": null,
+        "id": "01a08f50-202a-76f2-93d1-e4de51923c65",
+        "items": [],
+        "itemsView": "notLoaded",
+        "startedAt": 1789110788,
+        "status": "inProgress"
+      }
+    }
+  },
+  {
+    "emittedAtMs": 1789110788712,
+    "method": "item/started",
+    "params": {
+      "item": {
+        "clientId": null,
+        "content": [
+          {
+            "text": "[mesh message data] {\"assignment\":null,\"author\":\"lead\",\"body\":\"ACTION REQUIRED: Reply exactly L4_pending_beta_d67235. No tools are needed for this marker.\",\"delivery_id\":\"696f2870-6f5e-4fe3-9e2a-ef26a67f7452\",\"expectation\":null,\"message_id\":\"78a247b1-dc04-4d3c-a95d-53e3882d6e84\",\"metadata\":{},\"task\":null}\n",
+            "text_elements": [],
+            "type": "text"
+          }
+        ],
+        "id": "01a08f50-2268-7503-a7d8-970be1bb2f6d",
+        "type": "userMessage"
+      },
+      "startedAtMs": 1789110788712,
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1",
+      "turnId": "01a08f50-202a-76f2-93d1-e4de51923c65"
+    }
+  },
+  {
+    "emittedAtMs": 1789110788716,
+    "method": "item/completed",
+    "params": {
+      "completedAtMs": 1789110788712,
+      "item": {
+        "clientId": null,
+        "content": [
+          {
+            "text": "[mesh message data] {\"assignment\":null,\"author\":\"lead\",\"body\":\"ACTION REQUIRED: Reply exactly L4_pending_beta_d67235. No tools are needed for this marker.\",\"delivery_id\":\"696f2870-6f5e-4fe3-9e2a-ef26a67f7452\",\"expectation\":null,\"message_id\":\"78a247b1-dc04-4d3c-a95d-53e3882d6e84\",\"metadata\":{},\"task\":null}\n",
+            "text_elements": [],
+            "type": "text"
+          }
+        ],
+        "id": "01a08f50-2268-7503-a7d8-970be1bb2f6d",
+        "type": "userMessage"
+      },
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1",
+      "turnId": "01a08f50-202a-76f2-93d1-e4de51923c65"
+    }
+  },
+  {
+    "emittedAtMs": 1789110790541,
+    "method": "item/started",
+    "params": {
+      "item": {
+        "delivery": null,
+        "id": "msg_0898e4da6591452e016aa3aa00a7c087d28e8baf35f9d507ba",
+        "memoryCitation": null,
+        "phase": "final_answer",
+        "questions": null,
+        "text": "",
+        "type": "agentMessage"
+      },
+      "startedAtMs": 1789110790541,
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1",
+      "turnId": "01a08f50-202a-76f2-93d1-e4de51923c65"
+    }
+  },
+  {
+    "emittedAtMs": 1789110790737,
+    "method": "item/completed",
+    "params": {
+      "completedAtMs": 1789110790734,
+      "item": {
+        "delivery": null,
+        "id": "msg_0898e4da6591452e016aa3aa00a7c087d28e8baf35f9d507ba",
+        "memoryCitation": null,
+        "phase": "final_answer",
+        "questions": null,
+        "text": "L4_pending_beta_d67235",
+        "type": "agentMessage"
+      },
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1",
+      "turnId": "01a08f50-202a-76f2-93d1-e4de51923c65"
+    }
+  },
+  {
+    "emittedAtMs": 1789110790915,
+    "method": "thread/tokenUsage/updated",
+    "params": {
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1",
+      "tokenUsage": {
+        "last": {
+          "cacheWriteInputTokens": 0,
+          "cachedInputTokens": 11008,
+          "inputTokens": 12253,
+          "outputTokens": 11,
+          "reasoningOutputTokens": 0,
+          "totalTokens": 12264
+        },
+        "modelContextWindow": 31129,
+        "total": {
+          "cacheWriteInputTokens": 0,
+          "cachedInputTokens": 22016,
+          "inputTokens": 24366,
+          "outputTokens": 36,
+          "reasoningOutputTokens": 0,
+          "totalTokens": 24402
+        }
+      },
+      "turnId": "01a08f50-202a-76f2-93d1-e4de51923c65"
+    }
+  },
+  {
+    "emittedAtMs": 1789110791115,
+    "method": "thread/status/changed",
+    "params": {
+      "status": {
+        "type": "idle"
+      },
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1"
+    }
+  },
+  {
+    "emittedAtMs": 1789110791115,
+    "method": "turn/completed",
+    "params": {
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1",
+      "turn": {
+        "completedAt": 1789110790,
+        "durationMs": 2706,
+        "error": null,
+        "id": "01a08f50-202a-76f2-93d1-e4de51923c65",
+        "items": [
+          {
+            "delivery": null,
+            "id": "msg_0898e4da6591452e016aa3aa00a7c087d28e8baf35f9d507ba",
+            "memoryCitation": null,
+            "phase": "final_answer",
+            "questions": null,
+            "text": "L4_pending_beta_d67235",
+            "type": "agentMessage"
+          }
+        ],
+        "itemsView": "summary",
+        "startedAt": 1789110788,
+        "status": "completed"
+      }
+    }
   }
 ]

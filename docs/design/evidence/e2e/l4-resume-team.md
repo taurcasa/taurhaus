@@ -1724,7 +1724,7 @@ change, controller test suite, or offline audit was added.
 | 1. Initialize and exchange/read both markers | PASS | [Raw outcome](l4-resume-team/run13/step1-outcome.json), [ready identity](l4-resume-team/run13/step1-ready-session.json), both transport receipts and explicit reads in [state/journal](l4-resume-team/run13/step1-state.json). Runtime; $0.003932600, 7/16 conservative inputs. |
 | 2. Stop every seat; retain resumable identity | PASS | [Raw outcome](l4-resume-team/run13/step2-outcome.json), [converged alpha record](l4-resume-team/run13/step2-alpha-converged-runtime-record.json), [zero-seat census](l4-resume-team/run13/step2-stop-poll.json). Runtime; spend unchanged. |
 | 3. Accept both stopped-seat backlogs | PASS | [Alpha](l4-resume-team/run13/step3-alpha-backlog.json) and [beta](l4-resume-team/run13/step3-beta-backlog.json): accepted/pending, no presentation, stopped-runtime defer reasons. Runtime; spend unchanged. |
-| 4. Resume the canonical team once | PENDING | Awaiting live result. |
+| 4. Resume the canonical team once | PASS | [Status sequence/report](l4-resume-team/run13/step4-operation.json): lead, alpha and beta resumed; team daemon started; no failed members or owner warning. [Runtime snapshot](l4-resume-team/run13/step4-state.json). |
 | 5. Verify identities, cards and backlog delivery | PENDING | Awaiting live result. |
 | 6. Explicit reads, no replay or member executors | PENDING | Awaiting live result. |
 

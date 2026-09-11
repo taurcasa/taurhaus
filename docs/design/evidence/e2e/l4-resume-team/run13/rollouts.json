@@ -462,6 +462,202 @@
         "duration_ms": 6586,
         "time_to_first_token_ms": 1657
       }
+    },
+    {
+      "timestamp": "2026-09-11T07:13:01.163Z",
+      "ordinal": 42,
+      "type": "event_msg",
+      "payload": {
+        "type": "task_started",
+        "turn_id": "01a08f50-04e1-7702-8478-ad31029a027e",
+        "started_at": 1789110781,
+        "model_context_window": 31129,
+        "collaboration_mode_kind": "default"
+      }
+    },
+    {
+      "timestamp": "2026-09-11T07:13:01.534Z",
+      "ordinal": 44,
+      "type": "response_item",
+      "payload": {
+        "type": "message",
+        "id": "msg_01a08f50-065e-7a92-80b3-3cbddda0d6d9",
+        "role": "user",
+        "content": [
+          {
+            "type": "input_text",
+            "text": "[mesh] You are \"alpha\" on team \"l4-resume\". Inbox update from lead. Summary: L4 pending marker. Check inbox and act if the message requests it: mesh read --unread --mark-read --team l4-resume --name alpha"
+          }
+        ],
+        "internal_chat_message_metadata_passthrough": {
+          "turn_id": "01a08f50-04e1-7702-8478-ad31029a027e",
+          "create_time": 1789110781.5345263,
+          "content_item_kinds": [
+            "user.text"
+          ]
+        }
+      }
+    },
+    {
+      "timestamp": "2026-09-11T07:13:02.796Z",
+      "ordinal": 47,
+      "type": "response_item",
+      "payload": {
+        "type": "reasoning",
+        "id": "rs_01b30599c7f23e4c016aa3a9f8a04887d280af49f4479af44d",
+        "summary": [],
+        "encrypted_content": "gAAAAABqo6n4tKJ009oGAFh1ugBxTXtTa0fywDg3DjZ7sIeMZ2ur-kuP0sksKe3mqOjUZT83_y0PhL99WLpJHTLsFqk3CYyWKhzMveaTMgtoWKYSaDvoL4RZqxVK4M1Z60XSxfLSOtPNJK-bl7KWzlvtVXP4jZMSOzAcMM0UxfV7U6YvumbpLIqQBk3weqGHJFOMBObUS1r6Tl6NDsltfkvYPRfr50yCcT7uGYJKNvSnSsEhJAlBpok70XdTZVK9qOGjcRLHHVekPNvd7RUEpp0PyGbi77Fa7l5dgkDbuSUM5Iu-mHHg4d0ni5E9pWVtBVxKxmz2IKqqXOj5frpKGazzIuAnDNfghKronZjbOo-az73GCAyltX5HH_-TlK3diytjzrzi__vEjlEaDVQkkdpu5dI8D5DWULGOr5WRjW5S6L-Ap8KYvB36LgeGWYp2jsoPpWfVxRfc8n7pzMHi9kpFIUr56v-GK_203NIhNzf99Y-hY6ZLomO0KPY6h64Rw7wixHoaYeUNC2y8h0jmZyrGmmaCJdWtJRJltZtz_N5WREEhDwEA3gezUaUT8zwmnMwFkHWQMkpko_nfFtrcBSExBRvYHAOBAljfCdZalQHQkfzTv295-RqC1NHtgiQszcohDBOVZOyaWNWouMEGKTWqNobSS3TntGY8LgWVytcov6TBH1kWQ7a_4LYgsU2Rui4Mvzl0yPgLt8lRDvtIOWMy8jWwH1Cxg5yIJUAfQ37T2o8zSUhASnJvYo5mL8wESkcf88Yg16-UB68LrwBypCRobXEmudjwh8SG9jSfexSYF0-FrkE7KQYMPl1VxUTcMvhh1FdlNqj0eS5hS6B_3CbE-b8H3b-Ba7bWgjbd-ZqKDde5GN7axp-WxeaVE46jtNmkCBTPAUpud7ssF2u94fMqdyc_fZWqIwl49pEQM6RvvJBeINb7X4YLx2rjpN50yeJ94YuF1_4qrvYK3v5Jp-XdODGY_rZv-0e8yB3md8uVNk1OQlgKzJ6_rulbkU818VDO6Ave_UTEbia2XHFv3L2goGSal0CgWGFhPAJWN_QDS7gYsc4QHIKBypHdVRP3K9IWUdCinJIigreicF0b8Vb8iCE_QLU4uWTgp8fZGTj9XNePO-c-sWx8gah8K0dTY9mGcjJsnwzo1eBac1O84dbqTZJcvBuBrg5EeCWodLwmvSf-lbBc9fKjPXr8PVj5ZPxxkC9zwwYbZmGxVsrcORR18n1VoE-5XvRuBioU4qnTqKI6e1oSV8dr2BSLSZMjYzew41ptyut1sw6hCKP1zbTTHhny1Bda1A==",
+        "internal_chat_message_metadata_passthrough": {
+          "turn_id": "01a08f50-04e1-7702-8478-ad31029a027e"
+        }
+      }
+    },
+    {
+      "timestamp": "2026-09-11T07:13:03.980Z",
+      "ordinal": 48,
+      "type": "response_item",
+      "payload": {
+        "type": "custom_tool_call",
+        "id": "ctc_01b30599c7f23e4c016aa3a9f8e97487d2b3c347e5a7dbb2be",
+        "status": "completed",
+        "call_id": "call_2hqbxXuFoRyd7sRXFuKmv7Yk",
+        "name": "exec",
+        "input": "const r = await tools.exec_command({cmd:\"mesh read --unread --mark-read --team l4-resume --name alpha\",workdir:\"/tmp/th-l4-run13-y3brga1b/project\",yield_time_ms:10000,max_output_tokens:2000}); text(r.output);\n",
+        "internal_chat_message_metadata_passthrough": {
+          "turn_id": "01a08f50-04e1-7702-8478-ad31029a027e",
+          "create_time": 1789110776.270292
+        }
+      }
+    },
+    {
+      "timestamp": "2026-09-11T07:13:04.173Z",
+      "ordinal": 51,
+      "type": "response_item",
+      "payload": {
+        "type": "custom_tool_call_output",
+        "id": "ctco_01a08f50-10ad-7543-93ad-28111ea75440",
+        "call_id": "call_2hqbxXuFoRyd7sRXFuKmv7Yk",
+        "output": [
+          {
+            "type": "input_text",
+            "text": "Script completed\nWall time 0.2 seconds\nOutput:\n"
+          },
+          {
+            "type": "input_text",
+            "text": "* [2026-09-11T07:12:29] lead: ACTION REQUIRED: Reply exactly L4_pending_alpha_bc5a74. No tools are needed for this marker.\n* [2026-09-11T07:12:59] lead: [taurhaus] recovery_card\nIdentity: alpha on l4-resume; key={\"card_schema\":1,\"recipient\":[\"7d7450a4f6d88d6b91a3b52f13e8d5845f6f139c220d4af726d790d7b0dea3a4\",\"6482fdcc-479c-47fd-8c4b-a98e0c5d6f83\"],\"context\":[2,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-l4-run13-y3brga1b/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-l4-run13-y3brga1b/claude\",\"harness_account_root\":\"/tmp/th-l4-run13-y3brga1b/codex\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-l4-run13-y3brga1b/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"66cbae1331c74e3410154db1011b7b55d2ac62b7a5876c76e15a2fe75e7d8824\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: 13e286e43247340c92d9edc13e1fe3821fe4377bf38009d43c340ce05aaf7131; source=682540e4a3f9cfbca660a5add5db7fa379ff474f5fe7c2f18798f74d7e72c755; audience=unavailable\nProject cwd: /tmp/th-l4-run13-y3brga1b/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: low; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-11 07:12:59.941008573 UTC\nCurrent task: # \u2014 \nExecution mode: ; Validation expectation: ; Response expectation: ; Adjacent fix policy: ; Override allowed: false; Override reason: none\nFocal files: unavailable\nRole: unavailable\nPurpose: This is an isolated messaging trial. Reply briefly (at most 40 words). When a message assigns you a task, run exactly the mesh lifecycle commands it names. Never touch files. Do not send unsolicited messages.\n\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.\ncursor: \"<signed-read-cursor-redacted>\"\n"
+          }
+        ],
+        "internal_chat_message_metadata_passthrough": {
+          "turn_id": "01a08f50-04e1-7702-8478-ad31029a027e",
+          "create_time": 1789110784.1732652
+        }
+      }
+    },
+    {
+      "timestamp": "2026-09-11T07:13:04.175Z",
+      "ordinal": 52,
+      "type": "event_msg",
+      "payload": {
+        "type": "token_count",
+        "info": {
+          "total_token_usage": {
+            "input_tokens": 11999,
+            "cached_input_tokens": 11008,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 82,
+            "reasoning_output_tokens": 7,
+            "total_tokens": 12081
+          },
+          "last_token_usage": {
+            "input_tokens": 11999,
+            "cached_input_tokens": 11008,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 82,
+            "reasoning_output_tokens": 7,
+            "total_tokens": 12081
+          },
+          "model_context_window": 31129
+        }
+      }
+    },
+    {
+      "timestamp": "2026-09-11T07:13:05.046Z",
+      "ordinal": 54,
+      "type": "response_item",
+      "payload": {
+        "type": "reasoning",
+        "id": "rs_01b30599c7f23e4c016aa3a9faf65087d2b31f85da9e7f2899",
+        "summary": [],
+        "encrypted_content": "gAAAAABqo6n7QiqxD9bkNJUT2HNTWgxNZVKVUdPS5aypVB28FDWziE8lVzOheNn7Vq26QKZSd9ATiWg0SAyD7aobnTpBI1fHPL-YbedYawoFyDt2h3RxDWGnXNo1WvyycLFC77zsi9TNenckbKGkh45BD48dKHkR26KsjuyppfM2WjyRzr42OZXEc96yZSypRdJphRv61CgHmSO-7aZAfYt7IseWTiE7cbtArWfI9v7UV2OsrzgeaBDmJI9ZDG2gvpRYonyMRg5U7iHWaqvbzVNVBAd1SGWxwmxPkEzR6ioYSJ13GA1CRVccgn5qsH4ndPaoyYfAUlnT57nZ1rCTlj4mk2tvXA2claEhbnXMcPouYm4RfxgvhswSW2fudMs3xmy32XlnyMr3jFBH7JvrphNmZsrFlglLQUaoLssLC4Rotfg3daSJkhJtiqfbK7whsLndpPxhQEkwrDXthwGKqFhJd0AU1eNezbCFlfbhY03chEzene8G6iPIad-tSG88Eq5ON3OkJ2NSvOI35wgQUr4_wiN3WSetoE_T2u6-42RpJj_6vWKZO1mN5GhbCE79rilsIi9lfu_MpXwaTe292j33ANyOtjHoHhQjdTQuthvpOcHIRvBJfNqVhUQy59WYWL4uWr25cY-wJsoQejJxzKE9qXHBy6XyEC3lXMAQfZ6Ju3jzs2YuG9zDMeG6o2lZpzfBvcKRG6QJD6cgDWGM2hiFTYM6M4j7ledgTQLThmWBk-0vUzmiHEGSyMj2xs69FmoIMWx6SYZh-biWDGvbTRExeuv_0DvxGnXZBf7foRFMclOAXd95PjdneDAn2CktDg6GY7bkzYLVxjsX0L9soRT8IFNc1UQ2L3y70gv9OqNysmb4v_ljnJgg8eF6uA7j0Q2-bpYfCiL4JBBKX7cJBoaFkUNS5368lkbQFfkyscYvJrTYCdO-FBQSLeGsensH9Oot_mQ_lbtXvuIYWYgUVUvAqtj2Zb8T0SXgESD8ecTbKz9f3M8fn5Aih5iDOLcjRfBkKkDc84K4neNv0l1KVhNi6NCVesBfXfhVkgskLsZHrL1Fpp2hLU8GQUdLYLjc5aUKx2YMUPg4Et6CvbqE9Wp4cuL6IxUHmR5u-KVza8CZMbhIEwhosUQqfWZqjChMEStBgctz7lHCLOxmRiKu0yR_6FVorWE1Jks-HeKkD7XP_2Dhys2t_Ujg8zco366n06SomuSCrgFVnJwsdd0ZRMRlRwVBoFDgdH6mPqs8rVt_0yF-bi19-6Moud8TYzLs0Ugr3Mzqv618OTC7LxF8uLelkQqrKKzS94kJNC5k5GenCfqVGsaQbpc=",
+        "internal_chat_message_metadata_passthrough": {
+          "turn_id": "01a08f50-04e1-7702-8478-ad31029a027e"
+        }
+      }
+    },
+    {
+      "timestamp": "2026-09-11T07:13:05.237Z",
+      "ordinal": 56,
+      "type": "response_item",
+      "payload": {
+        "type": "message",
+        "id": "msg_01b30599c7f23e4c016aa3a9fb288487d2af6a729f3eccfada",
+        "role": "assistant",
+        "content": [
+          {
+            "type": "output_text",
+            "text": "L4_pending_alpha_bc5a74"
+          }
+        ],
+        "phase": "final_answer",
+        "internal_chat_message_metadata_passthrough": {
+          "turn_id": "01a08f50-04e1-7702-8478-ad31029a027e",
+          "create_time": 1789110778.682947,
+          "content_item_kinds": [
+            "unknown"
+          ]
+        }
+      }
+    },
+    {
+      "timestamp": "2026-09-11T07:13:05.248Z",
+      "ordinal": 58,
+      "type": "event_msg",
+      "payload": {
+        "type": "token_count",
+        "info": {
+          "total_token_usage": {
+            "input_tokens": 25589,
+            "cached_input_tokens": 22016,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 104,
+            "reasoning_output_tokens": 15,
+            "total_tokens": 25693
+          },
+          "last_token_usage": {
+            "input_tokens": 13590,
+            "cached_input_tokens": 11008,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 22,
+            "reasoning_output_tokens": 8,
+            "total_tokens": 13612
+          },
+          "model_context_window": 31129
+        }
+      }
+    },
+    {
+      "timestamp": "2026-09-11T07:13:05.254Z",
+      "ordinal": 59,
+      "type": "event_msg",
+      "payload": {
+        "type": "task_complete",
+        "turn_id": "01a08f50-04e1-7702-8478-ad31029a027e",
+        "last_agent_message": "L4_pending_alpha_bc5a74",
+        "started_at": 1789110781,
+        "completed_at": 1789110785,
+        "duration_ms": 4092,
+        "time_to_first_token_ms": 1635
+      }
     }
   ],
   "01a08f4e-4698-7613-bf47-74bf5abf63b1": [
@@ -762,6 +958,206 @@
         "completed_at": 1789110693,
         "duration_ms": 2697,
         "time_to_first_token_ms": 2294
+      }
+    },
+    {
+      "timestamp": "2026-09-11T07:13:03.204Z",
+      "ordinal": 26,
+      "type": "event_msg",
+      "payload": {
+        "type": "task_started",
+        "turn_id": "01a08f50-0c1f-7570-9170-48b31ff5d363",
+        "started_at": 1789110783,
+        "model_context_window": 31129,
+        "collaboration_mode_kind": "default"
+      }
+    },
+    {
+      "timestamp": "2026-09-11T07:13:04.407Z",
+      "ordinal": 28,
+      "type": "response_item",
+      "payload": {
+        "type": "message",
+        "id": "msg_01a08f50-1197-7bc1-abbc-ff1dde2a6528",
+        "role": "user",
+        "content": [
+          {
+            "type": "input_text",
+            "text": "[taurhaus] recovery_card\nIdentity: beta on l4-resume; key={\"card_schema\":1,\"recipient\":[\"7d7450a4f6d88d6b91a3b52f13e8d5845f6f139c220d4af726d790d7b0dea3a4\",\"0de5e518-37d2-475c-94a2-c924019734f5\"],\"context\":[3,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-l4-run13-y3brga1b/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-l4-run13-y3brga1b/claude\",\"harness_account_root\":\"/tmp/th-l4-run13-y3brga1b/codex\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-l4-run13-y3brga1b/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"66cbae1331c74e3410154db1011b7b55d2ac62b7a5876c76e15a2fe75e7d8824\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: 275beaad4d9ac4a13f186d717d44827e9491b69e1d3675d2b8b1e92656b92b4c; source=682540e4a3f9cfbca660a5add5db7fa379ff474f5fe7c2f18798f74d7e72c755; audience=unavailable\nProject cwd: /tmp/th-l4-run13-y3brga1b/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: low; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-11 07:13:02.913333745 UTC\nCurrent task: # \u2014 \nExecution mode: ; Validation expectation: ; Response expectation: ; Adjacent fix policy: ; Override allowed: false; Override reason: none\nFocal files: unavailable\nRole: unavailable\nPurpose: This is an isolated messaging trial. Reply briefly (at most 40 words). When a message assigns you a task, run exactly the mesh lifecycle commands it names. Never touch files. Do not send unsolicited messages.\n\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context."
+          }
+        ],
+        "internal_chat_message_metadata_passthrough": {
+          "turn_id": "01a08f50-0c1f-7570-9170-48b31ff5d363",
+          "create_time": 1789110784.4073608,
+          "content_item_kinds": [
+            "user.text"
+          ]
+        }
+      }
+    },
+    {
+      "timestamp": "2026-09-11T07:13:07.297Z",
+      "ordinal": 31,
+      "type": "response_item",
+      "payload": {
+        "type": "message",
+        "id": "msg_0898e4da6591452e016aa3a9fcf18887d296a9fa4de60c20a2",
+        "role": "assistant",
+        "content": [
+          {
+            "type": "output_text",
+            "text": "Unassigned state preserved. Team lead, please provide the assignment identity, release signal, and required context."
+          }
+        ],
+        "phase": "final_answer",
+        "internal_chat_message_metadata_passthrough": {
+          "turn_id": "01a08f50-0c1f-7570-9170-48b31ff5d363",
+          "create_time": 1789110780.35514,
+          "content_item_kinds": [
+            "unknown"
+          ]
+        }
+      }
+    },
+    {
+      "timestamp": "2026-09-11T07:13:07.511Z",
+      "ordinal": 33,
+      "type": "event_msg",
+      "payload": {
+        "type": "token_count",
+        "info": {
+          "total_token_usage": {
+            "input_tokens": 12113,
+            "cached_input_tokens": 11008,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 25,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 12138
+          },
+          "last_token_usage": {
+            "input_tokens": 12113,
+            "cached_input_tokens": 11008,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 25,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 12138
+          },
+          "model_context_window": 31129
+        }
+      }
+    },
+    {
+      "timestamp": "2026-09-11T07:13:07.710Z",
+      "ordinal": 34,
+      "type": "event_msg",
+      "payload": {
+        "type": "task_complete",
+        "turn_id": "01a08f50-0c1f-7570-9170-48b31ff5d363",
+        "last_agent_message": "Unassigned state preserved. Team lead, please provide the assignment identity, release signal, and required context.",
+        "started_at": 1789110783,
+        "completed_at": 1789110787,
+        "duration_ms": 4606,
+        "time_to_first_token_ms": 3805
+      }
+    },
+    {
+      "timestamp": "2026-09-11T07:13:08.213Z",
+      "ordinal": 35,
+      "type": "event_msg",
+      "payload": {
+        "type": "task_started",
+        "turn_id": "01a08f50-202a-76f2-93d1-e4de51923c65",
+        "started_at": 1789110788,
+        "model_context_window": 31129,
+        "collaboration_mode_kind": "default"
+      }
+    },
+    {
+      "timestamp": "2026-09-11T07:13:08.623Z",
+      "ordinal": 37,
+      "type": "response_item",
+      "payload": {
+        "type": "message",
+        "id": "msg_01a08f50-220f-7231-971b-4623cf7c971d",
+        "role": "user",
+        "content": [
+          {
+            "type": "input_text",
+            "text": "[mesh message data] {\"assignment\":null,\"author\":\"lead\",\"body\":\"ACTION REQUIRED: Reply exactly L4_pending_beta_d67235. No tools are needed for this marker.\",\"delivery_id\":\"696f2870-6f5e-4fe3-9e2a-ef26a67f7452\",\"expectation\":null,\"message_id\":\"78a247b1-dc04-4d3c-a95d-53e3882d6e84\",\"metadata\":{},\"task\":null}\n"
+          }
+        ],
+        "internal_chat_message_metadata_passthrough": {
+          "turn_id": "01a08f50-202a-76f2-93d1-e4de51923c65",
+          "create_time": 1789110788.6230335,
+          "content_item_kinds": [
+            "user.text"
+          ]
+        }
+      }
+    },
+    {
+      "timestamp": "2026-09-11T07:13:10.737Z",
+      "ordinal": 40,
+      "type": "response_item",
+      "payload": {
+        "type": "message",
+        "id": "msg_0898e4da6591452e016aa3aa00a7c087d28e8baf35f9d507ba",
+        "role": "assistant",
+        "content": [
+          {
+            "type": "output_text",
+            "text": "L4_pending_beta_d67235"
+          }
+        ],
+        "phase": "final_answer",
+        "internal_chat_message_metadata_passthrough": {
+          "turn_id": "01a08f50-202a-76f2-93d1-e4de51923c65",
+          "create_time": 1789110783.544426,
+          "content_item_kinds": [
+            "unknown"
+          ]
+        }
+      }
+    },
+    {
+      "timestamp": "2026-09-11T07:13:10.816Z",
+      "ordinal": 42,
+      "type": "event_msg",
+      "payload": {
+        "type": "token_count",
+        "info": {
+          "total_token_usage": {
+            "input_tokens": 24366,
+            "cached_input_tokens": 22016,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 36,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 24402
+          },
+          "last_token_usage": {
+            "input_tokens": 12253,
+            "cached_input_tokens": 11008,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 11,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 12264
+          },
+          "model_context_window": 31129
+        }
+      }
+    },
+    {
+      "timestamp": "2026-09-11T07:13:10.919Z",
+      "ordinal": 43,
+      "type": "event_msg",
+      "payload": {
+        "type": "task_complete",
+        "turn_id": "01a08f50-202a-76f2-93d1-e4de51923c65",
+        "last_agent_message": "L4_pending_beta_d67235",
+        "started_at": 1789110788,
+        "completed_at": 1789110790,
+        "duration_ms": 2706,
+        "time_to_first_token_ms": 2339
       }
     }
   ]

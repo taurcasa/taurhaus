@@ -1,10 +1,13 @@
 {
-  "paid_inputs": 4,
+  "paid_inputs": 7,
   "turn_ids": [
     "01a08f4e-4ffd-7a91-848a-c89b7554349a",
     "01a08f4e-5bf2-7340-a087-86dbfa2d8bcb",
     "01a08f4e-80d0-7b40-9aeb-c2c992324733",
-    "01a08f4e-a2ed-7103-ba03-5e6fbcf43a32"
+    "01a08f4e-a2ed-7103-ba03-5e6fbcf43a32",
+    "01a08f50-04e1-7702-8478-ad31029a027e",
+    "01a08f50-0c1f-7570-9170-48b31ff5d363",
+    "01a08f50-202a-76f2-93d1-e4de51923c65"
   ],
   "turns": [
     {
@@ -28,6 +31,16 @@
       "conservative_usd": 0.0276684
     },
     {
+      "turn_id": "01a08f50-04e1-7702-8478-ad31029a027e",
+      "session_id": "01a08f4e-46a0-7212-ac96-f37e4659e3ab",
+      "observer": "rollout-cumulative",
+      "input": 25589,
+      "cached_input": 22016,
+      "output": 104,
+      "api_equivalent_usd": 0.00127972,
+      "conservative_usd": 0.0308316
+    },
+    {
       "turn_id": "01a08f4e-4ffd-7a91-848a-c89b7554349a",
       "thread_id": "01a08f4e-4698-7613-bf47-74bf5abf63b1",
       "input": 11221,
@@ -46,14 +59,34 @@
       "observer": "host",
       "api_equivalent_usd": 0.00032036,
       "conservative_usd": 0.0136848
+    },
+    {
+      "turn_id": "01a08f50-0c1f-7570-9170-48b31ff5d363",
+      "thread_id": "01a08f4e-4698-7613-bf47-74bf5abf63b1",
+      "input": 12113,
+      "cached_input": 11008,
+      "output": 25,
+      "observer": "host",
+      "api_equivalent_usd": 0.00047116,
+      "conservative_usd": 0.0145656
+    },
+    {
+      "turn_id": "01a08f50-202a-76f2-93d1-e4de51923c65",
+      "thread_id": "01a08f4e-4698-7613-bf47-74bf5abf63b1",
+      "input": 12253,
+      "cached_input": 11008,
+      "output": 11,
+      "observer": "host",
+      "api_equivalent_usd": 0.00048236,
+      "conservative_usd": 0.0147168
     }
   ],
   "unmetered": [],
-  "api_equivalent_usd": 0.0039326,
-  "conservative_usd": 0.0793164,
+  "api_equivalent_usd": 0.00616584,
+  "conservative_usd": 0.1394304,
   "basis": "Prior trial packet Luna input/cached/output rates $0.20/$0.02/$1.20 per million; conservative all tokens at $1.20/M, not an invoice.",
-  "seat_start_reservations": 3,
-  "inputs_plus_conservative_starts": 7,
+  "seat_start_reservations": 5,
+  "inputs_plus_conservative_starts": 12,
   "model": "gpt-5.6-luna",
   "effort": "low",
   "max_inputs": 16,
@@ -62,10 +95,13 @@
     "01a08f4e-4ffd-7a91-848a-c89b7554349a",
     "01a08f4e-5bf2-7340-a087-86dbfa2d8bcb",
     "01a08f4e-80d0-7b40-9aeb-c2c992324733",
-    "01a08f4e-a2ed-7103-ba03-5e6fbcf43a32"
+    "01a08f4e-a2ed-7103-ba03-5e6fbcf43a32",
+    "01a08f50-04e1-7702-8478-ad31029a027e",
+    "01a08f50-0c1f-7570-9170-48b31ff5d363",
+    "01a08f50-202a-76f2-93d1-e4de51923c65"
   ],
   "attachment_generations": {
-    "alpha": 1,
-    "beta": 2
+    "alpha": 2,
+    "beta": 3
   }
 }
