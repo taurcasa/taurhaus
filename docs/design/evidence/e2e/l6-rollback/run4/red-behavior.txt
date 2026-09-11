@@ -1,0 +1,35 @@
+FFF
+======================================================================
+FAIL: test_attached_executor_matches_namespace_pid_pane_and_rc (rules_test.Run4Contract.test_attached_executor_matches_namespace_pid_pane_and_rc)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l6-rollback/docs/design/evidence/e2e/l6-rollback/run4/rules_test.py", line 33, in test_attached_executor_matches_namespace_pid_pane_and_rc
+    self.assertEqual(attached_executor(record,[row],'/scratch/mesh','rc','T'),row)
+AssertionError: None != {'pid': 900, 'namespace_pid': 34, 'argv':[90 chars]'rc'}
+
+======================================================================
+FAIL: test_downgrade_is_the_atomic_ownership_boundary (rules_test.Run4Contract.test_downgrade_is_the_atomic_ownership_boundary)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l6-rollback/docs/design/evidence/e2e/l6-rollback/run4/rules_test.py", line 16, in test_downgrade_is_the_atomic_ownership_boundary
+    downgrade_boundary(*args)
+  File "/home/mstie/projects/taurhaus-l6-rollback/docs/design/evidence/e2e/l6-rollback/run4/rules.py", line 3, in downgrade_boundary
+    assert config.get('messaging_format')==1,'required resulting format 1 not observed'
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: required resulting format 1 not observed
+
+======================================================================
+FAIL: test_same_owner_clears_marker_without_new_epoch_or_request (rules_test.Run4Contract.test_same_owner_clears_marker_without_new_epoch_or_request)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l6-rollback/docs/design/evidence/e2e/l6-rollback/run4/rules_test.py", line 25, in test_same_owner_clears_marker_without_new_epoch_or_request
+    same_owner_commit(before,after,0,True)
+  File "/home/mstie/projects/taurhaus-l6-rollback/docs/design/evidence/e2e/l6-rollback/run4/rules.py", line 6, in same_owner_commit
+    assert after.get('handoff'),'durable ownership handoff request not observed'
+           ^^^^^^^^^^^^^^^^^^^^
+AssertionError: durable ownership handoff request not observed
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.001s
+
+FAILED (failures=3)

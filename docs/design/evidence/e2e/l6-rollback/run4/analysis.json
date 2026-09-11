@@ -1,0 +1,239 @@
+{
+  "steps": [
+    {
+      "step": 1,
+      "outcome": "FAIL",
+      "classification": "taurhaus",
+      "reason": "alpha onboarding not delivered/completed with fresh idle activity"
+    },
+    {
+      "step": 2,
+      "outcome": "NOT RUN",
+      "reason": "blocked by step 1"
+    },
+    {
+      "step": 3,
+      "outcome": "NOT RUN",
+      "reason": "blocked by step 1"
+    },
+    {
+      "step": 4,
+      "outcome": "NOT RUN",
+      "reason": "blocked by step 1"
+    },
+    {
+      "step": 5,
+      "outcome": "NOT RUN",
+      "reason": "blocked by step 1"
+    }
+  ],
+  "controller": {
+    "exit": 1,
+    "last_step": 1,
+    "runtime_seconds": 93.99876712600235
+  },
+  "messages": {
+    "A": {
+      "outcome": "NOT SENT"
+    },
+    "B": {
+      "outcome": "NOT SENT"
+    },
+    "C": {
+      "outcome": "NOT SENT"
+    }
+  },
+  "metering": {
+    "paid_inputs": 1,
+    "turns": [
+      {
+        "turn_id": "01a08ed3-de6a-7853-b9d0-caed27de972a",
+        "usd": 0.00467732,
+        "completed": true,
+        "usage": {
+          "input_tokens": 70375,
+          "cached_input_tokens": 57856,
+          "output_tokens": 847
+        },
+        "conservative_usd": 0.0854664
+      },
+      {
+        "turn_id": "01a08ed3-e0cf-76f2-9104-9af1db1b7837",
+        "usd": null,
+        "completed": true,
+        "source": "notify-only",
+        "classification": "unknown-but-not-a-model-input"
+      }
+    ],
+    "usage_rows": [
+      {
+        "at": "2026-09-11T04:57:30.679Z",
+        "turn_id": "01a08ed3-de6a-7853-b9d0-caed27de972a",
+        "usage": {
+          "input_tokens": 9031,
+          "cached_input_tokens": 3840,
+          "output_tokens": 184
+        },
+        "usd": 0.0013358
+      },
+      {
+        "at": "2026-09-11T04:57:37.867Z",
+        "turn_id": "01a08ed3-de6a-7853-b9d0-caed27de972a",
+        "usage": {
+          "input_tokens": 11324,
+          "cached_input_tokens": 7936,
+          "output_tokens": 268
+        },
+        "usd": 0.00115792
+      },
+      {
+        "at": "2026-09-11T04:57:40.568Z",
+        "turn_id": "01a08ed3-de6a-7853-b9d0-caed27de972a",
+        "usage": {
+          "input_tokens": 11996,
+          "cached_input_tokens": 11008,
+          "output_tokens": 100
+        },
+        "usd": 0.00053776
+      },
+      {
+        "at": "2026-09-11T04:57:43.692Z",
+        "turn_id": "01a08ed3-de6a-7853-b9d0-caed27de972a",
+        "usage": {
+          "input_tokens": 12432,
+          "cached_input_tokens": 11008,
+          "output_tokens": 124
+        },
+        "usd": 0.00065376
+      },
+      {
+        "at": "2026-09-11T04:57:47.458Z",
+        "turn_id": "01a08ed3-de6a-7853-b9d0-caed27de972a",
+        "usage": {
+          "input_tokens": 12606,
+          "cached_input_tokens": 12032,
+          "output_tokens": 141
+        },
+        "usd": 0.0005246400000000002
+      },
+      {
+        "at": "2026-09-11T04:57:49.254Z",
+        "turn_id": "01a08ed3-de6a-7853-b9d0-caed27de972a",
+        "usage": {
+          "input_tokens": 12986,
+          "cached_input_tokens": 12032,
+          "output_tokens": 30
+        },
+        "usd": 0.00046744000000000006
+      }
+    ],
+    "metering_complete": true,
+    "api_equivalent_usd": 0.0046773200000000004,
+    "conservative_usd": 0.0854664,
+    "rates_usd_per_million": {
+      "input": 0.2,
+      "cached_input": 0.02,
+      "output": 1.2
+    },
+    "rate_source": "Inherited integration/messaging packet; estimates, not invoices",
+    "input_reservations": [
+      {
+        "reason": "production initialization/onboarding",
+        "step": 1,
+        "at": 1789102640.6401174,
+        "generation": null
+      }
+    ],
+    "rollout_turns": 1,
+    "controller_input_attempts": 0,
+    "controller_issued_inputs": 0,
+    "mesh_terminal_deliveries": 0,
+    "legacy_terminal_deliveries": 0,
+    "raw_transport_count": 0,
+    "count_correction": "max(observed model turns, transport inputs); consumed-by-read has no submitted receipt"
+  },
+  "cleanup": {
+    "survivors": [],
+    "port_closed": true,
+    "auth_removed": true,
+    "root_removed": true
+  },
+  "canonical_history_retained": false,
+  "owner_observation": {
+    "census_samples": 0,
+    "maximum_sample_gap_seconds": null,
+    "live_owner_samples_after_stop": 0,
+    "named_skips": [],
+    "self_heal_passes": [
+      {
+        "ts": "2026-09-11T04:57:25.558Z",
+        "level": "INFO",
+        "component": "coordination",
+        "event": "self_heal.pass.completed",
+        "run_id": "run_960ada2cb3d14c3ea3d2bf1f9cdc4bc3",
+        "message": "Daemon coordination self-heal pass completed",
+        "duration_ms": 24,
+        "members_effort_resumed": 0,
+        "owner_ensure_refused": 0,
+        "team_daemons_ensured": 1,
+        "team_errors": 1,
+        "teams_reconciled": 1,
+        "teams_scanned": 2,
+        "teams_skipped": 0
+      },
+      {
+        "ts": "2026-09-11T04:57:55.570Z",
+        "level": "INFO",
+        "component": "coordination",
+        "event": "self_heal.pass.completed",
+        "run_id": "run_960ada2cb3d14c3ea3d2bf1f9cdc4bc3",
+        "message": "Daemon coordination self-heal pass completed",
+        "duration_ms": 12,
+        "members_effort_resumed": 0,
+        "owner_ensure_refused": 0,
+        "team_daemons_ensured": 1,
+        "team_errors": 1,
+        "teams_reconciled": 1,
+        "teams_scanned": 2,
+        "teams_skipped": 0
+      },
+      {
+        "ts": "2026-09-11T04:58:25.583Z",
+        "level": "INFO",
+        "component": "coordination",
+        "event": "self_heal.pass.completed",
+        "run_id": "run_960ada2cb3d14c3ea3d2bf1f9cdc4bc3",
+        "message": "Daemon coordination self-heal pass completed",
+        "duration_ms": 12,
+        "members_effort_resumed": 0,
+        "owner_ensure_refused": 0,
+        "team_daemons_ensured": 1,
+        "team_errors": 1,
+        "teams_reconciled": 1,
+        "teams_scanned": 2,
+        "teams_skipped": 0
+      }
+    ]
+  },
+  "executor_observation": {
+    "first_transition_complete_sample": null,
+    "first_executor_sample": null,
+    "same_owner_begin": null,
+    "same_owner_end": null,
+    "attached_after_handoff": null
+  },
+  "daemon_jsonl_rows": 251,
+  "observer_errors": [
+    {
+      "at": 1789102641.188856,
+      "kind": "observer_error",
+      "error": "argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'NoneType'"
+    }
+  ],
+  "diagnosis": {
+    "classification": "harness",
+    "raw_classification": "taurhaus",
+    "onboarding_consumed_by_alpha": "ae64da01-62a5-4622-88dd-2de176556dc6",
+    "reason": "Executed inherited onboarding predicate required submitted AND consumed_by_read; run4 permits consumed_by_read alone. No A/B/C sent; no operational rollback boundary attempted."
+  }
+}

@@ -1,0 +1,26 @@
+[
+  {
+    "path": "session_index.jsonl",
+    "bytes": 273
+  },
+  {
+    "path": "history.jsonl",
+    "bytes": 274
+  },
+  {
+    "path": "shell_snapshots/01a08ed3-d57d-7b10-bcd9-dae8e4344785.1789102642562705518.sh",
+    "bytes": 1129
+  },
+  {
+    "path": "thread-writer-locks/.coordination.lock",
+    "bytes": 0
+  },
+  {
+    "path": "thread-writer-locks/01a08ed3-d57d-7b10-bcd9-dae8e4344785.lock",
+    "bytes": 0
+  },
+  {
+    "path": "sessions/2026/09/11/rollout-2026-09-11T06-57-22-01a08ed3-d57d-7b10-bcd9-dae8e4344785.jsonl",
+    "bytes": 111897
+  }
+]

@@ -1,0 +1,22 @@
+[
+  {
+    "delivery_id": "cac61041-86a1-42a8-9ac3-100fac0780b5",
+    "from": "lead",
+    "id": "cac61041-86a1-42a8-9ac3-100fac0780b5",
+    "message_id": "5fe9b84c-fa2e-44ac-bad4-5f9af8054fd1",
+    "read": false,
+    "text": "[taurhaus] recovery_card\nIdentity: lead on l6-rollback-run4; key={\"card_schema\":1,\"recipient\":[\"0bb90712eb0d25cdfdc26569d91d57da062449369622bbb7dd4f0ea10e63a584\",\"2599d045-a69e-45a5-87ab-80f5cdae2250\"],\"context\":[1,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-l6-w0eoiirt/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-l6-w0eoiirt/claude\",\"harness_account_root\":\"/tmp/th-l6-w0eoiirt/claude\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-l6-w0eoiirt/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"37a06e5154de9ef5fdb08ede626ffb29630db236bda6cc9bd2f7868b61a9c25b\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: 7099efef993991dfde6f655049818218a5f453a3599b2f9cc38f6184d048331a; source=a8d97ad61031cbcac3988f3b68c520a8a5a4cb0a780f3e3a2fe21bf4bef83bf2; audience=unavailable\nProject cwd: /tmp/th-l6-w0eoiirt/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: unavailable; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-11 04:57:21.487953233 UTC\nCurrent task: # \u2014 \nExecution mode: ; Validation expectation: ; Response expectation: ; Adjacent fix policy: ; Override allowed: false; Override reason: none\nFocal files: unavailable\nRole: unavailable\nHOLD: minimal role steering unavailable; owner: team lead.\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.",
+    "timestamp": "2026-09-11T04:57:21.558458141+00:00"
+  },
+  {
+    "delivery_id": "7504247c-4fd2-4eef-889d-b3e2b391ed84",
+    "from": "alpha",
+    "id": "7504247c-4fd2-4eef-889d-b3e2b391ed84",
+    "message_id": "e9da8609-50fc-4c15-adc5-6ff00a54aa36",
+    "read": false,
+    "responseExpectation": "action",
+    "summary": "Missing assignment context",
+    "text": "ACTION REQUIRED: Please provide the missing task, release, and required context; no assignment is currently available.",
+    "timestamp": "2026-09-11T04:57:47.243Z"
+  }
+]

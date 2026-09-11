@@ -1,4 +1,4 @@
-# INCOMPLETE — L6 run3 stopped at step 3 on an inherited harness predicate
+# L6 rollback — run4 FAIL (harness startup predicate); rollback NOT RUN
 
 ## Run3 result (2026-09-11)
 
@@ -811,3 +811,133 @@ source diff exists, so conditional `just test-rust-unit` does not apply.
 Run2 step 1: PASS (S-runtime); see run3/run/step1-outcome.json.
 
 Run2 step 2: PASS (S-runtime); see run3/run/step2-outcome.json.
+
+
+## Run 4 — fresh trial, stopped before the rollback route
+
+**FAIL at step (a), harness classification.** Production initialization completed,
+Codex 0.153.4 / `gpt-5.6-luna` / low reached its composer, and alpha explicitly
+read the canonical onboarding card. The inherited controller guard nevertheless
+required both a terminal `submitted` receipt **and** the explicit read. This
+contradicts the shared rule that alpha's `consumed_by_read` is sufficient. Its
+90-second readiness poll expired; the controller exited **1** after **94.00 s**.
+The requested complete escape route remains **NOT VERIFIED**.
+
+The raw controller outcome labels this `taurhaus`; that is a harness attribution
+error, preserved rather than silently rewritten. Offline inspection finds
+`attributed_idle: true`, an attributed ready session, alpha's read receipt and
+`inherited_predicate_result: false`. The stricter helper originated in `5e89fb019`.
+No product defect is established by this stop. No second paid launch was made,
+following the spec's stop-on-failure and no automatic paid-retry rules.
+
+| Ordered run4 item | Outcome | Classification and observed boundary |
+| --- | --- | --- |
+| (a) Initialize; A read/reply; B pending; lead owner stop and named skip | **FAIL** | Harness startup predicate after successful initialization/onboarding read. A/B never sent; owner-stop command never reached. |
+| (b) Quiescent format downgrade with B pending | **NOT RUN** | Blocked by (a); format remains 2 and owner remains team. No run4 format-0/rollback-digest/transition boundary claim. |
+| (c) Same-owner members command clears marker | **NOT RUN** | No handoff command, marker removal, new request or epoch claim. |
+| (d) RC member executor; B exactly once; fresh C reply | **NOT RUN** | No member executor started; no B/C input or delivery. Executor timing across (b)/(c) is unobserved. |
+| (e) Explicit read/ack, A/B/C reconciliation, export and teardown | **NOT RUN** | No A/B/C to reconcile. Mandatory failure export and teardown independently **PASS**. |
+
+The run used five numbered controller steps, matching the fourth-run ruling's
+(a)–(e), which supersedes the audit's historical six-step order. The audit's
+2026-09-11 format-first amendment and the fourth-run ruling govern the intended
+route; earlier run-1/2/3 evidence above remains history, not run4 coverage.
+
+### Candidate and exact controller
+
+This checkout stayed on `feat/e2e-l6-rollback`, tip
+`76dcadfa255306cbc5f1b385dc64ce2cb02a0f1d`, with
+`git merge-base --is-ancestor ac2bc513 HEAD` exit **0** and no product diff from
+`ac2bc513`. `just build-daemon` rebuilt the checkout-local
+`src-tauri/target/release/taurhaus-daemon`, exit **0**. Mesh-l6 HEAD and
+`release/overhaul-rc` both resolved to `3015cb0`; its checkout-local
+`cargo build -j 1` exited **0**. No descriptor edit, Mesh commit, install or
+release occurred. Both digests and command tails are in [builds](l6-rollback/run4/builds.json).
+Every build/gate admission ran the required Cargo process census; fewer than
+three existing Cargo processes admitted this lane with one build job.
+
+The [executed controller](l6-rollback/run4/controller.py) is the run3 controller
+adapted for the documented format-0 boundary, same-owner marker commit and
+attachment-checked executor reuse. The three new route predicates observed
+behavioral reds and then green offline. They were **not reached at runtime**.
+The controller is preserved as executed, including the startup helper import;
+[provenance](l6-rollback/run4/provenance.json) records its digest. Added readiness
+and input-count diagnostic predicates run only offline and do not imply a
+re-executed or repaired runtime trial.
+
+Invocation from this checkout: `python3 -B docs/design/evidence/e2e/l6-rollback/run4/controller.py --auth-source "$SOURCE"`,
+where SOURCE is the operator-authorized account-b auth.json file named in the
+spec. Exactly that file was copied into the otherwise empty scratch CODEX_HOME,
+mode 0600, then removed. Both native Codex siblings were copied from the installed
+package. Production `coordination.initialize_team` used the builder's canonical
+policy, alpha tmux, and one login-only Claude lead. Runtime homes/data/project,
+PID namespace, probed port **47743**, and tmux server were private; inherited
+TMUX was absent and operator homes hidden from children.
+
+### Readiness, identity and costs
+
+Alpha session: `01a08ed3-d57d-7b10-bcd9-dae8e4344785`; attachment generation **1**,
+pane `%2`. Onboarding logical ID `ae64da01-62a5-4622-88dd-2de176556dc6` has one
+`consumed_by_read` receipt from alpha. This is actual delivery by the governing
+predicate, even though no `submitted` receipt exists. The run sent **no A/B/C**;
+no rollback identity table can honestly contain those messages.
+
+[Startup diagnosis](l6-rollback/run4/startup-diagnosis.json),
+[analysis and corrected count](l6-rollback/run4/analysis.json),
+[raw journal](l6-rollback/run4/run/team/state/messaging-v2/segments/000001.jsonl),
+[complete daemon JSONL](l6-rollback/run4/run/taurhaus.log.jsonl), and
+[command/RPC stream](l6-rollback/run4/run/events.jsonl) retain the evidence.
+
+**One Codex input, one metered model turn, $0.00467732 API-equivalent estimate.**
+The executed transport-only counter incorrectly reported zero inputs because
+there was no submitted receipt. Analysis uses the maximum of the native rollout
+turn count and transport count, so the actual start is counted. Raw counter
+values remain preserved. One notify-only identifier is recorded separately;
+it is not a second issued model input and is not represented as free billed
+usage. All six measured usage increments belong to turn
+`01a08ed3-de6a-7853-b9d0-caed27de972a`:
+
+| Usage timestamp (UTC) | Input / cached / output tokens | API-equivalent USD |
+| --- | --- | --- |
+| 2026-09-11T04:57:30.679Z | 9031 / 3840 / 184 | 0.00133580 |
+| 2026-09-11T04:57:37.867Z | 11324 / 7936 / 268 | 0.00115792 |
+| 2026-09-11T04:57:40.568Z | 11996 / 11008 / 100 | 0.00053776 |
+| 2026-09-11T04:57:43.692Z | 12432 / 11008 / 124 | 0.00065376 |
+| 2026-09-11T04:57:47.458Z | 12606 / 12032 / 141 | 0.00052464 |
+| 2026-09-11T04:57:49.254Z | 12986 / 12032 / 30 | 0.00046744 |
+
+Rates are the inherited packet's $0.20 input / $0.02 cached / $1.20 output per
+million tokens, estimates rather than invoices. The inherited uncached
+upper estimate is **$0.0854664**. Both estimates are below $0.20; one input is
+below ten. Lead: login-only, zero paid Claude inputs. Reviewer: none launched,
+zero reviewer spend here. Implementer spend is separately owned by the
+orchestrator and is unavailable to this lane; it is not claimed zero.
+
+### Teardown, validation and limits
+
+Teardown recorded **zero survivors**, closed private port, removed credential
+copy and removed scratch root. The PID/start-time ledger and namespace shutdown
+cover daemon, team owner, tmux, Codex and code-mode host. No member executor was
+started. [Cleanup](l6-rollback/run4/run/cleanup.json) is complete before gates.
+The [export manifest](l6-rollback/run4/export-manifest.json) deduplicates identical
+snapshots while retaining all complete stream rows; every pane excerpt is at
+most 60 lines. Private credential/account fields are sanitized.
+
+Offline tests: **6 PASS**. Three original route tests first failed for format-1,
+fresh handoff and missing existing-executor recognition; the readiness diagnostic
+suite first failed importing its absent helpers, then passed. These are harness
+assertion tests, not product fixes or a substitute runtime PASS. The executed
+startup helper's false result against actual ready/read evidence is retained.
+
+Gates, run after teardown: results pending in this intermediate failure-packet
+commit. No `src-tauri/` diff, so the conditional Rust-unit gate does not apply.
+
+Deviations: the specified L2 worktree no longer exists, so its versioned run3
+controller/evidence was read in this checkout; Mesh's full stage2b brief is
+absent from mesh-l6, so the supplied addendum, journal-stage3 storage analysis,
+USAGE and authoritative transition/ownership source were read. The inherited
+startup predicate violates the shared delivery rule and prevented this run's
+route completion. The required independent Opus evidence lens is unavailable
+from the tool/model surface; [review status](l6-rollback/run4/review.json) records
+that limitation. The overall workflow is **incomplete**, not PASS. No runtime
+step was green, so there are no numbered runtime PASS commits for run4.

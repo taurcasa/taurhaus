@@ -1,0 +1,6 @@
+{
+  "status": "unavailable",
+  "model_used": null,
+  "reason": "Required independent Opus lens is not callable: tool discovery found no Workflow/Opus surface and collaboration has no Opus model. No substitute self-review claimed.",
+  "reviewer_spend": "No reviewer launched; no reviewer spend incurred in this lane. Implementer spend is separately metered by the orchestrator and unavailable to this controller."
+}
