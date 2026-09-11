@@ -628,6 +628,24 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
             .map(str::trim)
             .filter(|session_id| !session_id.is_empty())
             .map(ToString::to_string);
+        if activation_context.resume_session_id.is_some()
+            && runtime_record.app_server.is_none()
+            && crate::session_scanner::cli_tool::spec(member.cli_tool)
+                .missing_resume_rollout(runtime_record.jsonl_path.as_deref())
+        {
+            activation_context.resume_session_id = None;
+            taurhaus_lib::logging::emit_global(
+                "warn",
+                "coordination",
+                "launch.resume.fallback",
+                Some("Saved rollout is missing; launching a fresh session".into()),
+                serde_json::json!({"team": request.team_name, "member": member.name,
+                    "tool": member.cli_tool, "reason": "rollout_missing"})
+                .as_object()
+                .unwrap()
+                .clone(),
+            );
+        }
         match request
             .reasoning_effort_override
             .as_deref()

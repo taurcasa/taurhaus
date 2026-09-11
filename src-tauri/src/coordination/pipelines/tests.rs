@@ -3998,13 +3998,19 @@ fn load_resume_member_state_preserves_role_template_context() {
 fn operator_resume_renders_recorded_session_for_capturing_harnesses() {
     // Regression: 4994b243 limited recorded-session resume to effort switches;
     // e2e lane 4 run 7 observed an operator resume lose the tmux conversation.
+    let _guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+    let logs = TempDir::new().unwrap();
+    let log_path = logs.path().join("resume.jsonl");
+    let sink = taurhaus_lib::logging::LogFileState::new(log_path.clone()).unwrap();
+    taurhaus_lib::logging::install_global_sink(&sink);
     for tool in [CliTool::Codex, CliTool::Claude, CliTool::Grok, CliTool::Agy] {
-        for (session_id, effort) in [
-            (Some("  recorded-session  "), None),
-            (None, None),
-            (Some(""), None),
-            (Some(" \t "), None),
-            (Some("recorded-session"), Some("high")),
+        for (session_id, effort, deleted) in [
+            (Some("  recorded-session  "), None, false),
+            (Some("recorded-session"), None, true),
+            (None, None, false),
+            (Some(""), None, false),
+            (Some(" \t "), None, false),
+            (Some("recorded-session"), Some("high"), false),
         ] {
             let tmp = TempDir::new().unwrap();
             let runtime = Arc::new(RecordingCoordinationRuntime::default());
@@ -4020,6 +4026,8 @@ fn operator_resume_renders_recorded_session_for_capturing_harnesses() {
             let mut record =
                 MemberRuntimeStore::load(tmp.path(), "resume-recorded", "seat").unwrap();
             record.session_id = session_id.map(str::to_string);
+            // Regression: 106f06c7 resumed missing Codex rollouts without fallback.
+            record.jsonl_path = deleted.then(|| tmp.path().join("deleted-rollout.jsonl"));
             record.health = HealthState::SessionDead;
             MemberRuntimeStore::save(tmp.path(), "resume-recorded", "seat", &record).unwrap();
 
@@ -4052,7 +4060,9 @@ fn operator_resume_renders_recorded_session_for_capturing_harnesses() {
                 CliTool::Agy => None,
                 _ => unreachable!(),
             };
-            let resumes = expected.is_some() && session_id.is_some_and(|id| !id.trim().is_empty());
+            let resumes = expected.is_some()
+                && session_id.is_some_and(|id| !id.trim().is_empty())
+                && !(deleted && tool == CliTool::Codex);
             if resumes {
                 assert!(launch.contains(expected.unwrap()), "{tool}: {launch}");
             } else {
@@ -4077,6 +4087,11 @@ fn operator_resume_renders_recorded_session_for_capturing_harnesses() {
             }
         }
     }
+    sink.flush_for_test().unwrap();
+    assert!(fs::read_to_string(log_path).unwrap().lines().any(|line| {
+        let event: serde_json::Value = serde_json::from_str(line).unwrap();
+        event["event"] == "launch.resume.fallback" && event["level"] == "WARN"
+    }));
 }
 
 #[test]
