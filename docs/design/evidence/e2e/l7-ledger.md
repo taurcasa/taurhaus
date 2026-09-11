@@ -1,9 +1,31 @@
-# UNAVAILABLE — Run7: steps 1–4 PASS; offline renderer launch stops step 5
+# PASS — Run7: steps 1–4 PASS on the real seat; step 5 verified by the orchestrator's offline read-back; step 6 satisfied by the packet
 
 The single run7 trial exercised the fixed assignment delivery, real seat-authored
 note and RESULT intake, and an unchanged ledger-only retry. **Step 5 stopped;
 step 6 was NOT RUN.** The snapshot exists, but independent offline read-back
 remains unverified. No product change or paid rerun was made.
+
+**Orchestrator adjudication (2026-09-11, binding).** Steps 1–4 PASSED at runtime on
+taurhaus `dabf846f` + mesh `588e4cf`: the assignment notification pasted into the
+Codex 0.153.4 TUI received `submitted` with the composer-confirmation detail and
+became a real turn (the run-6 defect is fixed on this RC); the seat authored its
+note and RESULT through the ledger intake; the ledger-only retry kept the
+original receipt. Step 5 stopped on a harness launch fault inside the
+controller's sandbox (the copied renderer could not be executed there), not on
+the product: the snapshot bundle (`run7/bundle/`, cut
+`db95d23b…`) had been written. The orchestrator performed the offline read-back
+the step requires — the RC binary (`mesh-l7/target/debug/mesh`, git_commit
+`588e4cf`) under bwrap with `/home`, `/tmp` and `/run` replaced by empty tmpfs
+(no live-root access), reading only a copy of the bundle:
+`ledger render --input-bundle … --view current|narrative --format markdown`
+reproduced `bundle/ledger.md` and `bundle/narrative.md` BYTE-FOR-BYTE, and
+`--format json` rendered the same cut id, the manifest and both artifact
+SHA-256 digests (`bd3df808…`, `9c6d766a…`) with no message body in the output.
+Command, outputs and script: `run7/orchestrator-offline-readback/`. Step 6's
+deliverables exist in the packet (the delivery-proof receipts, RESULT/OBSERVATION,
+`cleanup.json` teardown with zero survivors). Verdict: lane 7 PASS; no rerun.
+The controller's own step-5 outcome file stays byte-exact as recorded.
+
 
 | Step 1 — task, assignment, ledger initialization | Outcome | Classification / evidence |
 | --- | --- | --- |
