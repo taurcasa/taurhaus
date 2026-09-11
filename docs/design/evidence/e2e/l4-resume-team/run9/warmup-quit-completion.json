@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "tmux",
+    "send-keys",
+    "-t",
+    "%2",
+    "Enter"
+  ],
+  "exit": 0,
+  "at": 1789088757.5883777,
+  "reason": "Captured composer held /quit after batched text+Enter during MCP startup; finish the same quit command, no model input or new TUI."
+}

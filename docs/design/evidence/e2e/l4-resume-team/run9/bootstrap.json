@@ -1,0 +1,28 @@
+{
+  "argv": [
+    "bwrap",
+    "--die-with-parent",
+    "--unshare-pid",
+    "--ro-bind",
+    "/",
+    "/",
+    "--tmpfs",
+    "/home",
+    "--tmpfs",
+    "/tmp",
+    "--tmpfs",
+    "/run",
+    "--proc",
+    "/proc",
+    "--dev",
+    "/dev",
+    "--bind",
+    "/tmp/th-l4-run9-9hzri2jl",
+    "/tmp/th-l4-run9-9hzri2jl",
+    "--chdir",
+    "/tmp/th-l4-run9-9hzri2jl/project",
+    "/bin/bash",
+    "/tmp/th-l4-run9-9hzri2jl/boot.sh"
+  ],
+  "script": "#!/bin/bash\nset -eu\ntmux -D -f /dev/null &\nfor i in {1..600}; do test -S \"$TMUX_TMPDIR/tmux-$(id -u)/default\" && break; sleep .1; done\ntmux set-option -g default-shell /bin/bash\ntmux new-session -d -s taurhaus -x 140 -y 48 /bin/bash\n/tmp/th-l4-run9-9hzri2jl/home/.local/bin/taurhaus-daemon --port 44807 --data-dir /tmp/th-l4-run9-9hzri2jl/data &\nwait $!\n"
+}

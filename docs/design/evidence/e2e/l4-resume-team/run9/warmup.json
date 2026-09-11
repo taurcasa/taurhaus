@@ -1,0 +1,17 @@
+{
+  "pane": "%2",
+  "composer_seen": true,
+  "exit_code": 0,
+  "sqlite_files": [
+    "goals_1.sqlite",
+    "logs_2.sqlite",
+    "memories_1.sqlite",
+    "queue_1.sqlite",
+    "state_5.sqlite"
+  ],
+  "input_reservation": 1,
+  "startup_turn_ids": [],
+  "startup_cost_usd": null,
+  "cost_note": "Startup reserved as one input; any unreported startup cost is unknown, not zero.",
+  "remaining_seat_processes": []
+}

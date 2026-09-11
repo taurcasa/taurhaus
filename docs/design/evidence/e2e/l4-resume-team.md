@@ -1,9 +1,8 @@
-# INCOMPLETE — latest run 8, step 1 failed at native Codex startup
+# INCOMPLETE — latest run 9, step 1 passed; remaining steps in progress
 
-Alpha exited on a scratch SQLite queue migration error (`table queued_items
-already exists`). The controller stopped after the required observation window;
-steps 2–6 were not run. Beta’s one completed input cost **$0.001065640** metered.
-Teardown found zero survivors. See [Run 8](#run-8) for classifications and gates.
+Run9 warmed the private Codex home, initialized both transports, and completed
+one exchange/read per seat. See [Run 9](#run-9); this is a runtime checkpoint,
+not a completed lane verdict.
 
 ## Historical run 2 — hosted process exited before transport readiness
 
@@ -1141,3 +1140,25 @@ the runner exited **0** and its child commands had finished. No Rust diff:
 `just test-rust-unit` remains inapplicable. Evidence consistency verification
 also exited **0**, comparing the reconstructed outcome bytes against `save()`
 and the unchanged failure event. `git diff --check` passed.
+
+## Run 9
+
+Step 1 **PASS / runtime**: initialize `init_5c000c2110b945aa8598a860ae5e2463`
+completed; alpha is attributed idle, and both initial markers have one reply,
+a transport receipt and explicit read. Four metered turns total **$0.004748080**;
+seven inputs including conservative start reservations (one warm-up).
+
+The [warm-up](l4-resume-team/run9/warmup.json) saw the composer, exited 0,
+left valid SQLite databases and no Codex survivor. No startup model turn was
+observed; any startup cost is unknown, not reported as free. The first batched
+quit left `/quit` in the composer during MCP startup; one recorded Enter
+completed that same quit without a new TUI or model input.
+
+[Controller guards](l4-resume-team/run9/green.txt): 38 pass after observed red;
+[preflight](l4-resume-team/run9/preflight.txt): six pass. Builds exit 0:
+[Mesh](l4-resume-team/run9/build/mesh.json),
+[daemon](l4-resume-team/run9/build/daemon.json).
+[Provenance and hashes](l4-resume-team/run9/provenance.json) pin product
+`106f06c7`, Mesh `1f7447f`, protocol 27, Codex 0.153.4, Luna/low.
+
+Later step outcomes and post-teardown gates will be appended after execution.
