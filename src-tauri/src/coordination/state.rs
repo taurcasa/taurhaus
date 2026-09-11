@@ -47,7 +47,10 @@ type ProjectEffortTeamSelection = (Vec<(PathBuf, String)>, Vec<(String, String)>
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct BackgroundSelfHealPassResult {
     pub teams_scanned: usize,
+    /// Whole-team skips caused by admission contention or initialization.
     pub teams_skipped: usize,
+    /// Named owner ensure refusals after a team was admitted for reconciliation.
+    pub owner_ensure_refused: usize,
     pub teams_reconciled: usize,
     pub team_daemons_ensured: usize,
     pub team_errors: usize,
@@ -844,7 +847,7 @@ fn apply_self_heal_result(summary: &mut BackgroundSelfHealPassResult, result: &T
     if result.team_daemon_ensured {
         summary.team_daemons_ensured += 1;
     } else if result.team_daemon_skip_reason.is_some() {
-        summary.teams_skipped += 1;
+        summary.owner_ensure_refused += 1;
     }
 }
 
@@ -908,8 +911,8 @@ mod tests {
     }
 
     #[test]
-    fn owner_self_heal_skip_counts_as_skipped() {
-        // Regression: e19ffad0 (e2e lane 6 run 2): skipped owner recovery was uncounted.
+    fn owner_self_heal_refusal_does_not_count_as_pass_skip() {
+        // Regression: b6b0064e mixed owner ensure refusals into pass-level skips.
         let mut summary = BackgroundSelfHealPassResult::default();
         let result = TeamSelfHealResult {
             team_name: "rollback".into(),
@@ -919,7 +922,8 @@ mod tests {
             team_daemon_skip_reason: Some("rollback_pending"),
         };
         apply_self_heal_result(&mut summary, &result);
-        assert_eq!(summary.teams_skipped, 1);
+        assert_eq!(summary.teams_skipped, 0);
+        assert_eq!(summary.owner_ensure_refused, 1);
         assert_eq!(summary.team_daemons_ensured, 0);
         assert_eq!(summary.teams_reconciled, 1);
     }
@@ -941,6 +945,7 @@ mod tests {
                 },
             );
             assert_eq!(summary.teams_skipped, 0, "candidate={candidate}");
+            assert_eq!(summary.owner_ensure_refused, 0, "candidate={candidate}");
             assert_eq!(summary.team_daemons_ensured, 0);
             assert_eq!(summary.teams_reconciled, usize::from(candidate));
         }
