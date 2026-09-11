@@ -19,6 +19,7 @@ use super::{CoordinationOrchestrator, RemoveMemberStepResult};
 
 static OWNER_SKIP_EVENTS: OnceLock<Mutex<HashSet<(PathBuf, &'static str)>>> = OnceLock::new();
 static TEAM_DAEMON_SKIP_EVENTS: OnceLock<Mutex<HashMap<PathBuf, String>>> = OnceLock::new();
+const DELIVERY_OWNER_UNSET_REASON: &str = "delivery_owner_unset";
 const DELIVERY_OWNED_BY_MEMBERS_REASON: &str = "delivery_owned_by_members";
 const ROLLBACK_PENDING_REASON: &str = "rollback_pending";
 const OWNER_STOPPED_BY_OPERATOR_REASON: &str = "owner_stopped_by_operator";
@@ -541,7 +542,9 @@ impl CoordinationOrchestrator {
         if let Some(reason) = self.team_daemon_control_skip_reason(team_name, &operator_name)? {
             self.emit_team_daemon_skipped_once(team_name, &operator_name, reason);
             let detail = match reason {
-                DELIVERY_OWNED_BY_MEMBERS_REASON => reason.to_string(),
+                DELIVERY_OWNED_BY_MEMBERS_REASON | DELIVERY_OWNER_UNSET_REASON => {
+                    reason.to_string()
+                }
                 MISSING_LEAD_CREDENTIAL_REASON => {
                     format!("lead control credential is missing for '{operator_name}'")
                 }
@@ -747,6 +750,14 @@ impl CoordinationOrchestrator {
         operator_name: &str,
     ) -> Result<Option<&'static str>, CoordinationError> {
         let config = TeamConfigStore::load(&self.teams_dir, team_name)?;
+        if config.extra.get("messaging_format") == Some(&Value::from(2))
+            && config
+                .extra
+                .get("delivery_owner")
+                .is_none_or(Value::is_null)
+        {
+            return Ok(Some(DELIVERY_OWNER_UNSET_REASON));
+        }
         if TeamConfigStore::members_own_delivery(&config) {
             return Ok(Some(DELIVERY_OWNED_BY_MEMBERS_REASON));
         }
@@ -801,6 +812,7 @@ impl CoordinationOrchestrator {
             OWNER_STOPPED_BY_OPERATOR_REASON
                 | ROLLBACK_PENDING_REASON
                 | DELIVERY_OWNED_BY_MEMBERS_REASON
+                | DELIVERY_OWNER_UNSET_REASON
         ) && !OWNER_SKIP_EVENTS
             .get_or_init(|| Mutex::new(HashSet::new()))
             .lock()
