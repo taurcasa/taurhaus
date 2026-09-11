@@ -251,6 +251,10 @@ mod tests {
     #[test]
     #[cfg(target_os = "linux")]
     fn codex_resume_run4f_launch_floor_and_pre_turn_window() {
+        // Shares the process PID with resolver tests, not just a binding store.
+        let _guard = super::super::codex::CODEX_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("rollout.jsonl");
         let now = Utc::now();
@@ -416,6 +420,9 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn codex_round3_reattachment_preserves_validated_completion() {
+        let _guard = super::super::codex::CODEX_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let tmp = tempfile::tempdir().unwrap();
         let transcript = tmp.path().join("rollout.jsonl");
         fs::write(&transcript, "{\"type\":\"response_item\"}\n").unwrap();
@@ -443,6 +450,15 @@ mod tests {
             ..IdleResult::idle()
         };
         refresh(&mut result, project, pid, &records, &notify);
+        // Regression: 6398bfa3 omitted CODEX_TEST_LOCK while using the test
+        // process PID. A parallel resolver could invalidate this exact seat.
+        std::thread::spawn(move || {
+            if let Ok(_guard) = super::super::codex::CODEX_TEST_LOCK.try_lock() {
+                invalidate(pid);
+            }
+        })
+        .join()
+        .unwrap();
         let observed = observation(pid, project, Some("%round3"))
             .expect("validated notify must survive a later attachment");
         assert_eq!(observed.source, "notify");

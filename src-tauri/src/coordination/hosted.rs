@@ -1213,7 +1213,7 @@ pub(crate) mod tests {
 
     #[test]
     fn hosted_refresh_does_not_poll_another_fixture() {
-        // Regression: 1b19edd2 registered all test seats in the shared hub,
+        // Regression: 3000bc3e registered all test seats in the shared hub,
         // so refreshing one fixture consumed another fixture's queued RPCs.
         let first = tempfile::tempdir().unwrap();
         let second = tempfile::tempdir().unwrap();
@@ -1616,7 +1616,7 @@ if mode == 'twice' or not previous:
                 .count()
         };
         let before = attempts();
-        // Regression: 4ad65497's sleep-based retry count depended on scheduler
+        // Regression: 3000bc3e's sleep-based retry count depended on scheduler
         // delays. Drive the one- then two-second backoffs with fixture time.
         let now = std::time::Instant::now();
         let tick = |millis| {
