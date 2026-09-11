@@ -6045,14 +6045,13 @@ fn assert_owner_skip(marker: Option<&str>, format: u64, owner: Option<&str>, rea
     })
     .unwrap();
     runtime.set_pane_current_command("%1", Some("claude"));
-    let mut config = TeamConfigStore::load(tmp.path(), team).unwrap();
-    config
-        .extra
-        .insert("messaging_format".into(), format.into());
-    if let Some(owner) = owner {
-        config.extra.insert("delivery_owner".into(), owner.into());
-    }
-    TeamConfigStore::save(tmp.path(), team, &config).unwrap();
+    // Simulate Mesh's writes; the config store preserves these Mesh-authored fields.
+    let config_path = tmp.path().join(team).join("config.json");
+    let mut wire: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&config_path).unwrap()).unwrap();
+    wire["messaging_format"] = format.into();
+    wire["delivery_owner"] = owner.map(serde_json::Value::from).unwrap_or_default();
+    std::fs::write(&config_path, wire.to_string()).unwrap();
     let path = tmp
         .path()
         .join(team)
@@ -6075,10 +6074,6 @@ fn assert_owner_skip(marker: Option<&str>, format: u64, owner: Option<&str>, rea
     if marker.is_some() {
         std::fs::remove_file(&path).unwrap();
     }
-    // Simulate Mesh's owner transition; the store preserves Mesh-authored fields.
-    let config_path = tmp.path().join(team).join("config.json");
-    let mut wire: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(&config_path).unwrap()).unwrap();
     wire["delivery_owner"] = "team".into();
     std::fs::write(&config_path, wire.to_string()).unwrap();
     let recovered = orchestrator.trigger_team_self_heal(team).unwrap();
@@ -6109,12 +6104,8 @@ fn assert_owner_skip(marker: Option<&str>, format: u64, owner: Option<&str>, rea
 
 #[test]
 fn self_heal_honours_owner_stopped_marker() {
-    assert_owner_skip(
-        Some("owner-stopped.json"),
-        2,
-        Some("team"),
-        "owner_stopped_by_operator",
-    );
+    let marker = Some("owner-stopped.json");
+    assert_owner_skip(marker, 2, Some("team"), "owner_stopped_by_operator");
 }
 
 #[test]
@@ -6149,8 +6140,8 @@ fn resume_seats_honours_owner_stop_without_blocking_explicit_owner_start() {
         .path()
         .join(team)
         .join("state/delivery/owner-stopped.json");
-    std::fs::create_dir_all(marker.parent().unwrap()).unwrap();
-    std::fs::write(&marker, "broken").unwrap();
+    // A marker that cannot be read as a file still blocks recovery.
+    std::fs::create_dir_all(&marker).unwrap();
     let report = orchestrator
         .resume_team_with_cli_commands_and_layout(
             &ResumeTeamRequest {
@@ -6166,19 +6157,23 @@ fn resume_seats_honours_owner_stop_without_blocking_explicit_owner_start() {
         .team_daemon_warning
         .unwrap()
         .contains("owner_stopped_by_operator"));
-    assert!(!runtime
-        .calls()
+    mark_member_offline(&tmp, team, "builder");
+    let member = orchestrator.resume_member(team, "builder").unwrap();
+    assert!(member.resumed);
+    assert!(member
+        .warnings
         .iter()
-        .any(|c| matches!(c, RuntimeCall::SpawnTeamDaemon { .. })));
-    orchestrator.ensure_team_daemon_after_initialize(&initialize_request(team));
-    orchestrator.ensure_team_daemon_after_add_agent(&add_agent_request(team, "new", "claude"));
-    assert_eq!(
+        .any(|w| w.contains("owner_stopped_by_operator")));
+    let spawns = || {
         runtime
             .calls()
             .iter()
             .filter(|c| matches!(c, RuntimeCall::SpawnTeamDaemon { .. }))
-            .count(),
-        2
-    );
-    assert_eq!(std::fs::read_to_string(marker).unwrap(), "broken");
+            .count()
+    };
+    assert_eq!(spawns(), 0);
+    orchestrator.ensure_team_daemon_after_initialize(&initialize_request(team));
+    orchestrator.ensure_team_daemon_after_add_agent(&add_agent_request(team, "new", "claude"));
+    assert_eq!(spawns(), 2);
+    assert!(marker.is_dir());
 }

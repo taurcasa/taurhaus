@@ -4989,6 +4989,7 @@ fn resume_pipeline_codex_accepts_scanner_rebound_identity() {
 
 #[test]
 fn resume_report_carries_onboarding_wake_failure() {
+    // Regression: 7f8f13ad added owner authentication warnings to ordinary member resume.
     // Regression: 7fdad577 surfaced warnings from a mocked frontend payload
     // without proving the member pipeline carried the real wake disposition.
     let tmp = TempDir::new().expect("tempdir");

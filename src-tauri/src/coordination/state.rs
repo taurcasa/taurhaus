@@ -912,15 +912,13 @@ mod tests {
     fn owner_self_heal_skip_counts_as_skipped() {
         // Regression: e19ffad0 (e2e lane 6 run 2): skipped owner recovery was uncounted.
         let mut summary = BackgroundSelfHealPassResult::default();
-        apply_self_heal_result(
-            &mut summary,
-            &TeamSelfHealResult {
-                team_name: "rollback".into(),
-                runtime_candidate_found: true,
-                member_liveness_reconciled: true,
-                team_daemon_ensured: false,
-            },
-        );
+        let result = TeamSelfHealResult {
+            team_name: "rollback".into(),
+            runtime_candidate_found: true,
+            member_liveness_reconciled: true,
+            team_daemon_ensured: false,
+        };
+        apply_self_heal_result(&mut summary, &result);
         assert_eq!(summary.teams_skipped, 1);
         assert_eq!(summary.team_daemons_ensured, 0);
         assert_eq!(summary.teams_reconciled, 1);

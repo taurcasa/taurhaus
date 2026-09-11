@@ -664,6 +664,11 @@ impl CoordinationOrchestrator {
         &self,
         request: &ResumeMemberRequest,
     ) -> Option<String> {
+        let team = &request.team_name;
+        if !TeamConfigStore::delivery_marker_present(&self.teams_dir, team, "owner-stopped.json") {
+            self.ensure_team_daemon_for_wrapper_best_effort(team);
+            return None;
+        }
         match self.ensure_team_daemon_after_resume_team(&ResumeTeamRequest {
             team_name: request.team_name.clone(),
         }) {
@@ -799,7 +804,7 @@ impl CoordinationOrchestrator {
         ) && !OWNER_SKIP_EVENTS
             .get_or_init(|| Mutex::new(HashSet::new()))
             .lock()
-            .map(|mut seen| seen.insert((credential_path.clone(), reason)))
+            .map(|mut seen| seen.insert((self.teams_dir.join(team_name), reason)))
             .unwrap_or(true)
         {
             return;
