@@ -18,6 +18,14 @@ from runtime import Trial as Runtime, BASE, CHECKOUT, TEAM, mesh_json
 from support import complete_rows, delivered, receipt_retry
 
 
+def output_text(value):
+    if isinstance(value, list):
+        return '\n'.join(output_text(v) for v in value)
+    if isinstance(value, dict):
+        return output_text(value.get('text', value.get('output', '')))
+    return str(value)
+
+
 def objects(text):
     decoder = json.JSONDecoder()
     result = []
@@ -31,6 +39,24 @@ def objects(text):
 
 
 class Trial(Runtime):
+    def teardown(self):
+        calls = {r.get('payload', {}).get('call_id'): r['payload']
+                 for rows in self.sessions() for r in rows
+                 if r.get('payload', {}).get('type') in ('custom_tool_call', 'function_call')}
+        proofs = []
+        for row in self.tool_results():
+            call = calls.get(row['payload'].get('call_id'), {})
+            code = call.get('input', call.get('arguments', ''))
+            if 'mesh ledger entry' not in code and 'mesh task complete' not in code:
+                continue
+            text = output_text(row['payload'].get('output', ''))
+            proofs.append({'call_id': row['payload'].get('call_id'), 'timestamp': row.get('timestamp'),
+                           'call_code': code, 'exit_codes': re.findall(r'(?:exit_code["\s:]+|exited with code\s+)(\d+)', text),
+                           'receipts_and_errors': [o for o in objects(text) if 'receipts' in o or 'ledger' in o or 'error' in o],
+                           'output_sha256': hashlib.sha256(text.encode()).hexdigest()})
+        self.save('seat-tool-proofs.json', proofs)
+        super().teardown()
+
     def raw_save(self, name, value):
         # Only safe declared artifact/ledger data, never message journals or runtime config.
         path = self.out / name
@@ -62,7 +88,7 @@ class Trial(Runtime):
 
     def seat_receipt(self, event_id, source=False, after=0):
         for row in self.tool_results()[after:]:
-            for obj in objects(str(row.get('payload', {}).get('output', ''))):
+            for obj in objects(output_text(row.get('payload', {}).get('output', ''))):
                 value = obj.get('ledger', {}) if source else obj
                 if any(r.get('event_id') == event_id for r in value.get('receipts', [])):
                     return {'receipt': obj, 'tool_call_id': row['payload'].get('call_id'), 'timestamp': row.get('timestamp'), 'row_sha256': hashlib.sha256(json.dumps(row).encode()).hexdigest()}
@@ -72,7 +98,7 @@ class Trial(Runtime):
         def observed():
             # An explicit intake rejection is terminal even if the lifecycle committed.
             for row in self.tool_results()[after:]:
-                text = str(row.get('payload', {}).get('output', ''))
+                text = output_text(row.get('payload', {}).get('output', ''))
                 if 'source committed; ledger rejected' in text or 'source committed; ledger durability unknown' in text:
                     self.save('source-intake-failure.json', {'task': self.task(), 'source_committed': True, 'ledger_intake': 'rejected or durability unknown', 'errors': [o for o in objects(text) if 'error' in o]})
                     raise AssertionError('source committed; ledger intake failed; no lifecycle replay')
@@ -132,7 +158,7 @@ class Trial(Runtime):
                                 {'authority': 'task', 'team_incarnation_id': self.incarnation, 'task_id': '1', 'assignment_id': self.assignment},
                                 {'authority': 'artifact', 'path': 'self', 'role': 'result_artifact', 'assessment': 'source_checked'}]}
         header = json.dumps({'ledger': {'adapter_version': 1, 'events': [event]}})
-        self.send('ACTION REQUIRED: Explicitly read/mark this instruction. Write OBSERVATION.md (<=2048 bytes) with leading --- newline, this JSON object as valid YAML front matter, newline --- newline, then a short standalone observation about the scratch-only test boundary, not completion prose: ' + header + '. Execute mesh ledger entry --file OBSERVATION.md --claude-dir "$CLAUDE_DIR" --team l7-ledger --name alpha. Show its receipt; reply NOTE_DONE. Do not complete the task.')
+        self.send('ACTION REQUIRED: Explicitly read/mark this instruction. Write OBSERVATION.md (<=2048 bytes) with leading --- newline, this JSON object as valid YAML front matter, newline --- newline, then a short standalone observation about the scratch-only test boundary, not completion prose: ' + header + '. Execute mesh ledger entry --file OBSERVATION.md --claude-dir "$CLAUDE_DIR" --team l7-ledger --name alpha. Print command exit_code and stdout receipt; reply NOTE_DONE. Do not complete the task.')
         note_receipt = self.require_intake(self.note_id)
         self.raw_save('step2-seat-receipt.json', note_receipt)
         self.artifact('OBSERVATION.md', self.note_id)
@@ -148,7 +174,7 @@ class Trial(Runtime):
         event = {'event_id': self.result_id, 'entry_key': {'kind': 'note', 'slot': 'alpha.result'},
                  'references': [{'authority': 'artifact', 'path': 'self', 'role': 'result_artifact', 'assessment': 'source_checked'}]}
         header = json.dumps({'ledger': {'adapter_version': 1, 'events': [event]}})
-        self.send('ACTION REQUIRED: Explicitly read/mark. Write a different RESULT.md (<=2048 bytes), leading --- newline, this JSON object as YAML, newline --- newline, then a brief RESULT paragraph stating artifact intake completed; do not repeat the separate observation: ' + header + '. Execute exactly once: mesh task complete 1 --assignment ' + self.assignment + ' --summary-file RESULT.md --claude-dir "$CLAUDE_DIR" --team l7-ledger --name alpha. Show source and ledger receipts; reply RESULT_DONE. Never repeat completion even on error.')
+        self.send('ACTION REQUIRED: Explicitly read/mark. Write a different RESULT.md (<=2048 bytes), leading --- newline, this JSON object as YAML, newline --- newline, then a brief RESULT paragraph stating artifact intake completed; do not repeat the separate observation: ' + header + '. Execute exactly once: mesh task complete 1 --assignment ' + self.assignment + ' --summary-file RESULT.md --claude-dir "$CLAUDE_DIR" --team l7-ledger --name alpha. Print command exit_code and stdout source and ledger receipts; reply RESULT_DONE. Never repeat completion even on error.')
         result_receipt = self.require_intake(self.result_id, source=True)
         self.raw_save('step3-seat-source-ledger-receipts.json', result_receipt)
         data = self.artifact('RESULT.md', self.result_id)
@@ -170,7 +196,7 @@ class Trial(Runtime):
         before = len(self.ledger())
         before_completed = len([r for r in self.workflow() if r.get('eventType') == 'task_completed'])
         before_notices = self.completion_notice_ids()
-        self.send('ACTION REQUIRED: Explicitly read/mark. Retry ONLY this ledger identity once: mesh ledger entry --file RESULT.md --task 1 --assignment ' + self.assignment + ' --submission-event ' + self.source['eventId'] + ' --claude-dir "$CLAUDE_DIR" --team l7-ledger --name alpha. Do not edit files or call task complete. Show receipt and reply RETRY_DONE.')
+        self.send('ACTION REQUIRED: Explicitly read/mark. Retry ONLY this ledger identity once: mesh ledger entry --file RESULT.md --task 1 --assignment ' + self.assignment + ' --submission-event ' + self.source['eventId'] + ' --claude-dir "$CLAUDE_DIR" --team l7-ledger --name alpha. Do not edit files or call task complete. Print command exit_code and stdout receipt and reply RETRY_DONE.')
         retried = self.require_intake(self.result_id, after=before_results)
         original = result_receipt['receipt']['ledger']
         assert receipt_retry(original, retried['receipt'], before, len(self.ledger()))

@@ -1,9 +1,15 @@
 """Offline controller checks: temporary data only, no CLI or credentials."""
 import unittest
 from support import delivered, ready, receipt_retry, clean
+from controller import output_text, objects
 
 
 class EvidenceRules(unittest.TestCase):
+    def test_native_tool_result_blocks_preserve_receipt_json(self):
+        blocks = [{'type': 'input_text', 'text': 'Script completed\n'},
+                  {'type': 'input_text', 'text': '{\n"receipts": [{"event_id": "e"}]\n}'}]
+        self.assertIn({'receipts': [{'event_id': 'e'}]}, objects(output_text(blocks)))
+
     def test_first_send_requires_onboarding_transport_read_and_idle(self):
         rows = [{'payload': {'message_id': 'onboard', 'recipient': 'alpha', 'stage': 'submitted'}}]
         self.assertFalse(ready(rows, 'onboard', True))
