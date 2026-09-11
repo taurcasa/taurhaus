@@ -3998,6 +3998,7 @@ fn liveness_reconcile_clears_non_running_non_claude_daemon_pid_without_terminate
 
 #[test]
 fn liveness_reconcile_skips_daemon_cleanup_for_claude_members() {
+    // Regression: a2e07d0c forgot the daemon pid even when cleanup was deliberately skipped.
     let tmp = TempDir::new().expect("tempdir");
     let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
     let team_name = "architecture-final";
@@ -4024,7 +4025,7 @@ fn liveness_reconcile_skips_daemon_cleanup_for_claude_members() {
     let updated = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("reload");
     assert_eq!(updated.health, HealthState::SessionDead);
     assert_eq!(updated.session_id, record.session_id);
-    assert_eq!(updated.daemon_pid, None);
+    assert_eq!(updated.daemon_pid, Some(4242));
     assert!(
         !runtime.calls().iter().any(|call| matches!(
             call,
@@ -6032,12 +6033,18 @@ fn team_owned_inbox_append_does_not_wake_member_executor() {
 fn stopped_and_offline_seats_retain_resumable_identity() {
     // Regression: 39eeb33a erased the conversation on quarantine; e2e lane 4
     // run 9 (106f06c7) reproduced a supported stop followed by a fresh resume.
-    for mode in ["missing", "shell", "foreign", "presence"] {
+    // Regression: a2e07d0c discarded reusable pane bindings and unowned daemon handles.
+    for mode in ["missing", "shell", "foreign", "presence", "presence_claude"] {
         let tmp = TempDir::new().unwrap();
         let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
         orchestrator.create_team("retained", None).unwrap();
+        let tool = if mode == "presence_claude" {
+            CliTool::Claude
+        } else {
+            CliTool::Codex
+        };
         orchestrator
-            .add_member("retained", sample_member("seat", CliTool::Codex))
+            .add_member("retained", sample_member("seat", tool))
             .unwrap();
         let path = tmp.path().join("rollout.jsonl");
         std::fs::write(&path, "").unwrap();
@@ -6048,12 +6055,13 @@ fn stopped_and_offline_seats_retain_resumable_identity() {
             r.pane_id = Some("%9".into());
             r.pane_pid = Some(901);
             r.pane_start_time = Some(1);
+            r.daemon_pid = (mode == "presence_claude").then_some(4242);
         })
         .unwrap();
-        runtime.set_pane_exists("%9", mode != "missing" && mode != "presence");
+        runtime.set_pane_exists("%9", mode != "missing" && !mode.starts_with("presence"));
         runtime.set_pane_current_command("%9", Some(if mode == "shell" { "zsh" } else { "codex" }));
         runtime.set_pane_identity("%9", Some(902), Some(2));
-        if mode == "presence" {
+        if mode.starts_with("presence") {
             orchestrator
                 .reconcile_team_presence_for_live_status_with_runtime_sessions("retained", &[])
                 .unwrap();
@@ -6065,9 +6073,18 @@ fn stopped_and_offline_seats_retain_resumable_identity() {
         assert_eq!(r.session_id.as_deref(), Some("recorded-session"), "{mode}");
         assert_eq!(r.jsonl_path, Some(path), "{mode}");
         assert_eq!(
-            (r.pane_id, r.pane_pid, r.pane_start_time, r.daemon_pid),
-            (None, None, None, None),
+            (r.pane_id, r.pane_pid, r.pane_start_time),
+            if mode == "foreign" {
+                (None, None, None)
+            } else {
+                (Some("%9".into()), Some(901), Some(1))
+            },
             "{mode}"
         );
+        assert_eq!(r.daemon_pid, (mode == "presence_claude").then_some(4242));
+        assert!(!runtime
+            .calls()
+            .iter()
+            .any(|c| matches!(c, RuntimeCall::TerminatePid { .. })));
     }
 }

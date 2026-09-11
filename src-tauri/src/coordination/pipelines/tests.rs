@@ -6569,8 +6569,8 @@ fn adopting_a_session_after_an_offline_pass_clears_applied_effort() {
         "the migration is irreversible",
     );
 
-    // The member's session exits: liveness sees a bare shell and clears the
-    // pane binding while retaining the conversation and its applied level.
+    // The member's session exits: liveness sees a bare shell and retains the
+    // pane binding, conversation and its applied level.
     runtime.set_pane_current_command("%21", Some("zsh"));
     orchestrator
         .reconcile_team_liveness("effort-team")
@@ -6581,11 +6581,7 @@ fn adopting_a_session_after_an_offline_pass_clears_applied_effort() {
     assert!(offline.session_id.is_some());
 
     // The operator restarts `codex` by hand in the same pane.
-    // A new attachment supplies the pane; the stopped record no longer owns it.
-    MemberRuntimeStore::update(&teams_dir, "effort-team", "builder", |r| {
-        r.pane_id = Some("%21".into());
-    })
-    .unwrap();
+    // Regression: a2e07d0c dropped the pane binding, making hand-restart revival unreachable.
     runtime.set_pane_current_command("%21", Some("codex"));
     runtime.set_detected_runtime_session(
         "%21",
@@ -6656,7 +6652,7 @@ fn a_hand_restart_seen_before_its_identity_still_clears_applied_effort() {
     );
 
     // Regression: 39eeb33a erased stopped ids, masking stale effort on revival.
-    // Session exits; liveness clears the pane binding and retains the id.
+    // Session exits; liveness retains the pane binding and the id.
     runtime.set_pane_current_command("%21", Some("zsh"));
     orchestrator
         .reconcile_team_liveness("effort-team")
@@ -6664,11 +6660,7 @@ fn a_hand_restart_seen_before_its_identity_still_clears_applied_effort() {
 
     // Pass 1: the hand-restarted CLI is visible, but its identity is not yet
     // detectable (no registry entry written) — detection returns no id.
-    // A new attachment supplies the pane; the stopped record no longer owns it.
-    MemberRuntimeStore::update(&teams_dir, "effort-team", "builder", |r| {
-        r.pane_id = Some("%21".into());
-    })
-    .unwrap();
+    // Regression: a2e07d0c dropped the pane binding, making hand-restart revival unreachable.
     runtime.set_pane_current_command("%21", Some("codex"));
     runtime.set_detected_runtime_session("%21", CliTool::Codex, None, None);
     orchestrator

@@ -143,10 +143,8 @@ impl CoordinationOrchestrator {
                 &member_name,
                 &expected,
                 |current| {
-                    current.pane_id = None;
-                    current.pane_pid = None;
-                    current.pane_start_time = None;
-                    current.daemon_pid = None;
+                    current.pane_id = runtime.pane_id.clone();
+                    current.daemon_pid = runtime.daemon_pid;
                     current.health = runtime.health;
                 },
             )?;
@@ -287,10 +285,8 @@ impl CoordinationOrchestrator {
                         if current.project_path.is_none() {
                             current.project_path = runtime.project_path.clone();
                         }
-                        current.pane_id = None;
-                        current.pane_pid = None;
-                        current.pane_start_time = None;
-                        current.daemon_pid = None;
+                        current.pane_id = runtime.pane_id.clone();
+                        current.daemon_pid = runtime.daemon_pid;
                         current.health = runtime.health;
                     },
                 )?;
