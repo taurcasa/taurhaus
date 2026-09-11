@@ -20,8 +20,10 @@ for n in range(1,7):
     path=P/f'step{n}-outcome.json'
     if path.exists():
         outcome=read(path.name)
-        if outcome['outcome']=='FAIL' and 'onboarding lacks' in outcome.get('reason',''):
-            outcome=dict(outcome,classification='harness',reason=outcome['reason']+'; beta runtime recovery is submitted, but no consumed_by_read or card tool-result witness exists; direct user-message startup is not the specified read proof')
+        if outcome['outcome']=='FAIL' and 'transport-specific onboarding' in outcome.get('reason',''):
+            outcome=dict(outcome,classification='harness',reason=outcome['reason']+
+                '; startup card is present in host item/started and its turn completed, but the observer unnecessarily required item/completed for that user card')
+            path.write_text(json.dumps(outcome,indent=2)+'\n')
     else:
         outcome={'step':n,'outcome':'NOT RUN','classification':'blocked by earlier failure','paid_inputs':0,'metered_usd':0}
         path.write_text(json.dumps(outcome,indent=2)+'\n')
@@ -64,10 +66,10 @@ result={'verdict':f"FAIL step {failed['step']} ({failed['classification']}); rem
  'candidate':dict(json.loads((B/'candidate.json').read_text()),binaries=[r for r in events if r['kind']=='binary']),
  'gates':{n:json.loads((B/f'gates/gate-{n}.json').read_text()) for n in ['check-quick','lint','test-contracts']},
  'gate_cleanup':json.loads((B/'gates/gate-cleanup.json').read_text()),
- 'deviations':['The referenced integration attempt9 checkout was absent (git show exit 128); reused retained run4/run3 controller and inspected messaging reference read-only.',
- 'Unknown-cost notify-only inputs are counted; metered estimate is not complete billed spend.',
- 'The onboarding guard requires a journal card; beta startup uses a direct hosted turn. Its runtime submitted receipt exists but the required read/tool-result witness does not. No baseline or restart was attempted after the 180.8-second deadline.',
- 'Independent Opus evidence review and implementer/reviewer metering remain with the invoking orchestrator.'],
+ 'deviations':['The referenced integration attempt9 checkout was absent (git show exit 128); reused retained run5/run3 controller and inspected messaging run2 reference read-only.',
+ 'Unknown-cost inputs are counted; metered estimate is not complete billed spend.',
+ 'Run6 incorrectly required item/completed for the hosted startup card. The authentic item/started card plus matching completed host turn and host idle satisfy the ruling; the extra observer requirement caused step 1 to fail. No baseline or restart was attempted.',
+ 'Independent Opus evidence review and implementer/reviewer metering remain with the invoking orchestrator; Opus is unavailable in this agent tool surface.'],
  'product_defect':'None established by the stopped onboarding assertion.' if failed and failed['step']==1 else 'See ordered outcomes.'}
 (B/'final-audit.json').write_text(json.dumps(clean(result),indent=2)+'\n')
 print(json.dumps({k:result[k] for k in ['verdict','runtime_seconds','daemon_jsonl']}))

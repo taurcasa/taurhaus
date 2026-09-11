@@ -1,4 +1,16 @@
-# Lane 5 run5 — FAIL step 1 (harness); steps 2–6 NOT RUN
+# Lane 5 run6 — FAIL step 1 (harness); steps 2–6 NOT RUN
+
+Run6 stopped after **180.7 seconds** at beta's startup guard. The daemon's
+startup delivery row, the card in host `item/started`, the matching completed
+host turn, and host-sourced idle were all present. The controller incorrectly
+required the user card in `item/completed` as well. **No baseline was sent and
+neither restart was attempted.** This is an observer failure, not a product defect.
+All owned processes and credentials were removed; all three gates passed.
+**3 counted inputs; $0.00357304 metered; one unknown-cost input; 195.76 seconds runtime.**
+See [run6 evidence](#run6--sixth-attempt-evidence-step-1-fails-harness).
+Earlier attempts remain historical and do not establish run6 coverage.
+
+## Historical run5 verdict
 
 Run5 stopped after **180.8 seconds** waiting for beta's onboarding read evidence.
 Alpha passed the onboarding guard. Beta completed its direct hosted startup turn
@@ -1145,3 +1157,104 @@ lane stopped at step 1. The fresh budget was not a blocker. No product, descript
 plan ledger, installation or release change was made. Independent Opus evidence
 review remains with the invoking orchestrator; this is an implementation/evidence
 handoff, not full workflow acceptance.
+
+
+## Run6 — sixth-attempt evidence: step 1 fails (harness)
+
+The run used Taurhaus product base `a7e6db7e`, protocol **27**, in this checkout
+on `feat/e2e-l5-restarts`, with Mesh **310144d** built in the designated Mesh
+worktree. The RC descriptor remained enabled and unchanged. Both native Codex
+**0.153.4** siblings were copied into the scratch bin; seats used
+**gpt-5.6-luna / low**. Production `coordination.initialize_team` received the
+builder's canonical messaging policy, alpha `tmux`, beta `app_server`, and a
+login-only Claude lead. Binary digests, identities, runtime roots, incarnation,
+owner epoch, commands and RPC results are in the
+[final audit](l5-restarts/run6/final-audit.json) and
+[deduplicated snapshots](l5-restarts/run6/runtime/snapshots.json).
+
+| Ordered step | Outcome | Classification and evidence |
+|---|---|---|
+| 1. Initialize and complete/read baselines | **FAIL** | **Harness.** Initialization and alpha's onboarding guard passed. Beta's required startup evidence existed, but the observer required an additional user-card `item/completed` event. It timed out after 180.7 s. No baseline send occurred. |
+| 2. Working turns and pending markers | **NOT RUN** | Blocked by step 1; no bounded turns, pending markers or >=30 s windows measured. |
+| 3. Normal Taurhaus daemon restart | **NOT RUN** | Blocked by step 1; no stop/start or resume operation. |
+| 4. Deliver backlog and exclude baseline replay | **NOT RUN** | Blocked by step 1; no backlog or baseline exists to reconcile. |
+| 5. Fresh backlog and Mesh restart-self | **NOT RUN** | Blocked by step 1; no owner boundary crossed. |
+| 6. Read/mark, reconcile, export, teardown | **NOT RUN** | Cross-boundary accounting unrun; failure-path export and teardown **passed**. |
+
+The exact executed controller and predicates are retained in
+[controller.py](l5-restarts/run6/controller.py),
+[steps.py](l5-restarts/run6/steps.py), and
+[support.py](l5-restarts/run6/support.py). The failure witness is
+`onboarding-assessment.json` inside `runtime/snapshots.json`: the
+`onboarding.delivery.observed` row has `path: app_server`, `stage: submitted`
+and beta's exact recipient key. Host `item/started` contains that same recovery
+card, and `turn/completed` identifies its completed turn. The runtime snapshot
+reports attributed `idle`, source `host`. No journal read receipt was required
+for beta's startup; the new extra `item/completed` requirement was the error.
+The executed predicate is preserved without an after-the-fact repair or paid replay.
+
+Four transport-specific synthetic checks first errored against the run5 helper
+(`transport` was unsupported; **31 tests, 4 errors, exit 1**). After the helper
+change, **31 tests passed, exit 0**. The tests covered hosted startup without a
+journal projection, missing startup/completion/idle evidence, hosted native
+receipt plus card delivery, and later-send guards. They used a completed user-card
+event and missed the real `item/started` case. This limitation is explicit;
+the green synthetic checks do not supersede the failed runtime observation.
+See [red](l5-restarts/run6/red.txt) and [green](l5-restarts/run6/green.txt).
+
+### Run6 spend and limits
+
+Runtime: **2026-09-11 01:16:58.343527 UTC → 01:20:14.104342 UTC**,
+**195.76 seconds**, within the fresh 15-minute cap. Three inputs were counted
+against 20; three metered generations total **$0.00357304**, below $0.30 metered.
+No controller marker, bounded task, recovery input, or paid retry was submitted.
+
+| Turn / generation | Seat | Metered USD |
+|---|---|---:|
+| `01a08e0a-1dfb-7e30-80e9-62335f782801` / 1 | beta startup | 0.00101464 |
+| `01a08e0a-2fa0-7a31-a173-f660a54ee800` / 1 | alpha startup | 0.00196940 |
+| `01a08e0a-2fa0-7a31-a173-f660a54ee800` / 2 | alpha startup | 0.00058900 |
+| `01a08e0a-316e-7453-9ab9-b27c3c7c2766` | notify-only input | **Unknown** |
+
+The unknown-cost input counts as one input, not free usage. The ledger's
+conservative estimate for the metered generations is **$0.03729**; it does not
+bound the unknown input. Claude remained login-only, with no paid turn submitted.
+Implementer/reviewer spend is unavailable here and belongs to orchestrator
+metering. Full billing is unverified. Token counts and generation identities
+remain in [cost-ledger.json](l5-restarts/run6/runtime/cost-ledger.json).
+
+### Run6 teardown, gates, and deviations
+
+The controller and step worker exited **1**. Teardown found **zero survivors**,
+closed the private port, removed the auth copy before deleting the root, and
+verified root removal. The entire sanitized daemon JSONL is retained directly:
+**424 rows**, SHA-256
+`76db90f8bdc2d6602b547d3943aef34935caedefc8e3372e501b60d683db72c1`.
+There were **zero transient busy refusals**. The corrected owner filter recorded
+387 samples, at most one owner, maximum gap **0.565 s**; with no restart-self,
+these samples do **not** prove exclusion across an owner transition.
+
+| Exact command, from checkout root | Exit | Result |
+|---|---:|---|
+| `just build-daemon` | 0 | Checkout-local release daemon built; no install. |
+| `just check-quick` | 0 | Rust test compilation, frontend typecheck, 150 files / 2,519 frontend tests passed. |
+| `just lint` | 0 | Clippy, frontend and workflow/recipe checks passed. |
+| `just test-contracts` | 0 | Renderer, harness and module-boundary contracts passed. |
+| `just test-rust-unit` | Not run | No `src-tauri/` diff. |
+
+Gates ran **after teardown**, in a credential-free home and private PID namespace
+with real harness CLIs blocked. Cargo admission used the exact required census;
+no admission sample had three running Cargo jobs, so no waiting was required.
+Own Cargo builds used one job and this checkout's target directory. Gate cleanup
+passed. [verification.json](l5-restarts/run6/verification.json) checks packet hashes,
+sanitation, pane captures <=60 lines, no scratch survivors, no product diff,
+and a clean Mesh worktree. Snapshot interning retains 37 files as 32 payloads.
+
+Deviations: the integration attempt9 checkout was absent (`git show` exit 128),
+so the retained run5/run3 adaptation was reused and messaging run2 was inspected
+read-only. The extra startup-card completion predicate caused this attempt's
+harness failure; steps 2–6 stopped as the spec requires. The independent Opus
+lens is unavailable in this agent's tool surface and remains with the invoking
+orchestrator. No product fix, Mesh change, descriptor edit, plan-ledger edit,
+installation or release was made. There is no green numbered runtime step to
+commit; the red-first controller preparation and final failure packet are committed.

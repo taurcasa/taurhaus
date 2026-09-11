@@ -1,0 +1,16 @@
+{
+  "command": [
+    "just",
+    "ensure-tauri-resources"
+  ],
+  "cwd": "/home/mstie/projects/taurhaus-l5-restarts",
+  "exit": 0,
+  "seconds": 0.027033329010009766,
+  "cargo_preflight": [
+    {
+      "at": 1789089190.5782561,
+      "exit": 0,
+      "output": "3599451 <operator-path-redacted> build --release --bin taurhaus-daemon\n"
+    }
+  ]
+}

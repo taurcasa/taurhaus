@@ -1,0 +1,7 @@
+{
+  "step": 5,
+  "outcome": "NOT RUN",
+  "classification": "blocked by earlier failure",
+  "paid_inputs": 0,
+  "metered_usd": 0
+}
