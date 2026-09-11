@@ -1,0 +1,25 @@
+{
+  "recipe": "E2E_INSTALL_DAEMON=0 just test-e2e-spec managed-hosted-builder",
+  "source": "/home/mstie/.codex-account-b/auth.json",
+  "binary_sha256": {
+    "codex": "56ef98ab4032d317ab26e9b5e5a175650717351edb16ed9cde0cb6d1734d62da",
+    "codex-code-mode-host": "3e85d67471825f73d02ff5f7e047ca1f6ca8caa3f59e4c6e8d9ca6ca7302cb45",
+    "mesh": "3550d91bbcad22c10a36eea06f68b800a79bee99d2ea5338552ed664d8d43f34",
+    "claude": "9691a2b7bd796712ca8cffb8e32e54ff7fc45b662540233171a16a94a0425653"
+  },
+  "command": [
+    "unshare",
+    "--user",
+    "--map-root-user",
+    "--mount",
+    "--pid",
+    "--fork",
+    "--mount-proc",
+    "--kill-child=SIGTERM",
+    "python3",
+    "/tmp/taurhaus-l3-run3-oce10quy/inner.py",
+    "/tmp/taurhaus-l3-run3-oce10quy"
+  ],
+  "started_at": "2026-09-11T09:29:40Z",
+  "namespace": "private user/mount/PID; operator harness roots hidden"
+}

@@ -1,0 +1,16 @@
+{
+  "authRemoved": true,
+  "owned": [
+    {
+      "pid": 1094,
+      "startTime": "33954991",
+      "processGroup": false
+    },
+    {
+      "pid": 974,
+      "startTime": "33954936",
+      "processGroup": false
+    }
+  ],
+  "appAndDriver": "WDIO afterSession owns final app/driver cleanup"
+}

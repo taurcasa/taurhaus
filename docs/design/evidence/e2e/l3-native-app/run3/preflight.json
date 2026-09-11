@@ -1,0 +1,38 @@
+{
+  "revision": "0bb214a596c0d1ead72e994318af6025e1e80b92",
+  "base": "64df9ffd4",
+  "label": "run3",
+  "mesh_verify_lock": {
+    "command": "MESH_BIN=\"$PWD/.check-logs/l3-native-app/run3/mesh\" just mesh-verify-lock",
+    "exit_code": 0,
+    "contract": {
+      "version": "0.3.0",
+      "git_commit": "9963e2030ced3b4d86bdd904afb9c3ff3cee7171",
+      "git_dirty": false,
+      "build_time_utc": "2026-09-11T08:24:30Z",
+      "protocol_version": 1,
+      "schema_version": 1,
+      "journal_writer": "mesh-journal/2"
+    },
+    "note": "Executable copy of this checkout bundled mesh; same digest as native-launch copy. Initial preflight also exited 0 but the non-executable bundle path fell through binary resolution."
+  },
+  "build_daemon": {
+    "command": "CARGO_TARGET_DIR=\"$PWD/src-tauri/target\" CARGO_BUILD_JOBS=1 just build-daemon",
+    "exit_code": 0,
+    "last_lines": [
+      "   Compiling taurhaus v0.9.7 (/home/mstie/projects/taurhaus-l3-native-app/src-tauri)",
+      "    Finished `release` profile [optimized] target(s) in 3m 22s"
+    ]
+  },
+  "binaries": {
+    "src-tauri/target/debug/taurhaus": "15d6721253b699cc6f1e185a8111cc08ebea12392797355879b86fd4a2531647",
+    "src-tauri/target/debug/taurhaus-daemon": "1ee64d98b3c7ab2cc3450752ddce699dce005df733e336ecd502596f9bac7e77",
+    "src-tauri/target/release/taurhaus-daemon": "2f6c2c3f0df1d4a3797428957329c2f1b84303502652ce211ae890851443bee2",
+    "src-tauri/resources/mesh": "3550d91bbcad22c10a36eea06f68b800a79bee99d2ea5338552ed664d8d43f34"
+  },
+  "syntax_load": {
+    "command": "bun run node --check e2e/specs/managed-hosted-builder.js",
+    "exit_code": 0
+  },
+  "hook_retries": 2
+}

@@ -1,0 +1,22 @@
+{
+  "at": "2026-09-11T09:33:27Z",
+  "worker_roots": {
+    "/tmp/taurhaus-e2e-732-D2ceZs": false,
+    "/tmp/taurhaus-e2e-735-3bhrvs": false,
+    "/tmp/taurhaus-e2e-735-D2LhGN": false
+  },
+  "staging_roots": {
+    "/tmp/taurhaus-l3-run3-0cj4w9t8": false,
+    "/tmp/taurhaus-l3-run3-oce10quy": false,
+    "/tmp/taurhaus-l3-run3-t75ubm7p": false
+  },
+  "private_ports": [
+    20315,
+    22885,
+    23084
+  ],
+  "surviving_processes": [],
+  "surviving_listeners": [],
+  "auth_copies_removed": true,
+  "namespace_owners_reaped": true
+}

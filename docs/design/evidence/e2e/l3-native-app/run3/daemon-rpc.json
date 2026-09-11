@@ -1,0 +1,16 @@
+[
+  {
+    "at": "2026-09-11T09:32:27.065Z",
+    "method": "ping",
+    "params": {},
+    "response": {
+      "id": "l3-0",
+      "result": {
+        "data_root": "/tmp/taurhaus-e2e-732-D2ceZs/app-data",
+        "protocol_version": 27,
+        "uptime_secs": 2,
+        "version": "0.9.7"
+      }
+    }
+  }
+]

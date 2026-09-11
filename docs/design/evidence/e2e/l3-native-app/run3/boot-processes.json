@@ -1,0 +1,110 @@
+[
+  {
+    "pid": 1095,
+    "startTime": "33968318",
+    "processGroup": false,
+    "executable": "/usr/bin/tmux"
+  },
+  {
+    "pid": 1125,
+    "startTime": "33968319",
+    "processGroup": false,
+    "executable": "/usr/bin/zsh"
+  },
+  {
+    "pid": 768,
+    "startTime": "33968019",
+    "processGroup": false,
+    "executable": "/home/mstie/.nvm/versions/node/v24.14.1/bin/node"
+  },
+  {
+    "pid": 812,
+    "startTime": "33968038",
+    "processGroup": false,
+    "executable": "/usr/bin/WebKitWebDriver"
+  },
+  {
+    "pid": 815,
+    "startTime": "33968207",
+    "processGroup": false,
+    "executable": "/home/mstie/projects/taurhaus-l3-native-app/src-tauri/target/debug/taurhaus"
+  },
+  {
+    "pid": 822,
+    "startTime": "33968212",
+    "processGroup": false,
+    "executable": "/usr/bin/dbus-launch"
+  },
+  {
+    "pid": 823,
+    "startTime": "33968213",
+    "processGroup": false,
+    "executable": "/usr/bin/dbus-daemon"
+  },
+  {
+    "pid": 825,
+    "startTime": "33968213",
+    "processGroup": false,
+    "executable": "/usr/libexec/at-spi-bus-launcher"
+  },
+  {
+    "pid": 831,
+    "startTime": "33968213",
+    "processGroup": false,
+    "executable": "/usr/bin/dbus-daemon"
+  },
+  {
+    "pid": 837,
+    "startTime": "33968215",
+    "processGroup": false,
+    "executable": "/usr/libexec/xdg-desktop-portal"
+  },
+  {
+    "pid": 843,
+    "startTime": "33968215",
+    "processGroup": false,
+    "executable": "/usr/libexec/xdg-document-portal"
+  },
+  {
+    "pid": 848,
+    "startTime": "33968216",
+    "processGroup": false,
+    "executable": "/usr/libexec/xdg-permission-store"
+  },
+  {
+    "pid": 855,
+    "startTime": "33968216",
+    "processGroup": false,
+    "executable": "/usr/bin/fusermount3"
+  },
+  {
+    "pid": 859,
+    "startTime": "33968217",
+    "processGroup": false,
+    "executable": "/usr/libexec/xdg-desktop-portal-gtk"
+  },
+  {
+    "pid": 867,
+    "startTime": "33968218",
+    "processGroup": false,
+    "executable": "/usr/libexec/at-spi2-registryd"
+  },
+  {
+    "pid": 883,
+    "startTime": "33968226",
+    "processGroup": false,
+    "executable": "/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/WebKitNetworkProcess"
+  },
+  {
+    "pid": 889,
+    "startTime": "33968228",
+    "processGroup": false,
+    "executable": "/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/WebKitWebProcess"
+  },
+  {
+    "pid": 971,
+    "startTime": "33968263",
+    "processGroup": false,
+    "executable": "/home/mstie/projects/taurhaus-l3-native-app/src-tauri/target/debug/taurhaus-daemon"
+  }
+]

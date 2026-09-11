@@ -1,0 +1,86 @@
+[
+  {
+    "command": "just check-quick",
+    "exit_code": 0,
+    "started_at": "2026-09-11T09:33:28Z",
+    "elapsed_seconds": 32.83193898200989,
+    "cargo_admission": [
+      {
+        "at": "2026-09-11T09:33:28Z",
+        "running_cargo": [
+          "211543 /home/mstie/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib --bins -- --test-threads=1 --skip daemon::server::tests:: --skip daemon::event_listener::tests:: --skip provider::daemon_client::tests:: --skip daemon::launcher::tests:: --skip daemon::watch::tests:: --skip fs::watcher::tests::watcher_starts_and_stops --skip fs::watcher::tests::unwatch_all_clears_everything --skip fs::watcher::tests::shared_tree_reconcile_stays_live_during_continued_callback_events"
+        ]
+      }
+    ],
+    "last_lines": [
+      "stderr | src/lib/components/MeshTab.test.js > MeshTab > suppresses skipped team folder discovery warnings from the inline availability banner",
+      "[mesh] suppressed internal discovery warning: skipped team folder 'taureval-1773711699719' because config is missing or invalid",
+      "",
+      " \u2713 src/lib/components/MeshTab.test.js (75 tests) 7480ms",
+      "     \u2713 auto-collapses the resume progress tray after completion  5235ms",
+      "",
+      " Test Files  150 passed (150)",
+      "      Tests  2522 passed (2522)",
+      "   Start at  11:33:49",
+      "   Duration  11.58s (transform 44.97s, setup 0ms, import 97.66s, tests 52.12s, environment 47.28s)",
+      "",
+      "Quick check passed."
+    ]
+  },
+  {
+    "command": "just lint",
+    "exit_code": 0,
+    "started_at": "2026-09-11T09:34:00Z",
+    "elapsed_seconds": 36.86679673194885,
+    "cargo_admission": [
+      {
+        "at": "2026-09-11T09:34:00Z",
+        "running_cargo": [
+          "211543 /home/mstie/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib --bins -- --test-threads=1 --skip daemon::server::tests:: --skip daemon::event_listener::tests:: --skip provider::daemon_client::tests:: --skip daemon::launcher::tests:: --skip daemon::watch::tests:: --skip fs::watcher::tests::watcher_starts_and_stops --skip fs::watcher::tests::unwatch_all_clears_everything --skip fs::watcher::tests::shared_tree_reconcile_stays_live_during_continued_callback_events"
+        ]
+      }
+    ],
+    "last_lines": [
+      "$ knip",
+      "$ bun run check:node && dependency-cruiser --no-config --include-only '^src' --output-type err-long src",
+      "$ node scripts/check-node-version.mjs",
+      "",
+      "\u2714 no dependency violations found (347 modules, 805 dependencies cruised)",
+      "",
+      "bun scripts/check-workflow-scripts.mjs",
+      "workflow script check passed: 5 script(s) in .claude/workflows",
+      "scripts/check-just-gates.sh",
+      "just check gate guard passed.",
+      "scripts/check-lane-worktree-recipes.sh",
+      "lane worktree recipe guard passed."
+    ]
+  },
+  {
+    "command": "just test-contracts",
+    "exit_code": 0,
+    "started_at": "2026-09-11T09:34:37Z",
+    "elapsed_seconds": 20.303134441375732,
+    "cargo_admission": [
+      {
+        "at": "2026-09-11T09:34:37Z",
+        "running_cargo": [
+          "211543 /home/mstie/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib --bins -- --test-threads=1 --skip daemon::server::tests:: --skip daemon::event_listener::tests:: --skip provider::daemon_client::tests:: --skip daemon::launcher::tests:: --skip daemon::watch::tests:: --skip fs::watcher::tests::watcher_starts_and_stops --skip fs::watcher::tests::unwatch_all_clears_everything --skip fs::watcher::tests::shared_tree_reconcile_stays_live_during_continued_callback_events"
+        ]
+      }
+    ],
+    "last_lines": [
+      "test rust_integration_ci_runs_on_every_pull_request ... ok",
+      "test rust_integration_recipe_runs_every_test_binary ... ok",
+      "test scanner_account_memory_never_opens_the_app_database ... ok",
+      "test task_deadline_policy_stays_pure_and_outside_placeholder_health_framework ... ok",
+      "test team_state_write_apis_stay_daemon_or_native_hook_owned ... ok",
+      "test terminal_child_mode_inherits_flock_and_exits_without_daemon_startup ... ok",
+      "test terminal_contract_pins_shared_spelling_and_write_boundaries ... ok",
+      "test the_tmux_focus_path_contains_no_hook_code ... ok",
+      "test transcript_compaction_pipeline_stays_retired ... ok",
+      "",
+      "test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.02s",
+      ""
+    ]
+  }
+]

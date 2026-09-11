@@ -1,0 +1,30 @@
+{
+  "gates": [
+    {
+      "at": 1789119147638,
+      "disabled": true,
+      "canonical": false
+    },
+    {
+      "at": 1789119147787,
+      "disabled": true,
+      "canonical": true
+    },
+    {
+      "at": 1789119147894,
+      "disabled": true,
+      "canonical": true
+    },
+    {
+      "at": 1789119147897,
+      "disabled": true,
+      "canonical": true
+    },
+    {
+      "at": 1789119147922,
+      "disabled": true,
+      "canonical": true
+    }
+  ],
+  "ipc": []
+}

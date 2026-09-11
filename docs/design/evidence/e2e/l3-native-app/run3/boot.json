@@ -1,0 +1,25 @@
+{
+  "binary": "/home/mstie/projects/taurhaus-l3-native-app/src-tauri/target/debug/taurhaus",
+  "sha256": "15d6721253b699cc6f1e185a8111cc08ebea12392797355879b86fd4a2531647",
+  "ping": {
+    "data_root": "/tmp/taurhaus-e2e-732-D2ceZs/app-data",
+    "protocol_version": 27,
+    "uptime_secs": 2,
+    "version": "0.9.7"
+  },
+  "mesh": {
+    "version": "0.3.0",
+    "git_commit": "9963e2030ced3b4d86bdd904afb9c3ff3cee7171",
+    "git_dirty": false,
+    "build_time_utc": "2026-09-11T08:24:30Z",
+    "protocol_version": 1,
+    "schema_version": 1,
+    "journal_writer": "mesh-journal/2"
+  },
+  "lock": {
+    "version": "0.3.0",
+    "protocol_version": 1,
+    "schema_version": 1,
+    "git_commit": "9963e2030ced3b4d86bdd904afb9c3ff3cee7171"
+  }
+}

@@ -1,0 +1,560 @@
+[
+  {
+    "attempt": "hook-red-native.log",
+    "summary": {
+      "started_at": "2026-09-11T09:29:41.082Z",
+      "build_ms": 26944,
+      "build_reused": false,
+      "wall_ms": 33648,
+      "boots": 1,
+      "wizard_walks": 0,
+      "revision": "0bb214a596c0d1ead72e994318af6025e1e80b92",
+      "dirty": true,
+      "binary": "/home/mstie/projects/taurhaus-l3-native-app/src-tauri/target/debug/taurhaus",
+      "binary_sha256": "15d6721253b699cc6f1e185a8111cc08ebea12392797355879b86fd4a2531647",
+      "complete": false,
+      "exclusions": [
+        {
+          "kind": "file",
+          "spec": "e2e/specs/command-center-real-actions.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/compaction-codex-hooks.js",
+          "reason": "paid; explicitly named only"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/context-menu.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/critical-smoke.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/cross-tab-navigation.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/daemon-integration.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/error-handling.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/files-workflow.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/first-run-wizard.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/general-screenshots.js",
+          "reason": "on-demand documentation capture"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/git-workflow.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/managed-stage-codex.js",
+          "reason": "paid; explicitly named only"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/managed-stage-deadline.js",
+          "reason": "paid; explicitly named only"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/managed-stage-parallel.js",
+          "reason": "paid; explicitly named only"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/mesh-recovery.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/mesh-screenshots.js",
+          "reason": "on-demand documentation capture"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/mesh-workflow.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/overview-interactions.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/project-lifecycle.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/readme-screenshots.js",
+          "reason": "on-demand documentation capture"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/regressions.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/role-detail-screenshots.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/screenshots.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/search-workflow.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/session-management.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/settings-persistence.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/tasks-workflow.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/template-crud-ui.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/template-screenshots.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/templates.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/theme-and-shortcuts.js",
+          "reason": "explicit suite selection/exclusion"
+        }
+      ],
+      "specs": {
+        "e2e/specs/managed-hosted-builder.js": {
+          "selected": 6,
+          "executed": 0,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 0,
+          "unreached": 6,
+          "skipped_tests": [],
+          "excluded_tests": []
+        }
+      },
+      "exit_code": 1
+    }
+  },
+  {
+    "attempt": "hook-retry1-native.log",
+    "summary": {
+      "started_at": "2026-09-11T09:30:49.386Z",
+      "build_ms": 23041,
+      "build_reused": false,
+      "wall_ms": 27920,
+      "boots": 1,
+      "wizard_walks": 0,
+      "revision": "0bb214a596c0d1ead72e994318af6025e1e80b92",
+      "dirty": true,
+      "binary": "/home/mstie/projects/taurhaus-l3-native-app/src-tauri/target/debug/taurhaus",
+      "binary_sha256": "15d6721253b699cc6f1e185a8111cc08ebea12392797355879b86fd4a2531647",
+      "complete": false,
+      "exclusions": [
+        {
+          "kind": "file",
+          "spec": "e2e/specs/command-center-real-actions.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/compaction-codex-hooks.js",
+          "reason": "paid; explicitly named only"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/context-menu.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/critical-smoke.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/cross-tab-navigation.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/daemon-integration.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/error-handling.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/files-workflow.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/first-run-wizard.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/general-screenshots.js",
+          "reason": "on-demand documentation capture"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/git-workflow.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/managed-stage-codex.js",
+          "reason": "paid; explicitly named only"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/managed-stage-deadline.js",
+          "reason": "paid; explicitly named only"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/managed-stage-parallel.js",
+          "reason": "paid; explicitly named only"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/mesh-recovery.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/mesh-screenshots.js",
+          "reason": "on-demand documentation capture"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/mesh-workflow.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/overview-interactions.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/project-lifecycle.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/readme-screenshots.js",
+          "reason": "on-demand documentation capture"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/regressions.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/role-detail-screenshots.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/screenshots.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/search-workflow.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/session-management.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/settings-persistence.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/tasks-workflow.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/template-crud-ui.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/template-screenshots.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/templates.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/theme-and-shortcuts.js",
+          "reason": "explicit suite selection/exclusion"
+        }
+      ],
+      "specs": {
+        "e2e/specs/managed-hosted-builder.js": {
+          "selected": 6,
+          "executed": 0,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 0,
+          "unreached": 6,
+          "skipped_tests": [],
+          "excluded_tests": []
+        }
+      },
+      "exit_code": 1
+    }
+  },
+  {
+    "attempt": "native.log",
+    "summary": {
+      "started_at": "2026-09-11T09:31:54.849Z",
+      "build_ms": 25188,
+      "build_reused": false,
+      "wall_ms": 35031,
+      "boots": 1,
+      "wizard_walks": 0,
+      "revision": "0bb214a596c0d1ead72e994318af6025e1e80b92",
+      "dirty": true,
+      "binary": "/home/mstie/projects/taurhaus-l3-native-app/src-tauri/target/debug/taurhaus",
+      "binary_sha256": "15d6721253b699cc6f1e185a8111cc08ebea12392797355879b86fd4a2531647",
+      "complete": false,
+      "exclusions": [
+        {
+          "kind": "file",
+          "spec": "e2e/specs/command-center-real-actions.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/compaction-codex-hooks.js",
+          "reason": "paid; explicitly named only"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/context-menu.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/critical-smoke.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/cross-tab-navigation.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/daemon-integration.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/error-handling.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/files-workflow.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/first-run-wizard.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/general-screenshots.js",
+          "reason": "on-demand documentation capture"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/git-workflow.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/managed-stage-codex.js",
+          "reason": "paid; explicitly named only"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/managed-stage-deadline.js",
+          "reason": "paid; explicitly named only"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/managed-stage-parallel.js",
+          "reason": "paid; explicitly named only"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/mesh-recovery.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/mesh-screenshots.js",
+          "reason": "on-demand documentation capture"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/mesh-workflow.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/overview-interactions.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/project-lifecycle.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/readme-screenshots.js",
+          "reason": "on-demand documentation capture"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/regressions.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/role-detail-screenshots.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/screenshots.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/search-workflow.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/session-management.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/settings-persistence.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/tasks-workflow.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/template-crud-ui.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/template-screenshots.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/templates.js",
+          "reason": "explicit suite selection/exclusion"
+        },
+        {
+          "kind": "file",
+          "spec": "e2e/specs/theme-and-shortcuts.js",
+          "reason": "explicit suite selection/exclusion"
+        }
+      ],
+      "specs": {
+        "e2e/specs/managed-hosted-builder.js": {
+          "selected": 6,
+          "executed": 1,
+          "passed": 0,
+          "failed": 1,
+          "skipped": 0,
+          "unreached": 5,
+          "skipped_tests": [],
+          "excluded_tests": []
+        }
+      },
+      "exit_code": 1
+    }
+  }
+]

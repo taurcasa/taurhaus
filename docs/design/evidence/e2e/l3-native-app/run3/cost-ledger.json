@@ -1,0 +1,13 @@
+{
+  "reservations": [],
+  "turns": [],
+  "usd": 0,
+  "meteringComplete": true,
+  "rates": {
+    "input": 0.2,
+    "cached": 0.02,
+    "output": 1.2
+  },
+  "rateSource": "L7 run7 inherited API-equivalent estimates",
+  "elapsedMs": 2333
+}
