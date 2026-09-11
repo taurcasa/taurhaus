@@ -1,0 +1,27 @@
+{
+  "command": [
+    "just",
+    "build-daemon"
+  ],
+  "exit": 0,
+  "seconds": 115.93772679398535,
+  "cargo_preflight": [
+    {
+      "exit": 0,
+      "output": "4141272 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib --bins -- --test-threads=1 --skip daemon::server::tests:: --skip daemon::event_listener::tests:: --skip provider::daemon_client::tests:: --skip daemon::launcher::tests:: --skip daemon::watch::tests:: --skip fs::watcher::tests::watcher_starts_and_stops --skip fs::watcher::tests::unwatch_all_clears_everything --skip fs::watcher::tests::shared_tree_reconcile_stays_live_during_continued_callback_events\n"
+    },
+    {
+      "exit": 0,
+      "output": "4141272 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib --bins -- --test-threads=1 --skip daemon::server::tests:: --skip daemon::event_listener::tests:: --skip provider::daemon_client::tests:: --skip daemon::launcher::tests:: --skip daemon::watch::tests:: --skip fs::watcher::tests::watcher_starts_and_stops --skip fs::watcher::tests::unwatch_all_clears_everything --skip fs::watcher::tests::shared_tree_reconcile_stays_live_during_continued_callback_events\n"
+    },
+    {
+      "exit": 1,
+      "output": ""
+    }
+  ],
+  "last_lines": [
+    "   Compiling taurhaus v0.9.7 (/home/mstie/projects/taurhaus-l1-claude-lead/src-tauri)",
+    "    Finished `release` profile [optimized] target(s) in 1m 55s"
+  ],
+  "sha256": "9dfc9daacbe21380405cec063c37a433becfdb32b2fffffd20813879f679f590"
+}

@@ -15,9 +15,11 @@ regexes = [
   '''dGhlIHNhbXBsZSBub25jZQ==''',
   '''5e4cdfc3ba40af04ed58d9c062dcb745be5eb0c06ea5734edf39747c8586de3e''',
   # Mesh delivery idempotency keys: per-attempt UUID request ids in journal and receipt evidence, not credentials
-  '''idempotency_key":\s*"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"''',
+  '''idempotency_key":\s*"[0-9a-f-]{32,64}"''',
   # RFC 6455 client handshake nonce captured in native-eligibility host-event evidence: single-use, public on the wire
   '''Sec-WebSocket-Key: [A-Za-z0-9+/]{22}==''',
   # Mesh team config's controlAuthTokenHash: a truncated hash of a scratch team's per-team control token, captured in e2e evidence after the team was destroyed; the token itself is never recorded
   '''controlAuthTokenHash":\s*"[0-9a-f]{16,64}"''',
+  # The recovery card names the assignment by its mesh assignment id ("Assignment: task=N token=<uuid>"): an identifier, never a credential
+  '''Assignment: task=[0-9]+ token=[0-9a-f-]{36}''',
 ]

@@ -1,0 +1,19 @@
+{
+  "model_used": "claude-opus-4-6",
+  "exit": 0,
+  "cost_usd": 0.14575,
+  "num_turns": 1,
+  "verdict": "approve",
+  "findings": [
+    {
+      "severity": "minor",
+      "finding": "The report reclassifies the raw controller FAIL/taurhaus as UNAVAILABLE/harness but acknowledges the initial product outcome_unknown predates the controller input and calls ownership 'unresolved'. This is honest hedging, not misattribution, but the dual classification could confuse downstream consumers.",
+      "fix": "No fix required; the report already preserves the raw result verbatim and explains the distinction."
+    },
+    {
+      "severity": "minor",
+      "finding": "Implementer/orchestrator spend is listed as 'unavailable' and foreign startup-notify usage as 'unknown', so total attempt cost is incomplete. The report correctly does not claim a complete spend proof.",
+      "fix": "Acceptable as-is given the explicit disclaimer."
+    }
+  ]
+}

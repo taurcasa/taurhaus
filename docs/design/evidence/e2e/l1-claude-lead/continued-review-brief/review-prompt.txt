@@ -1,0 +1,448 @@
+You are the independent Opus evidence reviewer for a small-change trial. Review the actual UNAVAILABLE report, not whether it passes the full E2E lane. No tools. Return JSON {"verdict":"approve"|"fix_required","findings":[{"severity":"major"|"minor","finding":"...","fix":"..."}]}. fix_required requires a major. Assess truthful failure classification, spend, cleanup, secrets, evidence discipline. Missing runtime steps are intentional first-failure stop, not a pass claim. Be concise. One fix round may correct the report; no paid seat rerun is allowed.
+
+FILE ../l1-claude-lead.md
+# L1 — UNAVAILABLE at step 2 (harness); step 1 PASS
+
+The user authorized continuation from `ff8dc10c`. Setup repair is committed in
+`9e71cc15`; green numbered step 1 is committed in `5a7fb7ee`. The first run's
+missing-hook failure remains historical evidence under `run/` and at
+`ff8dc10c`. No product files, descriptors, plan ledgers or other worktrees were
+edited. Current continuation evidence is under `continued-run/`.
+
+| Ordered audit step | Outcome / classification | Evidence |
+|---|---|---|
+| 1. Initialize; signed-in, team-bound Claude; roots/owner/hooks | **PASS** | Production hook installer ran before LaunchNew; real `SessionStart(compact)` registered. Sole initialize in this continuation completed with canonical format 2, owner `team`, lead `%1`, alpha `%2`. Claude generated authenticated native replies. |
+| 2. Claude sends two markers; recipient exposure | **FAIL acceptance / UNAVAILABLE — harness** | Claude executed both sends, both were accepted. Alpha never exposed either marker. Its copied runtime lacked `codex-code-mode-host`, and the initial setup prompt stayed in the composer until a second Enter. Only 27.98 seconds remained after that Enter, below the required 60-second opportunity. This cannot establish a product defect. |
+| 3. Seat explicit read/reply and Claude native uptake | **NOT RUN — dependency on 2** | No alpha reply or external lead read. |
+| 4. Claude explicit read/mark with cursors | **NOT RUN — dependency on 2** | No `mesh read` or read receipt claimed. |
+| 5. Ordinary `/compact` and genuine recovery card | **NOT RUN — dependency on 2** | Registration is proven; compaction execution and recovery are not. |
+| 6. Fresh native mail after recovery | **NOT RUN — dependency on 2** | Teardown was performed independently and passed. |
+
+[Final disposition](l1-claude-lead/continued-run/final-disposition.json) supersedes
+the controller's provisional `product-owner-pending-evidence-review` label;
+its raw failure reason is retained in
+[result.json](l1-claude-lead/continued-run/result.json).
+No paid step was retried after the failure.
+
+## Production setup and runtime evidence
+
+The harness adapter [install_hook.rs](l1-claude-lead/install_hook.rs) links the
+already-built production library and calls
+`coordination::compact_hook::ensure_compact_hook_installed`. It does not write
+a substitute recovery card or reimplement hook installation. The helper runs
+inside the private Bubblewrap namespace against the scratch teams root and
+scratch daemon executable, before the seats start. No drain descriptor was
+enabled. [Registered hook](l1-claude-lead/continued-run/production-hooks-before-launch.json).
+
+- Taurhaus base `6f61f611`, protocol **27**, daemon release SHA256
+  `28c1937eb99b8495814654d113b3642fd63b051c1550a0e6610662abac4184cd`.
+- Mesh `a6ee29681a44a472c0ce7b33b9630d4865c93012`, designated `mesh-l1`
+  worktree only, SHA256
+  `88b42445f0b6d90ef8c029af0faa6e8f2411a06843625d0349a7d68a98ce4e68`.
+- Initialize run `init_718fd858f16f4bc4897e36daa0d9f9c1`.
+- Claude Code **2.1.267**, actual model `claude-haiku-4-5-20251001`,
+  session `a2dddba1-e73b-4f58-b908-8dcfedabf8e4`, attachment 1,
+  context generation `0`, managed LaunchNew `%1`.
+- Codex **0.153.4**, `gpt-5.6-luna low`, tmux `%2`, session
+  `01a08a86-bfdf-7273-9602-02880a7f3d72`, actual setup turn
+  `01a08a8a-9d0d-74c1-b18a-f28b7ad3be21`, response `READY`.
+
+Claude executed these commands in Bash (the real scratch selector was used):
+
+```sh
+mesh send alpha 'ACTION REQUIRED: Remember marker L1_AMBER_42. Do not run tools or send a reply yet; the controller will request step 3.' --summary 'L1 marker A' --claude-dir "$CLAUDE_CONFIG_DIR" --team l1-claude-lead --name lead
+mesh send alpha 'ACTION REQUIRED: Remember marker L1_BIRCH_73. Do not run tools or send a reply yet; the controller will request step 3.' --summary 'L1 marker B' --claude-dir "$CLAUDE_CONFIG_DIR" --team l1-claude-lead --name lead
+```
+
+| Marker | Canonical message ID | Delivery ID |
+|---|---|---|
+| `L1_AMBER_42` | `2a0be2a5-3cba-4885-9124-8037c65635b4` | `977b42c1-f557-4dd5-bc05-5f5d598474a9` |
+| `L1_BIRCH_73` | `d520abc2-467e-492b-be39-4790f7f3e43b` | `27ac7268-fb10-45b4-8a9a-fb6a304829fc` |
+
+Both journal rows say `message_accepted`, `wake_eligible: true`, recipient alpha.
+Neither acceptance proves terminal exposure. Final alpha health reports
+`completed: 0`, `failures: 0`, and
+`IO error: delivery: pending: activity not freshly idle`.
+The final pane additionally reports `codex-code-mode-host: host executable was
+not found`. Even after a corrected setup submission, this runtime does not
+establish a command-capable Codex seat for step 3.
+
+[Claude tool transcript](l1-claude-lead/continued-run/claude-transcript.json),
+[Codex transcript](l1-claude-lead/continued-run/codex-transcript.json),
+[commands and exits](l1-claude-lead/continued-run/events.jsonl),
+[structured daemon events](l1-claude-lead/continued-run/daemon-events.json).
+Complete segment rows, projections, runtime/activity/health and bounded panes
+are archived together; no truncated JSONL tail is treated as a complete row.
+The failure occurred before journal pagination/export; direct snapshots are
+not represented as completed paginated-reader coverage.
+
+Claude's generated startup card induced two unrequested self-messages. The
+first send attempt omitted the recipient and failed; Claude corrected it, then
+sent another wait-state note to itself. Both accepted self-messages appeared
+as native teammate inputs without any `mesh read`. This is partial native-mail
+evidence, not the required alpha-reply round trip. Their inputs and every API
+generation are counted. Lead `inboxes/lead.json` existed and was empty after
+native consumption; the required seat-reply projection remains untested.
+
+## Cumulative spend and cleanup
+
+[Final ledger](l1-claude-lead/continued-run/final-cost-ledger.json) retains the
+previous run's **$0.02195125** estimate / **$0.06416** upper-rate amount.
+The continuation adds **$0.04525085**, including **$0.00187940** for Codex.
+Cumulative seat estimate **$0.06720210**; upper-rate amount **$0.65789640**.
+These are token-based API-equivalent estimates, not invoices.
+
+| Current Claude API message | Estimated USD |
+|---|---:|
+| `msg_011CeuUfXBWvBSQXB3koQ9b6` | 0.01532915 |
+| `msg_011CeuUgVYKToc9a5NFWm5H5` | 0.00449185 |
+| `msg_011CeuUgoreR1X3SinNoVaNJ` | 0.00254050 |
+| `msg_011CeuUh19o7TCMwdgrADoFw` | 0.00678790 |
+| `msg_011CeuUhycoMUBZjsJDpBL6W` | 0.00325060 |
+| `msg_011CeuUiEGrQTDrHxeQz4gJG` | 0.00378575 |
+| `msg_011CeuUtSJRmWBvdhjdoBySi` | 0.00414540 |
+| `msg_011CeuUthtJ7gHAZhEw5ApSo` | 0.00304030 |
+
+The ledger has full input/cache/output fields. Haiku rates are $1/$0.10/$1.25/$5
+per million input/cache-read/cache-write/output tokens, with all tokens also
+priced at $5/M for the upper-rate column.
+[Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing).
+Luna uses the trial's $0.20/$0.02/$1.20 rates; its 9,367 input and 5 output
+tokens are priced once. No reasoning tokens were double charged.
+
+Conservative cumulative input counts: **5 Claude / 6 Codex**, including the
+previous run, native self-messages, both reserved alpha exposures and the
+additional Enter. Eight current Claude API messages belong to four current
+inputs; API messages are not silently relabeled as eight user inputs.
+No `/compact` occurred. Combined runtime **451.76 seconds**, below 15 minutes.
+The raw controller counter omitted the two self-mail inputs; the final ledger
+explicitly corrects this. Future controller admission must use that corrected
+observed-input count. No input was sent near the ceiling in this attempt.
+
+The private PID namespace was stopped, all owned children waited, no survivors
+remained, the private port closed, and the scratch root/Codex auth copy were
+removed. Claude's credential was never copied; its read-only mount placeholder
+was zero bytes after shutdown. [Cleanup](l1-claude-lead/continued-run/cleanup.json).
+Runtime controller exit **2**; step-2 driver exit **1** (failed assertion).
+
+## Reproduction, gates and review
+
+Exact controllers: [controller.py](l1-claude-lead/controller.py),
+[step1.py](l1-claude-lead/step1.py), [steps.py](l1-claude-lead/steps.py),
+[actions.py](l1-claude-lead/actions.py). Later step branches were not executed
+or validated by this failed attempt; they are not a complete passing-lane claim.
+Explicit credential/binary arguments use the same authorized single-file
+sources as the prior run; no fallback or other account was used.
+
+```sh
+TRIAL_EVIDENCE_LABEL=renewed-verification python3 docs/design/evidence/e2e/l1-claude-lead/build_gates.py --build
+just --justfile docs/design/evidence/e2e/l1-claude-lead/harness.just build-hook
+python3 docs/design/evidence/e2e/l1-claude-lead/controller.py --evidence-label continued-run --claude-credential "$AUTHORIZED_CLAUDE_SINGLE_FILE" --codex-auth "$AUTHORIZED_CODEX_SINGLE_FILE" --claude-binary "$PINNED_CLAUDE_BINARY" --codex-binary "$PINNED_CODEX_BINARY"
+python3 docs/design/evidence/e2e/l1-claude-lead/step1.py
+python3 docs/design/evidence/e2e/l1-claude-lead/steps.py 2
+TRIAL_EVIDENCE_LABEL=renewed-final-verification python3 docs/design/evidence/e2e/l1-claude-lead/build_gates.py
+```
+
+The events retain the extra alpha setup prompt, corrected Enter and intermediate
+captures. Both builds and the production helper link exited **0**. Cargo
+admission used the required `pgrep` poll and 30-minute maximum wait.
+Five new offline tests went red then green, including control-token redaction;
+the existing six remain green. Tests use generated data and no real CLI or
+credential root. Scratch Mesh control-state files are excluded from the final
+packet; tokens are not retained. No `src-tauri/` changes, so the Rust-unit gate
+is not applicable.
+
+Final gates and the new independent Opus evidence lens are recorded below.
+Earlier Opus review cost was **$0.280255**, separately budgeted from seats.
+The explicit two-member setup and credential rules remain the operator's
+exceptions to the audit's older beta-hosted/disposable-source wording.
+
+## Final gates and evidence archive
+
+| Command | Exit |
+|---|---:|
+| `just check-quick` | **0** |
+| `just lint` | **0** |
+| `just test-contracts` | **0** |
+
+The gate runner exited **0**, waited its children and removed its private root.
+Frontend: 150 files / 2,495 tests; contracts: 68 tests.
+
+After teardown, 380 snapshot paths were consolidated into 103 unique
+objects in [snapshots.json](l1-claude-lead/continued-run/snapshots.json).
+The `aliases` map preserves each original path, including `step1/`, `final/`
+and `step2-failure/`; pane contents have at most 60 lines.
+No evidence-size threshold interrupted a runtime step.
+
+
+FILE continued-run/final-disposition.json
+{
+  "outcome": "UNAVAILABLE",
+  "classification": "harness",
+  "step": 2,
+  "reason": "Both Claude sends accepted, but alpha exposure was absent. Codex companion executable missing; only 27.98 seconds after corrected Enter before stop, less than required 60 seconds. No product-failure conclusion.",
+  "step1": "PASS",
+  "steps3_to_6": "NOT RUN",
+  "additional_paid_retry": false
+}
+
+
+FILE continued-run/cleanup.json
+{
+  "survivors": [],
+  "private_port_closed": true,
+  "children_exit_codes": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    -15,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "root_removed": true,
+  "codex_copy_removed": true,
+  "claude_mount_placeholder_zero_bytes": true,
+  "claude_credential_copied": false
+}
+
+
+FILE continued-run/final-cost-ledger.json
+{
+  "controller_inputs": {
+    "claude": 3,
+    "codex": 6
+  },
+  "claude_generations": [
+    {
+      "input_tokens": 10,
+      "output_tokens": 1530,
+      "cache_read_input_tokens": 5479,
+      "cache_creation_input_tokens": 5697,
+      "message_id": "msg_011CeuUfXBWvBSQXB3koQ9b6",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "a2dddba1-e73b-4f58-b908-8dcfedabf8e4",
+      "usd": 0.01532915,
+      "upper_usd": 0.06358
+    },
+    {
+      "input_tokens": 8,
+      "output_tokens": 261,
+      "cache_read_input_tokens": 11176,
+      "cache_creation_input_tokens": 1649,
+      "message_id": "msg_011CeuUgVYKToc9a5NFWm5H5",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "a2dddba1-e73b-4f58-b908-8dcfedabf8e4",
+      "usd": 0.00449185,
+      "upper_usd": 0.06547
+    },
+    {
+      "input_tokens": 8,
+      "output_tokens": 124,
+      "cache_read_input_tokens": 12825,
+      "cache_creation_input_tokens": 504,
+      "message_id": "msg_011CeuUgoreR1X3SinNoVaNJ",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "a2dddba1-e73b-4f58-b908-8dcfedabf8e4",
+      "usd": 0.0025405,
+      "upper_usd": 0.067305
+    },
+    {
+      "input_tokens": 10,
+      "output_tokens": 1046,
+      "cache_read_input_tokens": 13329,
+      "cache_creation_input_tokens": 172,
+      "message_id": "msg_011CeuUh19o7TCMwdgrADoFw",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "a2dddba1-e73b-4f58-b908-8dcfedabf8e4",
+      "usd": 0.0067878999999999995,
+      "upper_usd": 0.072785
+    },
+    {
+      "input_tokens": 8,
+      "output_tokens": 55,
+      "cache_read_input_tokens": 13501,
+      "cache_creation_input_tokens": 1294,
+      "message_id": "msg_011CeuUhycoMUBZjsJDpBL6W",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "a2dddba1-e73b-4f58-b908-8dcfedabf8e4",
+      "usd": 0.0032506,
+      "upper_usd": 0.07429
+    },
+    {
+      "input_tokens": 10,
+      "output_tokens": 432,
+      "cache_read_input_tokens": 14795,
+      "cache_creation_input_tokens": 109,
+      "message_id": "msg_011CeuUiEGrQTDrHxeQz4gJG",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "a2dddba1-e73b-4f58-b908-8dcfedabf8e4",
+      "usd": 0.00378575,
+      "upper_usd": 0.07673
+    },
+    {
+      "input_tokens": 10,
+      "output_tokens": 368,
+      "cache_read_input_tokens": 14904,
+      "cache_creation_input_tokens": 644,
+      "message_id": "msg_011CeuUtSJRmWBvdhjdoBySi",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "a2dddba1-e73b-4f58-b908-8dcfedabf8e4",
+      "usd": 0.0041454,
+      "upper_usd": 0.07963
+    },
+    {
+      "input_tokens": 8,
+      "output_tokens": 66,
+      "cache_read_input_tokens": 15548,
+      "cache_creation_input_tokens": 918,
+      "message_id": "msg_011CeuUthtJ7gHAZhEw5ApSo",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "a2dddba1-e73b-4f58-b908-8dcfedabf8e4",
+      "usd": 0.0030403,
+      "upper_usd": 0.0827
+    }
+  ],
+  "codex_turns": [
+    {
+      "turn_id": "01a08a8a-9d0d-74c1-b18a-f28b7ad3be21",
+      "rollout": "rollout-2026-09-10T10-54-41-01a08a86-bfdf-7273-9602-02880a7f3d72.jsonl"
+    }
+  ],
+  "codex_usage_by_rollout": {
+    "rollout-2026-09-10T10-54-41-01a08a86-bfdf-7273-9602-02880a7f3d72.jsonl": {
+      "input_tokens": 9367,
+      "cached_input_tokens": 0,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 5,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 9372
+    }
+  },
+  "seat_usd_estimate": 0.0672021,
+  "seat_usd_upper_rate": 0.6578963999999999,
+  "rates_per_million": {
+    "claude": [
+      1,
+      0.1,
+      1.25,
+      5
+    ],
+    "codex": [
+      0.2,
+      0.02,
+      1.2
+    ]
+  },
+  "metering_complete": true,
+  "prior_preflight_spend_usd": 0,
+  "current_inputs": {
+    "claude": 2,
+    "codex": 5
+  },
+  "prior_trial": {
+    "controller_inputs": {
+      "claude": 1,
+      "codex": 1
+    },
+    "claude_generations": [
+      {
+        "input_tokens": 10,
+        "output_tokens": 1577,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 11245,
+        "message_id": "msg_011CeuTT5xm5RFjXHzAnkrUq",
+        "model": "claude-haiku-4-5-20251001",
+        "session_id": "7c44e455-db6d-4dcd-ac4b-52203520c966",
+        "usd": 0.02195125,
+        "upper_usd": 0.06416
+      }
+    ],
+    "codex_turns": [],
+    "codex_usage_by_rollout": {},
+    "seat_usd_estimate": 0.02195125,
+    "seat_usd_upper_rate": 0.06416,
+    "rates_per_million": {
+      "claude": [
+        1,
+        0.1,
+        1.25,
+        5
+      ],
+      "codex": [
+        0.2,
+        0.02,
+        1.2
+      ]
+    },
+    "metering_complete": true,
+    "prior_preflight_spend_usd": 0
+  },
+  "controller_reserved_inputs": {
+    "claude": 3,
+    "codex": 6
+  },
+  "observed_cumulative_claude_inputs": 5,
+  "conservative_cap_inputs": {
+    "claude": 5,
+    "codex": 6
+  },
+  "accounting_note": "Includes prior run; observed native Claude inputs include two unrequested self-messages. Codex reservations include two undelivered marker exposures and the extra Enter."
+}
+
+
+FILE continued-run/production-hooks-before-launch.json
+{
+  "SessionStart": [
+    {
+      "hooks": [
+        {
+          "command": "bash '/tmp/th-l1-runtime-y77afzjd/claude/hooks/taurhaus-session-start-compact.sh'",
+          "type": "command"
+        }
+      ],
+      "matcher": "compact"
+    }
+  ]
+}
+
+
+FILE continued-run/teardown-audit.json
+{
+  "same_pid_start_survivors": [],
+  "scratch_root_removed": true,
+  "codex_auth_copy_removed": true,
+  "runtime_waited_exit": 2,
+  "step2_waited_exit": 1,
+  "no_foreign_process_signaled": true
+}

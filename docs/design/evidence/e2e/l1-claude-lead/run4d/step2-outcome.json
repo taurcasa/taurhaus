@@ -1,0 +1,6 @@
+{
+  "outcome": "FAIL",
+  "classification": "product-owner-pending-evidence-review",
+  "step": 2,
+  "reason": "alpha did not receive both marker exposures through production tmux delivery"
+}

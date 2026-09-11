@@ -1,0 +1,32 @@
+{
+  "trial_tokens": [
+    "th-l1-opus-k7bt7yii",
+    "th-l1-opus-k8gjdhh6",
+    "th-l1-runtime-sb6xigyx"
+  ],
+  "survivors": [],
+  "root_removals": {
+    "th-l1-opus-k7bt7yii": true,
+    "th-l1-opus-k8gjdhh6": true,
+    "th-l1-runtime-sb6xigyx": true
+  },
+  "gate_cleanup": {
+    "children_waited": true,
+    "root_removed": true
+  },
+  "review_cleanup": {
+    "child_exit": 0,
+    "root_removed": true,
+    "credential_placeholder_zero_bytes": true
+  },
+  "failed_review_cleanup": {
+    "child_exit": 1,
+    "root_removed": true,
+    "credential_placeholder_zero_bytes": true
+  },
+  "unstarted_review_cleanup": {
+    "child_exit": null,
+    "root_removed": true,
+    "credential_placeholder_zero_bytes": true
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "claude_usd": 0.0117954,
+  "codex_usd": 0.00511548,
+  "current_seats_usd": 0.01691088,
+  "upper_rate_usd": 0.1412114,
+  "inputs": {
+    "claude": 1,
+    "codex": 1
+  },
+  "controller_typed_inputs": 0,
+  "compactions": 0,
+  "metering_complete": true,
+  "claude_cap_times_max_observed_input_usd": 0.0943632,
+  "previous_run4_seats_usd": "unknown; history only",
+  "closed_runs_1_3_seats_usd": 0.10193487,
+  "historical_completed_reviews_usd": 0.910785,
+  "historical_timed_out_review_usd": "unknown",
+  "current_review_usd": 0.16492,
+  "implementer_orchestrator_usd": "unavailable",
+  "current_seats_plus_review_usd": 0.18183088
+}

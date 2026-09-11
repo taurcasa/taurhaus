@@ -1,0 +1,15 @@
+{
+  "cap_inputs": {
+    "claude": 8,
+    "codex": 11
+  },
+  "seat_usd_estimate": 0.10193487,
+  "seat_usd_upper_rate": 1.0758178,
+  "prior_runtime_seconds": 588.2559631199924,
+  "sources": [
+    "run3/prior-spend.json",
+    "run3/cost-ledger.json",
+    "run3/cleanup.json"
+  ],
+  "scope": "Corrected cumulative admission through run 3. No fresh budget has been inferred."
+}

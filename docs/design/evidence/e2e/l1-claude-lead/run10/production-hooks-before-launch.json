@@ -1,0 +1,13 @@
+{
+  "SessionStart": [
+    {
+      "hooks": [
+        {
+          "command": "bash '/tmp/th-l1-runtime-3_nj_m4h/claude/hooks/taurhaus-session-start-compact.sh'",
+          "type": "command"
+        }
+      ],
+      "matcher": "compact"
+    }
+  ]
+}

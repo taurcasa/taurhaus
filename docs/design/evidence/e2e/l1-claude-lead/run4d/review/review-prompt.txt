@@ -1,0 +1,251 @@
+You are the independent Opus evidence reviewer for a small-change trial. Review the reported verdict against the actual evidence; a stopped run must never be called an E2E PASS. No tools. Return JSON {"verdict":"approve"|"fix_required","findings":[{"severity":"major"|"minor","finding":"...","fix":"..."}]}. fix_required requires a major. Assess truthful failure classification, spend, cleanup, secrets, evidence discipline. Missing runtime steps are intentional first-failure stop, not a pass claim. Be concise. One fix round may correct the report. The standing attempt budget rule is authoritative; this review launches no lane rerun.
+
+FILE run4d/review-brief.json
+{
+  "review_scope": "Independent evidence lens. Assess FAIL step2 / taurhaus routing inference, not unrun steps. First review hit error_max_budget_usd: $0.245870, exit1, no verdict. Smaller replacement only; no lane restart.",
+  "disposition": {
+    "outcome": "FAIL",
+    "classification": "taurhaus",
+    "failed_step": 2,
+    "reason": "Both Claude marker sends accepted; neither exposed to alpha after full 65-second opportunity. Native alpha onboarding completed, session attributed; uncertain activity export keeps Mesh pending. Ownership is an evidence-backed routing inference, not a proved deeper root cause.",
+    "steps": [
+      {
+        "step": 1,
+        "outcome": "PASS",
+        "classification": null,
+        "evidence": "step1-outcome.json; snapshots.json step1/; claude-transcript.json"
+      },
+      {
+        "step": 2,
+        "outcome": "FAIL",
+        "classification": "taurhaus",
+        "evidence": "review-excerpts.json; snapshots.json final/; step2-window-3.json; claude-transcript.json; codex-transcript.json"
+      },
+      {
+        "step": 3,
+        "outcome": "NOT RUN",
+        "classification": "dependency on failed step 2",
+        "evidence": "driver-steps.json; no input submitted"
+      },
+      {
+        "step": 4,
+        "outcome": "NOT RUN",
+        "classification": "dependency on failed step 2",
+        "evidence": "driver-steps.json; no input submitted"
+      },
+      {
+        "step": 5,
+        "outcome": "NOT RUN",
+        "classification": "dependency on failed step 2",
+        "evidence": "driver-steps.json; no input submitted"
+      },
+      {
+        "step": 6,
+        "outcome": "NOT RUN",
+        "classification": "dependency on failed step 2",
+        "evidence": "driver-steps.json; no input submitted"
+      }
+    ],
+    "product_changes": false,
+    "descriptor_edits": false,
+    "paid_retries": 0,
+    "review": "pending independent Opus lens",
+    "deviations": [
+      "Two markers target sole alpha, replacing alpha/beta as explicitly ruled; no hosted seat.",
+      "Required derived attributed-idle observation absent; corrected native readiness gate continued and actual marker delivery then failed.",
+      "Steps 3\u20136 stopped under binding first-failure rule; no compaction/native reply round trip claimed.",
+      "No journal pagination was reached: complete on-disk segment retained (9 rows), not claimed as paginated read coverage.",
+      "Claude input confirmation reconstructed from native user/tool/assistant transcript and final empty composer; reused controller explicitly records new-turn/composer confirmation only for typed Codex inputs (none this attempt).",
+      "Quota redaction corrected offline after run, with generated regression; no runtime rerun or product edits. Earlier checkpoint contains pre-redaction quota metadata; final packet is scrubbed.",
+      "First gate wrapper is isolated, credential-free; no src-tauri diff so test-rust-unit not applicable."
+    ]
+  },
+  "spend": {
+    "claude_usd": 0.0204022,
+    "codex_usd": 0.00470888,
+    "current_seats_usd": 0.02511108,
+    "upper_rate_usd": 0.2884584,
+    "inputs": {
+      "claude": 2,
+      "codex": 3
+    },
+    "controller_typed_inputs": {
+      "claude": 1,
+      "codex": 0
+    },
+    "onboarding_reservations": {
+      "claude": 1,
+      "codex": 1
+    },
+    "codex_reserved_marker_exposures": 2,
+    "codex_actual_turns": 1,
+    "claude_api_generations": 3,
+    "compactions": 0,
+    "metering_complete": true,
+    "claude_cap_times_max_observed_input_usd": 0.0931132,
+    "closed_runs_1_3_seats_usd": 0.10193487,
+    "earlier_run4_interrupted_startup_usd": "unknown; history only",
+    "run4c_seats_usd": 0.01691088,
+    "earlier_completed_reviews_usd": 1.075705,
+    "earlier_timed_out_review_usd": "unknown",
+    "current_review_usd": "bounded replacement pending",
+    "implementer_orchestrator_usd": "unavailable",
+    "basis": "Token-metered API-equivalent estimates, not invoices; rates unchanged from the controller. Fresh run4d ledger excludes all history.",
+    "current_review_failed_usd": 0.24587
+  },
+  "cleanup": {
+    "survivors": [],
+    "private_port_closed": true,
+    "children_exit_codes": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      -15,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "root_removed": true,
+    "codex_copy_removed": true,
+    "claude_mount_placeholder_zero_bytes": true,
+    "claude_credential_copied": false,
+    "runtime_seconds": 113.6864540730021
+  },
+  "gates": {
+    "check-quick": 0,
+    "lint": 0,
+    "test-contracts": 0
+  },
+  "source_excerpts": {
+    "window": {
+      "started_at": 1789063018.2451196,
+      "seconds": 65,
+      "remaining_outer_seconds": 853.0878906329744,
+      "monotonic_deadline": 283621.039533851
+    },
+    "native_codex_completion": [
+      {
+        "timestamp": "2026-09-10T17:56:45.573Z",
+        "ordinal": 60,
+        "type": "event_msg",
+        "payload": {
+          "type": "task_complete",
+          "turn_id": "01a08c76-8dec-7d41-b519-1acdeb763c55",
+          "last_agent_message": "Inbox read and marked as read. The message requested missing assignment context, but sending failed because no valid task handle was provided.",
+          "started_at": 1789062974,
+          "completed_at": 1789063005,
+          "duration_ms": 30615,
+          "time_to_first_token_ms": 3710
+        }
+      }
+    ],
+    "final_activity": {
+      "version": 1,
+      "observed_at": "2026-09-10T17:57:35.173329920+00:00",
+      "stall_recent_activity": false,
+      "stall_no_output": true,
+      "stall_no_active_process": false,
+      "active_non_shell_process": true,
+      "recent_io": false,
+      "pane_alive": true,
+      "pane_foreign": false,
+      "last_output_age_secs": 49,
+      "activity_confidence": "uncertain"
+    },
+    "final_health": {
+      "member": "alpha",
+      "root": "/tmp/th-l1-runtime-sb6xigyx/claude",
+      "incarnation": "458ec80323acdbd6a4c69baaebd2a0a56e89f503d2b41bb4eb0e43d66568d34a",
+      "epoch": 2,
+      "heartbeat": "2026-09-10T17:58:03.619117084+00:00",
+      "pending_since": "2026-09-10T17:56:14.763661957+00:00",
+      "error": null,
+      "last_defer_reason": "IO error: delivery: pending: activity not freshly idle",
+      "failures": 0,
+      "completed": 1
+    },
+    "onboarding_facts": {
+      "daemon_alive": true,
+      "runtime_readable": true,
+      "activity_fresh": true,
+      "session_attributed": true,
+      "card_pending": false,
+      "card_exposed": true,
+      "observed_at": 1789063083.9753132
+    },
+    "lead_projection": {
+      "exists": true,
+      "rows": []
+    },
+    "retention": {
+      "complete_rows": 299,
+      "retained_rows": 299,
+      "excluded_usage_rows": 0
+    },
+    "ownership_inference": "Taurhaus supplies uncertain despite completed native turn/prompt and attributed session path; Mesh refuses non-idle exactly as its guard requires. Route to taurhaus activity/idle signal owner; deeper cause unproven. src-tauri/src/coordination/activity_export.rs:603 and mesh-l1/src/delivery/runtime.rs:180."
+  },
+  "accepted_markers": [
+    {
+      "sequence": 8,
+      "message_id": "aeef42ef-9ba8-4a64-94ed-c1a2810407be",
+      "event_type": "message_accepted"
+    },
+    {
+      "sequence": 9,
+      "message_id": "a8950c6a-3203-4da3-bb09-c7ff7f421774",
+      "event_type": "message_accepted"
+    }
+  ],
+  "native_prompt": [
+    "",
+    "",
+    "\u203a Ask Codex to do anything",
+    "",
+    "  gpt-5.6-luna low \u00b7 /tmp/th-l1-runtime-sb6xigyx/project"
+  ],
+  "runtime_alpha_observation": [
+    {
+      "activity_attribution": "none",
+      "activity_confidence": "low",
+      "jsonl_path": "/tmp/th-l1-runtime-sb6xigyx/codex/sessions/2026/09/10/rollout-2026-09-10T19-56-13-01a08c76-8916-7d71-96e5-2331f4ce7dcb.jsonl",
+      "member_name": "alpha",
+      "session_id": "01a08c76-8916-7d71-96e5-2331f4ce7dcb",
+      "state": "idle"
+    }
+  ],
+  "source_boundaries": "Claude authenticated native generations; two Bash mesh send commands to alpha with AMBER_42 and BIRCH_73. Complete final journal9 rows: seq8/9 only accepted, no attempt/receipt for either ID. Onboarding seq5/6/7 attempted/submitted/consumed_by_read. No lead read. No typed Codex input, no compact. Required native alpha completed-turn and empty-composer readiness passed. Full transcript and snapshots retained; explicit Claude composer confirmation recorded only at final capture, not before exposure window. Sends accepted before full 65s recipient window.",
+  "source_routing": "Taurhaus activity_export.rs:603: state==Idle && confidence!=Low && attribution==Attributed => Idle; active non-shell process otherwise => Uncertain. Mesh delivery/runtime.rs:180 refuses non-idle or age outside 0..120s. Underlying lost confidence not proven. Native prompt does not by itself identify deeper product root cause.",
+  "redaction": "Final live packet contains no quota banner/rate_limits, credentials or forbidden home paths. Prior local step checkpoint did retain quota metadata; disclosed, not presented as secret-free history. Complete daemon 299 rows retained; 401 snapshots interned into112 objects; pane maximum60lines."
+}
+

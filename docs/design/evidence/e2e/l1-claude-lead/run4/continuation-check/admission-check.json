@@ -1,0 +1,13 @@
+{
+  "kind": "offline admission check; mocked command boundary",
+  "admitted": false,
+  "reason": "unverified metering before next input",
+  "real_cli_invocations": 0,
+  "cap_inputs": {
+    "claude": 1,
+    "codex": 1
+  },
+  "metering_complete": false,
+  "spent_usd": null,
+  "closed_runs_1_to_3_counted": false
+}

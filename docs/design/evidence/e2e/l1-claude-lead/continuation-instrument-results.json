@@ -1,0 +1,20 @@
+{
+  "red_exit": 1,
+  "red_observed": [
+    "ModuleNotFoundError: continuation_support",
+    "two assertions: lost authentication subcheck and redacted scratch /home path",
+    "control token key retained; assertion failed before exact-key redaction",
+    "native input admission: unexpected observed_claude argument; red exit 1 before adding cumulative native count"
+  ],
+  "green_exit": 0,
+  "new_tests": 6,
+  "prior_tests": 6,
+  "hook_build_exit": 0,
+  "prior_inputs": {
+    "claude": 1,
+    "codex": 1
+  },
+  "prior_usd_estimate": 0.02195125,
+  "prior_usd_upper_rate": 0.06416,
+  "prior_runtime_seconds": 167.9927990436554
+}

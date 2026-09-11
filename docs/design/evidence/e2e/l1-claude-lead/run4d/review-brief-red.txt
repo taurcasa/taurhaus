@@ -1,0 +1,14 @@
+E
+======================================================================
+ERROR: test_run4_brief_review_uses_the_bounded_packet (test_run4.Run4Tests.test_run4_brief_review_uses_the_bounded_packet)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/test_run4.py", line 18, in test_run4_brief_review_uses_the_bounded_packet
+    self.assertEqual(review.run4_review_files('run4d', True), ['run4d/review-brief.json'])
+                     ^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'review' has no attribute 'run4_review_files'
+
+----------------------------------------------------------------------
+Ran 1 test in 0.002s
+
+FAILED (errors=1)

@@ -1,0 +1,14 @@
+E
+======================================================================
+ERROR: test_run4_pins_the_fixed_product_revisions (test_run4.Run4Tests.test_run4_pins_the_fixed_product_revisions)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/test_run4.py", line 8, in test_run4_pins_the_fixed_product_revisions
+    self.assertEqual(controller.TAURHAUS_BASE, '1db4f9bf')
+                     ^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'controller' has no attribute 'TAURHAUS_BASE'
+
+----------------------------------------------------------------------
+Ran 1 test in 0.000s
+
+FAILED (errors=1)

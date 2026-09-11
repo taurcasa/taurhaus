@@ -1,0 +1,13 @@
+{
+  "survivors": [],
+  "all_four_scratch_roots_removed": true,
+  "credential_path_or_secret_pattern_violations": [],
+  "pane_files_checked": 21,
+  "pane_line_max": 60,
+  "daemon_jsonl_complete_rows": 211,
+  "daemon_jsonl_retained_rows": 211,
+  "excluded_usage_rows": 0,
+  "run6_sidecars_unchanged": true,
+  "packed_snapshot_paths": 390,
+  "packed_unique_objects": 104
+}

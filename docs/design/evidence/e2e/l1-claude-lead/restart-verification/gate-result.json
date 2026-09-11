@@ -1,0 +1,15 @@
+{
+  "gates": {
+    "just check-quick": 0,
+    "just lint": 0,
+    "just test-contracts": 0
+  },
+  "runner_exit": 0,
+  "cleanup": {
+    "children_waited": true,
+    "root_removed": true
+  },
+  "root_absence_verified": true,
+  "rust_unit_required": false,
+  "reason": "lane-authored diff from merge base 6f61f611 contains no src-tauri changes; main advanced independently"
+}

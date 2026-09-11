@@ -1,0 +1,210 @@
+{
+  "controller_inputs": {
+    "claude": 2,
+    "codex": 3
+  },
+  "claude_generations": [
+    {
+      "input_tokens": 10,
+      "output_tokens": 766,
+      "cache_read_input_tokens": 5479,
+      "cache_creation_input_tokens": 5801,
+      "message_id": "msg_011CevBxaqXHBXgkpnp3FAyZ",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "caffb557-d8e6-46b8-baeb-f2b7c35b977c",
+      "usd": 0.01163915,
+      "upper_usd": 0.06028
+    },
+    {
+      "input_tokens": 10,
+      "output_tokens": 622,
+      "cache_read_input_tokens": 11280,
+      "cache_creation_input_tokens": 978,
+      "message_id": "msg_011CevC1FmPkgZuPVmWkXUBo",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "caffb557-d8e6-46b8-baeb-f2b7c35b977c",
+      "usd": 0.0054705,
+      "upper_usd": 0.06445
+    },
+    {
+      "input_tokens": 8,
+      "output_tokens": 117,
+      "cache_read_input_tokens": 12258,
+      "cache_creation_input_tokens": 1179,
+      "message_id": "msg_011CevC1feL3Mx3rivR9mXMj",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "caffb557-d8e6-46b8-baeb-f2b7c35b977c",
+      "usd": 0.00329255,
+      "upper_usd": 0.06781
+    }
+  ],
+  "codex_turns": [
+    {
+      "turn_id": "01a08c76-8dec-7d41-b519-1acdeb763c55",
+      "rollout": "rollout-2026-09-10T19-56-13-01a08c76-8916-7d71-96e5-2331f4ce7dcb.jsonl"
+    }
+  ],
+  "codex_usage_by_rollout": {
+    "rollout-2026-09-10T19-56-13-01a08c76-8916-7d71-96e5-2331f4ce7dcb.jsonl": {
+      "input_tokens": 78814,
+      "cached_input_tokens": 68864,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 1118,
+      "reasoning_output_tokens": 468,
+      "total_tokens": 79932
+    }
+  },
+  "seat_usd_estimate": 0.025111079999999997,
+  "seat_usd_upper_rate": 0.2884584,
+  "rates_per_million": {
+    "claude": [
+      1,
+      0.1,
+      1.25,
+      5
+    ],
+    "codex": [
+      0.2,
+      0.02,
+      1.2
+    ]
+  },
+  "metering_complete": true,
+  "prior_preflight_spend_usd": 0,
+  "current_inputs": {
+    "claude": 2,
+    "codex": 3
+  },
+  "prior_trial": {
+    "cap_inputs": {
+      "claude": 0,
+      "codex": 0
+    },
+    "controller_inputs": {
+      "claude": 0,
+      "codex": 0
+    },
+    "seat_usd_estimate": 0,
+    "seat_usd_upper_rate": 0,
+    "prior_runtime_seconds": 0,
+    "closed_runs_history": {
+      "earlier_attempts": {
+        "runs_1_to_3": {
+          "cap_inputs": {
+            "claude": 8,
+            "codex": 11
+          },
+          "seat_usd_estimate": 0.10193487,
+          "seat_usd_upper_rate": 1.0758178,
+          "prior_runtime_seconds": 588.2559631199924,
+          "sources": [
+            "run3/prior-spend.json",
+            "run3/cost-ledger.json",
+            "run3/cleanup.json"
+          ],
+          "scope": "Corrected cumulative admission through run 3. No fresh budget has been inferred."
+        },
+        "run4_previous_attempt": {
+          "ledger": {
+            "controller_inputs": {
+              "claude": 1,
+              "codex": 1
+            },
+            "claude_generations": [],
+            "codex_turns": [
+              {
+                "turn_id": "01a08c2e-ab5b-7873-bb59-518ebb12df15",
+                "rollout": "rollout-2026-09-10T18-37-42-01a08c2e-a66c-7040-8387-e3e1180ecfa2.jsonl"
+              }
+            ],
+            "codex_usage_by_rollout": {},
+            "seat_usd_estimate": 0,
+            "seat_usd_upper_rate": 0,
+            "rates_per_million": {
+              "claude": [
+                1,
+                0.1,
+                1.25,
+                5
+              ],
+              "codex": [
+                0.2,
+                0.02,
+                1.2
+              ]
+            },
+            "metering_complete": false,
+            "prior_preflight_spend_usd": 0,
+            "current_inputs": {
+              "claude": 1,
+              "codex": 1
+            },
+            "prior_trial": {
+              "cap_inputs": {
+                "claude": 0,
+                "codex": 0
+              },
+              "controller_inputs": {
+                "claude": 0,
+                "codex": 0
+              },
+              "seat_usd_estimate": 0,
+              "seat_usd_upper_rate": 0,
+              "prior_runtime_seconds": 0,
+              "closed_runs_history": {
+                "cap_inputs": {
+                  "claude": 8,
+                  "codex": 11
+                },
+                "seat_usd_estimate": 0.10193487,
+                "seat_usd_upper_rate": 1.0758178,
+                "prior_runtime_seconds": 588.2559631199924,
+                "sources": [
+                  "run3/prior-spend.json",
+                  "run3/cost-ledger.json",
+                  "run3/cleanup.json"
+                ],
+                "scope": "Corrected cumulative admission through run 3. No fresh budget has been inferred."
+              }
+            },
+            "claude_usd_by_input": {},
+            "claude_cap_times_max_observed_input_usd": 0
+          },
+          "actual_seat_spend": "unknown; interrupted startup"
+        },
+        "run4_offline_continuation": {
+          "new_seat_spend_usd": 0
+        }
+      },
+      "run4c": {
+        "claude_usd": 0.0117954,
+        "codex_usd": 0.00511548,
+        "current_seats_usd": 0.01691088,
+        "upper_rate_usd": 0.1412114,
+        "inputs": {
+          "claude": 1,
+          "codex": 1
+        },
+        "controller_typed_inputs": 0,
+        "compactions": 0,
+        "metering_complete": true,
+        "claude_cap_times_max_observed_input_usd": 0.0943632,
+        "previous_run4_seats_usd": "unknown; history only",
+        "closed_runs_1_3_seats_usd": 0.10193487,
+        "historical_completed_reviews_usd": 0.910785,
+        "historical_timed_out_review_usd": "unknown",
+        "current_review_usd": 0.16492,
+        "implementer_orchestrator_usd": "unavailable",
+        "current_seats_plus_review_usd": 0.18183088
+      }
+    },
+    "attempt": "run4d",
+    "standing_budget_rule": "STANDING BUDGET RULE FOR THIS LANE (binding for the third attempt and every later one; never ask again): EVERY attempt of this lane starts with the FRESH budget (<= 8 Claude inputs incl. `/compact`, <= 12 Codex inputs, <= USD 2 of metered spend); an earlier attempt's spend \u2014 including startup usage that was never metered \u2014 is recorded separately as history (unknown where unknown) and never counted against the current attempt; verified headroom for the next input is judged within the current attempt only. The second attempt's harness fix (commits ea7af05b + 1ead4085: attribution checked prematurely; the `claude_auth_unavailable` fallback) is the controller to run. Evidence for this attempt goes under `l1-claude-lead/run4c/`; headline = the latest verdict. Do not stop for a budget or authorization question: this paragraph is the answer.",
+    "fourth_attempt_ruling": "ORCHESTRATOR RULING FOR THE FOURTH ATTEMPT (run 4d; binding). Attempt 4c PASSED step 1 and stopped at step 2 on its own readiness gate (retracted as HARNESS: the gate looked for the export's fresh-idle at the wrong moment; the corrected `alpha_native_ready` gate reads the pane prompt and the onboarding facts and passes on the retained 4c artifacts). The fix round corrected it offline and then declined to rerun under a harness-internal \"no paid rerun\" convention \u2014 that convention does NOT bind this lane: the STANDING BUDGET RULE does. Run the corrected controller FOR REAL now under the evidence label `run4d`, fresh budget, all six steps; headline = that verdict. Mark the superseded 4c summaries (`run4c/final-disposition.json`, `run4c/report.md`) with a `superseded_by: run4d` marker rather than leaving a retracted FAIL/taurhaus classification standing."
+  },
+  "claude_usd_by_input": {
+    "fa8e158a-8095-42bb-8d7a-d8238e59fe6f": 0.01163915,
+    "2b84ce29-0fc4-4f25-a26a-74fc3608b705": 0.00876305
+  },
+  "claude_cap_times_max_observed_input_usd": 0.0931132
+}

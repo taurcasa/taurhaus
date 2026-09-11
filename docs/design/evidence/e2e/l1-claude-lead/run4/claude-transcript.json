@@ -1,0 +1,21 @@
+[
+  {
+    "parentUuid": null,
+    "isSidechain": false,
+    "teamName": "l1-claude-lead",
+    "agentName": "lead",
+    "type": "user",
+    "message": {
+      "role": "user",
+      "content": "<teammate-message teammate_id=\"lead\">\n[taurhaus] recovery_card\nIdentity: lead on l1-claude-lead; key={\"card_schema\":1,\"recipient\":[\"41c0a84458fe7d6cfdcd00e671d5f6d46032f87c5803ebc9fc01fb2665ef90ba\",\"4dbb06c2-338b-4d6b-9637-44512c84ad13\"],\"context\":[1,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-l1-runtime-fwsclfr8/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-l1-runtime-fwsclfr8/claude\",\"harness_account_root\":\"/tmp/th-l1-runtime-fwsclfr8/claude\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-l1-runtime-fwsclfr8/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"7cdf1bc8c16c86ec27f2e1a27e2720303026d9dd7aea62397c03f7c540390bb6\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: 6ebca346bb0ba50ceb7b08818a3c2d0b213763b9eae038fb74fc504ddd4e4881; source=a8d97ad61031cbcac3988f3b68c520a8a5a4cb0a780f3e3a2fe21bf4bef83bf2; audience=unavailable\nProject cwd: /tmp/th-l1-runtime-fwsclfr8/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: unavailable; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-10 16:37:41.784061994 UTC\nCurrent task: # \u2014 \nExecution mode: ; Validation expectation: ; Response expectation: ; Adjacent fix policy: ; Override allowed: false; Override reason: none\nFocal files: unavailable\nRole: unavailable\nPurpose: Isolated bounded messaging trial. Reply in at most two short sentences. Never modify files. Only execute mesh who, mesh send, mesh read, or the exact mesh lifecycle commands explicitly named in a task. Every mesh command must include --claude-dir \"$CLAUDE_CONFIG_DIR\" --team l1-claude-lead --name lead. Never use other tools or commands. Lead must never execute mesh read until the controller explicitly requests step 4. When asked for a reply, read/mark your own inbox then send the short reply through mesh. Do not send unsolicited messages. Startup: say READY only, do not send any wait-state or status message to yourself or anyone. On native teammate replies, distinguish each marker in a brief text response without tools. These trial limits override generated startup suggestions to send wait-state messages.\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.\n</teammate-message>"
+    },
+    "uuid": "b3a83e7f-4259-4a29-80c2-0e293103deeb",
+    "timestamp": "2026-09-10T16:37:42.868Z",
+    "userType": "external",
+    "entrypoint": "cli",
+    "cwd": "/tmp/th-l1-runtime-fwsclfr8/project",
+    "sessionId": "e0d73e8d-b9b5-4998-98a8-f9828b526724",
+    "version": "2.1.267",
+    "gitBranch": "master"
+  }
+]

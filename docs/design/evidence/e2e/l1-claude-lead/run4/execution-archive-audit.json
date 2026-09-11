@@ -1,0 +1,13 @@
+{
+  "secret_or_operator_path_findings": [],
+  "complete_daemon_jsonl_rows": 42,
+  "snapshot_aliases": 206,
+  "unique_snapshot_objects": 88,
+  "historical_run_ledgers_unchanged": true,
+  "product_or_descriptor_edits": false,
+  "executed_controller_commit": "bbe8fdc4",
+  "offline_fix_commit": "ccc62453",
+  "paid_execution_count": 1,
+  "paid_reruns": 0,
+  "review_requests": 1
+}

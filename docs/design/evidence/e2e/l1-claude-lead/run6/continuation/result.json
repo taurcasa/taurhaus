@@ -1,0 +1,6 @@
+{
+  "outcome": "FAIL",
+  "classification": "product-owner-pending-evidence-review",
+  "step": 5,
+  "reason": "production operational snapshot lacks the assigned in-progress task"
+}

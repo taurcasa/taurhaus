@@ -1,0 +1,57 @@
+[
+  {
+    "parentUuid": "a5ebf9e1-17ee-4605-84f6-f9e1c553536c",
+    "isSidechain": false,
+    "teamName": "l1-claude-lead",
+    "agentName": "lead",
+    "attachment": {
+      "type": "hook_success",
+      "hookName": "SessionStart:compact",
+      "toolUseID": "6e276b63-9037-4008-a87e-1ae60f03c7b1",
+      "hookEvent": "SessionStart",
+      "content": "",
+      "stdout": "{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"[taurhaus] recovery_card\\nIdentity: lead on l1-claude-lead; key={\\\"card_schema\\\":1,\\\"recipient\\\":[\\\"6995f4dcf7bf3739a145aa516b0341a50db2f5522fa45053a595edc152703768\\\",\\\"acfca7d3-6b74-4cbc-95e5-e812b6f794a1\\\"],\\\"context\\\":[1,1],\\\"roots\\\":{\\\"root_authority_revision\\\":\\\"0\\\",\\\"resolved_teams_root\\\":\\\"/tmp/th-l1-runtime-5x89_1sl/claude/teams\\\",\\\"resolved_mesh_config_root\\\":\\\"/tmp/th-l1-runtime-5x89_1sl/claude\\\",\\\"harness_account_root\\\":\\\"/tmp/th-l1-runtime-5x89_1sl/claude\\\",\\\"launch_namespace\\\":\\\"native\\\",\\\"resolved_project_root\\\":\\\"/tmp/th-l1-runtime-5x89_1sl/project\\\"},\\\"contract\\\":{\\\"role_id\\\":\\\"\\\",\\\"effective_role_revision\\\":\\\"7cdf1bc8c16c86ec27f2e1a27e2720303026d9dd7aea62397c03f7c540390bb6\\\",\\\"instruction_contract_revision\\\":\\\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\\\",\\\"packet_revision\\\":\\\"\\\"}}\\nCoverage: 2cce49cfd07e3b3e9c73936e772de2f67758123baea328baaa8ba70ebb493dd3; source=9862d13dc01ac1e516b03940d5076766b631688ca5da53e151bddf9cc1d33da1; audience=recipient-only:no-peer-evidence:v1\\nProject cwd: /tmp/th-l1-runtime-5x89_1sl/project\\nAssignment: task=1 token=80d8b711-039c-49ef-a21f-7a96298c1b67 stage=unavailable owner=lead state=in_progress\\nObjective: Run9 native mailbox recovery\\nDeliverable: A brief native text response distinguishing the fresh reply after recovery; no files or tools.\\nFirst action: Keep this assignment active through the controller compact; observe the next native teammate reply without tools.\\nCompletion signal: Respond once in native text when the fresh reply arrives; the controller records completion.\\nReview route: unavailable\\nWait/release: released\\nCandidate: unavailable\\nRubric: unavailable\\nRestart cursor: unavailable\\nRequested effort: unavailable; effective effort: unavailable; hold: none recorded\\nFile boundary: unavailable\\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\\nGenerated: 2026-09-11 00:01:45.521980098 UTC\\nCurrent task: #1 \u2014 Run9 native mailbox recovery\\nExecution mode: Measure; Validation expectation: Controller validates native recovery.; Response expectation: Respond once to fresh native mail.; Adjacent fix policy: No adjacent fixes.; Override allowed: false; Override reason: none\\nFocal files: unavailable\\nRole: unavailable\\nPurpose: Isolated bounded messaging trial. Reply in at most two short sentences. Never modify files. Only execute mesh who, mesh send, mesh read, or the exact mesh lifecycle commands explicitly named in a task. Every mesh command must include --claude-dir \\\"$CLAUDE_CONFIG_DIR\\\" --team l1-claude-lead --name lead. Never use other tools or commands. Lead must never execute mesh read until the controller explicitly requests step 4. When asked for a reply, read/mark your own inbox then send the short reply through mesh. Do not send unsolicited messages. Startup: say READY only, do not send any wait-state or status message to yourself or anyone. On native teammate replies, distinguish each marker in a brief text response without tools. These trial limits override generated startup suggestions to send wait-state messages.\\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\\nNext action: Keep this assignment active through the controller compact; observe the next native teammate reply without tools.\"}}\n",
+      "stderr": "\u001b[2m2026-09-11T00:01:45.521440Z\u001b[0m \u001b[33m WARN\u001b[0m \u001b[2mtaurhaus_lib::coordination::compact_hook\u001b[0m\u001b[2m:\u001b[0m failed to load team config during compact hook resolution \u001b[3mteam_name\u001b[0m\u001b[2m=\u001b[0m\"_active-project-teams\" \u001b[3merror\u001b[0m\u001b[2m=\u001b[0mNot found: team config not found for '_active-project-teams' at /tmp/th-l1-runtime-5x89_1sl/claude/teams/_active-project-teams/config.json\n\u001b[2m2026-09-11T00:01:45.557459Z\u001b[0m \u001b[32m INFO\u001b[0m \u001b[2mtaurhaus_lib::coordination::stores::compaction\u001b[0m\u001b[2m:\u001b[0m compaction.injected \u001b[3mteam_name\u001b[0m\u001b[2m=\u001b[0m\"l1-claude-lead\" \u001b[3mmember_name\u001b[0m\u001b[2m=\u001b[0m\"lead\" \u001b[3mtool\u001b[0m\u001b[2m=\u001b[0mclaude \u001b[3msession_id\u001b[0m\u001b[2m=\u001b[0m\"6d57d903-2c58-4b42-b6e9-85410894becc\" \u001b[3mcompaction_timestamp\u001b[0m\u001b[2m=\u001b[0m2026-09-11T00:01:45.521768962+00:00 \u001b[3mresult\u001b[0m\u001b[2m=\u001b[0mInjected\n\u001b[2m2026-09-11T00:01:45.557716Z\u001b[0m \u001b[33m WARN\u001b[0m \u001b[2mtaurhaus_lib::coordination::compact_hook\u001b[0m\u001b[2m:\u001b[0m failed to load team config during compact hook resolution \u001b[3mteam_name\u001b[0m\u001b[2m=\u001b[0m\"_active-project-teams\" \u001b[3merror\u001b[0m\u001b[2m=\u001b[0mNot found: team config not found for '_active-project-teams' at /tmp/th-l1-runtime-5x89_1sl/claude/teams/_active-project-teams/config.json\n",
+      "exitCode": 0,
+      "command": "bash '/tmp/th-l1-runtime-5x89_1sl/claude/hooks/taurhaus-session-start-compact.sh'",
+      "durationMs": 50
+    },
+    "type": "attachment",
+    "uuid": "e120a220-adc6-485d-9512-ca80bee9f9ec",
+    "timestamp": "2026-09-11T00:01:45.568Z",
+    "session_id": "6d57d903-2c58-4b42-b6e9-85410894becc",
+    "userType": "external",
+    "entrypoint": "cli",
+    "cwd": "/tmp/th-l1-runtime-5x89_1sl/project",
+    "sessionId": "6d57d903-2c58-4b42-b6e9-85410894becc",
+    "version": "2.1.267",
+    "gitBranch": "master",
+    "slug": "eventual-tinkering-moler"
+  },
+  {
+    "parentUuid": "e120a220-adc6-485d-9512-ca80bee9f9ec",
+    "isSidechain": false,
+    "teamName": "l1-claude-lead",
+    "agentName": "lead",
+    "attachment": {
+      "type": "hook_additional_context",
+      "content": [
+        "[taurhaus] recovery_card\nIdentity: lead on l1-claude-lead; key={\"card_schema\":1,\"recipient\":[\"6995f4dcf7bf3739a145aa516b0341a50db2f5522fa45053a595edc152703768\",\"acfca7d3-6b74-4cbc-95e5-e812b6f794a1\"],\"context\":[1,1],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-l1-runtime-5x89_1sl/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-l1-runtime-5x89_1sl/claude\",\"harness_account_root\":\"/tmp/th-l1-runtime-5x89_1sl/claude\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-l1-runtime-5x89_1sl/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"7cdf1bc8c16c86ec27f2e1a27e2720303026d9dd7aea62397c03f7c540390bb6\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: 2cce49cfd07e3b3e9c73936e772de2f67758123baea328baaa8ba70ebb493dd3; source=9862d13dc01ac1e516b03940d5076766b631688ca5da53e151bddf9cc1d33da1; audience=recipient-only:no-peer-evidence:v1\nProject cwd: /tmp/th-l1-runtime-5x89_1sl/project\nAssignment: task=1 token=80d8b711-039c-49ef-a21f-7a96298c1b67 stage=unavailable owner=lead state=in_progress\nObjective: Run9 native mailbox recovery\nDeliverable: A brief native text response distinguishing the fresh reply after recovery; no files or tools.\nFirst action: Keep this assignment active through the controller compact; observe the next native teammate reply without tools.\nCompletion signal: Respond once in native text when the fresh reply arrives; the controller records completion.\nReview route: unavailable\nWait/release: released\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: unavailable; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-11 00:01:45.521980098 UTC\nCurrent task: #1 \u2014 Run9 native mailbox recovery\nExecution mode: Measure; Validation expectation: Controller validates native recovery.; Response expectation: Respond once to fresh native mail.; Adjacent fix policy: No adjacent fixes.; Override allowed: false; Override reason: none\nFocal files: unavailable\nRole: unavailable\nPurpose: Isolated bounded messaging trial. Reply in at most two short sentences. Never modify files. Only execute mesh who, mesh send, mesh read, or the exact mesh lifecycle commands explicitly named in a task. Every mesh command must include --claude-dir \"$CLAUDE_CONFIG_DIR\" --team l1-claude-lead --name lead. Never use other tools or commands. Lead must never execute mesh read until the controller explicitly requests step 4. When asked for a reply, read/mark your own inbox then send the short reply through mesh. Do not send unsolicited messages. Startup: say READY only, do not send any wait-state or status message to yourself or anyone. On native teammate replies, distinguish each marker in a brief text response without tools. These trial limits override generated startup suggestions to send wait-state messages.\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: Keep this assignment active through the controller compact; observe the next native teammate reply without tools."
+      ],
+      "hookName": "SessionStart",
+      "toolUseID": "SessionStart",
+      "hookEvent": "SessionStart"
+    },
+    "type": "attachment",
+    "uuid": "97a4be18-e36c-4623-b762-0927f4bc3918",
+    "timestamp": "2026-09-11T00:01:45.568Z",
+    "session_id": "6d57d903-2c58-4b42-b6e9-85410894becc",
+    "userType": "external",
+    "entrypoint": "cli",
+    "cwd": "/tmp/th-l1-runtime-5x89_1sl/project",
+    "sessionId": "6d57d903-2c58-4b42-b6e9-85410894becc",
+    "version": "2.1.267",
+    "gitBranch": "master",
+    "slug": "eventual-tinkering-moler"
+  }
+]

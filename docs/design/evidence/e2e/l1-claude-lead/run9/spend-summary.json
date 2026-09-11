@@ -1,0 +1,135 @@
+{
+  "claude_metered_usd": 0.03567015,
+  "codex_metered_usd": 0.00851504,
+  "known_seats_usd": 0.04418519,
+  "metered_upper_rate_usd": 0.76864,
+  "controller_inputs_including_onboarding": {
+    "claude": 4,
+    "codex": 4
+  },
+  "claude_typed_inputs": 3,
+  "codex_typed_inputs": 1,
+  "codex_actual_turns": 3,
+  "claude_generations": [
+    {
+      "input_tokens": 10,
+      "output_tokens": 662,
+      "cache_read_input_tokens": 5479,
+      "cache_creation_input_tokens": 5811,
+      "message_id": "msg_011CevfdvUwmwoSxfdg9HmQy",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "6d57d903-2c58-4b42-b6e9-85410894becc",
+      "usd": 0.01113165,
+      "upper_usd": 0.05981
+    },
+    {
+      "input_tokens": 10,
+      "output_tokens": 384,
+      "cache_read_input_tokens": 11290,
+      "cache_creation_input_tokens": 874,
+      "message_id": "msg_011CevfjMJaQTBXSiFdeHTje",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "6d57d903-2c58-4b42-b6e9-85410894becc",
+      "usd": 0.0041515,
+      "upper_usd": 0.06279
+    },
+    {
+      "input_tokens": 8,
+      "output_tokens": 58,
+      "cache_read_input_tokens": 12164,
+      "cache_creation_input_tokens": 938,
+      "message_id": "msg_011CevfjjqR9VnJX673BAz5i",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "6d57d903-2c58-4b42-b6e9-85410894becc",
+      "usd": 0.0026869,
+      "upper_usd": 0.06584
+    },
+    {
+      "input_tokens": 10,
+      "output_tokens": 220,
+      "cache_read_input_tokens": 13102,
+      "cache_creation_input_tokens": 106,
+      "message_id": "msg_011CevfmEwQC6sVimMYZCC8v",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "6d57d903-2c58-4b42-b6e9-85410894becc",
+      "usd": 0.0025526999999999998,
+      "upper_usd": 0.06719
+    },
+    {
+      "input_tokens": 10,
+      "output_tokens": 66,
+      "cache_read_input_tokens": 13208,
+      "cache_creation_input_tokens": 271,
+      "message_id": "msg_011CevfmXhiKTb7K3ahHMEQW",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "6d57d903-2c58-4b42-b6e9-85410894becc",
+      "usd": 0.00199955,
+      "upper_usd": 0.067775
+    },
+    {
+      "input_tokens": 10,
+      "output_tokens": 179,
+      "cache_read_input_tokens": 13479,
+      "cache_creation_input_tokens": 176,
+      "message_id": "msg_011Cevfn1rdQftMnjYCizXYE",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "6d57d903-2c58-4b42-b6e9-85410894becc",
+      "usd": 0.0024729,
+      "upper_usd": 0.06922
+    },
+    {
+      "input_tokens": 8,
+      "output_tokens": 168,
+      "cache_read_input_tokens": 13655,
+      "cache_creation_input_tokens": 3022,
+      "message_id": "msg_011CevfnFYQJaWZSXnw2CU64",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "6d57d903-2c58-4b42-b6e9-85410894becc",
+      "usd": 0.005991,
+      "upper_usd": 0.084265
+    },
+    {
+      "input_tokens": 10,
+      "output_tokens": 476,
+      "cache_read_input_tokens": 16677,
+      "cache_creation_input_tokens": 501,
+      "message_id": "msg_011CevfndDt717C131Aso4nQ",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "6d57d903-2c58-4b42-b6e9-85410894becc",
+      "usd": 0.00468395,
+      "upper_usd": 0.08832
+    }
+  ],
+  "claude_usd_by_input": {
+    "2b1ce9a2-e5c4-4af3-aa61-43b39487ca34": 0.01113165,
+    "a49f87a7-3eae-4cca-b3b8-9d545cf6a8ed": 0.0068384,
+    "f1dfaba5-6712-4c3b-9f5c-636a46413270": 0.0025526999999999998,
+    "e7e46dc8-6e97-4e5e-b770-0559a670f5e1": 0.00199955,
+    "1414f3fe-e912-43c2-a28f-cb4d88f02233": 0.0084639,
+    "0c101436-82f8-4299-bfb7-745713e6e9cd": 0.00468395
+  },
+  "codex_usage_by_rollout": {
+    "rollout-2026-09-11T01-59-11-01a08dc2-d697-75a3-b917-ca24413ee259.jsonl": {
+      "input_tokens": 167866,
+      "cached_input_tokens": 150272,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 1659,
+      "reasoning_output_tokens": 556,
+      "total_tokens": 169525
+    }
+  },
+  "claude_cap_times_max_observed_input_usd": 0.0890532,
+  "compactions": 1,
+  "compact_usd": "unknown: no distinct usage-bearing summarizer generation in the retained transcript",
+  "foreign_startup_notify_usage": "unknown: notify observed without a separate usage-bearing rollout",
+  "complete_attempt_spend_usd": null,
+  "controller_metering_complete_flag": true,
+  "offline_tests_builds_gates_paid_seat_usd": 0,
+  "implementer_orchestrator_usd": "unavailable",
+  "current_review_usd": 0.116055,
+  "history_reference": "../run8/spend-summary.json (runs 1\u20138 excluded from admission)",
+  "basis": "API-equivalent token estimates at inherited controller rates, not invoices. Unknown usage is not free.",
+  "review_model": "claude-opus-4-6",
+  "review_exit": 0,
+  "known_current_seats_plus_review_usd": 0.16024019
+}

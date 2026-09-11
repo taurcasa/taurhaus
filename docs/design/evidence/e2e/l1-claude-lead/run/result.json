@@ -1,0 +1,12 @@
+{
+  "outcome": "UNAVAILABLE",
+  "classification": "harness",
+  "step": 1,
+  "reason": "claude_compaction_hook_unregistered: production daemon initialize completed and Claude authenticated/consumed its startup card, but scratch Claude settings have no SessionStart(compact) hook after a 65-second poll. Controller used daemon initialize without the desktop post-initialize hook reconciliation. Stop before step 2; no synthetic hook/card, no retry.",
+  "subchecks": {
+    "initialize_once": "PASS",
+    "canonical_format_2": "PASS",
+    "delivery_owner_team": "PASS",
+    "claude_compaction_hook_registration": "FAIL"
+  }
+}

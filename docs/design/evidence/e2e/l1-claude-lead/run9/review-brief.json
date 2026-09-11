@@ -1,0 +1,123 @@
+{
+  "scope": "Independent Opus evidence review of run9 stopped lane; no rerun or product fix.",
+  "report": "# L1 run9 \u2014 steps 1\u20134 PASS; step 5 UNAVAILABLE (harness); step 6 NOT RUN\n\nRun9 initialized once, exchanged AMBER/BIRCH through Claude's native mailbox, explicitly acknowledged them, published the real lead assignment, and performed one ordinary `/compact`. The production hook **delivered the real recovery card into Claude native additional-context attachment rows**. The inherited step5 collector/predicate ignores attachments and timed out after 120 seconds. This is a harness false-negative, not a Taurhaus missing-card defect. No FERN input or runtime retry followed. This stopped run is not an end-to-end PASS.\n\n| Step | Outcome / classification | Evidence |\n|---|---|---|\n| 1. Initialize, signed-in team lead, production hook | PASS, with permitted harness/environment exception | Canonical format 2, team owner, native lead onboarding; `initialize-result.json`, `step1/`, `production-hooks-before-launch.json`. `sessions/` has a host-PID peer key but no PID JSON registry; `claude_registry_absent` permits continuation under run9. |\n| 2. Claude sends both markers; alpha exposure | PASS / runtime | Claude Bash tools accepted `fcda7ea1-3300-47ed-b7d1-51e09b54041a` (AMBER), `47e4eb2a-79bc-4f38-a2ae-b66e8fae2d36` (BIRCH). Journal submissions 12/13 and reads 14/15; `step2/`, `step2-journal-page-0.json`. |\n| 3. Alpha reads/replies; Claude native uptake | PASS / runtime | Replies `6fa95929-a5e0-4c2b-ae7d-93efd7345f56` / `4bc6f2aa-c649-4c85-813b-13a9bf59bbb0`; native messages at 00:00:51.364 / 00:00:55.491 UTC, each distinguished in lead text before explicit lead read; `step3-before-read/`, transcripts, journal. |\n| 4. Claude explicit inbox read/mark | PASS / runtime | Lead `consumed_by_read` journal rows 22\u201324; distinct from earlier `native_enqueued` 18/21; `step4/`, journal and Claude Bash transcript. |\n| 5. Real assignment, app publication, compact, recovery | UNAVAILABLE / harness assertion | Task #1 assigned in progress; production publication accepted 1, skipped 0; real hook received/resolved/delivered, context 0\u21921, new card identity and unchanged role. Native attachment evidence was excluded by inherited collector and user/system-only predicate; `step5-native-hook-attachments.json`, `step5-evidence-reconciliation.json`, `step5-driver.txt`. |\n| 6. Post-recovery FERN, exactly-once action, export | NOT RUN / first-failure stop | No FERN input or post-recovery action claim. Failure export and teardown completed. |\n\nTaurhaus base **a7e6db7e**, Mesh **310144d**, protocol **27**, Claude **2.1.267 / claude-haiku-4-5-20251001**, Codex **0.153.4 / gpt-5.6-luna / low**. The daemon was built in this checkout via `just build-daemon`; Mesh was built only in mesh-l1. Builds and production hook adapter exited **0/0/0**; commands/digests in `build/gates/`, `hook-build.json` and `events.jsonl`. No hosted seat or descriptor edit. Both native Codex siblings were copied into scratch bin. Startup composer/footer preflight passed.\n\nThe runtime Bubblewrap mount namespace retained tmpfs homes and the single-file read-only Claude credential bind, with **no `--unshare-pid` and no `--proc` remount**. Host lead PID **2888614** wrote only a `.key` containing peer-channel metadata, not a `<pid>.json` session registry. All registry directory files are retained under `sessions/`, with `peerToken` redacted; `index.json` distinguishes registry files from all files. An initial observer mistake classified the key as a mismatched registry; the live index was corrected from real filenames during the original 65-second window, before any step2 input, then its helper fix was tested red\u2192green. No native file, PID, activity or hook state was fabricated. The live index correction preceded the offline reproducer; the reusable helper change followed red\u2192green.\n\nAlpha remains attributed to **01a08dc2-d697-75a3-b917-ca24413ee259** through notify-sourced idle transitions at daemon JSONL rows **120, 233, 279**, despite a foreign ephemeral startup notify. Runtime/activity observations, rollout and lock filenames, complete Codex transcript and notify records are retained. The run8 pending-delivery guard was reused: first input requires submitted/read onboarding, all inputs require no pending/in-flight alpha delivery, fresh attributed idle and a passively unheld terminal lock. `step2-input-guard.json` / `step3-input-guard.json` record admission; no controller text was typed during pending delivery. No terminal receipt for Claude was observed; lead receipts are native-enqueued/read. The production descriptor stayed unchanged.\n\nThe controller played **the app's task sync**, not a recovery writer: task #1, subject **Run9 native mailbox recovery**, assignment **80d8b711-039c-49ef-a21f-7a96298c1b67**. `step5-task-record.json` is the real Mesh task; `step5-publication-request.json` contains one `coordination.publish_operational_snapshots` call built from that record and its assignment footer; response is **published 1 / skipped 0**. Request/response, task creation/assignment commands and the readable operational snapshot are retained. Nothing else was synthesized.\n\n`/compact` generated a real compact boundary. `taurhaus.log.jsonl` rows **373/374/376** record the hook received/resolved/delivered at 00:01:45 UTC, returning **3484 bytes** of context. Context generation **0\u21921**, content revision **2cd47b20d7da3d753eabd9d0ead96072ff5f4b8302456732645e03df4a2ac053 \u2192 2cce49cfd07e3b3e9c73936e772de2f67758123baea328baaa8ba70ebb493dd3**, effective role revision unchanged. Native `hook_success` (`SessionStart:compact`) and `hook_additional_context` (`SessionStart`) attachments at **00:01:45.568 UTC** contain the actual lead recovery card and current assignment. They were read directly from the scratch Claude JSONL before teardown and retained separately. The original `claude-transcript.json` excludes those rows because `Trial.snapshot` retains only assistant/user/system; `steps.py` additionally requires user/system for its card predicate. Both facts explain the false negative. Raw controller FAIL/product-owner-pending-evidence-review and exit **2**, step5 driver exit **1**, remain untouched; the evidence-backed final classification is **harness**. No product failure is asserted.\n\nKnown metered seats: **Claude $0.03567015 + Codex $0.00851504 = $0.04418519**; upper-rate retained estimate **$0.76864000**. **Claude 4/8**, **Codex 4/12** input reservations (onboarding included); three Claude typed inputs include one compact, one Codex typed input, 3 actual Codex turns. Claude cap \u00d7 largest observed input is **$0.08905320**. Per-generation tokens/costs and every observed Claude input group are in `cost-ledger.json` and `spend-summary.json`. Compact summarizer and foreign startup-notify usage are **unknown**, not zero; retained-rollout `metering_complete=true` does not prove total billing. Fresh admission excludes runs1\u20138; historical costs remain linked. Offline tests/builds/gates cost $0 paid seat spend; implementer/orchestrator spend unavailable. Independent review is recorded separately below.\n\nRuntime **250.629 s**. Cleanup verified zero owned survivors, closed private port, removed scratch roots/Codex auth copy, and a zero-byte Claude mount placeholder: Claude credential never copied. Removing PID isolation required explicit PID/start-time-validated owned-descendant cleanup, with no operator process killed. Complete daemon JSONL **503/503 rows**, zero excluded usage rows. `cleanup.json`, `teardown-audit.json` and `post-runtime-audit.json` retain independent checks. No secrets or forbidden operator-home paths remain in evidence; pane captures are at most 60 lines.\n\nOffline: original five new tests observed **one assertion failure plus four missing-helper errors**; key-only registry fixture then failed before the helper fix. Final **59 generated-data tests + 11 controller regressions** passed. No offline test accesses real harness homes or invokes a real CLI. Four numbered green steps were committed; two small fixture commits precede/follow those as recorded. No `src-tauri/` diff, so `just test-rust-unit` is inapplicable. Exact post-teardown gates are recorded below after completion.\n\nDeviations are listed in `final-disposition.json`: permitted missing registry, live index correction and its TDD ordering, owned-descendant cleanup, native attachment oracle false-negative, step6 first-failure stop, and unknown spend. No product fix, plan-ledger edit, branch switch, other Taurhaus-checkout work or Mesh commit. Session registry sidecars remain directly accessible; other snapshots may resolve through `snapshots.json` after deduplication.\n\nExact checkout-root gates after teardown: **`just check-quick` exit 0**, **`just lint` exit 0**, **`just test-contracts` exit 0**. The credential-free gate namespace hides real harness homes and blocks real runtime CLIs; Cargo admission uses 30-second polls only when at least three Cargo processes already run. The frontend lane executed **2519 passing tests**. Gate commands/logs, isolation and cleanup are retained under `gates/`.\n",
+  "disposition": {
+    "outcome": "UNAVAILABLE",
+    "classification": "harness",
+    "failed_step": 5,
+    "steps": [
+      {
+        "step": 1,
+        "outcome": "PASS",
+        "classification": "runtime",
+        "note": "Registry absence exception applied"
+      },
+      {
+        "step": 2,
+        "outcome": "PASS",
+        "classification": "runtime",
+        "note": "Native runtime evidence retained"
+      },
+      {
+        "step": 3,
+        "outcome": "PASS",
+        "classification": "runtime",
+        "note": "Native runtime evidence retained"
+      },
+      {
+        "step": 4,
+        "outcome": "PASS",
+        "classification": "runtime",
+        "note": "Native runtime evidence retained"
+      },
+      {
+        "step": 5,
+        "outcome": "UNAVAILABLE",
+        "classification": "harness",
+        "note": "Native recovery observed, inherited observer rejects attachment rows"
+      },
+      {
+        "step": 6,
+        "outcome": "NOT RUN",
+        "classification": "first-failure stop",
+        "note": "No FERN input"
+      }
+    ],
+    "raw_controller_result": {
+      "outcome": "FAIL",
+      "classification": "product-owner-pending-evidence-review",
+      "step": 5,
+      "reason": "missing real compaction boundary/generation/native recovery card"
+    },
+    "deviations": [
+      "Claude wrote a host-PID .key but no PID .json session registry: claude_registry_absent, harness/environment; continued under explicit run9 ruling. Lead daemon session_id remained null.",
+      "During the original step1 window the passive registry index was corrected to list JSON registry entries separately from all directory files; peerToken was removed from retained key metadata before the first evidence commit. Live index correction preceded the generated-data red/green helper fix; no native state or model input changed.",
+      "Removing the PID namespace required PID/start-time-validated cleanup of owned descendants; no unrelated process was signalled.",
+      "Step5 inherited collector/predicate excludes Claude native attachment rows. It timed out after 120 seconds despite real delivered additional context; raw FAIL/product-owner-pending-evidence-review is retained and superseded by UNAVAILABLE/harness after examining native attachments. No step5 assertion rewrite or runtime retry; FERN step6 NOT RUN.",
+      "Compaction summarizer and foreign startup-notify usage unknown. Complete dollar-spend proof unavailable; metered subtotal remains below the fresh cap. No budget/authorization question or budget stop.",
+      "No product, descriptor, plan-ledger, branch, alternate Taurhaus checkout or Mesh-source change; no Mesh commit."
+    ]
+  },
+  "native_recovery_proof": {
+    "context_before": "0",
+    "context_after": "1",
+    "content_revision_before": "2cd47b20d7da3d753eabd9d0ead96072ff5f4b8302456732645e03df4a2ac053",
+    "content_revision_after": "2cce49cfd07e3b3e9c73936e772de2f67758123baea328baaa8ba70ebb493dd3",
+    "effective_role_revision_before": "7cdf1bc8c16c86ec27f2e1a27e2720303026d9dd7aea62397c03f7c540390bb6",
+    "effective_role_revision_after": "7cdf1bc8c16c86ec27f2e1a27e2720303026d9dd7aea62397c03f7c540390bb6",
+    "hook_rows": [
+      {
+        "line": 373,
+        "event": "compaction.claude_hook.received",
+        "timestamp": "2026-09-11T00:01:45.521Z"
+      },
+      {
+        "line": 374,
+        "event": "compaction.claude_hook.resolved",
+        "timestamp": "2026-09-11T00:01:45.521Z"
+      },
+      {
+        "line": 376,
+        "event": "compaction.claude_hook.delivered",
+        "timestamp": "2026-09-11T00:01:45.557Z"
+      }
+    ],
+    "native_attachment_types": [
+      "hook_success",
+      "hook_additional_context"
+    ],
+    "native_attachment_timestamp": "2026-09-11T00:01:45.568Z",
+    "assignment_subject_in_native_additional_context": true,
+    "original_collector_excludes_attachment": true,
+    "original_predicate_accepts_only_user_system": true,
+    "disposition": "Native recovery subclaims observed; inherited step5 oracle false-negative. Step5 stopped as harness failure; step6 remains NOT RUN."
+  },
+  "native_attachment_excerpt": "es do not prove archival preservation.\\nGenerated: 2026-09-11 00:01:45.521980098 UTC\\nCurrent task: #1 \u2014 Run9 native mailbox recovery\\nExecution mode: Measure; Validation expectation: Controller validates native recovery.; Response expectation: Respond once to fresh native mail.; Adjacent fix policy: No adjacent fixes.; Override allowed: false; Override reason: none\\nFocal files: unavailable\\nRole: unavailable\\nPurpose: Isolated bounded messaging trial. Reply in at most two short sentences. Never modify files. Only execute mesh who, mesh send, mesh read, or the exact mesh lifecycle commands explicitly named in a task. Every mesh command must include --claude-dir \"$CLAUDE_CONFIG_DIR\" --team l1-claude-lead --name lead. Never use other tools or commands. Lead must never execute mesh read until the controller explicitly requests step 4. When asked for a reply, read/mark your own inbox then send the short reply through mesh. Do not send unsolicited messages. Startup: say READY only, do not send any wait-state or status message to yourself or anyone. On native teammate replies, distinguish each marker in a brief text response without tools. These trial limits override generated startup suggestions to send wait-state messages.\\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\\nNext action: Keep this assignment active through the controller compact; observe the next native teammate reply without tools.']",
+  "cleanup": {
+    "survivors": [],
+    "root_removed": true,
+    "private_port_closed": true,
+    "codex_copy_removed": true,
+    "claude_credential_copied": false,
+    "secret_or_path_violations": [],
+    "pane_files_checked": 36,
+    "sessions_retained": {
+      "directory_exists": true,
+      "files": [],
+      "all_files": [
+        "2888614.1f18ee6a7ad87088099fa7c5a0c44f67a61a8701f6d73590cefa923b9b02181e.key"
+      ]
+    },
+    "log_retention": {
+      "complete_rows": 503,
+      "retained_rows": 503,
+      "excluded_usage_rows": 0
+    }
+  },
+  "controller_filters": {
+    "snapshot": "if r.get('type') in ('assistant','user','system'): transcripts.append(r)",
+    "predicate": "r.get('type') in ('user','system')"
+  },
+  "review_spend_policy": "Separate from seat caps. One brief tool-free Opus invocation; configured USD 0.20 ceiling.",
+  "native_card_role_note": "Native card says Role: unavailable because fixture has no named role template; persisted effective role revision is unchanged, and current assignment identity is explicit."
+}

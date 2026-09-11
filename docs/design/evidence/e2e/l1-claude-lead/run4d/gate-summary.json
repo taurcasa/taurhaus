@@ -1,0 +1,44 @@
+{
+  "commands": [
+    {
+      "command": [
+        "just",
+        "check-quick"
+      ],
+      "exit": 0,
+      "seconds": 28.441929402993992
+    },
+    {
+      "command": [
+        "just",
+        "lint"
+      ],
+      "exit": 0,
+      "seconds": 26.48622284596786
+    },
+    {
+      "command": [
+        "just",
+        "test-contracts"
+      ],
+      "exit": 0,
+      "seconds": 27.08890406397404
+    }
+  ],
+  "root": "/home/mstie/projects/taurhaus-l1-claude-lead",
+  "rust_unit": "not applicable: no src-tauri diff",
+  "offline_tests": {
+    "discovered": 36,
+    "controller_regressions": 11,
+    "exits": [
+      0,
+      0
+    ]
+  },
+  "runtime_exits": {
+    "driver": 2,
+    "controller": 2,
+    "step1": 0,
+    "step2": 1
+  }
+}

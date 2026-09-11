@@ -1,0 +1,13 @@
+{
+  "gate_wrapper_exit": 0,
+  "gate_exits": {
+    "check-quick": 0,
+    "lint": 0,
+    "test-contracts": 0
+  },
+  "gate_trial_id": "th-int-gates-wwcn51qc",
+  "surviving_processes": [],
+  "scratch_root_removed": true,
+  "real_model_cli_invoked": false,
+  "credential_access": false
+}

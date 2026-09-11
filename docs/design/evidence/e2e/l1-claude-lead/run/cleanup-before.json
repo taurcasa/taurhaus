@@ -1,0 +1,185 @@
+[
+  {
+    "pid": 3373270,
+    "start_ticks": "25006101",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-l1-runtime-uyo0vm4m",
+      "/tmp/th-l1-runtime-uyo0vm4m",
+      "--ro-bind",
+      "<operator-path>",
+      "/tmp/th-l1-runtime-uyo0vm4m/claude/.credentials.json",
+      "--chdir",
+      "/tmp/th-l1-runtime-uyo0vm4m/project",
+      "/bin/bash",
+      "/tmp/th-l1-runtime-uyo0vm4m/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 3373271,
+    "start_ticks": "25006101",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-l1-runtime-uyo0vm4m",
+      "/tmp/th-l1-runtime-uyo0vm4m",
+      "--ro-bind",
+      "<operator-path>",
+      "/tmp/th-l1-runtime-uyo0vm4m/claude/.credentials.json",
+      "--chdir",
+      "/tmp/th-l1-runtime-uyo0vm4m/project",
+      "/bin/bash",
+      "/tmp/th-l1-runtime-uyo0vm4m/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 3373272,
+    "start_ticks": "25006101",
+    "argv": [
+      "/bin/bash",
+      "/tmp/th-l1-runtime-uyo0vm4m/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 3373273,
+    "start_ticks": "25006102",
+    "argv": [
+      "tmux",
+      "-D",
+      "-f",
+      "/dev/null",
+      ""
+    ]
+  },
+  {
+    "pid": 3373395,
+    "start_ticks": "25006113",
+    "argv": [
+      "/bin/bash",
+      ""
+    ]
+  },
+  {
+    "pid": 3373399,
+    "start_ticks": "25006113",
+    "argv": [
+      "/tmp/th-l1-runtime-uyo0vm4m<operator-path>",
+      "--port",
+      "46025",
+      "--data-dir",
+      "/tmp/th-l1-runtime-uyo0vm4m/data",
+      ""
+    ]
+  },
+  {
+    "pid": 3374081,
+    "start_ticks": "25006161",
+    "argv": [
+      "/bin/bash",
+      "-ic",
+      "cd '/tmp/th-l1-runtime-uyo0vm4m/project' && CLAUDE_DIR='/tmp/th-l1-runtime-uyo0vm4m/claude' CLAUDE_CONFIG_DIR='/tmp/th-l1-runtime-uyo0vm4m/claude' CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions --tools Bash --allowedTools \"Bash(mesh *)\" --model 'claude-haiku-4-5-20251001' --team-name 'l1-claude-lead' --agent-name 'lead' --agent-id 'lead@l1-claude-lead' --agent-type 'orchestrator' -n 'lead'; exec \"$SHELL\"",
+      ""
+    ]
+  },
+  {
+    "pid": 3374092,
+    "start_ticks": "25006161",
+    "argv": [
+      "claude",
+      "--dangerously-skip-permissions",
+      "--tools",
+      "Bash",
+      "--allowedTools",
+      "Bash(mesh *)",
+      "--model",
+      "claude-haiku-4-5-20251001",
+      "--team-name",
+      "l1-claude-lead",
+      "--agent-name",
+      "lead",
+      "--agent-id",
+      "lead@l1-claude-lead",
+      "--agent-type",
+      "orchestrator",
+      "-n",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 3374177,
+    "start_ticks": "25006166",
+    "argv": [
+      "/bin/bash",
+      "-ic",
+      "cd '/tmp/th-l1-runtime-uyo0vm4m/project' && CLAUDE_DIR='/tmp/th-l1-runtime-uyo0vm4m/claude' CODEX_HOME='/tmp/th-l1-runtime-uyo0vm4m/codex' codex --yolo --dangerously-bypass-hook-trust -c 'notify=[\"/tmp/th-l1-runtime-uyo0vm4m<operator-path>\",\"codex-notify\"]' -m 'gpt-5.6-luna' -c 'model_reasoning_effort=\"low\"'; exec \"$SHELL\"",
+      ""
+    ]
+  },
+  {
+    "pid": 3374187,
+    "start_ticks": "25006167",
+    "argv": [
+      "codex",
+      "--yolo",
+      "--dangerously-bypass-hook-trust",
+      "-c",
+      "notify=[\"/tmp/th-l1-runtime-uyo0vm4m<operator-path>\",\"codex-notify\"]",
+      "-m",
+      "gpt-5.6-luna",
+      "-c",
+      "model_reasoning_effort=\"low\"",
+      ""
+    ]
+  },
+  {
+    "pid": 3375875,
+    "start_ticks": "25006337",
+    "argv": [
+      "/tmp/th-l1-runtime-uyo0vm4m<operator-path>",
+      "team-daemon",
+      "start",
+      "--team",
+      "l1-claude-lead",
+      "--name",
+      "lead",
+      "--claude-dir",
+      "/tmp/th-l1-runtime-uyo0vm4m/claude",
+      ""
+    ]
+  }
+]

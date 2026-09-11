@@ -1,0 +1,20 @@
+F
+======================================================================
+FAIL: test_requested_continuation_preserves_original_run6_packet (test_run6.Run6Tests.test_requested_continuation_preserves_original_run6_packet)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/test_run6.py", line 68, in test_requested_continuation_preserves_original_run6_packet
+    driver = runpy.run_path(str(controller.BASE / 'run3_driver.py'))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen runpy>", line 286, in run_path
+  File "<frozen runpy>", line 98, in _run_module_code
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/run3_driver.py", line 15, in <module>
+    assert LABEL in ('run3', 'run4', 'run4c', 'run4d', 'run5', 'run6')
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError
+
+----------------------------------------------------------------------
+Ran 1 test in 0.001s
+
+FAILED (failures=1)

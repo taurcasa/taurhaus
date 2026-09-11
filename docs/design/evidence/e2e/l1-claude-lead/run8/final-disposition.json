@@ -1,0 +1,90 @@
+{
+  "outcome": "UNAVAILABLE",
+  "classification": "harness",
+  "failed_step": 1,
+  "steps": [
+    {
+      "step": 1,
+      "outcome": "UNAVAILABLE",
+      "classification": "harness",
+      "reason": "Lead session attribution absent after the full 65s poll: runtime session_id/jsonl_path null despite an authenticated native Claude generation. Required runtime identity prerequisite unproved; underlying product ownership unresolved."
+    },
+    {
+      "step": 2,
+      "outcome": "NOT RUN",
+      "classification": "first-failure stop"
+    },
+    {
+      "step": 3,
+      "outcome": "NOT RUN",
+      "classification": "first-failure stop"
+    },
+    {
+      "step": 4,
+      "outcome": "NOT RUN",
+      "classification": "first-failure stop"
+    },
+    {
+      "step": 5,
+      "outcome": "NOT RUN",
+      "classification": "first-failure stop"
+    },
+    {
+      "step": 6,
+      "outcome": "NOT RUN",
+      "classification": "first-failure stop"
+    }
+  ],
+  "raw_controller_result": {
+    "outcome": "UNAVAILABLE",
+    "classification": "harness",
+    "step": 1,
+    "reason": "step driver failed; see driver log (authentication cause not established)"
+  },
+  "runtime_seconds": 72.24040255800355,
+  "driver_exit": 2,
+  "controller_exit": 2,
+  "ordered_step_exits": [
+    1
+  ],
+  "gate_exits": {
+    "check-quick": 0,
+    "lint": 0,
+    "test-contracts": 0
+  },
+  "tests": {
+    "red_exit": 1,
+    "red": "5 new checks failed: input before guard, missing run8 route and helper; additional in-flight receipt regression also failed",
+    "green": [
+      {
+        "suite": "discovered",
+        "tests": 53,
+        "exit": 0
+      },
+      {
+        "suite": "controller.ReviewRegressionTests",
+        "tests": 11,
+        "exit": 0
+      }
+    ]
+  },
+  "deviations": [
+    "Run8 stopped at step1; no marker sends, pending-input guard execution, assignment/publication, compact or FERN. No paid rerun or product fix.",
+    "Authenticated Haiku generation and native onboarding are proven; lead daemon attribution is not. Scratch Claude session registry was not retained, so underlying taurhaus versus claude-code attribution cause is unresolved. Harness unavailable is not an authentication failure or product exoneration.",
+    "Alpha ignored READY-only/no-unsolicited-send startup instructions: read onboarding, attempted five unsolicited mesh sends with invalid syntax/handles, all rejected; no alpha-authored message accepted. Controller did not retry or add paid inputs.",
+    "Foreign ephemeral Codex startup notification has no retained usage; complete attempt spend is unknown. Controller metering_complete covers retained rollout accounting only.",
+    "Full seven-row journal segment retained; paginated journal CLI reads not reached before first-failure stop.",
+    "Pending-delivery rule has offline coverage only; no live terminal input-lock sample was taken because no Codex controller input was reached.",
+    "Production wire publisher reused, not reached live. No recovery state synthesized. No descriptor, product, plan-ledger, branch or other Taurhaus checkout changes; designated Mesh build only, no Mesh commit.",
+    "First Opus invocation exhausted its configured $0.20 review budget and reported $0.23303; one smaller-packet review retry approved at $0.11230. Foreign-session upper bound remains unknown, not invented."
+  ],
+  "review": {
+    "verdict": "approve",
+    "model": "claude-opus-4-6",
+    "exits": [
+      1,
+      0
+    ],
+    "usd": 0.34533
+  }
+}

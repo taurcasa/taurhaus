@@ -1,0 +1,17 @@
+{
+  "generation_before": "0",
+  "generation_after": "1",
+  "card_revision_before": "01e079b50f220b53a008b3fa9163749a4622e861ef3fd219b2423d829ea19422",
+  "card_revision_after": "eb41a6f55cec10a20f5ea3ead1150388f9a47722c0d873535c40f35d2ba8df02",
+  "role_unchanged": true,
+  "native_recovery_attachments": 2,
+  "lead_terminal_receipts": [],
+  "fern_accepted_once": true,
+  "fern_native_once": true,
+  "fern_action_once": true,
+  "fern_after_compact": true,
+  "fern_native_enqueued": true,
+  "fern_explicit_read": true,
+  "daemon_rows": 432,
+  "mesh_descriptor": "unchanged production; no hosted seat or drain enabled"
+}

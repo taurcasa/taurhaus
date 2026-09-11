@@ -1,0 +1,638 @@
+{
+  "result": {
+    "outcome": "FAIL",
+    "classification": "product-owner-pending-evidence-review",
+    "step": 2,
+    "reason": "alpha did not receive both marker exposures through production tmux delivery"
+  },
+  "initialize_id": {
+    "run_id": "init_1185e7bad6e84342a488b3a7dc603103"
+  },
+  "step1": {
+    "outcome": "PASS",
+    "step": 1,
+    "evidence": "initialize/result, runtime, native Claude transcript and hook registration"
+  },
+  "required_scope": "Spec replaces alpha/beta with alpha only, tmux; two distinct markers to alpha. No hosted seat or descriptor change.",
+  "alpha_readiness": {
+    "attributed_idle": false,
+    "deviation": "Required derived attributed-idle observation absent; native turn readiness permits continuation.",
+    "activity": {
+      "version": 1,
+      "observed_at": "2026-09-10T17:56:28.171652238+00:00",
+      "stall_recent_activity": true,
+      "stall_no_output": false,
+      "stall_no_active_process": false,
+      "active_non_shell_process": true,
+      "recent_io": false,
+      "pane_alive": true,
+      "pane_foreign": false,
+      "last_output_age_secs": 1,
+      "activity_confidence": "likely_working"
+    },
+    "session_id": "01a08c76-8916-7d71-96e5-2331f4ce7dcb",
+    "jsonl_path": "/tmp/th-l1-runtime-sb6xigyx/codex/sessions/2026/09/10/rollout-2026-09-10T19-56-13-01a08c76-8916-7d71-96e5-2331f4ce7dcb.jsonl"
+  },
+  "window": {
+    "started_at": 1789063018.2451196,
+    "seconds": 65,
+    "remaining_outer_seconds": 853.0878906329744,
+    "monotonic_deadline": 283621.039533851
+  },
+  "native_codex_completion": [
+    {
+      "timestamp": "2026-09-10T17:56:45.573Z",
+      "ordinal": 60,
+      "type": "event_msg",
+      "payload": {
+        "type": "task_complete",
+        "turn_id": "01a08c76-8dec-7d41-b519-1acdeb763c55",
+        "last_agent_message": "Inbox read and marked as read. The message requested missing assignment context, but sending failed because no valid task handle was provided.",
+        "started_at": 1789062974,
+        "completed_at": 1789063005,
+        "duration_ms": 30615,
+        "time_to_first_token_ms": 3710
+      }
+    }
+  ],
+  "claude_tools": [
+    {
+      "timestamp": "2026-09-10T17:56:54.862Z",
+      "uuid": "8f7abcf8-040e-4f50-bedd-50d2d83ec6ac",
+      "content": {
+        "type": "tool_use",
+        "id": "toolu_01FxVzDgnR52ce44nBxTkvKR",
+        "name": "Bash",
+        "input": {
+          "command": "mesh send alpha 'ACTION REQUIRED: Remember marker L1_AMBER_42. Do not run tools or send a reply yet; the controller will request step 3.' --summary 'L1 marker A' --claude-dir \"$CLAUDE_CONFIG_DIR\" --team l1-claude-lead --name lead",
+          "description": "Send first mesh message with L1_AMBER_42 marker"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    },
+    {
+      "timestamp": "2026-09-10T17:56:54.978Z",
+      "uuid": "bacd920b-3a51-4aed-b685-afd656acc2cc",
+      "content": {
+        "tool_use_id": "toolu_01FxVzDgnR52ce44nBxTkvKR",
+        "type": "tool_result",
+        "content": "[mesh] warning: actionable message missing required fields: task_id, first_step, deliverable, completion_signal\n{\"message_id\":\"aeef42ef-9ba8-4a64-94ed-c1a2810407be\",\"sequence\":8,\"status\":\"accepted\",\"projection\":\"pending\",\"delivery_targets\":[{\"delivery_id\":\"84dffa14-f6a5-405f-993e-d4156bc56fb0\",\"legacy_acceptance\":\"unknown\",\"legacy_id\":\"2dfa2e2a-93c6-4116-ad33-f1b29c972d02\",\"member_id\":\"alpha@l1-claude-lead\",\"read_audience\":[{\"member_id\":\"7ef9e6ee-b4d5-4c63-8134-de8e5e60eb62\",\"name\":\"lead\"},{\"member_id\":\"alpha@l1-claude-lead\",\"name\":\"alpha\"}],\"recipient\":\"alpha\",\"source_path\":\"inboxes/alpha.json\"}]}",
+        "is_error": false
+      }
+    },
+    {
+      "timestamp": "2026-09-10T17:56:55.734Z",
+      "uuid": "71ac2cb8-e952-4c73-942f-20070f22fc21",
+      "content": {
+        "type": "tool_use",
+        "id": "toolu_0181uWwKV4xZEmFYp4qP4Tni",
+        "name": "Bash",
+        "input": {
+          "command": "mesh send alpha 'ACTION REQUIRED: Remember marker L1_BIRCH_73. Do not run tools or send a reply yet; the controller will request step 3.' --summary 'L1 marker B' --claude-dir \"$CLAUDE_CONFIG_DIR\" --team l1-claude-lead --name lead",
+          "description": "Send second mesh message with L1_BIRCH_73 marker"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    },
+    {
+      "timestamp": "2026-09-10T17:56:55.826Z",
+      "uuid": "31183291-fa36-4d64-8192-d0751f4f4d93",
+      "content": {
+        "tool_use_id": "toolu_0181uWwKV4xZEmFYp4qP4Tni",
+        "type": "tool_result",
+        "content": "[mesh] warning: actionable message missing required fields: task_id, first_step, deliverable, completion_signal\n{\"message_id\":\"a8950c6a-3203-4da3-bb09-c7ff7f421774\",\"sequence\":9,\"status\":\"accepted\",\"projection\":\"pending\",\"delivery_targets\":[{\"delivery_id\":\"b55aca80-9718-4b9a-a569-2dfae9271cc3\",\"legacy_acceptance\":\"unknown\",\"legacy_id\":\"ae07ea29-09c5-46d1-bde6-05643071fed8\",\"member_id\":\"alpha@l1-claude-lead\",\"read_audience\":[{\"member_id\":\"7ef9e6ee-b4d5-4c63-8134-de8e5e60eb62\",\"name\":\"lead\"},{\"member_id\":\"alpha@l1-claude-lead\",\"name\":\"alpha\"}],\"recipient\":\"alpha\",\"source_path\":\"inboxes/alpha.json\"}]}",
+        "is_error": false
+      }
+    }
+  ],
+  "marker_acceptances": [
+    {
+      "checksum": "e5a740150866369e1adc0e867731daf39951124f4c0779a61802a60ce529cdad",
+      "committed_at": "2026-09-10T17:56:54.911345063+00:00",
+      "event_id": "cf033a69-4fa8-4121-a7e1-aedbd1fa5756",
+      "event_type": "message_accepted",
+      "log_epoch": "462978a2-22e7-48ae-b9ac-63652adc0d37",
+      "payload": {
+        "acceptance": "canonical",
+        "archive_outcome": "retained",
+        "audience_proof": {
+          "kind": "captured-members",
+          "members": [
+            {
+              "member_id": "7ef9e6ee-b4d5-4c63-8134-de8e5e60eb62",
+              "name": "lead"
+            },
+            {
+              "member_id": "alpha@l1-claude-lead",
+              "name": "alpha"
+            }
+          ],
+          "team_id": "458ec80323acdbd6a4c69baaebd2a0a56e89f503d2b41bb4eb0e43d66568d34a"
+        },
+        "author": {
+          "member_id": "7ef9e6ee-b4d5-4c63-8134-de8e5e60eb62",
+          "name": "lead",
+          "verified": true
+        },
+        "body": "ACTION REQUIRED: Remember marker L1_AMBER_42. Do not run tools or send a reply yet; the controller will request step 3.",
+        "body_bytes": 119,
+        "body_format": "text/plain",
+        "body_hash": "81da7f5e3a8c5e8d5f8025c28e9617e7dac6e2356ba1af6a4fc5803f994856b8",
+        "conversation_id": "19e9fc8bae0517b45ba573c1a7edd296f16879170725fce6a1e96046d6bc5691",
+        "conversation_kind": "dm",
+        "correction_reason": null,
+        "delivery_targets": [
+          {
+            "delivery_id": "84dffa14-f6a5-405f-993e-d4156bc56fb0",
+            "legacy_acceptance": "unknown",
+            "legacy_id": "2dfa2e2a-93c6-4116-ad33-f1b29c972d02",
+            "member_id": "alpha@l1-claude-lead",
+            "read_audience": [
+              {
+                "member_id": "7ef9e6ee-b4d5-4c63-8134-de8e5e60eb62",
+                "name": "lead"
+              },
+              {
+                "member_id": "alpha@l1-claude-lead",
+                "name": "alpha"
+              }
+            ],
+            "recipient": "alpha",
+            "source_path": "inboxes/alpha.json"
+          }
+        ],
+        "dispatch_decision": {
+          "expectation": "action",
+          "policy_revision": 1,
+          "provenance": "prefix",
+          "wake_eligible": true
+        },
+        "envelope": {
+          "from": "lead",
+          "id": "2dfa2e2a-93c6-4116-ad33-f1b29c972d02",
+          "read": false,
+          "summary": "L1 marker A",
+          "text": null,
+          "timestamp": "2026-09-10T17:56:54.904Z"
+        },
+        "idempotency_key": "2dfa2e2a-93c6-4116-ad33-f1b29c972d02",
+        "legacy_acceptance": "unknown",
+        "link": null,
+        "message_id": "aeef42ef-9ba8-4a64-94ed-c1a2810407be",
+        "origin": "authored",
+        "producer": "mesh-send:7ef9e6ee-b4d5-4c63-8134-de8e5e60eb62",
+        "read_audience": [
+          {
+            "member_id": "7ef9e6ee-b4d5-4c63-8134-de8e5e60eb62",
+            "name": "lead"
+          },
+          {
+            "member_id": "alpha@l1-claude-lead",
+            "name": "alpha"
+          }
+        ],
+        "reply_to_message_id": null,
+        "request_digest": "cdb6a37350e924b50faec41e6cc3cde5a22c15ba0c799b3663d45144c104ee33",
+        "response_expectation": {
+          "basis": "producer",
+          "expectation": "action",
+          "kind": "action",
+          "policy_revision": 1,
+          "provenance": "prefix",
+          "wake_eligible": true
+        },
+        "retention_class": "dm",
+        "source_authority": null,
+        "source_event_refs": [],
+        "summary": "L1 marker A",
+        "supersedes_message_ids": [],
+        "task_links": [],
+        "visibility_policy_id": "captured-members",
+        "visibility_policy_revision": 1,
+        "wake_priority": "urgent"
+      },
+      "schema_version": 1,
+      "sequence": 8,
+      "team_id": "458ec80323acdbd6a4c69baaebd2a0a56e89f503d2b41bb4eb0e43d66568d34a"
+    },
+    {
+      "checksum": "8d5d4635dc7ef7372351ba5e4d45be2de4af746baaabfefd9922dd29a1b2293a",
+      "committed_at": "2026-09-10T17:56:55.761212355+00:00",
+      "event_id": "c4117259-eafc-4feb-8050-a0265ba3f934",
+      "event_type": "message_accepted",
+      "log_epoch": "462978a2-22e7-48ae-b9ac-63652adc0d37",
+      "payload": {
+        "acceptance": "canonical",
+        "archive_outcome": "retained",
+        "audience_proof": {
+          "kind": "captured-members",
+          "members": [
+            {
+              "member_id": "7ef9e6ee-b4d5-4c63-8134-de8e5e60eb62",
+              "name": "lead"
+            },
+            {
+              "member_id": "alpha@l1-claude-lead",
+              "name": "alpha"
+            }
+          ],
+          "team_id": "458ec80323acdbd6a4c69baaebd2a0a56e89f503d2b41bb4eb0e43d66568d34a"
+        },
+        "author": {
+          "member_id": "7ef9e6ee-b4d5-4c63-8134-de8e5e60eb62",
+          "name": "lead",
+          "verified": true
+        },
+        "body": "ACTION REQUIRED: Remember marker L1_BIRCH_73. Do not run tools or send a reply yet; the controller will request step 3.",
+        "body_bytes": 119,
+        "body_format": "text/plain",
+        "body_hash": "29dd5a7226a21ee36ca18069491ddcd60e750151906a3b9c3a9a108b4d9b8c53",
+        "conversation_id": "19e9fc8bae0517b45ba573c1a7edd296f16879170725fce6a1e96046d6bc5691",
+        "conversation_kind": "dm",
+        "correction_reason": null,
+        "delivery_targets": [
+          {
+            "delivery_id": "b55aca80-9718-4b9a-a569-2dfae9271cc3",
+            "legacy_acceptance": "unknown",
+            "legacy_id": "ae07ea29-09c5-46d1-bde6-05643071fed8",
+            "member_id": "alpha@l1-claude-lead",
+            "read_audience": [
+              {
+                "member_id": "7ef9e6ee-b4d5-4c63-8134-de8e5e60eb62",
+                "name": "lead"
+              },
+              {
+                "member_id": "alpha@l1-claude-lead",
+                "name": "alpha"
+              }
+            ],
+            "recipient": "alpha",
+            "source_path": "inboxes/alpha.json"
+          }
+        ],
+        "dispatch_decision": {
+          "expectation": "action",
+          "policy_revision": 1,
+          "provenance": "prefix",
+          "wake_eligible": true
+        },
+        "envelope": {
+          "from": "lead",
+          "id": "ae07ea29-09c5-46d1-bde6-05643071fed8",
+          "read": false,
+          "summary": "L1 marker B",
+          "text": null,
+          "timestamp": "2026-09-10T17:56:55.752Z"
+        },
+        "idempotency_key": "ae07ea29-09c5-46d1-bde6-05643071fed8",
+        "legacy_acceptance": "unknown",
+        "link": null,
+        "message_id": "a8950c6a-3203-4da3-bb09-c7ff7f421774",
+        "origin": "authored",
+        "producer": "mesh-send:7ef9e6ee-b4d5-4c63-8134-de8e5e60eb62",
+        "read_audience": [
+          {
+            "member_id": "7ef9e6ee-b4d5-4c63-8134-de8e5e60eb62",
+            "name": "lead"
+          },
+          {
+            "member_id": "alpha@l1-claude-lead",
+            "name": "alpha"
+          }
+        ],
+        "reply_to_message_id": null,
+        "request_digest": "b41a2afb11e7083a332c23d435dc6ea598e61b9abedbccfc2bd2a6b9291fbe81",
+        "response_expectation": {
+          "basis": "producer",
+          "expectation": "action",
+          "kind": "action",
+          "policy_revision": 1,
+          "provenance": "prefix",
+          "wake_eligible": true
+        },
+        "retention_class": "dm",
+        "source_authority": null,
+        "source_event_refs": [],
+        "summary": "L1 marker B",
+        "supersedes_message_ids": [],
+        "task_links": [],
+        "visibility_policy_id": "captured-members",
+        "visibility_policy_revision": 1,
+        "wake_priority": "urgent"
+      },
+      "schema_version": 1,
+      "sequence": 9,
+      "team_id": "458ec80323acdbd6a4c69baaebd2a0a56e89f503d2b41bb4eb0e43d66568d34a"
+    }
+  ],
+  "journal_receipts": [
+    {
+      "checksum": "ef2a57d66a6b97269234c082aa1acca50148988ee6fe97bdbcb7902c805438f8",
+      "committed_at": "2026-09-10T17:56:13.798031140+00:00",
+      "event_id": "66f06e0e-284f-4b33-8388-995952870994",
+      "event_type": "delivery_attempt",
+      "log_epoch": "462978a2-22e7-48ae-b9ac-63652adc0d37",
+      "payload": {
+        "adapter": "native-mailbox/1",
+        "attachment": {
+          "attachment_generation": 1,
+          "context_generation": "0",
+          "generation": "1",
+          "harness": "claude",
+          "launch_root": {
+            "claudeDir": "/tmp/th-l1-runtime-sb6xigyx/claude",
+            "rootAuthorityRevision": 0,
+            "teamIncarnationId": "458ec80323acdbd6a4c69baaebd2a0a56e89f503d2b41bb4eb0e43d66568d34a",
+            "teamsDir": "/tmp/th-l1-runtime-sb6xigyx/claude/teams"
+          },
+          "member": "lead",
+          "pane": "%1",
+          "pane_pid": 115,
+          "pane_start": "28351040",
+          "root": "/tmp/th-l1-runtime-sb6xigyx/claude",
+          "session": "$0",
+          "socket": "/tmp/th-l1-runtime-sb6xigyx/tmux/tmux-1000/default",
+          "team_incarnation": "458ec80323acdbd6a4c69baaebd2a0a56e89f503d2b41bb4eb0e43d66568d34a",
+          "tmux_session": "$0"
+        },
+        "attempt_id": "54ad6f57-972c-462a-b4f1-66e568d77d20",
+        "delivery_id": "2a8dcad7-417d-4d9b-b835-89c795888ed2",
+        "event_type": "delivery_attempt",
+        "evidence": "durable claim",
+        "message_id": "2360616a-fec1-4f57-a02f-4013e2176c82",
+        "observed_at": "2026-09-10T17:56:13.778123461+00:00",
+        "origin": "adapter",
+        "owner_epoch": 2,
+        "recipient": "lead",
+        "source_generation": "462978a2-22e7-48ae-b9ac-63652adc0d37",
+        "source_position": 1,
+        "stage": "attempt_started",
+        "team_incarnation": "458ec80323acdbd6a4c69baaebd2a0a56e89f503d2b41bb4eb0e43d66568d34a"
+      },
+      "schema_version": 1,
+      "sequence": 3,
+      "team_id": "458ec80323acdbd6a4c69baaebd2a0a56e89f503d2b41bb4eb0e43d66568d34a"
+    },
+    {
+      "checksum": "648e25d57422fd178445f00b13ad1052b1e35cb83bfbb7b10b64c718e3fa7797",
+      "committed_at": "2026-09-10T17:56:13.856018601+00:00",
+      "event_id": "a16aaeda-0690-4525-bb22-ede55610b3b2",
+      "event_type": "receipt",
+      "log_epoch": "462978a2-22e7-48ae-b9ac-63652adc0d37",
+      "payload": {
+        "adapter": "native-mailbox/1",
+        "attachment": {
+          "attachment_generation": 1,
+          "context_generation": "0",
+          "generation": "1",
+          "harness": "claude",
+          "launch_root": {
+            "claudeDir": "/tmp/th-l1-runtime-sb6xigyx/claude",
+            "rootAuthorityRevision": 0,
+            "teamIncarnationId": "458ec80323acdbd6a4c69baaebd2a0a56e89f503d2b41bb4eb0e43d66568d34a",
+            "teamsDir": "/tmp/th-l1-runtime-sb6xigyx/claude/teams"
+          },
+          "member": "lead",
+          "pane": "%1",
+          "pane_pid": 115,
+          "pane_start": "28351040",
+          "root": "/tmp/th-l1-runtime-sb6xigyx/claude",
+          "session": "$0",
+          "socket": "/tmp/th-l1-runtime-sb6xigyx/tmux/tmux-1000/default",
+          "team_incarnation": "458ec80323acdbd6a4c69baaebd2a0a56e89f503d2b41bb4eb0e43d66568d34a",
+          "tmux_session": "$0"
+        },
+        "attempt_id": "54ad6f57-972c-462a-b4f1-66e568d77d20",
+        "delivery_id": "2a8dcad7-417d-4d9b-b835-89c795888ed2",
+        "event_type": "receipt",
+        "evidence": "durable native mailbox projection; uptake unobserved",
+        "message_id": "2360616a-fec1-4f57-a02f-4013e2176c82",
+        "observed_at": "2026-09-10T17:56:13.832505303+00:00",
+        "origin": "canonical_projection",
+        "owner_epoch": 2,
+        "recipient": "lead",
+        "source_generation": "462978a2-22e7-48ae-b9ac-63652adc0d37",
+        "source_position": 1,
+        "stage": "native_enqueued",
+        "team_incarnation": "458ec80323acdbd6a4c69baaebd2a0a56e89f503d2b41bb4eb0e43d66568d34a"
+      },
+      "schema_version": 1,
+      "sequence": 4,
+      "team_id": "458ec80323acdbd6a4c69baaebd2a0a56e89f503d2b41bb4eb0e43d66568d34a"
+    },
+    {
+      "checksum": "9c7160899b6e974456995f4f7382c8407b9832777eb27c3f06810563b3886236",
+      "committed_at": "2026-09-10T17:56:14.798012330+00:00",
+      "event_id": "068c6f4f-fb69-4a9a-9c56-1460e13fed98",
+      "event_type": "delivery_attempt",
+      "log_epoch": "462978a2-22e7-48ae-b9ac-63652adc0d37",
+      "payload": {
+        "adapter": "tmux/1",
+        "attachment": {
+          "attachment_generation": 1,
+          "context_generation": "0",
+          "generation": "1",
+          "harness": "codex",
+          "launch_root": {
+            "claudeDir": "/tmp/th-l1-runtime-sb6xigyx/claude",
+            "rootAuthorityRevision": 0,
+            "teamIncarnationId": "458ec80323acdbd6a4c69baaebd2a0a56e89f503d2b41bb4eb0e43d66568d34a",
+            "teamsDir": "/tmp/th-l1-runtime-sb6xigyx/claude/teams"
+          },
+          "member": "alpha",
+          "pane": "%2",
+          "pane_pid": 134,
+          "pane_start": "28351045",
+          "root": "/tmp/th-l1-runtime-sb6xigyx/claude",
+          "session": "$0",
+          "socket": "/tmp/th-l1-runtime-sb6xigyx/tmux/tmux-1000/default",
+          "team_incarnation": "458ec80323acdbd6a4c69baaebd2a0a56e89f503d2b41bb4eb0e43d66568d34a",
+          "tmux_session": "$0"
+        },
+        "attempt_id": "588c3390-3ba5-49d0-9437-ab88297ee600",
+        "delivery_id": "0d4adea5-6d2a-4f42-9e2b-b23c0853eca3",
+        "event_type": "delivery_attempt",
+        "evidence": "durable claim",
+        "message_id": "1bf8147d-1c37-4309-b269-d4252ce3fe89",
+        "observed_at": "2026-09-10T17:56:14.781241347+00:00",
+        "origin": "adapter",
+        "owner_epoch": 2,
+        "recipient": "alpha",
+        "source_generation": "462978a2-22e7-48ae-b9ac-63652adc0d37",
+        "source_position": 2,
+        "stage": "attempt_started",
+        "team_incarnation": "458ec80323acdbd6a4c69baaebd2a0a56e89f503d2b41bb4eb0e43d66568d34a"
+      },
+      "schema_version": 1,
+      "sequence": 5,
+      "team_id": "458ec80323acdbd6a4c69baaebd2a0a56e89f503d2b41bb4eb0e43d66568d34a"
+    },
+    {
+      "checksum": "6b08de3963f1f5e620b0fb51ff6696f91c481612f1edf215f86ff3d6675751fa",
+      "committed_at": "2026-09-10T17:56:14.976173049+00:00",
+      "event_id": "92d4ece4-b606-4817-9324-fc5fc35bde39",
+      "event_type": "receipt",
+      "log_epoch": "462978a2-22e7-48ae-b9ac-63652adc0d37",
+      "payload": {
+        "adapter": "tmux/1",
+        "attachment": {
+          "attachment_generation": 1,
+          "context_generation": "0",
+          "generation": "1",
+          "harness": "codex",
+          "launch_root": {
+            "claudeDir": "/tmp/th-l1-runtime-sb6xigyx/claude",
+            "rootAuthorityRevision": 0,
+            "teamIncarnationId": "458ec80323acdbd6a4c69baaebd2a0a56e89f503d2b41bb4eb0e43d66568d34a",
+            "teamsDir": "/tmp/th-l1-runtime-sb6xigyx/claude/teams"
+          },
+          "member": "alpha",
+          "pane": "%2",
+          "pane_pid": 134,
+          "pane_start": "28351045",
+          "root": "/tmp/th-l1-runtime-sb6xigyx/claude",
+          "session": "$0",
+          "socket": "/tmp/th-l1-runtime-sb6xigyx/tmux/tmux-1000/default",
+          "team_incarnation": "458ec80323acdbd6a4c69baaebd2a0a56e89f503d2b41bb4eb0e43d66568d34a",
+          "tmux_session": "$0"
+        },
+        "attempt_id": "588c3390-3ba5-49d0-9437-ab88297ee600",
+        "delivery_id": "0d4adea5-6d2a-4f42-9e2b-b23c0853eca3",
+        "event_type": "receipt",
+        "evidence": "literal paste and harness submit exited 0; model uptake unobserved",
+        "message_id": "1bf8147d-1c37-4309-b269-d4252ce3fe89",
+        "observed_at": "2026-09-10T17:56:14.957860378+00:00",
+        "origin": "tmux_send_keys",
+        "owner_epoch": 2,
+        "recipient": "alpha",
+        "source_generation": "462978a2-22e7-48ae-b9ac-63652adc0d37",
+        "source_position": 2,
+        "stage": "submitted",
+        "team_incarnation": "458ec80323acdbd6a4c69baaebd2a0a56e89f503d2b41bb4eb0e43d66568d34a"
+      },
+      "schema_version": 1,
+      "sequence": 6,
+      "team_id": "458ec80323acdbd6a4c69baaebd2a0a56e89f503d2b41bb4eb0e43d66568d34a"
+    },
+    {
+      "checksum": "0fdac8affbfd2c613508a9b58195209fa52eb0eb2a1d00db439c440e626d1148",
+      "committed_at": "2026-09-10T17:56:20.134401327+00:00",
+      "event_id": "e7fcf6c2-838f-4f88-9145-fcde77d8049d",
+      "event_type": "receipt",
+      "log_epoch": "462978a2-22e7-48ae-b9ac-63652adc0d37",
+      "payload": {
+        "accepted_sequence": 2,
+        "audience_proof": {
+          "kind": "captured-members",
+          "members": [
+            {
+              "member_id": "7ef9e6ee-b4d5-4c63-8134-de8e5e60eb62",
+              "name": "lead"
+            },
+            {
+              "member_id": "alpha@l1-claude-lead",
+              "name": "alpha"
+            }
+          ],
+          "team_id": "458ec80323acdbd6a4c69baaebd2a0a56e89f503d2b41bb4eb0e43d66568d34a"
+        },
+        "body_bytes": 3055,
+        "body_hash": "0db1cd329cfc9b92724a22f16be0ac4226ce21a4237da2bcd84829eae9043674",
+        "context": "explicit-mesh-cli",
+        "delivery_id": "0d4adea5-6d2a-4f42-9e2b-b23c0853eca3",
+        "kind": "consumed_by_read",
+        "message_id": "1bf8147d-1c37-4309-b269-d4252ce3fe89",
+        "read_audience": [
+          {
+            "member_id": "7ef9e6ee-b4d5-4c63-8134-de8e5e60eb62",
+            "name": "lead"
+          },
+          {
+            "member_id": "alpha@l1-claude-lead",
+            "name": "alpha"
+          }
+        ],
+        "reader": "alpha@l1-claude-lead",
+        "reader_name": "alpha"
+      },
+      "schema_version": 1,
+      "sequence": 7,
+      "team_id": "458ec80323acdbd6a4c69baaebd2a0a56e89f503d2b41bb4eb0e43d66568d34a"
+    }
+  ],
+  "final_activity": {
+    "version": 1,
+    "observed_at": "2026-09-10T17:57:35.173329920+00:00",
+    "stall_recent_activity": false,
+    "stall_no_output": true,
+    "stall_no_active_process": false,
+    "active_non_shell_process": true,
+    "recent_io": false,
+    "pane_alive": true,
+    "pane_foreign": false,
+    "last_output_age_secs": 49,
+    "activity_confidence": "uncertain"
+  },
+  "final_health": {
+    "member": "alpha",
+    "root": "/tmp/th-l1-runtime-sb6xigyx/claude",
+    "incarnation": "458ec80323acdbd6a4c69baaebd2a0a56e89f503d2b41bb4eb0e43d66568d34a",
+    "epoch": 2,
+    "heartbeat": "2026-09-10T17:58:03.619117084+00:00",
+    "pending_since": "2026-09-10T17:56:14.763661957+00:00",
+    "error": null,
+    "last_defer_reason": "IO error: delivery: pending: activity not freshly idle",
+    "failures": 0,
+    "completed": 1
+  },
+  "onboarding_facts": {
+    "daemon_alive": true,
+    "runtime_readable": true,
+    "activity_fresh": true,
+    "session_attributed": true,
+    "card_pending": false,
+    "card_exposed": true,
+    "observed_at": 1789063083.9753132
+  },
+  "runtime_alpha": [
+    {
+      "activity_attribution": "none",
+      "activity_confidence": "low",
+      "args": "codex --yolo --dangerously-bypass-hook-trust -c notify=[\"/tmp/th-l1-runtime-sb6xigyx/home/.local/bin/taurhaus-daemon\",\"codex-notify\"] -m gpt-5.6-luna -c model_reasoning_effort=\"low\"",
+      "cli_tool": "codex",
+      "group_id": "l1-claude-lead",
+      "group_kind": "mesh_team",
+      "group_label": "l1-claude-lead",
+      "jsonl_path": "/tmp/th-l1-runtime-sb6xigyx/codex/sessions/2026/09/10/rollout-2026-09-10T19-56-13-01a08c76-8916-7d71-96e5-2331f4ce7dcb.jsonl",
+      "last_output_age_secs": 78,
+      "member_name": "alpha",
+      "pid": 137,
+      "project_path": "/tmp/th-l1-runtime-sb6xigyx/project",
+      "project_unattributed_active": false,
+      "recent_io": false,
+      "session_id": "01a08c76-8916-7d71-96e5-2331f4ce7dcb",
+      "state": "idle",
+      "tmux_pane": "%2",
+      "tmux_session": "taurhaus",
+      "tmux_window": "2",
+      "tmux_window_name": "project",
+      "tty": "/dev/pts/2"
+    }
+  ],
+  "lead_projection": {
+    "exists": true,
+    "rows": []
+  },
+  "alpha_pane": "\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f\n\n  Tip: This is GPT-6, a new generation of intelligence. Astra is state-of-the-art in coding, computer use, science, and professional work.\n  Give it a hard problem, a half-formed idea, or anything you've been meaning to build. See where it takes you.\n\n\u26a0 `--dangerously-bypass-hook-trust` is enabled. Enabled hooks may run without review for this invocation.\n\n[quota banner redacted]\n\n\n\u203a [mesh] You are \"alpha\" on team \"l1-claude-lead\". Inbox update from lead. Check inbox and act if the message requests it: mesh read\n  --unread --mark-read --team l1-claude-lead --name alpha\n\n\n\u2022 Ran mesh read --unread --mark-read --claude-dir \"$CLAUDE_CONFIG_DIR\" --team l1-claude-lead --name alpha\n  \u2514 * [2026-09-10T17:56:13] lead: [taurhaus] recovery_card\n    Identity: alpha on l1-claude-lead; key={\"card_schema\":1,\"recipient\":\n    \u2026 +54 lines (ctrl + t to view transcript)\n    062613736353837633130306334643730336665353536643461316336633039353033363364623639613033616265393536653734356138227d.dc1e52b02cc6cce4f88a\n    435c0decde3e6684789d68c06bea547df7c5c55284e9\"\n\n\u2022 Ran mesh send --to lead --message \"alpha has no assignment or required context; please provide the missing release/context.\" --claude-dir\n  \u2502 \"$CLAUDE_CONFIG_DIR\" --team l1-claude-lead --name alpha\n  \u2514 error: unexpected argument '--to' found\n\n    \u2026 +3 lines (ctrl + t to view transcript)\n\n    For more information, try '--help'.\n\n\u2022 Ran mesh send --historical lead \"alpha has no assignment or required context; please provide the missing release/context.\" --claude-dir\n  \u2502 \"$CLAUDE_CONFIG_DIR\" --team l1-claude-lead --name alpha\n  \u2514 error: the following required arguments were not provided:\n      --task <TASK>\n    \u2026 +2 lines (ctrl + t to view transcript)\n\n    For more information, try '--help'.\n\n\u2022 Ran mesh send --task \"#\" --historical --claude-dir \"$CLAUDE_CONFIG_DIR\" --team l1-claude-lead --name alpha lead \"alpha has no assignment\n  \u2502 or required context; please provide the missing release/context.\"\n  \u2514 error: invalid handle '#': must match ^[a-z0-9][a-z0-9._-]{0,62}[a-z0-9]$\n\n\u2022 Ran mesh send --task recovery-card --historical --claude-dir \"$CLAUDE_CONFIG_DIR\" --team l1-claude-lead --name alpha lead \"alpha has no\n  \u2502 assignment or required context; please provide the missing release/context.\"\n  \u2514 error: invalid handle 'recovery-card': must match ^[a-z0-9][a-z0-9._-]{0,62}[a-z0-9]$\n\n\u2022 Ran mesh send --task recovery_card --historical --claude-dir \"$CLAUDE_CONFIG_DIR\" --team l1-claude-lead --name alpha lead \"alpha has no\n  \u2502 assignment or required context; please provide the missing release/context.\"\n  \u2514 error: invalid handle 'recovery_card': must match ^[a-z0-9][a-z0-9._-]{0,62}[a-z0-9]$\n\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n\u2022 Inbox read and marked as read. The message requested missing assignment context, but sending failed because no valid task handle was\n  provided.\n\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n\n\u203a Ask Codex to do anything\n\n  gpt-5.6-luna low \u00b7 /tmp/th-l1-runtime-sb6xigyx/project\n",
+  "lead_pane": "\n \u2590\u259b\u2588\u2588\u2588\u259b\u2588   Claude Code v2.1.267\n\u259d\u259c\u2588\u2588\u2588\u2588\u2588\u2588\u2580  Haiku 4.5 \u00b7 Claude Max\n  \u259d\u259d \u259d\u259d    /tmp/th-l1-runtime-sb6xigyx/project\n\n\n\n\u203a Message from @lead (ctrl+o to expand)\n\n\u25cf I see the recovery card indicates the task assignment is unavailable. I need the actual task details, deliverables, and release\n  authorization to proceed.\n\n\u273b Churned for 8s \u00b7 done 7:56 PM\n\n\u276f Step 2. Use Bash to execute exactly these two mesh send commands; no reads. Do not send anything else. Then say SENT.\n  mesh send alpha 'ACTION REQUIRED: Remember marker L1_AMBER_42. Do not run tools or send a reply yet; the controller will request step 3.'\n  --summary 'L1 marker A' --claude-dir \"$CLAUDE_CONFIG_DIR\" --team l1-claude-lead --name lead\n  mesh send alpha 'ACTION REQUIRED: Remember marker L1_BIRCH_73. Do not run tools or send a reply yet; the controller will request step 3.'\n  --summary 'L1 marker B' --claude-dir \"$CLAUDE_CONFIG_DIR\" --team l1-claude-lead --name lead\n\n  Ran 2 shell commands\n\n\u25cf SENT. Both messages delivered to alpha with markers L1_AMBER_42 and L1_BIRCH_73.\n\n\u273b Crunched for 7s \u00b7 done 7:56 PM\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 @lead \u2500\n\u276f\u00a0\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  \u23f5\u23f5 bypass permissions on (shift+tab to cycle) \u00b7 \u2190 for agents\n",
+  "retention": {
+    "complete_rows": 299,
+    "retained_rows": 299,
+    "excluded_usage_rows": 0
+  },
+  "ownership_inference": "Taurhaus supplies uncertain despite completed native turn/prompt and attributed session path; Mesh refuses non-idle exactly as its guard requires. Route to taurhaus activity/idle signal owner; deeper cause unproven. src-tauri/src/coordination/activity_export.rs:603 and mesh-l1/src/delivery/runtime.rs:180."
+}

@@ -1,0 +1,76 @@
+{
+  "outcome": "UNAVAILABLE",
+  "classification": "harness",
+  "failed_step": 5,
+  "reason": "False input-cap stop after real compact boundary: generated user rows counted as paid inputs. Hook independently skipped no_resumable_task_context on an unassigned fixture. Steps 1\u20134 pass; no step-5 recovery or step-6 claim.",
+  "steps": [
+    {
+      "step": 1,
+      "outcome": "PASS",
+      "classification": null,
+      "evidence": "step1-outcome.json; snapshots.json step1/"
+    },
+    {
+      "step": 2,
+      "outcome": "PASS",
+      "classification": null,
+      "evidence": "step2-outcome.json; snapshots.json step2/"
+    },
+    {
+      "step": 3,
+      "outcome": "PASS",
+      "classification": null,
+      "evidence": "step3-outcome.json; snapshots.json step3/"
+    },
+    {
+      "step": 4,
+      "outcome": "PASS",
+      "classification": null,
+      "evidence": "step4-outcome.json; snapshots.json step4/"
+    },
+    {
+      "step": 5,
+      "outcome": "UNAVAILABLE",
+      "classification": "harness",
+      "evidence": "result.json; events.jsonl; review-excerpts.json"
+    },
+    {
+      "step": 6,
+      "outcome": "NOT RUN",
+      "classification": "dependency on unavailable step 5",
+      "evidence": "driver-steps.json"
+    }
+  ],
+  "product_changes": false,
+  "descriptor_edits": false,
+  "paid_retries": 0,
+  "review": "approve; independent claude-opus-4-6 tool-free evidence lens; no required fix",
+  "deviations": [
+    "Sole alpha receives both markers, as explicitly ruled; no hosted seat or descriptor edits.",
+    "Controller runtime reused with only required revision pins changed; wrapper changes admit run5, add commit trailer, and enforce three-job Cargo admission. Passive observer added no inputs or mutations.",
+    "Step 5 aborted after about 28 seconds, before its 120-second observation deadline: inherited cumulative() counts generated compaction user rows, contrary to controller-input ruling. Four Claude reservations/submissions, not nine real inputs; no actual input-cap exceedance is established. No retry or controller repair in this run.",
+    "Reused fixture has no resumable task assignment (empty task.id/status and role_id); real compact hook skipped no_resumable_task_context. This cannot establish a product recovery failure for a properly assigned seat.",
+    "Compaction summarizer usage is not separately present in retained transcript. Complete attempt spend and dollar-cap proof are unavailable; known metered spend is reported without treating missing compact usage as zero.",
+    "Step 6 not run under the first-failure stop rule.",
+    "Claude submission confirmation is reconstructed from tool/native transcript and pane evidence; reused controller records explicit new-turn/composer confirmation only for typed Codex input. No second Enter was needed.",
+    "Startup readiness observed by passive sampler, not a new gating edit to the reused controller. No startup stall occurred.",
+    "No Workflow tool is callable in this session; existing driver plus independent isolated tool-free Opus review implements the bounded small-change evidence flow."
+  ],
+  "review_findings": [
+    {
+      "severity": "minor",
+      "finding": "The report correctly classifies the overall outcome as UNAVAILABLE (not PASS). Steps 1\u20134 are individually marked PASS with cited evidence; step 5 is UNAVAILABLE/harness; step 6 is NOT RUN. No E2E PASS is claimed.",
+      "fix": "None required."
+    },
+    {
+      "severity": "minor",
+      "finding": "Compact spend is explicitly marked unknown rather than zero; complete attempt spend is null with metering flagged incomplete. This is honest accounting.",
+      "fix": "None required."
+    },
+    {
+      "severity": "minor",
+      "finding": "Cleanup evidence shows zero survivors, credential never copied, port closed, scratch removed. Consistent with teardown-audit.",
+      "fix": "None required."
+    }
+  ]
+}

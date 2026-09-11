@@ -1,0 +1,17 @@
+{
+  "step1-driver.log": "",
+  "step2-driver.log": "",
+  "step3-driver.log": "",
+  "step4-driver.log": "",
+  "step5-driver.log": "Traceback (most recent call last):\n  File \"/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/steps.py\", line 158, in <module>\n    main(int(sys.argv[1]))\n  File \"/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/steps.py\", line 138, in main\n    wait(recovered,'missing real compaction boundary/generation/native recovery card',timeout=120)\n  File \"/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/steps.py\", line 18, in wait\n    if read('result.json'): raise RuntimeError('runtime controller already stopped')\n                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: runtime controller already stopped\n",
+  "driver-console.log": {
+    "retention": "deduplicated step result lines; git-created file listing omitted",
+    "lines": [
+      "Step 1: exit 0",
+      "Step 2: exit 0",
+      "Step 3: exit 0",
+      "Step 4: exit 0",
+      "Step 5: exit 1"
+    ]
+  }
+}

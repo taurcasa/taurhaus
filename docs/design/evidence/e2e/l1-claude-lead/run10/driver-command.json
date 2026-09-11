@@ -1,0 +1,18 @@
+[
+  "/usr/bin/python3",
+  "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/controller.py",
+  "--evidence-label",
+  "run10",
+  "--prior-ledger",
+  "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/run10/admission-ledger.json",
+  "--prior-runtime-seconds",
+  "0",
+  "--claude-credential",
+  "<operator-path>",
+  "--codex-auth",
+  "<operator-path>",
+  "--claude-binary",
+  "<operator-path>",
+  "--codex-binary",
+  "<operator-path>"
+]

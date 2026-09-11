@@ -1,0 +1,443 @@
+{
+  "report": "# Run 5 \u2014 UNAVAILABLE at step 5 (harness)\n\n**S-runtime: steps 1\u20134 PASS; step 5 UNAVAILABLE \u2014 harness; step 6 NOT RUN.** Run5 proves the requested post-onboarding Codex attribution and native Claude mailbox round trip. It does not prove compaction recovery or a complete attempt dollar cap. No product change or paid retry occurred.\n\n| Step | Outcome and retained proof |\n|---|---|\n| 1 | PASS. One production `coordination.initialize_team`, format 2, team delivery owner, managed signed-in Claude lead, alpha tmux; production SessionStart(compact) hook registered. `initialize-result.json`, `production-hooks-before-launch.json`, `step1-outcome.json`. |\n| 2 | PASS. Claude Bash sends AMBER and BIRCH; alpha remains attributed to its own session after its first turn, with notify-sourced idle. Both sends have submitted receipts and explicit-read tool-result exposure. `review-excerpts.json`, `alpha-activity-observations.jsonl`, `codex-transcript.json`, `step2-outcome.json`. |\n| 3 | PASS. Alpha explicitly reads and sends both replies. Claude receives both as native teammate messages and distinguishes them before any explicit lead read. `step3-before-read/`, native transcript row 13 and response row 15, journal 16\u201321. |\n| 4 | PASS. Claude executes the explicit read/mark; journal 23\u201324 separately proves `consumed_by_read`, context `explicit-mesh-cli`. The read returned `done=true`; no further cursor page was required. `step4/`, `claude-transcript.json`. |\n| 5 | UNAVAILABLE \u2014 harness. Real `/compact` boundary and hook received/resolved, but hook skips `no_resumable_task_context`; runtime generation remains 0. Controller then aborts on a false input count before its full observation window. `result.json`, `budget-stop-reproduction.json`, `review-excerpts.json`, `final/`. |\n| 6 | NOT RUN \u2014 dependency on step 5. No fresh FERN input, recovery uptake, or post-recovery exactly-once claim. `driver-steps.json`. |\n\nDirectory references resolve through `snapshots.json` after deduplication. The complete 338-row `taurhaus.log.jsonl` stays a direct file (zero excluded usage rows). Runtime duration: **109.274 seconds**, driver/controller exits **1/1**, ordered driver exits **0, 0, 0, 0, 1**. Each passing step has its own commit.\n\n## Identity and mailbox evidence\n\nAlpha session **01a08d4d-6eb8-7700-b6b5-8c7ae4f11ce6** stays bound to its rollout and writer-lock name. A foreign ephemeral notify for **01a08d4d-758f-7580-b505-67a7bc87379b** occurs at 21:51:02.426 UTC. Alpha's own first completion arrives at 21:51:30.831 UTC; the scanner records **active \u2192 idle, source notify** at **21:51:31.268 UTC**, retaining alpha's ID. Further notify-idle transitions follow both subsequent turns. Passive samples and `codex-session-files.jsonl` retain runtime, activity and lock/rollout names; no post-first-turn unattribution was observed.\n\nThe two outbound message IDs are **a11b2e08-4965-4125-80ff-e5cdde74a81e** and **787abdaa-b145-49f2-afa8-76bcdf11833f** (journal 8\u20139). Receipts 12\u201313 are `submitted`, 14\u201315 `consumed_by_read` by alpha. Marker text appears in actual Codex tool results, beyond mere prompt/acceptance presence.\n\nReplies **f45b809d-2717-4f38-b132-7f514b0518c3** and **ba2147c9-0ec7-47dd-b4e7-d31913b53502** are accepted at 16\u201317, then `native_enqueued` via `native-mailbox/1` at 20\u201321. Claude session **c42a4d9d-0c53-4298-b6f5-6b3cf6774f4d** receives both in one native teammate batch and responds: \u201cMarkers confirmed: L1_AMBER_42 and L1_BIRCH_73 received by alpha.\u201d `inboxes/lead.json` exists and is empty by the pre-explicit-read snapshot; native transcript plus projection receipts prove uptake, without inferring a canonical read receipt from it. Later explicit-read receipts are separate. No terminal-delivery receipt for Claude was observed, no drain descriptor was enabled, and no external reader marked the lead inbox before step 3.\n\n## Step 5 boundary and classification\n\nThe controller reserved **4 Claude inputs**: onboarding, step-2 send request, step-4 read request and the one compact. Its retained ledger incorrectly reports **9**, because `cumulative()` takes the maximum of controller inputs and every string-valued transcript user row. The compact adds a summary, local-command caveat, command echo and local-command output; the native reply batch is counted too. The false cap stop happened about 28 seconds after compact input, before the required 120-second observation ended. This is a harness stop, not proof of a product timeout or actual input-cap exceedance. The unchanged runtime controller is retained, with an offline evidence reproduction; this lane makes no repair or rerun.\n\nAt 21:52:43.118\u2013.127 UTC, the real hook received `source=compact`, resolved lead, and skipped **no_resumable_task_context**. The operational snapshot has empty task ID/status and role ID. `compact_hook.rs:698` explicitly skips snapshots without resumable task context. Therefore this fixture cannot establish a recovery failure for a properly assigned seat. The summary's old recovery-card wording is not a new hook card. Context generation and card revision remain unchanged.\n\n## Spend, isolation and verification\n\nKnown Claude usage **$0.03495185**, Codex **$0.01284780**, known seats **$0.04779965**; retained upper-rate amount **$0.60329760**. Six ordinary Claude API generations, three Codex native turns, four reserved Codex inputs, one compact. The compaction summarizer has no separate usage-bearing generation in the retained transcript: **compact spend and complete attempt spend are unknown**, not zero. The controller's `metering_complete=true` only establishes its Codex rollout accounting and does not prove complete compact metering. See `spend-summary.json` for current review spend and all historical amounts.\n\nHistorical seats, excluded from this fresh attempt: runs 1\u20133 **$0.10193487**, run4c **$0.01691088**, run4d **$0.02511108**, interrupted run4 startup unknown. Earlier completed reviews **$1.419500**, earlier timed-out review unknown. Implementer/orchestrator usage unavailable. Independent Opus review is recorded separately; no total-program spend claim.\n\nBuilt from required Taurhaus base **a7e6db7e**, protocol **27**, checkout-local target; Mesh **310144d**, designated mesh-l1 only. `build-identities.json` retains binary SHA-256 digests. Actual Claude **2.1.267 / claude-haiku-4-5-20251001**; Codex **0.153.4 / gpt-5.6-luna / low**, both native siblings. No hosted seat, descriptor edit, installation or release. Startup composer/model footer observed. Typed Codex step-3 input confirmed by empty composer plus new turn before its 65-second opportunity.\n\nBuild exits: daemon **0**, Mesh **0**, production hook adapter **0**. Exact checkout-root gates in credential-free namespaces: **`just check-quick` 0; `just lint` 0; `just test-contracts` 0**. No `src-tauri/` diff; conditional `just test-rust-unit` inapplicable. Offline setup checks observed red (four setup failures, then hook-admission failure), then green; final Python test totals are recorded in `offline-verification.json`. No tests invoked real CLIs or real harness homes.\n\nRuntime `cleanup.json` and independent `teardown-audit.json`: **zero survivors**, private port closed, scratch root and Codex auth copy removed; Claude credential only a read-only single-file bind, zero-byte placeholder after unmount, never copied. SIGTERM/-15 is ordinary owned-namespace cleanup, not fault injection. Gate/build/review children are waited and their scratch roots removed. Full scope deviations are listed in `final-disposition.json`.\n",
+  "disposition": {
+    "outcome": "UNAVAILABLE",
+    "classification": "harness",
+    "failed_step": 5,
+    "reason": "False input-cap stop after real compact boundary: generated user rows counted as paid inputs. Hook independently skipped no_resumable_task_context on an unassigned fixture. Steps 1\u20134 pass; no step-5 recovery or step-6 claim.",
+    "steps": [
+      {
+        "step": 1,
+        "outcome": "PASS",
+        "classification": null,
+        "evidence": "step1-outcome.json; snapshots.json step1/"
+      },
+      {
+        "step": 2,
+        "outcome": "PASS",
+        "classification": null,
+        "evidence": "step2-outcome.json; snapshots.json step2/"
+      },
+      {
+        "step": 3,
+        "outcome": "PASS",
+        "classification": null,
+        "evidence": "step3-outcome.json; snapshots.json step3/"
+      },
+      {
+        "step": 4,
+        "outcome": "PASS",
+        "classification": null,
+        "evidence": "step4-outcome.json; snapshots.json step4/"
+      },
+      {
+        "step": 5,
+        "outcome": "UNAVAILABLE",
+        "classification": "harness",
+        "evidence": "result.json; events.jsonl; review-excerpts.json"
+      },
+      {
+        "step": 6,
+        "outcome": "NOT RUN",
+        "classification": "dependency on unavailable step 5",
+        "evidence": "driver-steps.json"
+      }
+    ],
+    "product_changes": false,
+    "descriptor_edits": false,
+    "paid_retries": 0,
+    "review": "pending",
+    "deviations": [
+      "Sole alpha receives both markers, as explicitly ruled; no hosted seat or descriptor edits.",
+      "Controller runtime reused with only required revision pins changed; wrapper changes admit run5, add commit trailer, and enforce three-job Cargo admission. Passive observer added no inputs or mutations.",
+      "Step 5 aborted after about 28 seconds, before its 120-second observation deadline: inherited cumulative() counts generated compaction user rows, contrary to controller-input ruling. Four Claude reservations/submissions, not nine real inputs; no actual input-cap exceedance is established. No retry or controller repair in this run.",
+      "Reused fixture has no resumable task assignment (empty task.id/status and role_id); real compact hook skipped no_resumable_task_context. This cannot establish a product recovery failure for a properly assigned seat.",
+      "Compaction summarizer usage is not separately present in retained transcript. Complete attempt spend and dollar-cap proof are unavailable; known metered spend is reported without treating missing compact usage as zero.",
+      "Step 6 not run under the first-failure stop rule.",
+      "Claude submission confirmation is reconstructed from tool/native transcript and pane evidence; reused controller records explicit new-turn/composer confirmation only for typed Codex input. No second Enter was needed.",
+      "Startup readiness observed by passive sampler, not a new gating edit to the reused controller. No startup stall occurred.",
+      "No Workflow tool is callable in this session; existing driver plus independent isolated tool-free Opus review implements the bounded small-change evidence flow."
+    ]
+  },
+  "spend": {
+    "claude_metered_usd": 0.03495185,
+    "codex_metered_usd": 0.0128478,
+    "known_seats_usd": 0.04779965,
+    "metered_upper_rate_usd": 0.6032976,
+    "compact_usd": "unknown: no distinct usage-bearing generation retained for the compaction summarizer",
+    "complete_attempt_spend_usd": null,
+    "complete_attempt_metering": false,
+    "controller_metering_complete_flag": true,
+    "controller_inputs_including_onboarding": {
+      "claude": 4,
+      "codex": 4
+    },
+    "claude_typed_inputs": 3,
+    "claude_native_reply_batches": 1,
+    "claude_transcript_string_user_rows": 9,
+    "codex_actual_turns": 3,
+    "codex_reserved_inputs": 4,
+    "compactions": 1,
+    "current_review_usd": null,
+    "implementer_orchestrator_usd": "unavailable",
+    "history": {
+      "runs_1_to_3_seats_usd": 0.10193487,
+      "run4_interrupted_seats_usd": "unknown",
+      "run4c_seats_usd": 0.01691088,
+      "run4d_seats_usd": 0.02511108,
+      "completed_reviews_usd": 1.4195,
+      "timed_out_review_usd": "unknown",
+      "implementer_orchestrator_usd": "unavailable"
+    },
+    "basis": "API-equivalent token estimates at retained controller rates, not invoices. Complete compact metering not established; no zero-cost claim."
+  },
+  "cleanup": {
+    "survivors": [],
+    "private_port_closed": true,
+    "root_removed": true,
+    "codex_copy_removed": true,
+    "claude_mount_placeholder_zero_bytes": true,
+    "claude_credential_copied": false,
+    "runtime_seconds": 109.2739104249631
+  },
+  "independent_cleanup": {
+    "driver_exit": 1,
+    "driver_waited": true,
+    "survivors": [],
+    "scratch_root_removed": true,
+    "startup_preflight_observed": true
+  },
+  "gates": {
+    "check-quick": 0,
+    "lint": 0,
+    "test-contracts": 0
+  },
+  "raw_evidence": {
+    "activity_transitions": [
+      {
+        "line": 32,
+        "ts": "2026-09-10T21:50:58.270Z",
+        "level": "INFO",
+        "component": "backend",
+        "event": "activity.state.changed",
+        "run_id": "run_b3c9b33c4ca44ef0a91765c6364a83db",
+        "message": "Session activity state changed",
+        "from": "idle",
+        "jsonl_path": "/tmp/th-l1-runtime-hlboibtm/codex/sessions/2026/09/10/rollout-2026-09-10T23-50-57-01a08d4d-6eb8-7700-b6b5-8c7ae4f11ce6.jsonl",
+        "pid": 137,
+        "session_id": "01a08d4d-6eb8-7700-b6b5-8c7ae4f11ce6",
+        "source": "transcript",
+        "to": "active",
+        "tool": "codex"
+      },
+      {
+        "line": 131,
+        "ts": "2026-09-10T21:51:31.268Z",
+        "level": "INFO",
+        "component": "backend",
+        "event": "activity.state.changed",
+        "run_id": "run_b3c9b33c4ca44ef0a91765c6364a83db",
+        "message": "Session activity state changed",
+        "from": "active",
+        "jsonl_path": "/tmp/th-l1-runtime-hlboibtm/codex/sessions/2026/09/10/rollout-2026-09-10T23-50-57-01a08d4d-6eb8-7700-b6b5-8c7ae4f11ce6.jsonl",
+        "pid": 137,
+        "session_id": "01a08d4d-6eb8-7700-b6b5-8c7ae4f11ce6",
+        "source": "notify",
+        "to": "idle",
+        "tool": "codex"
+      },
+      {
+        "line": 163,
+        "ts": "2026-09-10T21:51:42.268Z",
+        "level": "INFO",
+        "component": "backend",
+        "event": "activity.state.changed",
+        "run_id": "run_b3c9b33c4ca44ef0a91765c6364a83db",
+        "message": "Session activity state changed",
+        "from": "idle",
+        "jsonl_path": "/tmp/th-l1-runtime-hlboibtm/codex/sessions/2026/09/10/rollout-2026-09-10T23-50-57-01a08d4d-6eb8-7700-b6b5-8c7ae4f11ce6.jsonl",
+        "pid": 137,
+        "session_id": "01a08d4d-6eb8-7700-b6b5-8c7ae4f11ce6",
+        "source": "transcript",
+        "to": "active",
+        "tool": "codex"
+      },
+      {
+        "line": 176,
+        "ts": "2026-09-10T21:51:46.768Z",
+        "level": "INFO",
+        "component": "backend",
+        "event": "activity.state.changed",
+        "run_id": "run_b3c9b33c4ca44ef0a91765c6364a83db",
+        "message": "Session activity state changed",
+        "from": "active",
+        "jsonl_path": "/tmp/th-l1-runtime-hlboibtm/codex/sessions/2026/09/10/rollout-2026-09-10T23-50-57-01a08d4d-6eb8-7700-b6b5-8c7ae4f11ce6.jsonl",
+        "pid": 137,
+        "session_id": "01a08d4d-6eb8-7700-b6b5-8c7ae4f11ce6",
+        "source": "notify",
+        "to": "idle",
+        "tool": "codex"
+      },
+      {
+        "line": 189,
+        "ts": "2026-09-10T21:51:50.768Z",
+        "level": "INFO",
+        "component": "backend",
+        "event": "activity.state.changed",
+        "run_id": "run_b3c9b33c4ca44ef0a91765c6364a83db",
+        "message": "Session activity state changed",
+        "from": "idle",
+        "jsonl_path": "/tmp/th-l1-runtime-hlboibtm/codex/sessions/2026/09/10/rollout-2026-09-10T23-50-57-01a08d4d-6eb8-7700-b6b5-8c7ae4f11ce6.jsonl",
+        "pid": 137,
+        "session_id": "01a08d4d-6eb8-7700-b6b5-8c7ae4f11ce6",
+        "source": "transcript",
+        "to": "active",
+        "tool": "codex"
+      },
+      {
+        "line": 218,
+        "ts": "2026-09-10T21:52:00.268Z",
+        "level": "INFO",
+        "component": "backend",
+        "event": "activity.state.changed",
+        "run_id": "run_b3c9b33c4ca44ef0a91765c6364a83db",
+        "message": "Session activity state changed",
+        "from": "active",
+        "jsonl_path": "/tmp/th-l1-runtime-hlboibtm/codex/sessions/2026/09/10/rollout-2026-09-10T23-50-57-01a08d4d-6eb8-7700-b6b5-8c7ae4f11ce6.jsonl",
+        "pid": 137,
+        "session_id": "01a08d4d-6eb8-7700-b6b5-8c7ae4f11ce6",
+        "source": "notify",
+        "to": "idle",
+        "tool": "codex"
+      }
+    ],
+    "native_claude_rows": [
+      {
+        "row": 13,
+        "type": "user",
+        "content": "<teammate-message teammate_id=\"alpha\" summary=\"L1 reply A\">\nRESULT: L1_AMBER_42 received by alpha.\n</teammate-message>\n\n<teammate-message teammate_id=\"alpha\" summary=\"L1 reply B\">\nRESULT: L1_BIRCH_73 received by alpha.\n</teammate-message>"
+      }
+    ],
+    "compaction_events": [
+      {
+        "line": 334,
+        "ts": "2026-09-10T21:52:43.118Z",
+        "level": "INFO",
+        "component": "coordination",
+        "event": "compaction.claude_hook.received",
+        "run_id": "run_bdef31dcef184bc295d97e3e7c7fed9e",
+        "message": "Compact hook payload received",
+        "cwd": "/tmp/th-l1-runtime-hlboibtm/project",
+        "hook_event_name": "SessionStart",
+        "model": "claude-haiku-4-5-20251001",
+        "raw_bytes": 403,
+        "session_id": "c42a4d9d-0c53-4298-b6f5-6b3cf6774f4d",
+        "source": "compact",
+        "tool": "claude",
+        "transcript_path": "/tmp/th-l1-runtime-hlboibtm/claude/projects/-tmp-th-l1-runtime-hlboibtm-project/c42a4d9d-0c53-4298-b6f5-6b3cf6774f4d.jsonl"
+      },
+      {
+        "line": 335,
+        "ts": "2026-09-10T21:52:43.119Z",
+        "level": "INFO",
+        "component": "coordination",
+        "event": "compaction.claude_hook.resolved",
+        "run_id": "run_bdef31dcef184bc295d97e3e7c7fed9e",
+        "message": "Compact hook matched managed member",
+        "cwd": "/tmp/th-l1-runtime-hlboibtm/project",
+        "hook_event_name": "SessionStart",
+        "member_name": "lead",
+        "model": "claude-haiku-4-5-20251001",
+        "project_path": "/tmp/th-l1-runtime-hlboibtm/project",
+        "session_id": "c42a4d9d-0c53-4298-b6f5-6b3cf6774f4d",
+        "source": "compact",
+        "team_name": "l1-claude-lead",
+        "tool": "claude",
+        "transcript_path": "/tmp/th-l1-runtime-hlboibtm/claude/projects/-tmp-th-l1-runtime-hlboibtm-project/c42a4d9d-0c53-4298-b6f5-6b3cf6774f4d.jsonl"
+      },
+      {
+        "line": 336,
+        "ts": "2026-09-10T21:52:43.127Z",
+        "level": "INFO",
+        "component": "coordination",
+        "event": "compaction.skipped",
+        "run_id": "run_bdef31dcef184bc295d97e3e7c7fed9e",
+        "message": "Compaction delivery outcome recorded",
+        "compaction_timestamp": "2026-09-10T21:52:43.119227037+00:00",
+        "delivery_result": "skipped",
+        "member_name": "lead",
+        "session_id": "c42a4d9d-0c53-4298-b6f5-6b3cf6774f4d",
+        "team_name": "l1-claude-lead",
+        "tool": "claude"
+      },
+      {
+        "line": 337,
+        "ts": "2026-09-10T21:52:43.127Z",
+        "level": "INFO",
+        "component": "coordination",
+        "event": "compaction.claude_hook.skipped",
+        "run_id": "run_bdef31dcef184bc295d97e3e7c7fed9e",
+        "message": "Compact hook did not return additional context",
+        "cwd": "/tmp/th-l1-runtime-hlboibtm/project",
+        "hook_event_name": "SessionStart",
+        "member_name": "lead",
+        "model": "claude-haiku-4-5-20251001",
+        "project_path": "/tmp/th-l1-runtime-hlboibtm/project",
+        "session_id": "c42a4d9d-0c53-4298-b6f5-6b3cf6774f4d",
+        "skip_reason": "no_resumable_task_context",
+        "source": "compact",
+        "team_name": "l1-claude-lead",
+        "tool": "claude",
+        "transcript_path": "/tmp/th-l1-runtime-hlboibtm/claude/projects/-tmp-th-l1-runtime-hlboibtm-project/c42a4d9d-0c53-4298-b6f5-6b3cf6774f4d.jsonl"
+      }
+    ],
+    "compact_boundary": [
+      {
+        "parentUuid": null,
+        "logicalParentUuid": "c1f83e1f-ab3d-4a31-9f14-128a68be63d6",
+        "isSidechain": false,
+        "teamName": "l1-claude-lead",
+        "agentName": "lead",
+        "type": "system",
+        "subtype": "compact_boundary",
+        "content": "Conversation compacted",
+        "level": "info",
+        "compactMetadata": {
+          "trigger": "manual",
+          "preTokens": 16779,
+          "postTokens": 1005,
+          "cumulativeDroppedTokens": 15774,
+          "durationMs": 26139,
+          "preservedSegment": {
+            "headUuid": "b1f5aeb0-41b1-45fa-97c6-b2b275f854d6",
+            "anchorUuid": "0f73fb8c-653c-40fa-8017-d0043db5c4b8",
+            "tailUuid": "c1f83e1f-ab3d-4a31-9f14-128a68be63d6"
+          },
+          "preservedMessages": {
+            "anchorUuid": "0f73fb8c-653c-40fa-8017-d0043db5c4b8",
+            "uuids": [
+              "b1f5aeb0-41b1-45fa-97c6-b2b275f854d6",
+              "7f26bd1d-ee2b-45be-b6b5-5ea70ba4033c",
+              "c1f83e1f-ab3d-4a31-9f14-128a68be63d6"
+            ],
+            "allUuids": [
+              "b1f5aeb0-41b1-45fa-97c6-b2b275f854d6",
+              "7f26bd1d-ee2b-45be-b6b5-5ea70ba4033c",
+              "c1f83e1f-ab3d-4a31-9f14-128a68be63d6"
+            ]
+          }
+        },
+        "uuid": "33c6f039-130e-43e2-91b4-ecd44d1bdaaf",
+        "timestamp": "2026-09-10T21:52:43.133Z",
+        "userType": "external",
+        "entrypoint": "cli",
+        "cwd": "/tmp/th-l1-runtime-hlboibtm/project",
+        "sessionId": "c42a4d9d-0c53-4298-b6f5-6b3cf6774f4d",
+        "version": "2.1.267",
+        "gitBranch": "master",
+        "slug": "graceful-brewing-stonebraker"
+      }
+    ],
+    "generated_user_rows": [
+      {
+        "row": 0,
+        "uuid": "ab0c26c7-47ac-40fe-8e9b-f263d9651623",
+        "prefix": "<teammate-message teammate_id=\"lead\">\n[taurhaus] recovery_card\nIdentity: lead on l1-claude-lead; key"
+      },
+      {
+        "row": 4,
+        "uuid": "9be2b9a8-24cf-4c2c-8e64-5a4cd72db40b",
+        "prefix": "Step 2. Use Bash to execute exactly these two mesh send commands; no reads. Do not send anything els"
+      },
+      {
+        "row": 13,
+        "uuid": "5f0b6b1a-a532-43b5-b5b7-d1d06d3bf8dc",
+        "prefix": "<teammate-message teammate_id=\"alpha\" summary=\"L1 reply A\">\nRESULT: L1_AMBER_42 received by alpha.\n<"
+      },
+      {
+        "row": 17,
+        "uuid": "c20251bd-ad9c-4be7-909a-154a44f5d52c",
+        "prefix": "Step 4. Now explicitly run mesh read --unread --json --mark-read --claude-dir \"$CLAUDE_CONFIG_DIR\" -"
+      },
+      {
+        "row": 24,
+        "uuid": "279b5bfe-c25a-4113-95bc-0b3795d1f5b4",
+        "prefix": "/compact"
+      },
+      {
+        "row": 26,
+        "uuid": "0f73fb8c-653c-40fa-8017-d0043db5c4b8",
+        "prefix": "This session is being continued from a previous conversation that ran out of context. The summary be"
+      },
+      {
+        "row": 27,
+        "uuid": "5c449108-7a59-4daf-867f-c5cd7ebf5c5f",
+        "prefix": "<local-command-caveat>Caveat: The messages below were generated by the user while running local comm"
+      },
+      {
+        "row": 28,
+        "uuid": "9f7484a2-259d-4399-bb89-fe1dae00b3e7",
+        "prefix": "<command-name>/compact</command-name>\n            <command-message>compact</command-message>\n       "
+      },
+      {
+        "row": 29,
+        "uuid": "aa51fa3d-108b-4929-bd57-5aeb6661c3d5",
+        "prefix": "<local-command-stdout>\u001b[2mCompacted (ctrl+o to see full summary)\u001b[22m</local-command-stdout>"
+      }
+    ],
+    "receipts": [
+      {
+        "sequence": 12,
+        "adapter": "tmux/1",
+        "message_id": "a11b2e08-4965-4125-80ff-e5cdde74a81e",
+        "stage": "submitted"
+      },
+      {
+        "sequence": 13,
+        "adapter": "tmux/1",
+        "message_id": "787abdaa-b145-49f2-afa8-76bcdf11833f",
+        "stage": "submitted"
+      },
+      {
+        "sequence": 14,
+        "context": "explicit-mesh-cli",
+        "kind": "consumed_by_read",
+        "message_id": "a11b2e08-4965-4125-80ff-e5cdde74a81e",
+        "reader_name": "alpha"
+      },
+      {
+        "sequence": 15,
+        "context": "explicit-mesh-cli",
+        "kind": "consumed_by_read",
+        "message_id": "787abdaa-b145-49f2-afa8-76bcdf11833f",
+        "reader_name": "alpha"
+      },
+      {
+        "sequence": 20,
+        "adapter": "native-mailbox/1",
+        "message_id": "f45b809d-2717-4f38-b132-7f514b0518c3",
+        "stage": "native_enqueued"
+      },
+      {
+        "sequence": 21,
+        "adapter": "native-mailbox/1",
+        "message_id": "ba2147c9-0ec7-47dd-b4e7-d31913b53502",
+        "stage": "native_enqueued"
+      },
+      {
+        "sequence": 23,
+        "context": "explicit-mesh-cli",
+        "kind": "consumed_by_read",
+        "message_id": "f45b809d-2717-4f38-b132-7f514b0518c3",
+        "reader_name": "lead"
+      },
+      {
+        "sequence": 24,
+        "context": "explicit-mesh-cli",
+        "kind": "consumed_by_read",
+        "message_id": "ba2147c9-0ec7-47dd-b4e7-d31913b53502",
+        "reader_name": "lead"
+      }
+    ]
+  }
+}

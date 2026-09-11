@@ -1,0 +1,107 @@
+{
+  "starting_commit": "0b219c2b",
+  "starting_tree_clean": true,
+  "completed_step_commits": {
+    "1": "999449d8",
+    "2": "1bdf9005",
+    "3": "bcc64a1c",
+    "4": "bf7ee51a"
+  },
+  "runtime_outcome": "UNAVAILABLE",
+  "classification": "harness",
+  "steps": [
+    {
+      "step": 1,
+      "outcome": "PASS",
+      "classification": null,
+      "evidence": "step1-outcome.json"
+    },
+    {
+      "step": 2,
+      "outcome": "PASS",
+      "classification": null,
+      "evidence": "step2-outcome.json"
+    },
+    {
+      "step": 3,
+      "outcome": "PASS",
+      "classification": null,
+      "evidence": "step3-outcome.json"
+    },
+    {
+      "step": 4,
+      "outcome": "PASS",
+      "classification": null,
+      "evidence": "step4-outcome.json"
+    },
+    {
+      "step": 5,
+      "outcome": "UNAVAILABLE",
+      "classification": "harness",
+      "reason": "Assignment succeeded and reached Claude, but the daemon-only fixture omitted the app task persistence/snapshot-publication path. Operational task stayed empty through the 65-second prerequisite window."
+    },
+    {
+      "step": 6,
+      "outcome": "NOT RUN",
+      "classification": "first-failure stop"
+    }
+  ],
+  "runtime_restarted": false,
+  "controller_changed": false,
+  "new_seat_spend_usd": 0,
+  "new_reviewer_spend_usd": 0,
+  "implementer_spend_usd": "unavailable",
+  "retained_spend": "../continuation/spend-summary.json (all historical amounts and unknowns retained)",
+  "existing_independent_review": "../continuation/review-disposition.json (approved stopped-run report; no new review invocation)",
+  "offline_tests": {
+    "discovered": 46,
+    "controller_regressions": 11,
+    "exit_codes": [
+      0,
+      0
+    ],
+    "additional_duplicate_subset": {
+      "command": "python3 docs/design/evidence/e2e/l1-claude-lead/test_controller.py",
+      "passed": 7,
+      "exit": 0
+    }
+  },
+  "rust_diff": false,
+  "tests_added": 0,
+  "new_red_observed": false,
+  "gate": {
+    "check-quick": 0,
+    "lint": 0,
+    "test-contracts": 0
+  },
+  "gate_wrapper_exit": 0,
+  "cleanup": {
+    "children_waited": true,
+    "scratch_root_removed": true,
+    "independent_survivors": []
+  },
+  "prior_run6_packet": {
+    "tracked_files_checked": 155,
+    "changed_files": []
+  },
+  "source_findings": [
+    {
+      "path": "src-tauri/src/services/task_sync.rs:90",
+      "finding": "App-side persistence calls preparation and daemon snapshot publication after storing scanned tasks."
+    },
+    {
+      "path": "src-tauri/src/coordination/operational_context.rs:181",
+      "finding": "sync_member_snapshot is cfg(test), unavailable as a production-linked external harness entry point."
+    },
+    {
+      "path": "src-tauri/src/daemon/handlers.rs:1192",
+      "finding": "get_project_tasks scans and returns tasks; this handler does not persist app DB tasks and publish operational snapshots."
+    }
+  ],
+  "deviations": [
+    "No green runtime step remained uncommitted at entry.",
+    "Required first-failure stop remains in force: step5 unavailable before compact, step6 not run; prior sessions were removed by mandatory teardown.",
+    "No alternate snapshot publisher or app orchestration was added: that would expand the specified two-correction controller scope. No synthetic operational/recovery snapshot and no product edit.",
+    "This continuation verifies the stopped-run packet; it does not establish full Lane1 PASS."
+  ]
+}

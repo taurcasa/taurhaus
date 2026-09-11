@@ -1,0 +1,78 @@
+{
+  "outcome": "UNAVAILABLE",
+  "classification": "harness",
+  "failed_step": 5,
+  "steps": [
+    {
+      "step": 1,
+      "outcome": "PASS",
+      "classification": null,
+      "evidence": "step1-outcome.json"
+    },
+    {
+      "step": 2,
+      "outcome": "PASS",
+      "classification": null,
+      "evidence": "step2-outcome.json"
+    },
+    {
+      "step": 3,
+      "outcome": "PASS",
+      "classification": null,
+      "evidence": "step3-outcome.json"
+    },
+    {
+      "step": 4,
+      "outcome": "PASS",
+      "classification": null,
+      "evidence": "step4-outcome.json"
+    },
+    {
+      "step": 5,
+      "outcome": "UNAVAILABLE",
+      "classification": "harness",
+      "reason": "Assignment succeeded and reached Claude, but the daemon-only fixture omitted the app task persistence/snapshot-publication path. Operational task stayed empty through the 65-second prerequisite window."
+    },
+    {
+      "step": 6,
+      "outcome": "NOT RUN",
+      "classification": "first-failure stop"
+    }
+  ],
+  "raw_result": "result.json preserves provisional product-owner-pending-evidence-review; this source-backed fixture classification supersedes it.",
+  "runtime_seconds": 148.53328185895225,
+  "driver_exit": 2,
+  "controller_exit": 2,
+  "ordered_step_exits": [
+    0,
+    0,
+    0,
+    0,
+    1
+  ],
+  "gate_exits": {
+    "check-quick": 0,
+    "lint": 0,
+    "test-contracts": 0
+  },
+  "deviations": [
+    "Renewed user request required new isolated seats because initial run6 teardown destroyed the sessions; original packet preserved, fresh attempt ledger.",
+    "No app-side scan/persist/publish path was run; canonical Mesh assignment alone did not update the operational snapshot.",
+    "Step5 stopped before /compact; step6 not run; no recovery or E2E PASS claimed.",
+    "AMBER had a failed batch admission before presentation; production scheduler retried within the same window and both markers were submitted/read.",
+    "Lead replied to the native assignment with a short acknowledgment contrary to its no-acknowledgment text; metered and retained.",
+    "Inherited controller has no dedicated startup-preflight or Claude composer-confirmation event; native pane/model footer and executed tools retained.",
+    "Foreign startup-notify cost separately unknown; all retained model usage itemized.",
+    "A contemplated read-only get_project_tasks observation found runtime already stopped and made no RPC.",
+    "First review returned error_max_budget_usd at $0.2134 (requested $0.20); one shorter review followed at $0.092825 and approved. Both retained and charged."
+  ],
+  "review": {
+    "verdict": "approve",
+    "exit": 0,
+    "attempt_exits": [
+      1,
+      0
+    ],
+    "spend_usd": 0.306225
+  }
+}

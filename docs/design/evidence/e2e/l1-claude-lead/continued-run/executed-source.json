@@ -1,0 +1,7 @@
+{
+  "runtime_controller": "9e71cc15:docs/design/evidence/e2e/l1-claude-lead/controller.py",
+  "runtime_support": "9e71cc15:docs/design/evidence/e2e/l1-claude-lead/controller_support.py",
+  "step1_driver": "9e71cc15:docs/design/evidence/e2e/l1-claude-lead/step1.py",
+  "step2_driver": "5a7fb7ee:docs/design/evidence/e2e/l1-claude-lead/steps.py",
+  "retention_note": "Final token redaction and snapshot packing applied after shutdown. Native process inputs/results are unchanged."
+}

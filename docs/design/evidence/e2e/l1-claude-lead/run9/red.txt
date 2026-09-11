@@ -1,0 +1,52 @@
+EEEFE
+======================================================================
+ERROR: test_mount_isolation_preserves_host_pid (test_run9.Run9Tests.test_mount_isolation_preserves_host_pid)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/test_run9.py", line 14, in test_mount_isolation_preserves_host_pid
+    from run9_support import launch_wrapper
+ModuleNotFoundError: No module named 'run9_support'
+
+======================================================================
+ERROR: test_registry_attribution_and_absence_dispositions (test_run9.Run9Tests.test_registry_attribution_and_absence_dispositions)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/test_run9.py", line 23, in test_registry_attribution_and_absence_dispositions
+    from run9_support import registry_facts
+ModuleNotFoundError: No module named 'run9_support'
+
+======================================================================
+ERROR: test_registry_retained_including_empty_directory (test_run9.Run9Tests.test_registry_retained_including_empty_directory)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/test_run9.py", line 32, in test_registry_retained_including_empty_directory
+    from run9_support import retain_registry
+ModuleNotFoundError: No module named 'run9_support'
+
+======================================================================
+ERROR: test_teardown_signals_only_matching_owned_start_ticks (test_run9.Run9Tests.test_teardown_signals_only_matching_owned_start_ticks)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/test_run9.py", line 43, in test_teardown_signals_only_matching_owned_start_ticks
+    from run9_support import stop_owned
+ModuleNotFoundError: No module named 'run9_support'
+
+======================================================================
+FAIL: test_run9_uses_existing_guard_publication_and_review_routes (test_run9.Run9Tests.test_run9_uses_existing_guard_publication_and_review_routes)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/test_run9.py", line 54, in test_run9_uses_existing_guard_publication_and_review_routes
+    driver=runpy.run_path(str(controller.BASE/'run3_driver.py'))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen runpy>", line 286, in run_path
+  File "<frozen runpy>", line 98, in _run_module_code
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/run3_driver.py", line 15, in <module>
+    assert LABEL in ('run3', 'run4', 'run4c', 'run4d', 'run5', 'run6', 'run6/continuation', 'run7', 'run8')
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.002s
+
+FAILED (failures=1, errors=4)

@@ -1,0 +1,21 @@
+{
+  "id": "1",
+  "subject": "Run9 native mailbox recovery",
+  "description": "Preserve the lead role and this assignment across ordinary compaction, then handle the fresh native reply once.\nExecution mode: Measure\nFile-ownership boundary: []\nAdjacent-fix policy: No adjacent fixes.\nValidation expectation: Controller validates native recovery.\nResponse expectation: Respond once to fresh native mail.",
+  "status": "in_progress",
+  "owner": "lead",
+  "metadata": {
+    "assigned_at": "2026-09-11T00:01:09.700Z",
+    "assigned_by": "lead",
+    "assignment_context": {},
+    "assignment_delivery": {
+      "delivered": true,
+      "message_id": "c651b619-70fd-4ef2-8cf1-3109b28f0f54"
+    },
+    "assignment_id": "80d8b711-039c-49ef-a21f-7a96298c1b67",
+    "completion_signal": "Respond once in native text when the fresh reply arrives; the controller records completion.",
+    "deliverable": "A brief native text response distinguishing the fresh reply after recovery; no files or tools.",
+    "first_step": "Keep this assignment active through the controller compact; observe the next native teammate reply without tools.",
+    "review_route": "Measure; controller acceptance with one independent Opus evidence review."
+  }
+}

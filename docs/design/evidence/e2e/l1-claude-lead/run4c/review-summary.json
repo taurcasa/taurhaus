@@ -1,0 +1,29 @@
+{
+  "exit": 0,
+  "model_used": [
+    "claude-opus-4-6"
+  ],
+  "cost_usd": 0.16491999999999998,
+  "verdict": {
+    "verdict": "approve",
+    "findings": [
+      {
+        "severity": "minor",
+        "finding": "The initial progress message described activity as 'likely_working' but final evidence shows 'uncertain'; report self-corrects this but the earlier statement was inaccurate.",
+        "fix": "Already corrected in the report text; no action needed."
+      },
+      {
+        "severity": "minor",
+        "finding": "Previous run-4 attempt spend is 'unknown' and unrecoverable, but this is acknowledged and not charged to the current attempt's caps.",
+        "fix": "Acceptable as-is since the budget rule grants fresh caps per attempt."
+      }
+    ]
+  },
+  "scope": "Independent tool-free Opus evidence lens; not an E2E PASS. Gates were pending in the reviewed packet and independently verified afterward.",
+  "cleanup": {
+    "child_exit": 0,
+    "root_removed": true,
+    "credential_placeholder_zero_bytes": true
+  },
+  "independent_survivors": []
+}

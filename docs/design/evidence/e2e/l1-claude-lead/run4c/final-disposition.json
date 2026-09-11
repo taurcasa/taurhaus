@@ -1,0 +1,44 @@
+{
+  "outcome": "FAIL",
+  "classification": "taurhaus",
+  "failed_step": 2,
+  "reason": "alpha session attributed and onboarding consumed, but exported activity never freshly idle in the 65-second step-2 window; final uncertain versus runtime idle/low/none",
+  "steps": [
+    {
+      "step": 1,
+      "outcome": "PASS",
+      "classification": null
+    },
+    {
+      "step": 2,
+      "outcome": "FAIL",
+      "classification": "taurhaus"
+    },
+    {
+      "step": 3,
+      "outcome": "NOT RUN",
+      "classification": "dependency on step 2"
+    },
+    {
+      "step": 4,
+      "outcome": "NOT RUN",
+      "classification": "dependency on step 2"
+    },
+    {
+      "step": 5,
+      "outcome": "NOT RUN",
+      "classification": "dependency on step 2"
+    },
+    {
+      "step": 6,
+      "outcome": "NOT RUN",
+      "classification": "dependency on step 2"
+    }
+  ],
+  "product_changes": false,
+  "descriptor_edits": false,
+  "paid_retries": 0,
+  "review": "approve; two accepted minor findings, no fix required",
+  "superseded_by": "run4d",
+  "classification_correction": "UNAVAILABLE \u2014 harness readiness gate; original FAIL/taurhaus retracted by review"
+}

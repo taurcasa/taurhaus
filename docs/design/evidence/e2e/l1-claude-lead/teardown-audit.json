@@ -1,0 +1,8 @@
+{
+  "same_pid_start_survivors": [],
+  "scratch_root_exists": false,
+  "codex_auth_copy_exists": false,
+  "controller_waited_exit": 2,
+  "step1_waited_exit": 2,
+  "no_foreign_process_signaled": true
+}

@@ -1,0 +1,37 @@
+EFF
+======================================================================
+ERROR: test_assignment_is_created_through_mesh_before_snapshot (test_run6.Run6Tests.test_assignment_is_created_through_mesh_before_snapshot)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/test_run6.py", line 40, in test_assignment_is_created_through_mesh_before_snapshot
+    result = steps.prepare_resumable_assignment()
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'steps' has no attribute 'prepare_resumable_assignment'
+
+======================================================================
+FAIL: test_generated_compact_and_native_rows_are_not_controller_inputs (test_run6.Run6Tests.test_generated_compact_and_native_rows_are_not_controller_inputs)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/test_run6.py", line 18, in test_generated_compact_and_native_rows_are_not_controller_inputs
+    self.assertEqual(result['controller_inputs']['claude'], 4)
+AssertionError: 9 != 4
+
+======================================================================
+FAIL: test_run6_routes_to_fresh_attempt (test_run6.Run6Tests.test_run6_routes_to_fresh_attempt)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/test_run6.py", line 55, in test_run6_routes_to_fresh_attempt
+    driver = runpy.run_path(str(controller.BASE / 'run3_driver.py'))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen runpy>", line 286, in run_path
+  File "<frozen runpy>", line 98, in _run_module_code
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/run3_driver.py", line 15, in <module>
+    assert LABEL in ('run3', 'run4', 'run4c', 'run4d', 'run5')
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.002s
+
+FAILED (failures=2, errors=1)

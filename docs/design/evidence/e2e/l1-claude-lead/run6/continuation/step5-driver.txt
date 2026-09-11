@@ -1,0 +1,11 @@
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/steps.py", line 196, in <module>
+    main(int(sys.argv[1]))
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/steps.py", line 155, in main
+    assignment = prepare_resumable_assignment()
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/steps.py", line 118, in prepare_resumable_assignment
+    wait(ready, 'production operational snapshot lacks the assigned in-progress task', timeout=65)
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/steps.py", line 21, in wait
+    raise why if isinstance(why, Exception) else AssertionError(why)
+AssertionError: production operational snapshot lacks the assigned in-progress task

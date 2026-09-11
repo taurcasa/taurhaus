@@ -1,0 +1,6 @@
+{
+  "outcome": "UNAVAILABLE",
+  "classification": "harness",
+  "step": 1,
+  "reason": "step driver failed; see driver log (authentication cause not established)"
+}

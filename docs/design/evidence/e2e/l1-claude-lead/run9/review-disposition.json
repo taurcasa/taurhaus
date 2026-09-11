@@ -1,0 +1,23 @@
+{
+  "model": "claude-opus-4-6",
+  "verdict": {
+    "verdict": "approve",
+    "findings": [
+      {
+        "severity": "minor",
+        "finding": "The report correctly classifies the overall outcome as UNAVAILABLE/harness (not an E2E PASS). The stopped run is explicitly called out: 'This stopped run is not an end-to-end PASS.' Step 5 is UNAVAILABLE, step 6 is NOT RUN due to first-failure stop. Raw controller FAIL is preserved and not overwritten. Classification as harness false-negative (collector excludes attachment rows) is supported by the controller_filters evidence showing the predicate only accepts user/system types. Cleanup, secrets, spend, and evidence discipline are adequately documented. No major issues found.",
+        "fix": "N/A"
+      },
+      {
+        "severity": "minor",
+        "finding": "Spend reporting acknowledges unknowns (compact summarizer, foreign startup-notify) rather than claiming zero, which is appropriate. Metered subtotal $0.044 is well within caps. However, the 'upper-rate retained estimate $0.76864' is mentioned without clear derivation; this is cosmetic since actual metered spend is far below any reasonable cap.",
+        "fix": "N/A"
+      }
+    ]
+  },
+  "exit": 0,
+  "usd": 0.116055,
+  "runtime_retries": 0,
+  "post_runtime_controller_changes": 0,
+  "minor_disposition": "Clarified upper-rate arithmetic; retained usage is not complete billing."
+}

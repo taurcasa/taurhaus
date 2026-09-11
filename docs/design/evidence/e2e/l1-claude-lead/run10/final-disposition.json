@@ -1,0 +1,58 @@
+{
+  "outcome": "PASS",
+  "scope": "all six runtime steps, exact gates, cleanup and independent Opus evidence review passed",
+  "classification": null,
+  "steps": [
+    {
+      "step": 1,
+      "outcome": "PASS",
+      "classification": "runtime; permitted harness/environment registry exception"
+    },
+    {
+      "step": 2,
+      "outcome": "PASS",
+      "classification": "runtime"
+    },
+    {
+      "step": 3,
+      "outcome": "PASS",
+      "classification": "runtime"
+    },
+    {
+      "step": 4,
+      "outcome": "PASS",
+      "classification": "runtime"
+    },
+    {
+      "step": 5,
+      "outcome": "PASS",
+      "classification": "runtime"
+    },
+    {
+      "step": 6,
+      "outcome": "PASS",
+      "classification": "runtime"
+    }
+  ],
+  "deviations": [
+    "Claude wrote a host-PID peer key but no PID JSON registry; claude_registry_absent is the explicit run9 harness/environment continuation exception. Directory retained with peerToken removed.",
+    "Run10 label routing carries run9 guard, app publication, registry observation and review forward. The sole step5 behavior correction accepts recovery context in any transcript row kind.",
+    "The inherited unexecuted step6 omitted the final explicit read/mark required by the run10 ruling. Added that bounded read after observing FERN, with an offline failing test first; no other runtime changes or retry.",
+    "Compact summarizer and foreign ephemeral notify usage remain unknown, not zero, as allowed by the standing ruling. Retained usage estimates are not total billing.",
+    "Post-runtime report audit initially counted native-mailbox attempt_started claims as terminal receipts. Corrected the offline query to inspect submitted/tmux transport; no runtime assertion, native state, or paid input changed.",
+    "Workflow followed the existing isolated controller plus one independent Opus evidence lens; no native Workflow tool is exposed in this agent session."
+  ],
+  "no_product_change": true,
+  "runtime_retry": false,
+  "gates": {
+    "check-quick": 0,
+    "lint": 0,
+    "test-contracts": 0
+  },
+  "review": {
+    "model": "claude-opus-4-6",
+    "exit": 0,
+    "usd": 0.18747,
+    "verdict": "approve"
+  }
+}

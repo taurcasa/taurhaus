@@ -1,0 +1,240 @@
+{
+  "scope": "Independent Opus evidence lens, run8. No rerun or product fix. Assess controller rule and honest stopped-run disposition.",
+  "disposition": {
+    "outcome": "UNAVAILABLE",
+    "classification": "harness",
+    "failed_step": 1,
+    "steps": [
+      {
+        "step": 1,
+        "outcome": "UNAVAILABLE",
+        "classification": "harness",
+        "reason": "Lead session attribution absent after the full 65s poll: runtime session_id/jsonl_path null despite an authenticated native Claude generation. Required runtime identity prerequisite unproved; underlying product ownership unresolved."
+      },
+      {
+        "step": 2,
+        "outcome": "NOT RUN",
+        "classification": "first-failure stop"
+      },
+      {
+        "step": 3,
+        "outcome": "NOT RUN",
+        "classification": "first-failure stop"
+      },
+      {
+        "step": 4,
+        "outcome": "NOT RUN",
+        "classification": "first-failure stop"
+      },
+      {
+        "step": 5,
+        "outcome": "NOT RUN",
+        "classification": "first-failure stop"
+      },
+      {
+        "step": 6,
+        "outcome": "NOT RUN",
+        "classification": "first-failure stop"
+      }
+    ],
+    "raw_controller_result": {
+      "outcome": "UNAVAILABLE",
+      "classification": "harness",
+      "step": 1,
+      "reason": "step driver failed; see driver log (authentication cause not established)"
+    },
+    "runtime_seconds": 72.24040255800355,
+    "driver_exit": 2,
+    "controller_exit": 2,
+    "ordered_step_exits": [
+      1
+    ],
+    "gate_exits": {
+      "check-quick": 0,
+      "lint": 0,
+      "test-contracts": 0
+    }
+  },
+  "teardown": {
+    "survivors": [],
+    "private_port_closed": true,
+    "scratch_roots_removed": true,
+    "codex_auth_copy_removed": true,
+    "claude_credential_never_copied": true,
+    "claude_mount_placeholder_zero_bytes": true,
+    "runtime_children_waited": true,
+    "gate_children_waited": true
+  },
+  "lead_snapshot": [
+    {
+      "member_name": "alpha",
+      "cli_tool": "codex",
+      "pid": 141,
+      "session_id": "01a08dab-dea5-7c43-a4f2-6a43a744aa3c",
+      "jsonl_path": "/tmp/th-l1-runtime-7osr_3kc/codex/sessions/2026/09/11/rollout-2026-09-11T01-34-06-01a08dab-dea5-7c43-a4f2-6a43a744aa3c.jsonl",
+      "activity_attribution": "attributed",
+      "activity_confidence": "high",
+      "state": "idle"
+    },
+    {
+      "member_name": "lead",
+      "cli_tool": "claude",
+      "pid": 118,
+      "session_id": null,
+      "jsonl_path": null,
+      "activity_attribution": "none",
+      "activity_confidence": "low",
+      "state": "idle"
+    }
+  ],
+  "journal_receipts": [
+    {
+      "sequence": 3,
+      "adapter": "native-mailbox/1",
+      "delivery_id": "32e9fe35-1534-4cf9-b806-7686a65f0425",
+      "message_id": "6c510e48-b6cb-43e4-95d1-f499502bb475",
+      "recipient": "lead",
+      "stage": "attempt_started"
+    },
+    {
+      "sequence": 4,
+      "adapter": "native-mailbox/1",
+      "delivery_id": "32e9fe35-1534-4cf9-b806-7686a65f0425",
+      "message_id": "6c510e48-b6cb-43e4-95d1-f499502bb475",
+      "recipient": "lead",
+      "stage": "native_enqueued"
+    },
+    {
+      "sequence": 5,
+      "adapter": "tmux/1",
+      "delivery_id": "e7b33d6d-ebc8-43f6-a8c5-bfdfe848fbca",
+      "message_id": "a23bbb7e-b59f-45ba-bc51-d6d44e6e7360",
+      "recipient": "alpha",
+      "stage": "attempt_started"
+    },
+    {
+      "sequence": 6,
+      "adapter": "tmux/1",
+      "delivery_id": "e7b33d6d-ebc8-43f6-a8c5-bfdfe848fbca",
+      "message_id": "a23bbb7e-b59f-45ba-bc51-d6d44e6e7360",
+      "recipient": "alpha",
+      "stage": "submitted"
+    },
+    {
+      "sequence": 7,
+      "context": "explicit-mesh-cli",
+      "delivery_id": "e7b33d6d-ebc8-43f6-a8c5-bfdfe848fbca",
+      "kind": "consumed_by_read",
+      "message_id": "a23bbb7e-b59f-45ba-bc51-d6d44e6e7360",
+      "reader_name": "alpha"
+    }
+  ],
+  "alpha_activity": {
+    "version": 1,
+    "observed_at": "2026-09-10T23:35:06.491540632+00:00",
+    "stall_recent_activity": false,
+    "stall_no_output": true,
+    "stall_no_active_process": false,
+    "active_non_shell_process": true,
+    "recent_io": false,
+    "pane_alive": true,
+    "pane_foreign": false,
+    "last_output_age_secs": 30,
+    "activity_confidence": "idle",
+    "confidence": "high",
+    "last_observed_at": "2026-09-10T23:35:06.489167746+00:00",
+    "source": "notify",
+    "state": "idle"
+  },
+  "identity_timeout": "Traceback (most recent call last):\n  File \"/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/step1.py\", line 22, in <module>\n    lead=wait_lead_identity(lambda: json.loads((OUT/'latest/team/runtime/lead.json').read_text()), time.monotonic, time.sleep)\n         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/continuation_support.py\", line 73, in wait_lead_identity\n    raise TimeoutError('lead session attribution absent after full observation window')\nTimeoutError: lead session attribution absent after full observation window\n",
+  "cost": {
+    "claude_metered_usd": 0.0109954,
+    "codex_metered_usd": 0.00470868,
+    "known_seats_usd": 0.01570408,
+    "metered_upper_rate_usd": 0.1556052,
+    "controller_inputs_including_onboarding": {
+      "claude": 1,
+      "codex": 1
+    },
+    "controller_typed_inputs": 0,
+    "claude_generations": [
+      {
+        "input_tokens": 10,
+        "output_tokens": 633,
+        "cache_read_input_tokens": 5479,
+        "cache_creation_input_tokens": 5818,
+        "message_id": "msg_011CevdivYLRLSKL71RwD75N",
+        "model": "claude-haiku-4-5-20251001",
+        "session_id": "41dceb61-eccb-4c9e-8a4b-33e5aff023bf",
+        "usd": 0.010995399999999999,
+        "upper_usd": 0.0597
+      }
+    ],
+    "codex_usage_by_rollout": {
+      "rollout-2026-09-11T01-34-06-01a08dab-dea5-7c43-a4f2-6a43a744aa3c.jsonl": {
+        "input_tokens": 78801,
+        "cached_input_tokens": 68864,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 1120,
+        "reasoning_output_tokens": 438,
+        "total_tokens": 79921
+      }
+    },
+    "claude_cap_times_max_observed_input_usd": 0.08796319999999999,
+    "compactions": 0,
+    "compact_spend_usd": 0,
+    "foreign_startup_notify_usage": "unknown",
+    "current_review_usd": "pending",
+    "offline_and_build_paid_seat_usd": 0,
+    "implementer_orchestrator_usd": "unavailable",
+    "basis": "Retained API-equivalent estimates, not invoices; foreign startup notify has no retained usage. No complete attempt spend proof. Compact was not invoked."
+  },
+  "guard_source": "\"\"\"Passive input exclusion for the bounded run8 controller; never takes a lock.\"\"\"\nfrom datetime import datetime\nimport json\nfrom pathlib import Path\n\n\ndef delivery_input_facts(record, activity, journal, rows, lock_sample, now):\n    record = record or {}; activity = activity or {}\n    card_id = ((record.get('recovery') or {}).get('last_delivered') or {}).get('journal', {}).get('message_id')\n    targets = {}\n    for row in journal:\n        payload = row.get('payload', {})\n        if row.get('event_type') == 'message_accepted':\n            for target in payload.get('delivery_targets', []):\n                if target.get('recipient') == 'alpha':\n                    targets[target['delivery_id']] = payload['message_id']\n    stages = {}\n    for row in journal:\n        payload = row.get('payload', {})\n        if row.get('event_type') in ('receipt', 'delivery_attempt') and payload.get('recipient') == 'alpha' and payload.get('stage'):\n            stages[payload.get('delivery_id')] = payload['stage']\n    submitted = {delivery for delivery, stage in stages.items() if stage == 'submitted'}\n    pending = sorted(set(targets) - submitted)\n    card_submitted = any(delivery in submitted and message == card_id for delivery, message in targets.items())\n    card_read = bool(card_id) and any(r.get('payload', {}).get('message_id') == card_id\n                and r['payload'].get('kind') == 'consumed_by_read'\n                and r['payload'].get('reader_name') == 'alpha' for r in journal)\n    for row in rows:\n        payload = row.get('payload', {})\n        if payload.get('type') in ('function_call_output', 'custom_tool_call_output'):\n            output = str(payload.get('output', ''))\n            card_read = card_read or bool(card_id and card_id in output and '[taurhaus] recovery_card' in output)\n    try:\n        age = now - datetime.fromisoformat(activity['observed_at'].replace('Z', '+00:00')).timestamp()\n        fresh_idle = (0 <= age <= 120 and activity.get('activity_confidence') == 'idle'\n                      and activity.get('pane_alive') is True and not activity.get('pane_foreign')\n                      and bool(record.get('session_id') and record.get('jsonl_path')))\n    except (KeyError, ValueError, TypeError):\n        fresh_idle = False\n    ready = bool(card_submitted and card_read and not pending and fresh_idle\n                 and lock_sample['complete'] and not lock_sample['held'])\n    return {'ready': ready, 'onboarding_message_id': card_id, 'onboarding_submitted': card_submitted,\n            'onboarding_read': card_read, 'pending_delivery_ids': pending, 'fresh_idle': fresh_idle,\n            'terminal_lock': lock_sample, 'observed_at': now}\n\n\ndef passive_terminal_lock(lock, identities, proc_root=Path('/proc')):\n    sample = {'path': str(lock), 'complete': True, 'held': False, 'fdinfo': []}\n    try:\n        target = lock.stat(); sample['inode'] = target.st_ino\n    except OSError:\n        sample['complete'] = False\n        return sample\n    for identity in identities:\n        proc = proc_root/str(identity['pid'])\n        try:\n            for fd in (proc/'fd').iterdir():\n                try:\n                    stat = fd.stat()\n                    if (stat.st_dev, stat.st_ino) != (target.st_dev, target.st_ino): continue\n                    content = (proc/'fdinfo'/fd.name).read_text()\n                    held = any(line.startswith('lock:') for line in content.splitlines())\n                    sample['held'] |= held\n                    sample['fdinfo'].append({'pid': identity['pid'], 'fd': fd.name, 'text': content})\n                except FileNotFoundError: pass  # fd closed during passive sampling\n                except OSError: sample['complete'] = False\n        except FileNotFoundError: pass  # owned process already exited\n        except OSError: sample['complete'] = False\n    return sample\n",
+  "claude_native_excerpt": [
+    {
+      "type": "user",
+      "session_id": "41dceb61-eccb-4c9e-8a4b-33e5aff023bf",
+      "message_id": null,
+      "model": null,
+      "content_excerpt": "<teammate-message teammate_id=\"lead\">\n[taurhaus] recovery_card\nIdentity: lead on l1-claude-lead; key={\"card_schema\":1,\"recipient\":[\"b7912a50372ba8bd18594e41d4e7abfa5aceadf2083b132a633e15310de3c133\",\"a5e0f63d-4c4d-4c2c-9773-093044da5417\"],\"c"
+    },
+    {
+      "type": "assistant",
+      "session_id": "41dceb61-eccb-4c9e-8a4b-33e5aff023bf",
+      "message_id": "msg_011CevdivYLRLSKL71RwD75N",
+      "model": "claude-haiku-4-5-20251001",
+      "content_excerpt": "[{'type': 'thinking', 'thinking': ''}]"
+    },
+    {
+      "type": "assistant",
+      "session_id": "41dceb61-eccb-4c9e-8a4b-33e5aff023bf",
+      "message_id": "msg_011CevdivYLRLSKL71RwD75N",
+      "model": "claude-haiku-4-5-20251001",
+      "content_excerpt": "[{'type': 'text', 'text': \"State unassigned with unavailable task, token, stage, and owner\u2014awaiting release and identity from you. What's the assignment and context for this work?\"}]"
+    },
+    {
+      "type": "system",
+      "session_id": "41dceb61-eccb-4c9e-8a4b-33e5aff023bf",
+      "message_id": null,
+      "model": null,
+      "content_excerpt": ""
+    }
+  ],
+  "retention": {
+    "rows": 197,
+    "retained": 197,
+    "excluded_usage_rows": 0,
+    "archive_secret_path_scan": "passed",
+    "panes": 9,
+    "max_lines": 60
+  },
+  "prior_review": {
+    "exit": 1,
+    "reason": "budget_exhausted; no verdict",
+    "cost_usd": 0.23303,
+    "configured_bound_usd": 0.2,
+    "note": "Review distinct from seat budget; this is one retry with smaller packet. Retained first invocation."
+  },
+  "sequence": "Reused run7 controller plus Codex input guard. prepare_alpha calls wait_alpha_delivery first in run8. Trial.input calls guard before budget reservation or any tmux command; UI actions also guard. Deadline 125s, then abort without input. Controller did not reach any input. Five new generated-data tests + in-flight case failed red then 53 discovered +11 controller tests passed. All three exact gates 0 after teardown. No Rust diff. Only preparation green commit; zero runtime green steps.",
+  "qualifications": "Underlying lead identity cause unresolved: runtime session_id/jsonl_path null despite authenticated native Claude generation. Scratch Claude registry not retained. Alpha had own-session notify idle despite foreign notify; no marker-delivery test. Five unsolicited alpha sends rejected; no alpha accepted message. All raw results retained. Steps2-6 and publication/compact/Fern not run. No live input-lock sampling since no input reached. Foreign notify usage unknown, so no complete spend cap proof. No E2E PASS claim."
+}

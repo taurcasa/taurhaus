@@ -1,0 +1,9 @@
+{
+  "roots": [
+    "/tmp/th-int-gates-j1bpze4_",
+    "/tmp/th-l1-opus-dz419mdq",
+    "/tmp/th-l1-opus-fzwco3os"
+  ],
+  "all_roots_removed": true,
+  "surviving_trial_pids": []
+}

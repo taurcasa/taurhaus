@@ -1,0 +1,13 @@
+F
+======================================================================
+FAIL: test_step6_marks_fresh_mail_before_teardown (test_run10.Run10Tests.test_step6_marks_fresh_mail_before_teardown)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/test_run10.py", line 84, in test_step6_marks_fresh_mail_before_teardown
+    self.assertTrue(any(tool == 'claude' and 'mesh read --unread' in text and '--mark-read' in text
+AssertionError: False is not true
+
+----------------------------------------------------------------------
+Ran 1 test in 0.001s
+
+FAILED (failures=1)

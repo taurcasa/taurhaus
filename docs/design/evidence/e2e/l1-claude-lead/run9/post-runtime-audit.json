@@ -1,0 +1,21 @@
+{
+  "survivors": [],
+  "root_removed": true,
+  "private_port_closed": true,
+  "codex_copy_removed": true,
+  "claude_credential_copied": false,
+  "secret_or_path_violations": [],
+  "pane_files_checked": 0,
+  "sessions_retained": {
+    "directory_exists": true,
+    "files": [],
+    "all_files": [
+      "2888614.1f18ee6a7ad87088099fa7c5a0c44f67a61a8701f6d73590cefa923b9b02181e.key"
+    ]
+  },
+  "log_retention": {
+    "complete_rows": 503,
+    "retained_rows": 503,
+    "excluded_usage_rows": 0
+  }
+}

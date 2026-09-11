@@ -1,0 +1,13 @@
+{
+  "verdict": "approve",
+  "majors": 0,
+  "minors": 2,
+  "fix_round": 1,
+  "changes": [
+    "authoritative cap_inputs in final ledger; offline-tested observed native admission",
+    "document owned Bubblewrap SIGTERM role"
+  ],
+  "paid_replay": false,
+  "known_seat_and_completed_review_usd": 0.4783821,
+  "timed_out_review_spend_usd": null
+}

@@ -1,0 +1,87 @@
+{
+  "step1_traceback": "Traceback (most recent call last):\n  File \"/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/step1.py\", line 23, in <module>\n    assert lead['session_id'] and lead['paneId']=='%1'\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError\n",
+  "initialize_status": "completed; all nine pipeline steps succeeded",
+  "lead_runtime": {
+    "session_id": null,
+    "paneId": "%1",
+    "contextGeneration": "0",
+    "attachmentGeneration": 1
+  },
+  "claude_native_startup": {
+    "timestamp": "2026-09-10T16:37:42.868Z",
+    "sessionId": "e0d73e8d-b9b5-4998-98a8-f9828b526724",
+    "teamName": "l1-claude-lead",
+    "agentName": "lead",
+    "input_kind": "teammate-message from lead containing production startup recovery_card; no assistant generation"
+  },
+  "journal": [
+    {
+      "sequence": 1,
+      "event_type": "message_accepted",
+      "message_id": "c0ae4bd6-b0e9-4c8e-89db-5945b1fd06cd",
+      "delivery_id": null,
+      "adapter": null,
+      "stage": null
+    },
+    {
+      "sequence": 2,
+      "event_type": "message_accepted",
+      "message_id": "d3a75483-29f4-4333-b8e4-288c83ebb762",
+      "delivery_id": null,
+      "adapter": null,
+      "stage": null
+    },
+    {
+      "sequence": 3,
+      "event_type": "delivery_attempt",
+      "message_id": "c0ae4bd6-b0e9-4c8e-89db-5945b1fd06cd",
+      "delivery_id": "060936ad-5886-4e48-875d-a0f2b3eefec7",
+      "adapter": "native-mailbox/1",
+      "stage": "attempt_started"
+    },
+    {
+      "sequence": 4,
+      "event_type": "receipt",
+      "message_id": "c0ae4bd6-b0e9-4c8e-89db-5945b1fd06cd",
+      "delivery_id": "060936ad-5886-4e48-875d-a0f2b3eefec7",
+      "adapter": "native-mailbox/1",
+      "stage": "native_enqueued"
+    },
+    {
+      "sequence": 5,
+      "event_type": "delivery_attempt",
+      "message_id": "d3a75483-29f4-4333-b8e4-288c83ebb762",
+      "delivery_id": "7c930439-9800-46c1-8070-78ddfc837613",
+      "adapter": "tmux/1",
+      "stage": "attempt_started"
+    },
+    {
+      "sequence": 6,
+      "event_type": "receipt",
+      "message_id": "d3a75483-29f4-4333-b8e4-288c83ebb762",
+      "delivery_id": "7c930439-9800-46c1-8070-78ddfc837613",
+      "adapter": "tmux/1",
+      "stage": "submitted"
+    }
+  ],
+  "retention": {
+    "complete_rows": 42,
+    "retained_rows": 42
+  },
+  "pane_excerpt": [
+    "",
+    " \u2590\u259b\u2588\u2588\u2588\u259b\u2588   Claude Code v2.1.267",
+    "\u259d\u259c\u2588\u2588\u2588\u2588\u2588\u2588\u2580  Haiku 4.5 \u00b7 Claude Max",
+    "  \u259d\u259d \u259d\u259d    /tmp/th-l1-runtime-fwsclfr8/project",
+    "",
+    "",
+    "",
+    "\u203a Message from @lead (ctrl+o to expand)"
+  ],
+  "raw_result": {
+    "outcome": "UNAVAILABLE",
+    "classification": "harness",
+    "step": 1,
+    "reason": "claude_auth_unavailable"
+  }
+}

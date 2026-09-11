@@ -1,0 +1,32 @@
+{
+  "model": "claude-opus-4-6",
+  "verdict": {
+    "verdict": "approve",
+    "findings": [
+      {
+        "severity": "minor",
+        "finding": "foreign_startup_notify_usage is 'unknown', preventing complete spend cap proof. The brief correctly flags this in qualifications but the cost section could explicitly bound the worst-case foreign notify contribution.",
+        "fix": "Add a conservative upper-bound estimate for foreign notify spend in the cost basis note, or document why it is structurally negligible."
+      }
+    ]
+  },
+  "invocations": [
+    {
+      "model": "claude-opus-4-6",
+      "exit": 1,
+      "usd": 0.23303,
+      "configured_budget_usd": 0.2,
+      "outcome": "budget_exhausted; no verdict"
+    },
+    {
+      "model": "claude-opus-4-6",
+      "exit": 0,
+      "usd": 0.11230000000000001,
+      "configured_budget_usd": 0.2,
+      "outcome": "approve"
+    }
+  ],
+  "minor_disposition": "No cost upper bound invented for an unmetered foreign session. Report explicitly leaves total and full cap proof unknown; reviewer minor suggestion to bound it cannot be substantiated from retained evidence.",
+  "runtime_reruns": 0,
+  "post_runtime_controller_fixes": 0
+}

@@ -1,0 +1,23 @@
+{
+  "command": [
+    "just",
+    "build-daemon"
+  ],
+  "exit": 0,
+  "seconds": 125.16526644601254,
+  "cargo_preflight": [
+    {
+      "exit": 0,
+      "output": "3531925 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib codex_identity_uses_process_account_before_daemon_default -- --exact --nocapture\n"
+    },
+    {
+      "exit": 1,
+      "output": ""
+    }
+  ],
+  "last_lines": [
+    "   Compiling taurhaus v0.9.7 (/home/mstie/projects/taurhaus-l1-claude-lead/src-tauri)",
+    "    Finished `release` profile [optimized] target(s) in 2m 05s"
+  ],
+  "sha256": "28c1937eb99b8495814654d113b3642fd63b051c1550a0e6610662abac4184cd"
+}

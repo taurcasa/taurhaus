@@ -1,0 +1,22 @@
+{
+  "survivors": [],
+  "root_removed": true,
+  "private_port_closed": true,
+  "codex_copy_removed": true,
+  "claude_credential_copied": false,
+  "secret_or_path_violations": [],
+  "pane_files_checked": 42,
+  "sessions_retained": {
+    "directory_exists": true,
+    "files": [],
+    "all_files": [
+      "3131197.4498d51330f589a96fffb76d864e11b055786e874ea6ca9051d897b29d8b899c.key"
+    ]
+  },
+  "log_retention": {
+    "complete_rows": 432,
+    "retained_rows": 432,
+    "excluded_usage_rows": 0
+  },
+  "pane_validation_source": "final-audit.json resolves and checks packed pane snapshots"
+}

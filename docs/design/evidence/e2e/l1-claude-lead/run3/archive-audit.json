@@ -1,0 +1,16 @@
+{
+  "snapshot_paths": 497,
+  "unique_snapshot_objects": 162,
+  "pane_files_checked": 21,
+  "max_pane_lines": 60,
+  "unexpected_operator_home_paths": [],
+  "credential_shaped_values": [],
+  "complete_daemon_rows": 339,
+  "gate_exits": {
+    "just check-quick": 0,
+    "just lint": 0,
+    "just test-contracts": 0
+  },
+  "runtime_survivors": [],
+  "review_and_gate_survivors": []
+}

@@ -1,0 +1,46 @@
+{
+  "command": [
+    "cargo",
+    "build",
+    "--bin",
+    "mesh"
+  ],
+  "exit": 0,
+  "seconds": 5.28021528897807,
+  "cargo_preflight": [
+    {
+      "exit": 0,
+      "output": "4172544 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib -- coordination::hosted::tests::hosted_read_busy_bounds_contention_without_queueing_mutations\n"
+    },
+    {
+      "exit": 0,
+      "output": "4175893 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib --bins -- --test-threads=1 --skip daemon::server::tests:: --skip daemon::event_listener::tests:: --skip provider::daemon_client::tests:: --skip daemon::launcher::tests:: --skip daemon::watch::tests:: --skip fs::watcher::tests::watcher_starts_and_stops --skip fs::watcher::tests::unwatch_all_clears_everything --skip fs::watcher::tests::shared_tree_reconcile_stays_live_during_continued_callback_events\n4176673 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib -- coordination::hosted --test-threads=1\n"
+    },
+    {
+      "exit": 0,
+      "output": "4175893 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib --bins -- --test-threads=1 --skip daemon::server::tests:: --skip daemon::event_listener::tests:: --skip provider::daemon_client::tests:: --skip daemon::launcher::tests:: --skip daemon::watch::tests:: --skip fs::watcher::tests::watcher_starts_and_stops --skip fs::watcher::tests::unwatch_all_clears_everything --skip fs::watcher::tests::shared_tree_reconcile_stays_live_during_continued_callback_events\n4176673 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib -- coordination::hosted --test-threads=1\n"
+    },
+    {
+      "exit": 0,
+      "output": "4175893 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib --bins -- --test-threads=1 --skip daemon::server::tests:: --skip daemon::event_listener::tests:: --skip provider::daemon_client::tests:: --skip daemon::launcher::tests:: --skip daemon::watch::tests:: --skip fs::watcher::tests::watcher_starts_and_stops --skip fs::watcher::tests::unwatch_all_clears_everything --skip fs::watcher::tests::shared_tree_reconcile_stays_live_during_continued_callback_events\n"
+    },
+    {
+      "exit": 0,
+      "output": "4175893 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib --bins -- --test-threads=1 --skip daemon::server::tests:: --skip daemon::event_listener::tests:: --skip provider::daemon_client::tests:: --skip daemon::launcher::tests:: --skip daemon::watch::tests:: --skip fs::watcher::tests::watcher_starts_and_stops --skip fs::watcher::tests::unwatch_all_clears_everything --skip fs::watcher::tests::shared_tree_reconcile_stays_live_during_continued_callback_events\n"
+    },
+    {
+      "exit": 0,
+      "output": "4175893 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib --bins -- --test-threads=1 --skip daemon::server::tests:: --skip daemon::event_listener::tests:: --skip provider::daemon_client::tests:: --skip daemon::launcher::tests:: --skip daemon::watch::tests:: --skip fs::watcher::tests::watcher_starts_and_stops --skip fs::watcher::tests::unwatch_all_clears_everything --skip fs::watcher::tests::shared_tree_reconcile_stays_live_during_continued_callback_events\n"
+    },
+    {
+      "exit": 1,
+      "output": ""
+    }
+  ],
+  "last_lines": [
+    "bwrap: Only the last --chdir option will take effect",
+    "   Compiling mesh v0.2.29 (<operator-path>",
+    "    Finished `dev` profile [unoptimized + debuginfo] target(s) in 5.24s"
+  ],
+  "sha256": "e825ede65875b5eae314def776d24f7790bfe25dd15aa0e396577f9836ecf98a"
+}

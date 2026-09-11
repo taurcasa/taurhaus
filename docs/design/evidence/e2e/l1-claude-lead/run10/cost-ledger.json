@@ -1,0 +1,204 @@
+{
+  "controller_inputs": {
+    "claude": 5,
+    "codex": 5
+  },
+  "claude_generations": [
+    {
+      "input_tokens": 10,
+      "output_tokens": 1050,
+      "cache_read_input_tokens": 5479,
+      "cache_creation_input_tokens": 5817,
+      "message_id": "msg_011CevhhnfFjvdgpWCQaNk15",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "2950d721-93c7-4433-bd1f-3fe5935d55a7",
+      "usd": 0.01307915,
+      "upper_usd": 0.06178
+    },
+    {
+      "input_tokens": 10,
+      "output_tokens": 338,
+      "cache_read_input_tokens": 11296,
+      "cache_creation_input_tokens": 1262,
+      "message_id": "msg_011CevhntRez9V5nUiuGXZMZ",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "2950d721-93c7-4433-bd1f-3fe5935d55a7",
+      "usd": 0.004407100000000001,
+      "upper_usd": 0.06453
+    },
+    {
+      "input_tokens": 8,
+      "output_tokens": 78,
+      "cache_read_input_tokens": 12558,
+      "cache_creation_input_tokens": 891,
+      "message_id": "msg_011Cevho7YCDSjLWWUjEUn4R",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "2950d721-93c7-4433-bd1f-3fe5935d55a7",
+      "usd": 0.00276755,
+      "upper_usd": 0.067675
+    },
+    {
+      "input_tokens": 10,
+      "output_tokens": 219,
+      "cache_read_input_tokens": 13449,
+      "cache_creation_input_tokens": 126,
+      "message_id": "msg_011CevhpUYmizZwAtUHM5Xsf",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "2950d721-93c7-4433-bd1f-3fe5935d55a7",
+      "usd": 0.0026074,
+      "upper_usd": 0.06902
+    },
+    {
+      "input_tokens": 10,
+      "output_tokens": 92,
+      "cache_read_input_tokens": 13575,
+      "cache_creation_input_tokens": 270,
+      "message_id": "msg_011CevhpmdS5kqP7EbSrsopW",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "2950d721-93c7-4433-bd1f-3fe5935d55a7",
+      "usd": 0.002165,
+      "upper_usd": 0.069735
+    },
+    {
+      "input_tokens": 10,
+      "output_tokens": 223,
+      "cache_read_input_tokens": 13845,
+      "cache_creation_input_tokens": 202,
+      "message_id": "msg_011CevhqF6v9ikK2Kzx7UBFF",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "2950d721-93c7-4433-bd1f-3fe5935d55a7",
+      "usd": 0.002762,
+      "upper_usd": 0.0714
+    },
+    {
+      "input_tokens": 8,
+      "output_tokens": 219,
+      "cache_read_input_tokens": 14047,
+      "cache_creation_input_tokens": 3061,
+      "message_id": "msg_011CevhqSmQNmPkz2yLHmrJF",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "2950d721-93c7-4433-bd1f-3fe5935d55a7",
+      "usd": 0.00633395,
+      "upper_usd": 0.086675
+    },
+    {
+      "input_tokens": 10,
+      "output_tokens": 820,
+      "cache_read_input_tokens": 17108,
+      "cache_creation_input_tokens": 550,
+      "message_id": "msg_011Cevhqsp2Yuv2kRnr2UUQY",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "2950d721-93c7-4433-bd1f-3fe5935d55a7",
+      "usd": 0.0065083,
+      "upper_usd": 0.09244
+    },
+    {
+      "input_tokens": 10,
+      "output_tokens": 170,
+      "cache_read_input_tokens": 9538,
+      "cache_creation_input_tokens": 3140,
+      "message_id": "msg_011CevhtgRG6NkCb4zf1iwJN",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "2950d721-93c7-4433-bd1f-3fe5935d55a7",
+      "usd": 0.0057388000000000005,
+      "upper_usd": 0.06429
+    },
+    {
+      "input_tokens": 10,
+      "output_tokens": 196,
+      "cache_read_input_tokens": 12678,
+      "cache_creation_input_tokens": 278,
+      "message_id": "msg_011CevhuHE2brW6dZEDwgnYJ",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "2950d721-93c7-4433-bd1f-3fe5935d55a7",
+      "usd": 0.0026053,
+      "upper_usd": 0.06581
+    },
+    {
+      "input_tokens": 8,
+      "output_tokens": 156,
+      "cache_read_input_tokens": 12956,
+      "cache_creation_input_tokens": 2167,
+      "message_id": "msg_011CevhuTWedrDvHQCuxSPjU",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "2950d721-93c7-4433-bd1f-3fe5935d55a7",
+      "usd": 0.004792350000000001,
+      "upper_usd": 0.076435
+    }
+  ],
+  "codex_turns": [
+    {
+      "turn_id": "01a08ddb-a0d2-73d2-906a-9c43dd5dc444",
+      "rollout": "rollout-2026-09-11T02-26-15-01a08ddb-9f5f-7bf3-abfb-e7e7fca99393.jsonl"
+    },
+    {
+      "turn_id": "01a08ddc-c609-7fc0-b80a-adb46bea16f3",
+      "rollout": "rollout-2026-09-11T02-26-15-01a08ddb-9f5f-7bf3-abfb-e7e7fca99393.jsonl"
+    },
+    {
+      "turn_id": "01a08ddc-ec66-7db1-8732-ec556a6d1586",
+      "rollout": "rollout-2026-09-11T02-26-15-01a08ddb-9f5f-7bf3-abfb-e7e7fca99393.jsonl"
+    },
+    {
+      "turn_id": "01a08ddd-d981-7873-8a0d-bdec5e70fb47",
+      "rollout": "rollout-2026-09-11T02-26-15-01a08ddb-9f5f-7bf3-abfb-e7e7fca99393.jsonl"
+    }
+  ],
+  "codex_usage_by_rollout": {
+    "rollout-2026-09-11T02-26-15-01a08ddb-9f5f-7bf3-abfb-e7e7fca99393.jsonl": {
+      "input_tokens": 201804,
+      "cached_input_tokens": 173312,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 1869,
+      "reasoning_output_tokens": 667,
+      "total_tokens": 203673
+    }
+  },
+  "seat_usd_estimate": 0.06517434,
+  "seat_usd_upper_rate": 1.0341976,
+  "rates_per_million": {
+    "claude": [
+      1,
+      0.1,
+      1.25,
+      5
+    ],
+    "codex": [
+      0.2,
+      0.02,
+      1.2
+    ]
+  },
+  "metering_complete": true,
+  "prior_preflight_spend_usd": 0,
+  "current_inputs": {
+    "claude": 5,
+    "codex": 5
+  },
+  "prior_trial": {
+    "cap_inputs": {
+      "claude": 0,
+      "codex": 0
+    },
+    "controller_inputs": {
+      "claude": 0,
+      "codex": 0
+    },
+    "seat_usd_estimate": 0,
+    "seat_usd_upper_rate": 0,
+    "prior_runtime_seconds": 0,
+    "closed_runs_history_reference": "../run9/spend-summary.json (includes runs 1\u20138); excluded from run10 admission",
+    "ruling": "Fresh run10 caps: Claude <=8 including compact; Codex <=12; metered USD <=2; unknown compact cost does not stop."
+  },
+  "claude_usd_by_input": {
+    "a2ab944d-f468-49c3-9e97-458888a83846": 0.01307915,
+    "110976d4-aaba-49d8-a30f-71a17397253f": 0.007174650000000001,
+    "b5e04228-bb95-4b3c-942a-1cf9cf4992c7": 0.0026074,
+    "89f25512-1084-496a-bfc4-7832ab5f2e58": 0.002165,
+    "9a6e1f39-0341-44ee-b13c-2be7650e6b8d": 0.00909595,
+    "c3aec7ec-727d-4804-a703-30b837d07f85": 0.0065083,
+    "7bc7828f-2ded-4240-be71-5ea513b5e5e3": 0.0057388000000000005,
+    "26dde136-c4b1-4fb1-ac24-6717a1af7989": 0.00739765
+  },
+  "claude_cap_times_max_observed_input_usd": 0.1046332
+}

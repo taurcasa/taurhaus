@@ -1,0 +1,8 @@
+{
+  "same_pid_start_survivors": [],
+  "scratch_root_removed": true,
+  "codex_auth_copy_removed": true,
+  "runtime_waited_exit": 2,
+  "step2_waited_exit": 1,
+  "no_foreign_process_signaled": true
+}

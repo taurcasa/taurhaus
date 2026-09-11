@@ -1,0 +1,48 @@
+• Marker A: L1_AMBER_42. Marker B: L1_BIRCH_73.
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+› Step 3. Run mesh read --unread --json --mark-read --claude-dir "$CLAUDE_CONFIG_DIR" --team l1-claude-lead --name alpha. Follow any
+  returned cursor with the same filters and --since until done. Then run exactly two commands:
+  mesh send lead 'RESULT: L1_AMBER_42 received by alpha.' --summary 'L1 reply A' --claude-dir "$CLAUDE_CONFIG_DIR" --team l1-claude-lead
+  --name alpha
+  mesh send lead 'RESULT: L1_BIRCH_73 received by alpha.' --summary 'L1 reply B' --claude-dir "$CLAUDE_CONFIG_DIR" --team l1-claude-lead
+  --name alpha
+  Do nothing else.
+
+
+• Ran mesh read --unread --json --mark-read --claude-dir "$CLAUDE_CONFIG_DIR" --team l1-claude-lead --name alpha
+  └ {
+      "body_refs": "immutable full bodies retained; no truncation",
+    … +21 lines (ctrl + t to view transcript)
+      "team_id": "c607608d28191300febaa15c05e82d88e63a78674872fcdd1422da3be9cdc2ac"
+    }
+
+• Ran mesh send lead 'RESULT: L1_AMBER_42 received by alpha.' --summary 'L1 reply A' --claude-dir "$CLAUDE_CONFIG_DIR" --team l1-claude-lead
+  │ --name alpha
+  └ {"message_id":"636c93f9-06ea-4552-9f2e-62ae26d2a254","sequence":16,"status":"accepted","projection":"pending","delivery_targets":
+    [{"delivery_id":"551d5879-256a-4ebe-acc9-b18739cebee4","legacy_acceptance":"unknown","legacy_id":"327c06d8-fde9-47e9-a23f-6f94eb4f4fa5",
+    "member_id":"2a27cc9c-d536-4a28-9a82-01e8e82d2a04","read_audience":[{"member_id":"2a27cc9c-d536-4a28-9a82-01e8e82d2a04","name":"lead"},
+    {"member_id":"alpha@l1-claude-lead","name":"alpha"}],"recipient":"lead","source_path":"inboxes/lead.json"}]}
+
+• Ran mesh send lead 'RESULT: L1_BIRCH_73 received by alpha.' --summary 'L1 reply B' --claude-dir "$CLAUDE_CONFIG_DIR" --team l1-claude-lead
+  │ --name alpha
+  └ {"message_id":"19dbbe18-98b5-453e-aa64-1902242ba4a8","sequence":19,"status":"accepted","projection":"pending","delivery_targets":
+    [{"delivery_id":"e4665d31-1abf-45a8-a22a-abb750e96989","legacy_acceptance":"unknown","legacy_id":"9f49df55-4925-4888-ac43-b3830831986c",
+    "member_id":"2a27cc9c-d536-4a28-9a82-01e8e82d2a04","read_audience":[{"member_id":"2a27cc9c-d536-4a28-9a82-01e8e82d2a04","name":"lead"},
+    {"member_id":"alpha@l1-claude-lead","name":"alpha"}],"recipient":"lead","source_path":"inboxes/lead.json"}]}
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+› Run exactly mesh send lead 'RESULT: L1_FERN_91 after recovery.' --summary 'L1 fresh reply' --claude-dir "$CLAUDE_CONFIG_DIR" --team l1-
+  claude-lead --name alpha. No other tools.
+
+
+• Working (1s • esc to interrupt)
+
+
+› Ask Codex to do anything
+
+  gpt-5.6-luna low · /tmp/th-l1-runtime-3_nj_m4h/project

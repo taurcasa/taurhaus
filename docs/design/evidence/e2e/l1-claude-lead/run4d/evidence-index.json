@@ -1,0 +1,8 @@
+{
+  "snapshot_paths": 401,
+  "unique_objects": 112,
+  "snapshot_lookup": "snapshots.json: objects[aliases[relative/path]].content",
+  "daemon_jsonl_rows": 299,
+  "journal_rows": 9,
+  "no_pagination_claim": true
+}

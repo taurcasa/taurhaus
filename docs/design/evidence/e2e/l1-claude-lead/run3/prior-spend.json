@@ -1,0 +1,17 @@
+{
+  "controller_inputs": {
+    "claude": 0,
+    "codex": 0
+  },
+  "seat_usd_estimate": 0.0672021,
+  "seat_usd_upper_rate": 0.6578964,
+  "historical_cap_inputs": {
+    "claude": 5,
+    "codex": 6
+  },
+  "scope": "Historical run-3 admission incorrectly used fresh controller input/runtime counters while charging prior spend; this did not satisfy the shared cumulative-cap contract. Original controller_inputs and historical_cap_inputs are preserved as execution evidence. Offline review correction restores cap_inputs for future admission; it does not retroactively change the executed run or its cost ledger. Any continuation must also carry run-3 usage (cumulative 8 Claude / 11 Codex), leaving no Claude input headroom.",
+  "cap_inputs": {
+    "claude": 5,
+    "codex": 6
+  }
+}

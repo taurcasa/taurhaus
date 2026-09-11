@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/steps.py", line 207, in <module>
+    main(int(sys.argv[1]))
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/steps.py", line 187, in main
+    wait(recovered,'missing real compaction boundary/generation/native recovery card',timeout=120)
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/steps.py", line 21, in wait
+    raise why if isinstance(why, Exception) else AssertionError(why)
+AssertionError: missing real compaction boundary/generation/native recovery card

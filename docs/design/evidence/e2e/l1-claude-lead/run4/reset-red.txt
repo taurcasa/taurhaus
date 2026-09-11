@@ -1,0 +1,13 @@
+E.
+======================================================================
+ERROR: test_authorized_reset_preserves_history_and_enforces_fresh_caps (test_run4.Run4Tests.test_authorized_reset_preserves_history_and_enforces_fresh_caps)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/test_run4.py", line 12, in test_authorized_reset_preserves_history_and_enforces_fresh_caps
+    from run4_budget import fresh_ledger, RULING
+ModuleNotFoundError: No module named 'run4_budget'
+
+----------------------------------------------------------------------
+Ran 2 tests in 0.000s
+
+FAILED (errors=1)

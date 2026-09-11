@@ -1,0 +1,48 @@
+
+• Ran mesh send --task recovery-card --claude-dir "$CLAUDE_CONFIG_DIR" --team l1-claude-lead --name alpha --historical lead "Please provide
+  │ the missing assignment identity, release, or required context."
+  └ error: invalid handle 'recovery-card': must match ^[a-z0-9][a-z0-9._-]{0,62}[a-z0-9]$
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+• Inbox read and marked read. The message provided no valid assignment context; attempts to ask lead failed because no valid task handle was
+  supplied.
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+› [mesh] You are "alpha" on team "l1-claude-lead". Inbox update from lead. Summary: L1 marker A; L1 marker B. Check inbox and act if the
+  message requests it: mesh read --unread --mark-read --team l1-claude-lead --name alpha
+
+
+• READY
+
+• Ran mesh read --unread --mark-read --claude-dir "$CLAUDE_CONFIG_DIR" --team l1-claude-lead --name alpha
+  └ * [2026-09-10T22:39:09] lead: ACTION REQUIRED: Remember marker L1_AMBER_42. Do not run tools or send a reply yet; the controller will
+    request step 3.
+    … +17 lines (ctrl + t to view transcript)
+    33636353533363266386265653061383664313533653131356334313031656663366163336438373061343337373631356564653362227d.51e4a432bc7bd6e676420de5
+    6ff0639a8ed497a22a933f843fd1bbec6187c1e4"
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+• Marker L1_AMBER_42 received and remembered. Marker L1_BIRCH_73 received and remembered.
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+› Step 3. Run mesh read --unread --json --mark-read --claude-dir "$CLAUDE_CONFIG_DIR" --team l1-claude-lead --name alpha. Follow any
+  returned cursor with the same filters and --since until done. Then run exactly two commands:
+  mesh send lead 'RESULT: L1_AMBER_42 received by alpha.' --summary 'L1 reply A' --claude-dir "$CLAUDE_CONFIG_DIR" --team l1-claude-lead
+  --name alpha
+  mesh send lead 'RESULT: L1_BIRCH_73 received by alpha.' --summary 'L1 reply B' --claude-dir "$CLAUDE_CONFIG_DIR" --team l1-claude-lead
+  --name alpha
+  Do nothing else.
+
+
+• Working (1s • esc to interrupt)
+
+
+› Ask Codex to do anything
+
+  gpt-5.6-luna low · /tmp/th-l1-runtime-z5az44y8/project

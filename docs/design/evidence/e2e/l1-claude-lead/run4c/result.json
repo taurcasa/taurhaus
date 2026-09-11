@@ -1,0 +1,6 @@
+{
+  "outcome": "FAIL",
+  "classification": "taurhaus",
+  "step": 2,
+  "reason": "taurhaus: alpha not attributed and freshly idle after #163"
+}

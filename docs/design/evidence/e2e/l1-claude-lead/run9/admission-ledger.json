@@ -1,0 +1,15 @@
+{
+  "cap_inputs": {
+    "claude": 0,
+    "codex": 0
+  },
+  "controller_inputs": {
+    "claude": 0,
+    "codex": 0
+  },
+  "seat_usd_estimate": 0,
+  "seat_usd_upper_rate": 0,
+  "prior_runtime_seconds": 0,
+  "closed_runs_history_reference": "../run8/spend-summary.json (includes runs 1\u20137); excluded from run9 admission",
+  "ruling": "Fresh run9 caps: Claude <=8 including compact; Codex <=12; metered USD <=2; unknown compact cost does not stop."
+}

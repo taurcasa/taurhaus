@@ -1,0 +1,76 @@
+{
+  "outcome": "UNAVAILABLE",
+  "classification": "harness",
+  "failed_step": 5,
+  "steps": [
+    {
+      "step": 1,
+      "outcome": "PASS",
+      "classification": null,
+      "evidence": "step1-outcome.json"
+    },
+    {
+      "step": 2,
+      "outcome": "PASS",
+      "classification": null,
+      "evidence": "step2-outcome.json"
+    },
+    {
+      "step": 3,
+      "outcome": "PASS",
+      "classification": null,
+      "evidence": "step3-outcome.json"
+    },
+    {
+      "step": 4,
+      "outcome": "PASS",
+      "classification": null,
+      "evidence": "step4-outcome.json"
+    },
+    {
+      "step": 5,
+      "outcome": "UNAVAILABLE",
+      "classification": "harness",
+      "reason": "Mesh assign exit 0; merged LEGACY_LANE_METADATA warning before valid JSON caused JSONDecodeError. No compact input or resumable operational snapshot observation."
+    },
+    {
+      "step": 6,
+      "outcome": "NOT RUN",
+      "classification": "first-failure stop"
+    }
+  ],
+  "raw_result_preserved": "result.json retains provisional product-owner-pending-evidence-review; this evidence-based classification supersedes it.",
+  "runtime_seconds": 84.7069472889998,
+  "controller_exit": 2,
+  "driver_exit": 2,
+  "ordered_step_exits": [
+    0,
+    0,
+    0,
+    0,
+    1
+  ],
+  "offline_fix": "Merged-warning parsing and JSONDecodeError classification corrected after teardown; no paid rerun.",
+  "gate_exits": {
+    "check-quick": 0,
+    "lint": 0,
+    "test-contracts": 0
+  },
+  "deviations": [
+    "Only alpha, no beta/hosted seat, per consolidated ruling.",
+    "Run6 stopped at assignment parsing before the required operational snapshot poll, /compact and step6; no recovery claim.",
+    "Assignment lacks lane metadata; harmless Mesh warning exposed the harness parser fault.",
+    "Alpha attempted invalid context-request sends during onboarding despite trial constraints; all failed validation and no extra accepted message exists.",
+    "Alpha read both markers during the notification turn before the step3 controller instruction; B has consumed_by_read without its own tmux submitted receipt.",
+    "Unfinished native assignment response spend unknown; no complete attempt cost claim.",
+    "Reused controller uses no explicit Claude composer-confirmation event; actual tool execution and native transcripts prove the sends.",
+    "Inherited controller lacks a dedicated startup preflight event; native prompt plus model/low footer recorded within 120s in step2-native-ready/pane-2.txt.",
+    "No surviving runtime remains for continuation; first-failure rule prohibits automatic paid retry."
+  ],
+  "review": {
+    "verdict": "approve",
+    "exit": 0,
+    "model": "claude-opus-4-6",
+    "spend_usd": 0.192415
+  }
+}

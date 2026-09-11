@@ -1,0 +1,68 @@
+{
+  "outcome": "UNAVAILABLE",
+  "classification": "harness: cumulative budget admission",
+  "stopped_before_step": 1,
+  "exit": 2,
+  "last_log_lines": [
+    "claude input cap"
+  ],
+  "reason": "Shared execution contract retains prior inputs across the lane. Run 3 consumed the eighth Claude input. Startup cannot be admitted without an explicit budget-scope amendment.",
+  "prior": {
+    "cap_inputs": {
+      "claude": 8,
+      "codex": 11
+    },
+    "seat_usd_estimate": 0.10193487,
+    "seat_usd_upper_rate": 1.0758178,
+    "prior_runtime_seconds": 588.2559631199924,
+    "sources": [
+      "run3/prior-spend.json",
+      "run3/cost-ledger.json",
+      "run3/cleanup.json"
+    ],
+    "scope": "Corrected cumulative admission through run 3. No fresh budget has been inferred."
+  },
+  "new_claude_inputs": 0,
+  "new_codex_inputs": 0,
+  "new_seat_usd": 0,
+  "claude_credential_accessed": false,
+  "codex_auth_copied": false,
+  "runtime_processes_started": 0,
+  "steps": {
+    "1": "NOT RUN: admission prerequisite",
+    "2": "NOT RUN: admission prerequisite",
+    "3": "NOT RUN: admission prerequisite",
+    "4": "NOT RUN: admission prerequisite",
+    "5": "NOT RUN: admission prerequisite",
+    "6": "NOT RUN: admission prerequisite"
+  },
+  "gate_exits": {
+    "just check-quick": 0,
+    "just lint": 0,
+    "just test-contracts": 0
+  },
+  "build_exits": {
+    "just build-daemon": 0,
+    "cargo build --bin mesh": 0
+  },
+  "offline_tests": {
+    "passed": 32,
+    "red_exit": 1,
+    "green_exit": 0
+  },
+  "review": {
+    "outcome": "NOT RUN",
+    "additional_usd": 0
+  },
+  "cleanup": {
+    "gate_wrapper_exit": 0,
+    "build_wrapper_exit": 0,
+    "owned_survivors": 0,
+    "scratch_roots_removed": true,
+    "credentials_provisioned": false
+  },
+  "deviations": [
+    "Paid runtime blocked pending explicit fresh input/runtime budget scope.",
+    "Independent Opus evidence lens not run; no E2E PASS claim."
+  ]
+}

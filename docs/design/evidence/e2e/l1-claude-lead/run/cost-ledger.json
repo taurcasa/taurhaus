@@ -1,0 +1,38 @@
+{
+  "controller_inputs": {
+    "claude": 1,
+    "codex": 1
+  },
+  "claude_generations": [
+    {
+      "input_tokens": 10,
+      "output_tokens": 1577,
+      "cache_read_input_tokens": 0,
+      "cache_creation_input_tokens": 11245,
+      "message_id": "msg_011CeuTT5xm5RFjXHzAnkrUq",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "7c44e455-db6d-4dcd-ac4b-52203520c966",
+      "usd": 0.02195125,
+      "upper_usd": 0.06416
+    }
+  ],
+  "codex_turns": [],
+  "codex_usage_by_rollout": {},
+  "seat_usd_estimate": 0.02195125,
+  "seat_usd_upper_rate": 0.06416,
+  "rates_per_million": {
+    "claude": [
+      1,
+      0.1,
+      1.25,
+      5
+    ],
+    "codex": [
+      0.2,
+      0.02,
+      1.2
+    ]
+  },
+  "metering_complete": true,
+  "prior_preflight_spend_usd": 0
+}

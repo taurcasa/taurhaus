@@ -1,0 +1,8 @@
+{
+  "runtime_source": "68cd3999; exact hashes in provenance.json",
+  "post_run_sanitizer_source_sha256": "fb977ba0b6fc9bc9f1ccc57e4ece8617e798bd29156b5943079b9f29faa229dd",
+  "change": "Remove opaque encrypted model internals/signatures from copied session evidence; no runtime source reload or paid retry.",
+  "daemon_jsonl_rows": 339,
+  "daemon_jsonl_sha256": "638ee1b3c19528160e9a7d3a7688b67cdac3e2c5d918058b415db10c40529f53",
+  "all_daemon_rows_retained": true
+}

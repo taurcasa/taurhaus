@@ -1,0 +1,178 @@
+{
+  "claude_generations": [
+    {
+      "input_tokens": 10,
+      "output_tokens": 1530,
+      "cache_read_input_tokens": 5479,
+      "cache_creation_input_tokens": 5697,
+      "message_id": "msg_011CeuUfXBWvBSQXB3koQ9b6",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "a2dddba1-e73b-4f58-b908-8dcfedabf8e4",
+      "usd": 0.01532915,
+      "upper_usd": 0.06358
+    },
+    {
+      "input_tokens": 8,
+      "output_tokens": 261,
+      "cache_read_input_tokens": 11176,
+      "cache_creation_input_tokens": 1649,
+      "message_id": "msg_011CeuUgVYKToc9a5NFWm5H5",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "a2dddba1-e73b-4f58-b908-8dcfedabf8e4",
+      "usd": 0.00449185,
+      "upper_usd": 0.06547
+    },
+    {
+      "input_tokens": 8,
+      "output_tokens": 124,
+      "cache_read_input_tokens": 12825,
+      "cache_creation_input_tokens": 504,
+      "message_id": "msg_011CeuUgoreR1X3SinNoVaNJ",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "a2dddba1-e73b-4f58-b908-8dcfedabf8e4",
+      "usd": 0.0025405,
+      "upper_usd": 0.067305
+    },
+    {
+      "input_tokens": 10,
+      "output_tokens": 1046,
+      "cache_read_input_tokens": 13329,
+      "cache_creation_input_tokens": 172,
+      "message_id": "msg_011CeuUh19o7TCMwdgrADoFw",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "a2dddba1-e73b-4f58-b908-8dcfedabf8e4",
+      "usd": 0.0067878999999999995,
+      "upper_usd": 0.072785
+    },
+    {
+      "input_tokens": 8,
+      "output_tokens": 55,
+      "cache_read_input_tokens": 13501,
+      "cache_creation_input_tokens": 1294,
+      "message_id": "msg_011CeuUhycoMUBZjsJDpBL6W",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "a2dddba1-e73b-4f58-b908-8dcfedabf8e4",
+      "usd": 0.0032506,
+      "upper_usd": 0.07429
+    },
+    {
+      "input_tokens": 10,
+      "output_tokens": 432,
+      "cache_read_input_tokens": 14795,
+      "cache_creation_input_tokens": 109,
+      "message_id": "msg_011CeuUiEGrQTDrHxeQz4gJG",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "a2dddba1-e73b-4f58-b908-8dcfedabf8e4",
+      "usd": 0.00378575,
+      "upper_usd": 0.07673
+    },
+    {
+      "input_tokens": 10,
+      "output_tokens": 368,
+      "cache_read_input_tokens": 14904,
+      "cache_creation_input_tokens": 644,
+      "message_id": "msg_011CeuUtSJRmWBvdhjdoBySi",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "a2dddba1-e73b-4f58-b908-8dcfedabf8e4",
+      "usd": 0.0041454,
+      "upper_usd": 0.07963
+    },
+    {
+      "input_tokens": 8,
+      "output_tokens": 66,
+      "cache_read_input_tokens": 15548,
+      "cache_creation_input_tokens": 918,
+      "message_id": "msg_011CeuUthtJ7gHAZhEw5ApSo",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "a2dddba1-e73b-4f58-b908-8dcfedabf8e4",
+      "usd": 0.0030403,
+      "upper_usd": 0.0827
+    }
+  ],
+  "codex_turns": [
+    {
+      "turn_id": "01a08a8a-9d0d-74c1-b18a-f28b7ad3be21",
+      "rollout": "rollout-2026-09-10T10-54-41-01a08a86-bfdf-7273-9602-02880a7f3d72.jsonl"
+    }
+  ],
+  "codex_usage_by_rollout": {
+    "rollout-2026-09-10T10-54-41-01a08a86-bfdf-7273-9602-02880a7f3d72.jsonl": {
+      "input_tokens": 9367,
+      "cached_input_tokens": 0,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 5,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 9372
+    }
+  },
+  "seat_usd_estimate": 0.0672021,
+  "seat_usd_upper_rate": 0.6578963999999999,
+  "rates_per_million": {
+    "claude": [
+      1,
+      0.1,
+      1.25,
+      5
+    ],
+    "codex": [
+      0.2,
+      0.02,
+      1.2
+    ]
+  },
+  "metering_complete": true,
+  "prior_preflight_spend_usd": 0,
+  "current_inputs": {
+    "claude": 2,
+    "codex": 5
+  },
+  "prior_trial": {
+    "controller_inputs": {
+      "claude": 1,
+      "codex": 1
+    },
+    "claude_generations": [
+      {
+        "input_tokens": 10,
+        "output_tokens": 1577,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 11245,
+        "message_id": "msg_011CeuTT5xm5RFjXHzAnkrUq",
+        "model": "claude-haiku-4-5-20251001",
+        "session_id": "7c44e455-db6d-4dcd-ac4b-52203520c966",
+        "usd": 0.02195125,
+        "upper_usd": 0.06416
+      }
+    ],
+    "codex_turns": [],
+    "codex_usage_by_rollout": {},
+    "seat_usd_estimate": 0.02195125,
+    "seat_usd_upper_rate": 0.06416,
+    "rates_per_million": {
+      "claude": [
+        1,
+        0.1,
+        1.25,
+        5
+      ],
+      "codex": [
+        0.2,
+        0.02,
+        1.2
+      ]
+    },
+    "metering_complete": true,
+    "prior_preflight_spend_usd": 0
+  },
+  "controller_reserved_inputs": {
+    "claude": 3,
+    "codex": 6
+  },
+  "observed_cumulative_claude_inputs": 5,
+  "accounting_note": "Includes prior run; observed native Claude inputs include two unrequested self-messages. Codex reservations include two undelivered marker exposures and the extra Enter.",
+  "cap_inputs": {
+    "claude": 5,
+    "codex": 6
+  },
+  "authoritative_input_count": "cap_inputs (maximum of observed native inputs and controller reservations, including prior trial)"
+}

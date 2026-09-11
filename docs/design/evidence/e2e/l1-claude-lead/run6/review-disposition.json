@@ -1,0 +1,29 @@
+{
+  "candidate": "d6b8650f21a468f78d0224cefd454b2c7d1f438d",
+  "model": "claude-opus-4-6",
+  "exit": 0,
+  "verdict": "approve",
+  "findings": [
+    {
+      "severity": "minor",
+      "finding": "BIRCH (marker B) has no tmux 'submitted' receipt in the journal; report acknowledges this but step 2 is still marked PASS. The read-based exposure argument is reasonable but the asymmetry with AMBER's explicit submitted receipt could be noted more prominently.",
+      "fix": "No fix required; the report already documents this deviation."
+    },
+    {
+      "severity": "minor",
+      "finding": "The report states 'controller submissions only count as Claude inputs' per the spec ruling, yet the spend section lists '3/8 Claude reservations including onboarding' alongside '2 typed inputs' without fully clarifying which three submissions they are. Minor ambiguity, not a miscount.",
+      "fix": "Clarify in a future round if needed; does not affect disposition."
+    }
+  ],
+  "spend_usd": 0.192415,
+  "input_requests": 1,
+  "separate_review_cap_usd": 0.2,
+  "survivors": [],
+  "scratch_roots_removed": true,
+  "cleanup": {
+    "child_exit": 0,
+    "root_removed": true,
+    "credential_placeholder_zero_bytes": true
+  },
+  "resolution": "No required fix. BIRCH exposure asymmetry remains explicit in step2 table. Clarified the three Claude reservations: production onboarding, step2 send instruction, step4 read instruction."
+}

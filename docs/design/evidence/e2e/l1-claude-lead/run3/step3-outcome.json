@@ -1,0 +1,6 @@
+{
+  "outcome": "FAIL",
+  "classification": "product-owner-pending-evidence-review",
+  "step": 3,
+  "reason": "canonical seat replies never surfaced as native Claude teammate messages"
+}

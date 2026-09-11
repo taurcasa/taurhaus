@@ -1,0 +1,79 @@
+{
+  "task": {
+    "id": "1",
+    "subject": "Run10 native mailbox recovery",
+    "status": "in_progress",
+    "assigned_at": "2026-09-11T00:28:07.101Z"
+  },
+  "operational_snapshot": {
+    "recovery_card": {
+      "descriptor_only": false,
+      "card_schema": 1,
+      "card_key": {
+        "card_schema": 1,
+        "recipient": [
+          "c607608d28191300febaa15c05e82d88e63a78674872fcdd1422da3be9cdc2ac",
+          "525f2626-3623-4cab-800d-064d79672f22"
+        ],
+        "context": [
+          1,
+          0
+        ],
+        "roots": {
+          "root_authority_revision": "0",
+          "resolved_teams_root": "/tmp/th-l1-runtime-3_nj_m4h/claude/teams",
+          "resolved_mesh_config_root": "/tmp/th-l1-runtime-3_nj_m4h/claude",
+          "launch_namespace": "native",
+          "resolved_project_root": "/tmp/th-l1-runtime-3_nj_m4h/project"
+        },
+        "contract": {
+          "role_id": "",
+          "effective_role_revision": "7cdf1bc8c16c86ec27f2e1a27e2720303026d9dd7aea62397c03f7c540390bb6",
+          "instruction_contract_revision": "bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f",
+          "packet_revision": ""
+        }
+      },
+      "content_revision": "01e079b50f220b53a008b3fa9163749a4622e861ef3fd219b2423d829ea19422",
+      "pending": false
+    },
+    "version": 1,
+    "team_name": "l1-claude-lead",
+    "member_name": "lead",
+    "updated_at": "2026-09-11T00:28:07.847546Z",
+    "task": {
+      "id": "1",
+      "subject": "Run10 native mailbox recovery",
+      "status": "in_progress",
+      "assigned_at": "2026-09-11T00:28:07.101Z"
+    },
+    "assignment_footer": {
+      "execution_mode": "Measure",
+      "file_ownership_boundary": [],
+      "adjacent_fix_policy": "No adjacent fixes.",
+      "validation_expectation": "Controller validates native recovery.",
+      "response_expectation": "Respond once to fresh native mail.",
+      "task_effort": "",
+      "task_effort_why": ""
+    },
+    "ownership": {
+      "override_allowed": false,
+      "active_override_reason": null
+    },
+    "working_set": {
+      "project_path": "/tmp/th-l1-runtime-3_nj_m4h/project",
+      "focal_files": []
+    }
+  },
+  "assignment": {
+    "assignment_id": "368b413d-a1b1-47ad-84ce-d87dd120cd00",
+    "delivered": true,
+    "id": "0d4ff03a-fdd9-4186-a12b-82b9135bb1ec",
+    "task_id": "1"
+  },
+  "role": {
+    "effective_role_revision": "7cdf1bc8c16c86ec27f2e1a27e2720303026d9dd7aea62397c03f7c540390bb6",
+    "instruction_contract_revision": "bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f",
+    "packet_revision": "",
+    "role_id": ""
+  }
+}

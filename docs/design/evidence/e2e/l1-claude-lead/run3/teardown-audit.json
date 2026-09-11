@@ -1,0 +1,8 @@
+{
+  "owned_trial_roots": [
+    "/tmp/th-l1-runtime-eidxizjl"
+  ],
+  "surviving_trial_pids": [],
+  "roots_absent": true,
+  "audit": "read-only /proc environment trial-ID match; no process signaled"
+}

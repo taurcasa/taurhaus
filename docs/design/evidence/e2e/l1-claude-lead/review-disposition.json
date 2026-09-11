@@ -1,0 +1,19 @@
+{
+  "verdict": "approve",
+  "majors": 0,
+  "minors": 2,
+  "fix_round": 1,
+  "dispositions": [
+    {
+      "finding": "subcheck over-redaction",
+      "resolution": "Annotated historical evidence divergence in report; no reconstructed runtime rows."
+    },
+    {
+      "finding": "Haiku input rate",
+      "resolution": "Rejected: Anthropic Haiku 4.5 primary pricing confirms $1/M input, not $0.80/M.",
+      "source": "https://www.anthropic.com/claude/haiku"
+    }
+  ],
+  "review_spend_usd": 0.280255,
+  "seat_plus_review_estimate_usd": 0.30220625
+}

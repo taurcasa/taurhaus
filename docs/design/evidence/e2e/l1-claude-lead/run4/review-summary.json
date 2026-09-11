@@ -1,0 +1,15 @@
+{
+  "model": "claude-opus-4-6",
+  "exit": 0,
+  "verdict": "approve",
+  "findings": [
+    {
+      "severity": "minor",
+      "finding": "Spend totals are null/unknown rather than bounded, but the report honestly marks dollar_cap_verified:false and explains why (interrupted startup, no usage rows). This is transparent, not misleading.",
+      "fix": "No fix required; the honesty is sufficient for a stopped run."
+    }
+  ],
+  "usd": 0.11181,
+  "scope": "stopped-run evidence report only, not E2E PASS",
+  "requests": 1
+}

@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/steps.py", line 58, in <module>
+    wait(lambda: alpha_attributed_idle(read('latest/team/runtime/alpha.json') or {},read('latest/team/state/activity/alpha.json') or {}), 'taurhaus: alpha not attributed and freshly idle after #163', timeout=65)
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/steps.py", line 21, in wait
+    raise AssertionError(why)
+AssertionError: taurhaus: alpha not attributed and freshly idle after #163

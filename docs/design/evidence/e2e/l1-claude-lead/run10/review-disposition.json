@@ -1,0 +1,20 @@
+{
+  "model": "claude-opus-4-6",
+  "exit": 0,
+  "usd": 0.18747,
+  "verdict": {
+    "verdict": "approve",
+    "findings": [
+      {
+        "severity": "minor",
+        "finding": "lead_terminal_receipts is empty array and report acknowledges no terminal transport receipt for Claude, yet step 6 is PASS. This is consistent: the FERN chain shows native_enqueued + consumed_by_read, which is the mailbox path, not terminal delivery. The report correctly notes 'No terminal transport receipt for Claude' and the post-runtime audit correction. Acceptable."
+      },
+      {
+        "severity": "minor",
+        "finding": "Compact summarizer and foreign ephemeral-notify spend reported as unknown, not zero. Report explicitly flags this. Metered total $0.065 is well within any reasonable budget. Acceptable under standing ruling."
+      }
+    ]
+  },
+  "required_fixes": 0,
+  "runtime_retries": 0
+}
