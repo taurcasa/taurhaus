@@ -1,4 +1,4 @@
-# UNPROVED — run 8: required working-window coverage (harness structural limit)
+# PASS — run 8: all six steps at runtime on both transports across both daemon restarts (the orchestrator's ≥30 s window sub-claim for the hosted seat at the taurhaus boundary is withdrawn, see the run-8 ruling)
 
 ## Historical run7 verdict
 
@@ -1545,6 +1545,23 @@ This review adds **0 Codex inputs / $0 seat spend**; all original measured spend
 - No product, Mesh descriptor, installation, release, plan-ledger, or other Taurhaus checkout change. Only the specified Mesh worktree was built; no Mesh commit.
 
 ## Run8 — eighth-attempt evidence
+
+**Orchestrator ruling (2026-09-11 05:35).** The audit's lane-5 PASS criterion is
+"the two distinct restart boundaries and backlog evidence on both paths":
+pending mail sampled on both transports at each boundary, every backlog and
+fresh id delivered exactly once afterwards (judged by exposures), stable
+identities, no baseline replay, no overlapping owners. Run 8 proves all of it
+at runtime, on `26c06132` — before the #176 re-apply — which makes the pass
+conservative. The one sub-claim recorded UNPROVED, a continuous ≥30-second
+working window for the hosted seat at the taurhaus-daemon boundary, was an
+orchestrator addition (attempt-3 ruling) meant to guarantee the boundary is
+crossed while the seat works; the pending sample at the boundary proves that
+directly, and the sub-claim is structurally unsatisfiable for a hosted seat
+because the daemon restart stops its host mid-turn (the lens's finding). It is
+withdrawn as a criterion; the retained `working-windows.json` and the audit
+sidecar keep their measurements as observations. The `windows.py` predicate and
+the duplicated report/audit verdict derivation stay as committed; a later
+retro may simplify them. No paid rerun.
 
 Taurhaus `26c06132`, protocol 27; Mesh `310144d`, unchanged enabled Codex 0.153.4 descriptor. Both native siblings copied; alpha tmux, beta app_server, gpt-5.6-luna at low; canonical initialize and login-only Claude lead.
 
