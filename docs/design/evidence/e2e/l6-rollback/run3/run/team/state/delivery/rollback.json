@@ -1,0 +1,27 @@
+[
+  {
+    "delivery_id": "ff519153-841b-415c-88a2-1aea2ee99c37",
+    "recipient": "lead",
+    "stage": "native_enqueued"
+  },
+  {
+    "delivery_id": "fd38cec4-5524-45ef-96e0-0899af6472e1",
+    "recipient": "alpha",
+    "stage": "consumed_by_read"
+  },
+  {
+    "delivery_id": "713839d3-91e4-4398-87bc-532827e3c23a",
+    "recipient": "alpha",
+    "stage": "consumed_by_read"
+  },
+  {
+    "delivery_id": "80a0026e-ba54-49d7-9168-60a20022c2ba",
+    "recipient": "lead",
+    "stage": "native_enqueued"
+  },
+  {
+    "delivery_id": "55e21660-dc01-4ae4-914c-0b186cf5ee65",
+    "recipient": "alpha",
+    "stage": "pending"
+  }
+]

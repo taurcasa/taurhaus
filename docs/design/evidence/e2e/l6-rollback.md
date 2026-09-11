@@ -1,4 +1,4 @@
-# L6 rollback — run3 IN PROGRESS (step 1 PASS)
+# L6 rollback — run3 IN PROGRESS (step 2 PASS)
 
 Review correction: step 1 passes; step 2 fails on a non-quiescence refusal.
 The original controller continued and stopped at the step-3 readiness poll.
@@ -566,3 +566,5 @@ Each gate's exact `pgrep -af '(^|/)cargo( |$)'` admission probe returned **1**
 source diff exists, so conditional `just test-rust-unit` does not apply.
 
 Run2 step 1: PASS (S-runtime); see run3/run/step1-outcome.json.
+
+Run2 step 2: PASS (S-runtime); see run3/run/step2-outcome.json.
