@@ -948,16 +948,20 @@ fn codex_find_sessions_for_project(project_path: &str, sessions_dir: &Path) -> V
 ///
 /// Reads only the first line of the file — the session_meta record.
 fn codex_session_matches_project(jsonl_path: &Path, project_path: &str) -> bool {
-    use std::io::{BufRead, BufReader};
+    use std::io::{BufRead, BufReader, Read};
+    const HEADER_LIMIT: usize = 64 * 1024;
 
     let file = match fs::File::open(jsonl_path) {
         Ok(f) => f,
         Err(_) => return false,
     };
 
-    let mut reader = BufReader::new(file);
+    let mut reader = BufReader::new(file.take(HEADER_LIMIT as u64 + 1));
     let mut first_line = String::new();
-    if reader.read_line(&mut first_line).is_err() || first_line.is_empty() {
+    if reader.read_line(&mut first_line).is_err()
+        || first_line.is_empty()
+        || first_line.len() > HEADER_LIMIT
+    {
         return false;
     }
 
@@ -991,6 +995,33 @@ mod tests {
     use crate::daemon::codex_notify::append_event_at;
     use std::fs::File;
     use std::io::Write;
+
+    #[test]
+    fn rollout_identity_rejects_an_oversized_first_line() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("rollout.jsonl");
+        let header = r#"{"type":"session_meta","payload":{"cwd":"/project"}}"#;
+        for newline in ["", "\n"] {
+            fs::write(
+                &path,
+                format!(
+                    "{header}{}{newline}",
+                    " ".repeat(64 * 1024 - header.len() - newline.len())
+                ),
+            )
+            .unwrap();
+            assert!(codex_session_matches_project(&path, "/project"));
+            fs::write(
+                &path,
+                format!(
+                    "{header}{}{newline}",
+                    " ".repeat(64 * 1024 + 1 - header.len() - newline.len())
+                ),
+            )
+            .unwrap();
+            assert!(!codex_session_matches_project(&path, "/project"));
+        }
+    }
 
     #[test]
     fn unresolved_identity_warns_once_per_pid_reason_change_without_paths() {
