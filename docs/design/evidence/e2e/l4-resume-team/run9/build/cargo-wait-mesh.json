@@ -1,0 +1,8 @@
+[
+  {
+    "at": 1789088471.374191,
+    "exit": 0,
+    "count": 1,
+    "output": "3460449 <operator-path-redacted> build --release --bin taurhaus-daemon\n"
+  }
+]
