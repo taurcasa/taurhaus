@@ -4655,6 +4655,7 @@ fn team_daemon_ensures_live_lead_despite_claude_activity_flag() {
     let mut config: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
     config["messaging_format"] = serde_json::json!(2);
+    config["delivery_owner"] = serde_json::json!("team");
     config["members"][0]["isActive"] = serde_json::json!(false);
     config["members"][0]["lastActivityAt"] = serde_json::json!("2026-09-10T12:43:56.975Z");
     config["members"][0]["lastActivityReason"] = serde_json::json!("message_sent");
@@ -6029,7 +6030,12 @@ fn team_owned_inbox_append_does_not_wake_member_executor() {
 }
 
 // Regression: e19ffad0 (e2e lane 6 run 2): self-heal restarted an operator-stopped owner.
-fn assert_owner_self_heal_skip(marker: &str, reason: &str) {
+fn assert_owner_self_heal_skip(
+    marker: Option<&str>,
+    format: u64,
+    owner: Option<&str>,
+    reason: &str,
+) {
     let _guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
     let tmp = TempDir::new().unwrap();
     let log_path = tmp.path().join("events.jsonl");
@@ -6049,10 +6055,24 @@ fn assert_owner_self_heal_skip(marker: &str, reason: &str) {
     })
     .unwrap();
     runtime.set_pane_current_command("%1", Some("claude"));
-    let path = tmp.path().join(team).join("state/delivery").join(marker);
+    let mut config = TeamConfigStore::load(tmp.path(), team).unwrap();
+    config
+        .extra
+        .insert("messaging_format".into(), format.into());
+    if let Some(owner) = owner {
+        config.extra.insert("delivery_owner".into(), owner.into());
+    }
+    TeamConfigStore::save(tmp.path(), team, &config).unwrap();
+    let path = tmp
+        .path()
+        .join(team)
+        .join("state/delivery")
+        .join(marker.unwrap_or("unused"));
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     // Unreadable as JSON still means stopped; never parse or clear Mesh's marker.
-    std::fs::write(&path, "broken").unwrap();
+    if marker.is_some() {
+        std::fs::write(&path, "broken").unwrap();
+    }
     for _ in 0..2 {
         let result = orchestrator.trigger_team_self_heal(team).unwrap();
         assert!(result.member_liveness_reconciled);
@@ -6077,7 +6097,15 @@ fn assert_owner_self_heal_skip(marker: &str, reason: &str) {
             .count(),
         1
     );
-    std::fs::remove_file(path).unwrap();
+    if marker.is_some() {
+        std::fs::remove_file(path).unwrap();
+    }
+    // Simulate Mesh's owner transition; the store preserves Mesh-authored fields.
+    let config_path = tmp.path().join(team).join("config.json");
+    let mut wire: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&config_path).unwrap()).unwrap();
+    wire["delivery_owner"] = "team".into();
+    std::fs::write(config_path, wire.to_string()).unwrap();
     assert!(
         orchestrator
             .trigger_team_self_heal(team)
@@ -6088,10 +6116,27 @@ fn assert_owner_self_heal_skip(marker: &str, reason: &str) {
 
 #[test]
 fn self_heal_honours_owner_stopped_marker() {
-    assert_owner_self_heal_skip("owner-stopped.json", "owner_stopped_by_operator");
+    assert_owner_self_heal_skip(
+        Some("owner-stopped.json"),
+        2,
+        Some("team"),
+        "owner_stopped_by_operator",
+    );
 }
 
 #[test]
 fn self_heal_honours_rollback_handoff() {
-    assert_owner_self_heal_skip("handoff.json", "rollback_pending");
+    assert_owner_self_heal_skip(Some("handoff.json"), 2, Some("team"), "rollback_pending");
+}
+
+#[test]
+fn self_heal_honours_member_owned_delivery() {
+    for (format, owner) in [
+        (2, None),
+        (2, Some("members")),
+        (2, Some("unknown")),
+        (1, Some("members")),
+    ] {
+        assert_owner_self_heal_skip(None, format, owner, "delivery_owned_by_members");
+    }
 }

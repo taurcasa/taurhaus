@@ -18,6 +18,7 @@ use crate::coordination::stores::{MemberRuntimeRecord, MemberRuntimeStore, TeamC
 use super::{CoordinationOrchestrator, RemoveMemberStepResult};
 
 static TEAM_DAEMON_SKIP_EVENTS: OnceLock<Mutex<HashMap<PathBuf, String>>> = OnceLock::new();
+const DELIVERY_OWNED_BY_MEMBERS_REASON: &str = "delivery_owned_by_members";
 const ROLLBACK_PENDING_REASON: &str = "rollback_pending";
 const OWNER_STOPPED_BY_OPERATOR_REASON: &str = "owner_stopped_by_operator";
 const MISSING_LEAD_CREDENTIAL_REASON: &str = "missing_lead_control_credential";
@@ -708,6 +709,13 @@ impl CoordinationOrchestrator {
         }
         if TeamConfigStore::delivery_marker_present(&self.teams_dir, team_name, "handoff.json") {
             return Ok(Some(ROLLBACK_PENDING_REASON));
+        }
+        let config = TeamConfigStore::load(&self.teams_dir, team_name)?;
+        if (config.extra.get("messaging_format") == Some(&Value::from(2))
+            || config.extra.get("delivery_owner").and_then(Value::as_str) == Some("members"))
+            && !TeamConfigStore::team_owns_delivery(&self.teams_dir, team_name)?
+        {
+            return Ok(Some(DELIVERY_OWNED_BY_MEMBERS_REASON));
         }
         self.team_daemon_control_skip_reason(team_name, operator_name)
     }
