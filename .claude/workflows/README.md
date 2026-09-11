@@ -61,6 +61,7 @@ Every script takes the shared args below; `worktree` (or `repo`) is the only har
 | `transport` | managed when `team` is set, otherwise exec | pass `exec` to retain the Codex wrapper even when `team` is set |
 | `effort` | inherit | `low`/`medium`/`high`/`xhigh`/`max`, applied to every agent call and the exec wrapper; managed mesh stages accept through `xhigh` and default to `medium` |
 | `codexModel` | the Codex CLI's own/default managed member | model slug passed to `codex exec` as `-m`, or used to select the managed member; the ledger records what actually ran, never a guess |
+| `codexHome` | the CLI's default home | absolute `CODEX_HOME` directory whose `auth.json` the Codex runner uses (exported on `codex exec` and on every resume); the operator keeps accounts side by side, e.g. `~/.codex-account-b` |
 | `scratch` | `/tmp/taurhaus-workflows` | where the Codex wrapper writes prompts, schemas and logs |
 | `stamp` | — | a short token appended to the scratch file names; the names already carry the checkout and the tag, so pass one only to run the same procedure in the same checkout twice in sequence (a workflow script cannot read the clock itself) |
 | `sessionUrl` | — | the `Claude-Session:` trailer value; omitted when absent |
