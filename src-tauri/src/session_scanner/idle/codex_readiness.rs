@@ -73,6 +73,12 @@ fn idle_prompt(text: &str) -> Option<bool> {
 pub(crate) const IDLE_PANE: &str =
     "› Ask Codex to do anything\n\n  gpt-5.6-luna low · <scratch>/project\n";
 
+/// Bounded tail read for the resume boundary. Real rollouts routinely carry
+/// single rows larger than 64 KiB (tool results), and a tail that lies entirely
+/// inside one row can never reach a pre-launch row; 4 MiB matches the
+/// compaction transcript reader and covered every rollout in the measured corpus.
+const RESUME_TAIL_BYTES: u64 = 4 * 1024 * 1024;
+
 fn no_turn_completed_since(path: Option<&str>, launch: DateTime<Utc>) -> bool {
     use std::io::{Read, Seek, SeekFrom};
     let Some(path) = path else {
@@ -80,11 +86,17 @@ fn no_turn_completed_since(path: Option<&str>, launch: DateTime<Utc>) -> bool {
     };
     let read = || -> Option<bool> {
         let mut file = fs::File::open(path).ok()?;
-        let start = file.metadata().ok()?.len().saturating_sub(65_536);
+        let start = file
+            .metadata()
+            .ok()?
+            .len()
+            .saturating_sub(RESUME_TAIL_BYTES);
         file.seek(SeekFrom::Start(start)).ok()?;
         let mut bytes = Vec::new();
-        file.take(65_537).read_to_end(&mut bytes).ok()?;
-        if bytes.len() > 65_536 {
+        file.take(RESUME_TAIL_BYTES + 1)
+            .read_to_end(&mut bytes)
+            .ok()?;
+        if bytes.len() as u64 > RESUME_TAIL_BYTES {
             return None;
         }
         let mut lines = bytes.split(|b| *b == b'\n');
@@ -319,8 +331,9 @@ mod tests {
     fn resumed_rollout(path: &Path, launch: DateTime<Utc>) {
         use std::io::Write;
         let mut file = fs::File::create(path).unwrap();
-        // A sparse prefix forces readiness to inspect the bounded tail.
-        file.set_len(70_000).unwrap();
+        // A sparse prefix larger than the tail bound forces readiness to read a
+        // truncated tail that starts inside a row.
+        file.set_len(RESUME_TAIL_BYTES + 4_096).unwrap();
         drop(file);
         file = fs::OpenOptions::new().append(true).open(path).unwrap();
         writeln!(file).unwrap();
@@ -417,10 +430,10 @@ mod tests {
         let (pre_turn, prompt) = prompt_before_first_turn(path.to_str(), launch, || {
             idle_prompt(&format!("• Working (1s • esc to interrupt)\n{IDLE_PANE}"))
         });
-        if let Some(observed) = sample(prompt, pre_turn, None, launch, launch) {
-            assert_eq!(observed.state, SessionState::Active);
-            assert_eq!(observed.source, "pane_working");
-        }
+        let observed = sample(prompt, pre_turn, None, launch, launch)
+            .expect("a working pane after resume must be observed");
+        assert_eq!(observed.state, SessionState::Active);
+        assert_eq!(observed.source, "pane_working");
     }
 
     // Regression: 36c5da85 collapsed failed/unrecognized captures into pane_working,
@@ -650,10 +663,26 @@ mod tests {
     fn codex_review_existing_turn_skips_prompt_probe() {
         let tmp = tempfile::tempdir().unwrap();
         let rollout = tmp.path().join("rollout.jsonl");
+        let launch = Utc::now() - chrono::Duration::seconds(5);
+        let completed = (launch + chrono::Duration::seconds(1)).to_rfc3339();
+        fs::write(
+            &rollout,
+            format!(
+                "{{\"timestamp\":\"{completed}\",\"type\":\"event_msg\",\"payload\":{{\"type\":\"task_complete\"}}}}\n"
+            ),
+        )
+        .unwrap();
+        assert_eq!(
+            prompt_before_first_turn(rollout.to_str(), launch, || panic!(
+                "must not capture a pane after a turn"
+            )),
+            (false, None)
+        );
+        // An unparseable row is treated as a possible completion: no probe either.
         fs::write(&rollout, "{\"type\":\"response_item\"}\n").unwrap();
         assert_eq!(
-            prompt_before_first_turn(rollout.to_str(), Utc::now(), || panic!(
-                "must not capture a pane after a turn"
+            prompt_before_first_turn(rollout.to_str(), launch, || panic!(
+                "must not capture a pane after an unreadable row"
             )),
             (false, None)
         );
