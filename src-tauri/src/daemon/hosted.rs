@@ -153,7 +153,9 @@ fn stop_record(
     };
     let Some(host) = record.app_server.as_ref() else {
         hosts.reconcile(registry, team, member)?;
-        stop_tui()?;
+        if let Some(pane) = pane {
+            crate::session_scanner::control::stop_tui_if_present(pane, tool, false)?;
+        }
         let root = registry.resolve(team).map_err(|e| e.to_string())?;
         super::state_writes::mark_member_stopped(&root, team, member, record)?;
         return Ok(());

@@ -419,10 +419,15 @@ pub(crate) fn pane_process_argv(pane: &str) -> Vec<Vec<String>> {
 
 #[cfg(all(feature = "mesh-bridged-backend", target_os = "linux"))]
 pub(crate) fn stop_hosted_tui(pane: &str, tool: CliTool) -> Result<(), String> {
+    stop_tui_if_present(pane, tool, true)
+}
+
+#[cfg(all(feature = "mesh-bridged-backend", target_os = "linux"))]
+pub(crate) fn stop_tui_if_present(pane: &str, tool: CliTool, wait: bool) -> Result<(), String> {
     if !pane_exists_checked(pane)? {
         return Ok(());
     }
-    match stop_session_inner(pane, tool, true) {
+    match stop_session_inner(pane, tool, wait) {
         Err(_) if !pane_exists_checked(pane)? => Ok(()),
         result => result,
     }
@@ -1130,6 +1135,57 @@ mod tests {
                 .output();
             TEST_TMUX_ROOT.with(|root| *root.borrow_mut() = None);
         }
+    }
+
+    #[cfg(all(target_os = "linux", feature = "mesh-bridged-backend"))]
+    #[test]
+    fn member_stop_returns_before_plain_tui_shutdown_finishes() {
+        // Regression: d612491fd used the waiting hosted teardown for ordinary
+        // tmux members, holding the daemon connection for the harness exit budget.
+        use crate::coordination::hosted::tests::{saved, seat};
+        use crate::coordination::hosted::HostedMembers;
+        use crate::coordination::stores::MemberRuntimeStore;
+        use std::time::{Duration, Instant};
+        let scratch = ScratchTmux::new("80", "24");
+        let root = scratch.path().join("teams");
+        let registry = seat(&root);
+        let pane = scratch.run(&["display-message", "-p", "#{pane_id}"]);
+        let ready = root.join("ready");
+        let script = root.join("slow-exit.py");
+        std::fs::write(&script, format!(
+            "import signal,time,pathlib\nsignal.signal(signal.SIGINT,signal.SIG_IGN)\npathlib.Path({:?}).touch()\ntime.sleep(30)\n", ready.to_str().unwrap()
+        )).unwrap();
+        scratch.run(&["send-keys", "-l", &format!("python3 {}", script.display())]);
+        scratch.run(&["send-keys", "Enter"]);
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while !ready.exists() {
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        MemberRuntimeStore::update(&root, "team", "seat", |record| {
+            record.pane_id = Some(pane.clone());
+            record.pane_pid = pane_process_id(&pane);
+            record.pane_start_time = record.pane_pid.and_then(crate::platform::process_start_ticks);
+            record.terminal_contract = 1;
+            record.session_id = Some("saved-session".into());
+        }).unwrap();
+        let roster = std::fs::read(root.join("team/config.json")).unwrap();
+        let started = Instant::now();
+        let response = crate::daemon::handlers::handle_stop_member("stop",
+            &serde_json::json!({"team_name":"team", "member_name":"seat"}),
+            &HostedMembers::default(), &registry);
+        let elapsed = started.elapsed();
+        // Wait for our background teardown before the scratch server is dropped.
+        let deadline = Instant::now() + Duration::from_secs(8);
+        while pane_exists_checked(&pane).unwrap() {
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(response.error.is_none(), "{:?}", response.error);
+        assert!(elapsed < Duration::from_secs(2), "stop held the connection for {elapsed:?}");
+        assert_eq!(saved(&root).health, crate::coordination::domain::HealthState::SessionDead);
+        assert_eq!(saved(&root).session_id.as_deref(), Some("saved-session"));
+        assert_eq!(std::fs::read(root.join("team/config.json")).unwrap(), roster);
     }
 
     #[cfg(all(target_os = "linux", feature = "mesh-bridged-backend"))]
