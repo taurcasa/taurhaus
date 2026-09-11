@@ -383,22 +383,41 @@ fn resolve_terminal_member_with_runtime(
         // Config's derived pane binding survives a missing/stale runtime record.
         // Read the wire field: TeamConfig deliberately drops tmuxPaneId.
         let config_path = root.join(&team).join("config.json");
-        let config = read_to_string_with_retry(&config_path)
-            .or_else(|e| {
-                if e.kind() == std::io::ErrorKind::NotFound {
-                    read_to_string_with_retry(&displaced_path(&config_path))
-                } else {
-                    Err(e)
-                }
-            })
+        let raw = read_to_string_with_retry(&config_path).or_else(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                read_to_string_with_retry(&displaced_path(&config_path))
+            } else {
+                Err(e)
+            }
+        });
+        let config_absent = matches!(&raw, Err(e) if e.kind() == std::io::ErrorKind::NotFound);
+        let config = raw
             .ok()
             .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok());
         if let Some(members) = config.as_ref().and_then(|c| c["members"].as_array()) {
-            uncertain |= members
-                .iter()
-                .any(|m| m["tmuxPaneId"].as_str() == Some(pane));
+            // The config mirror is a save-time projection of the runtime record.
+            // It counts only for a member whose record could not be read: a
+            // readable record that did not claim the pane above is the pane
+            // authority, so a stale mirror must not block that pane. A member
+            // with neither a readable record nor a mirrored pane is not inferred
+            // to own this pane — an old team whose runtime state is gone would
+            // otherwise block every stop under the root.
+            uncertain |= members.iter().any(|m| {
+                m["tmuxPaneId"].as_str() == Some(pane)
+                    && !records
+                        .iter()
+                        .any(|(n, _)| Some(n.as_str()) == m["name"].as_str())
+            });
         } else if let Ok(names) = super::runtime::MemberRuntimeStore::list(&root, &team) {
-            super::runtime::log_runtime_record_skipped(&team, "<inventory>", "config_unreadable");
+            super::runtime::log_runtime_record_skipped(
+                &team,
+                "<inventory>",
+                if config_absent {
+                    "config_absent"
+                } else {
+                    "config_unreadable"
+                },
+            );
             // Without config, an unreadable named member can still own this pane.
             // A half-deleted directory with no member evidence cannot block all stops.
             uncertain |= names
@@ -1358,6 +1377,24 @@ mod tests {
                 1
             );
         }
+        // A stale config mirror is not the pane authority: the readable record
+        // now binds %7, so stopping %1 proceeds unlocked.
+        MemberRuntimeStore::save(
+            tmp.path(),
+            "target",
+            "seat",
+            &MemberRuntimeRecord {
+                health: crate::coordination::domain::HealthState::Healthy,
+                pane_id: Some("%7".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        terminal_write_for_pane_at_root(tmp.path(), "%1", "stop", || {
+            assert!(!taurhaus_lib::platform::terminal_io::active());
+            Ok(())
+        })
+        .unwrap();
         fs::write(tmp.path().join("target/runtime/seat.json"), "{").unwrap();
         let result: Result<(), String> =
             terminal_write_for_pane_at_root(tmp.path(), "%1", "stop", || {
