@@ -1,0 +1,6 @@
+{
+  "step": 5,
+  "outcome": "FAIL",
+  "classification": "taurhaus",
+  "reason": "alpha needs exactly one generation-bound recovery card in native context"
+}

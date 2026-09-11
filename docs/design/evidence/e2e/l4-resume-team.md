@@ -1,6 +1,9 @@
-# IN PROGRESS — latest run 13: rebuilt readiness-fix runtime trial
+# FAIL — latest run 13, step 5: harness recovery-card row predicate
 
-Run13 is executing the six ordered steps. See [Run 13](#run-13).
+Steps 1–4 passed; step 5 stopped on an inherited user-row-only card check;
+step 6 was not run. Alpha resumed with attributed idle and replied. Metered
+spend **$0.006165840**, **12/16 conservative inputs**; teardown found no
+survivors. All three gates exited **0** after teardown. See [Run 13](#run-13).
 
 ## Historical run 2 — hosted process exited before transport readiness
 
@@ -1725,10 +1728,58 @@ change, controller test suite, or offline audit was added.
 | 2. Stop every seat; retain resumable identity | PASS | [Raw outcome](l4-resume-team/run13/step2-outcome.json), [converged alpha record](l4-resume-team/run13/step2-alpha-converged-runtime-record.json), [zero-seat census](l4-resume-team/run13/step2-stop-poll.json). Runtime; spend unchanged. |
 | 3. Accept both stopped-seat backlogs | PASS | [Alpha](l4-resume-team/run13/step3-alpha-backlog.json) and [beta](l4-resume-team/run13/step3-beta-backlog.json): accepted/pending, no presentation, stopped-runtime defer reasons. Runtime; spend unchanged. |
 | 4. Resume the canonical team once | PASS | [Status sequence/report](l4-resume-team/run13/step4-operation.json): lead, alpha and beta resumed; team daemon started; no failed members or owner warning. [Runtime snapshot](l4-resume-team/run13/step4-state.json). |
-| 5. Verify identities, cards and backlog delivery | PENDING | Awaiting live result. |
-| 6. Explicit reads, no replay or member executors | PENDING | Awaiting live result. |
+| 5. Verify identities, cards and backlog delivery | FAIL — harness | [Raw failure](l4-resume-team/run13/step5-outcome.json) preserved; [classification correction](l4-resume-team/run13/step5-adjudication.json). See the bounded explanation below. |
+| 6. Explicit reads, no replay or member executors | NOT RUN | [Raw outcome](l4-resume-team/run13/step6-outcome.json): stopped after step 5; not evaluated. |
 
 The complete sanitized daemon JSONL, raw receipts, captures, journal export and
 turn costs live under [run13/](l4-resume-team/run13/). Outcome JSON files are
 controller-written and remain byte-exact. Independent Opus evidence review is
 the orchestrator's separate stage; this lane has no Opus execution tool.
+
+
+Step 5 stopped on the inherited predicate at `controller.py:465`, which inspects
+only `role=user` recovery-card rows: alpha's generation `[2,0]` card actually
+arrived in `custom_tool_call_output` `ctco_01a08f50-10ad-7543-93ad-28111ea75440`
+at `07:13:04.173Z` in [rollouts.json](l4-resume-team/run13/rollouts.json), a valid
+tool-result delivery under the shared contract. This is a **harness failure**;
+the raw controller's `taurhaus` classification is superseded only by the separate
+adjudication. Before stopping, the controller observed alpha resume session
+`01a08f4e-46a0-7212-ac96-f37e4659e3ab` in the **same rollout**, `mode: resume`,
+no fallback, resumed PID 7616 idle via `launch_ready` at `07:13:02.203Z` and
+`notify` at `07:13:05.701Z`, and both backlog replies. The journal contains
+alpha's seat-origin `consumed_by_read` and beta's one `native_enqueued` receipt.
+The step's remaining assertions and step 6 were not completed; no runtime PASS
+or no-replay certification is inferred, and no controller fix or rerun followed.
+
+[Stop observations](l4-resume-team/run13/step2-observations.json): lead health
+remained `healthy`; `daemon_pid` was null before and after for all three members.
+These are observations, never failures. The earlier initialize-completed despite
+a dead startup process observation remains a separate product follow-up from
+run8; it did not recur here.
+
+[Cost ledger](l4-resume-team/run13/cost-ledger.json): seven completed, metered
+turns plus five conservative start reservations (warm-up, two initial seats,
+two resumed seats), **12/16**. API-equivalent total **$0.006165840**; the ledger's
+all-output-rate bound is **$0.139430400**, both below $0.25. Warm-up had no model
+turn and reserves one input; its unreported startup cost remains unknown, never
+claimed free. The login-only Claude lead took no model turn. Every turn spend:
+
+- Alpha initial recovery `01a08f4e-5bf2-7340-a087-86dbfa2d8bcb`: $0.001422440.
+- Alpha old marker `01a08f4e-80d0-7b40-9aeb-c2c992324733`: $0.001126160.
+- Alpha resumed recovery/backlog `01a08f50-04e1-7702-8478-ad31029a027e`: $0.001279720.
+- Beta initial recovery `01a08f4e-4ffd-7a91-848a-c89b7554349a`: $0.001063640.
+- Beta old marker `01a08f4e-a2ed-7103-ba03-5e6fbcf43a32`: $0.000320360.
+- Beta resumed recovery `01a08f50-0c1f-7570-9170-48b31ff5d363`: $0.000471160.
+- Beta backlog `01a08f50-202a-76f2-93d1-e4de51923c65`: $0.000482360.
+
+[Teardown](l4-resume-team/run13/cleanup.json) completed: zero owned survivors,
+private port closed, scratch root and auth copy removed, Mesh source unchanged.
+The complete sanitized [daemon log](l4-resume-team/run13/taurhaus.log.jsonl) and
+[journal export](l4-resume-team/run13/journal-export.json) are retained. Raw
+runtime capture completed in approximately three minutes, within the 15-minute
+window. Required gates ran only after this teardown: [just check-quick](l4-resume-team/run13/gates/check-quick.json) **0** (2,521 frontend tests), [just lint](l4-resume-team/run13/gates/lint.json) **0**, [just test-contracts](l4-resume-team/run13/gates/test-contracts.json) **0**. No `src-tauri/` diff; the conditional Rust unit gate did not apply.
+
+Deviations: the inherited user-row-only predicate missed valid tool output and
+prevented completion of steps 5–6; independent Opus review remains external.
+No product or Mesh source change, no extra paid run, and no controller test suite
+or offline audit were added.
