@@ -1,0 +1,15 @@
+{
+  "checkout": "/home/mstie/projects/taurhaus-l4-resume-team",
+  "branch": "feat/e2e-l4-resume-team",
+  "taurhaus_commit": "b510d1efd3d785e059c1b0e73f5ad676a8123bce",
+  "required_base": "e1a5591d26995bd4fcad3472e3158223e54ecc02",
+  "ancestor_exit": 0,
+  "mesh_commit": "588e4cf3e440e7fadfe548e4f35fc2034e32e34c",
+  "mesh_rc": "588e4cf3e440e7fadfe548e4f35fc2034e32e34c",
+  "protocol": 27,
+  "model": "gpt-5.6-luna",
+  "effort": "low",
+  "controller_origin": "run12, descended from run4 and attempt9 isolation",
+  "red_first": "Inline generated same-session/same-rollout launch_ready assertion failed before predicate correction (exit 1: alpha rollout was not rebound), then passed (exit 0). No controller test suite or offline audit added.",
+  "review": "Independent Opus evidence lens belongs to the orchestrator; no Opus execution tool is available in this lane."
+}

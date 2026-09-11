@@ -1,0 +1,648 @@
+[
+  {
+    "emittedAtMs": 1789110666734,
+    "method": "remoteControl/status/changed",
+    "params": {
+      "environmentId": null,
+      "serverName": "whocares",
+      "status": "disabled"
+    }
+  },
+  {
+    "emittedAtMs": 1789110669007,
+    "method": "mcpServer/startupStatus/updated",
+    "params": {
+      "error": null,
+      "failureReason": null,
+      "name": "codex_apps",
+      "status": "starting",
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1"
+    }
+  },
+  {
+    "emittedAtMs": 1789110669007,
+    "method": "thread/started",
+    "params": {
+      "thread": {
+        "agentNickname": null,
+        "agentRole": null,
+        "canAcceptDirectInput": true,
+        "cliVersion": "0.153.4",
+        "createdAt": 1789110668,
+        "cwd": "/tmp/th-l4-run13-y3brga1b/project",
+        "ephemeral": false,
+        "extra": null,
+        "forkedFromId": null,
+        "gitInfo": null,
+        "historyMode": "paginated",
+        "id": "01a08f4e-4698-7613-bf47-74bf5abf63b1",
+        "model": "gpt-5.6-luna",
+        "modelProvider": "openai",
+        "name": null,
+        "parentThreadId": null,
+        "path": "/tmp/th-l4-run13-y3brga1b/codex/sessions/2026/09/11/rollout-2026-09-11T09-11-07-01a08f4e-4698-7613-bf47-74bf5abf63b1.jsonl",
+        "preview": "",
+        "projectId": null,
+        "reasoningEffort": "low",
+        "recencyAt": 1789110668,
+        "section": null,
+        "sectionEnteredAt": null,
+        "sessionId": "01a08f4e-4698-7613-bf47-74bf5abf63b1",
+        "source": "vscode",
+        "status": {
+          "type": "idle"
+        },
+        "threadSource": null,
+        "turns": [],
+        "updatedAt": 1789110668
+      }
+    }
+  },
+  {
+    "emittedAtMs": 1789110669817,
+    "method": "thread/status/changed",
+    "params": {
+      "status": {
+        "activeFlags": [],
+        "type": "active"
+      },
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1"
+    }
+  },
+  {
+    "emittedAtMs": 1789110669817,
+    "method": "turn/started",
+    "params": {
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1",
+      "turn": {
+        "completedAt": null,
+        "durationMs": null,
+        "error": null,
+        "id": "01a08f4e-4ffd-7a91-848a-c89b7554349a",
+        "items": [],
+        "itemsView": "notLoaded",
+        "startedAt": 1789110669,
+        "status": "inProgress"
+      }
+    }
+  },
+  {
+    "emittedAtMs": 1789110669907,
+    "method": "mcpServer/startupStatus/updated",
+    "params": {
+      "error": null,
+      "failureReason": null,
+      "name": "codex_apps",
+      "status": "ready",
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1"
+    }
+  },
+  {
+    "emittedAtMs": 1789110670414,
+    "method": "thread/goal/cleared",
+    "params": {
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1"
+    }
+  },
+  {
+    "emittedAtMs": 1789110674314,
+    "method": "remoteControl/status/changed",
+    "params": {
+      "environmentId": null,
+      "serverName": "whocares",
+      "status": "disabled"
+    }
+  },
+  {
+    "emittedAtMs": 1789110674415,
+    "method": "thread/name/updated",
+    "params": {
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1",
+      "threadName": "[taurhaus] recovery_card Identity: b"
+    }
+  },
+  {
+    "emittedAtMs": 1789110674714,
+    "method": "deprecationNotice",
+    "params": {
+      "details": null,
+      "summary": "Full-history hydration is deprecated for paginated threads; use `excludeTurns: true`, then page with `thread/turns/list` and `thread/items/list`."
+    }
+  },
+  {
+    "emittedAtMs": 1789110675115,
+    "method": "thread/goal/cleared",
+    "params": {
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1"
+    }
+  },
+  {
+    "emittedAtMs": 1789110676517,
+    "method": "remoteControl/status/changed",
+    "params": {
+      "environmentId": null,
+      "serverName": "whocares",
+      "status": "disabled"
+    }
+  },
+  {
+    "emittedAtMs": 1789110676618,
+    "method": "deprecationNotice",
+    "params": {
+      "details": null,
+      "summary": "Full-history hydration is deprecated for paginated threads; use `excludeTurns: true`, then page with `thread/turns/list` and `thread/items/list`."
+    }
+  },
+  {
+    "emittedAtMs": 1789110677618,
+    "method": "thread/goal/cleared",
+    "params": {
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1"
+    }
+  },
+  {
+    "emittedAtMs": 1789110677618,
+    "method": "item/completed",
+    "params": {
+      "completedAtMs": 1789110677118,
+      "item": {
+        "content": [],
+        "id": "rs_0f3f9cbdcebabb40016aa3a98e8ac887d294dfa18d4b4d8d0f",
+        "summary": [],
+        "type": "reasoning"
+      },
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1",
+      "turnId": "01a08f4e-4ffd-7a91-848a-c89b7554349a"
+    }
+  },
+  {
+    "emittedAtMs": 1789110677718,
+    "method": "thread/started",
+    "params": {
+      "thread": {
+        "agentNickname": null,
+        "agentRole": null,
+        "canAcceptDirectInput": true,
+        "cliVersion": "0.153.4",
+        "createdAt": 1789110677,
+        "cwd": "/tmp/th-l4-run13-y3brga1b/project",
+        "ephemeral": true,
+        "extra": null,
+        "forkedFromId": null,
+        "gitInfo": null,
+        "historyMode": "legacy",
+        "id": "01a08f4e-6904-7e50-8469-c68232c13b47",
+        "model": "gpt-5.6-luna",
+        "modelProvider": "openai",
+        "name": null,
+        "parentThreadId": null,
+        "path": null,
+        "preview": "",
+        "projectId": null,
+        "reasoningEffort": "low",
+        "recencyAt": 1789110677,
+        "section": null,
+        "sectionEnteredAt": null,
+        "sessionId": "01a08f4e-6904-7e50-8469-c68232c13b47",
+        "source": "vscode",
+        "status": {
+          "type": "idle"
+        },
+        "threadSource": "system",
+        "turns": [],
+        "updatedAt": 1789110677
+      }
+    }
+  },
+  {
+    "emittedAtMs": 1789110678219,
+    "method": "item/started",
+    "params": {
+      "item": {
+        "delivery": null,
+        "id": "msg_0f3f9cbdcebabb40016aa3a98f0b6487d2966c0856abe98e48",
+        "memoryCitation": null,
+        "phase": "final_answer",
+        "questions": null,
+        "text": "",
+        "type": "agentMessage"
+      },
+      "startedAtMs": 1789110678019,
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1",
+      "turnId": "01a08f4e-4ffd-7a91-848a-c89b7554349a"
+    }
+  },
+  {
+    "emittedAtMs": 1789110678319,
+    "method": "thread/status/changed",
+    "params": {
+      "status": {
+        "activeFlags": [],
+        "type": "active"
+      },
+      "threadId": "01a08f4e-6904-7e50-8469-c68232c13b47"
+    }
+  },
+  {
+    "emittedAtMs": 1789110678321,
+    "method": "item/completed",
+    "params": {
+      "completedAtMs": 1789110678223,
+      "item": {
+        "delivery": null,
+        "id": "msg_0f3f9cbdcebabb40016aa3a98f0b6487d2966c0856abe98e48",
+        "memoryCitation": null,
+        "phase": "final_answer",
+        "questions": null,
+        "text": "Unassigned state preserved. Team lead, please provide the assignment identity, release signal, and required context.",
+        "type": "agentMessage"
+      },
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1",
+      "turnId": "01a08f4e-4ffd-7a91-848a-c89b7554349a"
+    }
+  },
+  {
+    "emittedAtMs": 1789110678621,
+    "method": "thread/tokenUsage/updated",
+    "params": {
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1",
+      "tokenUsage": {
+        "last": {
+          "cacheWriteInputTokens": 0,
+          "cachedInputTokens": 6912,
+          "inputTokens": 11221,
+          "outputTokens": 53,
+          "reasoningOutputTokens": 26,
+          "totalTokens": 11274
+        },
+        "modelContextWindow": 31129,
+        "total": {
+          "cacheWriteInputTokens": 0,
+          "cachedInputTokens": 6912,
+          "inputTokens": 11221,
+          "outputTokens": 53,
+          "reasoningOutputTokens": 26,
+          "totalTokens": 11274
+        }
+      },
+      "turnId": "01a08f4e-4ffd-7a91-848a-c89b7554349a"
+    }
+  },
+  {
+    "emittedAtMs": 1789110679221,
+    "method": "thread/status/changed",
+    "params": {
+      "status": {
+        "type": "idle"
+      },
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1"
+    }
+  },
+  {
+    "emittedAtMs": 1789110679221,
+    "method": "turn/completed",
+    "params": {
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1",
+      "turn": {
+        "completedAt": 1789110678,
+        "durationMs": 9508,
+        "error": null,
+        "id": "01a08f4e-4ffd-7a91-848a-c89b7554349a",
+        "items": [
+          {
+            "delivery": null,
+            "id": "msg_0f3f9cbdcebabb40016aa3a98f0b6487d2966c0856abe98e48",
+            "memoryCitation": null,
+            "phase": "final_answer",
+            "questions": null,
+            "text": "Unassigned state preserved. Team lead, please provide the assignment identity, release signal, and required context.",
+            "type": "agentMessage"
+          }
+        ],
+        "itemsView": "summary",
+        "startedAt": 1789110669,
+        "status": "completed"
+      }
+    }
+  },
+  {
+    "emittedAtMs": 1789110679521,
+    "method": "remoteControl/status/changed",
+    "params": {
+      "environmentId": null,
+      "serverName": "whocares",
+      "status": "disabled"
+    }
+  },
+  {
+    "emittedAtMs": 1789110679722,
+    "method": "deprecationNotice",
+    "params": {
+      "details": null,
+      "summary": "Full-history hydration is deprecated for paginated threads; use `excludeTurns: true`, then page with `thread/turns/list` and `thread/items/list`."
+    }
+  },
+  {
+    "emittedAtMs": 1789110680126,
+    "method": "thread/tokenUsage/updated",
+    "params": {
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1",
+      "tokenUsage": {
+        "last": {
+          "cacheWriteInputTokens": 0,
+          "cachedInputTokens": 6912,
+          "inputTokens": 11221,
+          "outputTokens": 53,
+          "reasoningOutputTokens": 26,
+          "totalTokens": 11274
+        },
+        "modelContextWindow": 31129,
+        "total": {
+          "cacheWriteInputTokens": 0,
+          "cachedInputTokens": 6912,
+          "inputTokens": 11221,
+          "outputTokens": 53,
+          "reasoningOutputTokens": 26,
+          "totalTokens": 11274
+        }
+      },
+      "turnId": "01a08f4e-4ffd-7a91-848a-c89b7554349a"
+    }
+  },
+  {
+    "emittedAtMs": 1789110680126,
+    "method": "thread/goal/cleared",
+    "params": {
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1"
+    }
+  },
+  {
+    "emittedAtMs": 1789110683229,
+    "method": "thread/status/changed",
+    "params": {
+      "status": {
+        "type": "idle"
+      },
+      "threadId": "01a08f4e-6904-7e50-8469-c68232c13b47"
+    }
+  },
+  {
+    "emittedAtMs": 1789110683726,
+    "method": "thread/name/updated",
+    "params": {
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1",
+      "threadName": "Recover taurhaus card"
+    }
+  },
+  {
+    "emittedAtMs": 1789110690638,
+    "method": "thread/status/changed",
+    "params": {
+      "status": {
+        "activeFlags": [],
+        "type": "active"
+      },
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1"
+    }
+  },
+  {
+    "emittedAtMs": 1789110690638,
+    "method": "turn/started",
+    "params": {
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1",
+      "turn": {
+        "completedAt": null,
+        "durationMs": null,
+        "error": null,
+        "id": "01a08f4e-a2ed-7103-ba03-5e6fbcf43a32",
+        "items": [],
+        "itemsView": "notLoaded",
+        "startedAt": 1789110690,
+        "status": "inProgress"
+      }
+    }
+  },
+  {
+    "emittedAtMs": 1789110691048,
+    "method": "item/started",
+    "params": {
+      "item": {
+        "clientId": null,
+        "content": [
+          {
+            "text": "[mesh message data] {\"assignment\":null,\"author\":\"lead\",\"body\":\"ACTION REQUIRED: Reply exactly L4_old_beta_da975a. No tools are needed for this marker.\",\"delivery_id\":\"cd3ada69-f164-4cad-820e-0688b318a22f\",\"expectation\":null,\"message_id\":\"4d257a85-5f7b-4c18-8f87-a14a89de4901\",\"metadata\":{},\"task\":null}\n",
+            "text_elements": [],
+            "type": "text"
+          }
+        ],
+        "id": "01a08f4e-a4e8-7e11-bd14-8d3e920d2e08",
+        "type": "userMessage"
+      },
+      "startedAtMs": 1789110691048,
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1",
+      "turnId": "01a08f4e-a2ed-7103-ba03-5e6fbcf43a32"
+    }
+  },
+  {
+    "emittedAtMs": 1789110691138,
+    "method": "item/completed",
+    "params": {
+      "completedAtMs": 1789110691048,
+      "item": {
+        "clientId": null,
+        "content": [
+          {
+            "text": "[mesh message data] {\"assignment\":null,\"author\":\"lead\",\"body\":\"ACTION REQUIRED: Reply exactly L4_old_beta_da975a. No tools are needed for this marker.\",\"delivery_id\":\"cd3ada69-f164-4cad-820e-0688b318a22f\",\"expectation\":null,\"message_id\":\"4d257a85-5f7b-4c18-8f87-a14a89de4901\",\"metadata\":{},\"task\":null}\n",
+            "text_elements": [],
+            "type": "text"
+          }
+        ],
+        "id": "01a08f4e-a4e8-7e11-bd14-8d3e920d2e08",
+        "type": "userMessage"
+      },
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1",
+      "turnId": "01a08f4e-a2ed-7103-ba03-5e6fbcf43a32"
+    }
+  },
+  {
+    "emittedAtMs": 1789110692607,
+    "method": "item/started",
+    "params": {
+      "item": {
+        "content": [],
+        "id": "rs_0f3f9cbdcebabb40016aa3a99ebb5887d2a802ad05b40fddfc",
+        "summary": [],
+        "type": "reasoning"
+      },
+      "startedAtMs": 1789110692607,
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1",
+      "turnId": "01a08f4e-a2ed-7103-ba03-5e6fbcf43a32"
+    }
+  },
+  {
+    "emittedAtMs": 1789110692821,
+    "method": "item/completed",
+    "params": {
+      "completedAtMs": 1789110692818,
+      "item": {
+        "content": [],
+        "id": "rs_0f3f9cbdcebabb40016aa3a99ebb5887d2a802ad05b40fddfc",
+        "summary": [],
+        "type": "reasoning"
+      },
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1",
+      "turnId": "01a08f4e-a2ed-7103-ba03-5e6fbcf43a32"
+    }
+  },
+  {
+    "emittedAtMs": 1789110692823,
+    "method": "item/started",
+    "params": {
+      "item": {
+        "delivery": null,
+        "id": "msg_0f3f9cbdcebabb40016aa3a99eecb087d2b5e611077ffaa64c",
+        "memoryCitation": null,
+        "phase": "final_answer",
+        "questions": null,
+        "text": "",
+        "type": "agentMessage"
+      },
+      "startedAtMs": 1789110692822,
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1",
+      "turnId": "01a08f4e-a2ed-7103-ba03-5e6fbcf43a32"
+    }
+  },
+  {
+    "emittedAtMs": 1789110693007,
+    "method": "item/completed",
+    "params": {
+      "completedAtMs": 1789110693004,
+      "item": {
+        "delivery": null,
+        "id": "msg_0f3f9cbdcebabb40016aa3a99eecb087d2b5e611077ffaa64c",
+        "memoryCitation": null,
+        "phase": "final_answer",
+        "questions": null,
+        "text": "L4_old_beta_da975a",
+        "type": "agentMessage"
+      },
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1",
+      "turnId": "01a08f4e-a2ed-7103-ba03-5e6fbcf43a32"
+    }
+  },
+  {
+    "emittedAtMs": 1789110693141,
+    "method": "thread/tokenUsage/updated",
+    "params": {
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1",
+      "tokenUsage": {
+        "last": {
+          "cacheWriteInputTokens": 0,
+          "cachedInputTokens": 11008,
+          "inputTokens": 11383,
+          "outputTokens": 21,
+          "reasoningOutputTokens": 8,
+          "totalTokens": 11404
+        },
+        "modelContextWindow": 31129,
+        "total": {
+          "cacheWriteInputTokens": 0,
+          "cachedInputTokens": 17920,
+          "inputTokens": 22604,
+          "outputTokens": 74,
+          "reasoningOutputTokens": 34,
+          "totalTokens": 22678
+        }
+      },
+      "turnId": "01a08f4e-a2ed-7103-ba03-5e6fbcf43a32"
+    }
+  },
+  {
+    "emittedAtMs": 1789110693339,
+    "method": "thread/status/changed",
+    "params": {
+      "status": {
+        "type": "idle"
+      },
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1"
+    }
+  },
+  {
+    "emittedAtMs": 1789110693339,
+    "method": "turn/completed",
+    "params": {
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1",
+      "turn": {
+        "completedAt": 1789110693,
+        "durationMs": 2697,
+        "error": null,
+        "id": "01a08f4e-a2ed-7103-ba03-5e6fbcf43a32",
+        "items": [
+          {
+            "delivery": null,
+            "id": "msg_0f3f9cbdcebabb40016aa3a99eecb087d2b5e611077ffaa64c",
+            "memoryCitation": null,
+            "phase": "final_answer",
+            "questions": null,
+            "text": "L4_old_beta_da975a",
+            "type": "agentMessage"
+          }
+        ],
+        "itemsView": "summary",
+        "startedAt": 1789110690,
+        "status": "completed"
+      }
+    }
+  },
+  {
+    "emittedAtMs": 1789110693726,
+    "method": "remoteControl/status/changed",
+    "params": {
+      "environmentId": null,
+      "serverName": "whocares",
+      "status": "disabled"
+    }
+  },
+  {
+    "emittedAtMs": 1789110693739,
+    "method": "deprecationNotice",
+    "params": {
+      "details": null,
+      "summary": "Full-history hydration is deprecated for paginated threads; use `excludeTurns: true`, then page with `thread/turns/list` and `thread/items/list`."
+    }
+  },
+  {
+    "emittedAtMs": 1789110693842,
+    "method": "thread/tokenUsage/updated",
+    "params": {
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1",
+      "tokenUsage": {
+        "last": {
+          "cacheWriteInputTokens": 0,
+          "cachedInputTokens": 11008,
+          "inputTokens": 11383,
+          "outputTokens": 21,
+          "reasoningOutputTokens": 8,
+          "totalTokens": 11404
+        },
+        "modelContextWindow": 31129,
+        "total": {
+          "cacheWriteInputTokens": 0,
+          "cachedInputTokens": 17920,
+          "inputTokens": 22604,
+          "outputTokens": 74,
+          "reasoningOutputTokens": 34,
+          "totalTokens": 22678
+        }
+      },
+      "turnId": "01a08f4e-a2ed-7103-ba03-5e6fbcf43a32"
+    }
+  },
+  {
+    "emittedAtMs": 1789110693843,
+    "method": "thread/goal/cleared",
+    "params": {
+      "threadId": "01a08f4e-4698-7613-bf47-74bf5abf63b1"
+    }
+  }
+]

@@ -1,0 +1,23 @@
+{
+  "activity_attribution": "attributed",
+  "activity_confidence": "high",
+  "args": "codex --sandbox danger-full-access --ask-for-approval never --dangerously-bypass-hook-trust -c notify=[\"/tmp/th-l4-run13-y3brga1b/home/.local/bin/taurhaus-daemon\",\"codex-notify\"] -m gpt-5.6-luna -c model_reasoning_effort=\"low\"",
+  "cli_tool": "codex",
+  "group_id": "l4-resume",
+  "group_kind": "mesh_team",
+  "group_label": "l4-resume",
+  "jsonl_path": "/tmp/th-l4-run13-y3brga1b/codex/sessions/2026/09/11/rollout-2026-09-11T09-11-06-01a08f4e-46a0-7212-ac96-f37e4659e3ab.jsonl",
+  "last_output_age_secs": 5,
+  "member_name": "alpha",
+  "pid": 1771,
+  "project_path": "/tmp/th-l4-run13-y3brga1b/project",
+  "project_unattributed_active": false,
+  "recent_io": false,
+  "session_id": "01a08f4e-46a0-7212-ac96-f37e4659e3ab",
+  "state": "idle",
+  "tmux_pane": "%4",
+  "tmux_session": "taurhaus",
+  "tmux_window": "2",
+  "tmux_window_name": "project",
+  "tty": "/dev/pts/2"
+}

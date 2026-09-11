@@ -1,12 +1,6 @@
-# FAIL — latest run 12, step 5: resumed alpha backlog blocked by unattributed activity
+# IN PROGRESS — latest run 13: rebuilt readiness-fix runtime trial
 
-Steps 1–4 passed, including the whole-team stop and one successful `resume_team`.
-Step 5 failed: alpha resumed its recorded session but stayed unattributed; Mesh
-reported `pending: activity not freshly idle`. Beta received its backlog once.
-Step 6 was not run. Classification: **Taurhaus product failure**; raw outcomes
-remain byte-exact. Metered spend **$0.008163800**, **11/16 inputs**. Teardown found
-zero survivors; all three gates exited **0**. See [Run 12](#run-12).
-Independent Opus evidence review remains the orchestrator's separate stage.
+Run13 is executing the six ordered steps. See [Run 13](#run-13).
 
 ## Historical run 2 — hosted process exited before transport readiness
 
@@ -1711,3 +1705,30 @@ required. No full gate, install, release, Mesh commit or other-checkout mutation
 - [Independent Opus review](l4-resume-team/run12/review-availability.json) is
   unavailable in this implementer session (no Opus model or Workflow execution
   tool); it remains the orchestrator's separate review stage. No review is claimed.
+
+
+## Run 13
+
+Run13 uses the assigned checkout at `b510d1efd` (required `e1a5591d` ancestry
+verified), the rebuilt checkout-local daemon, and rebuilt Mesh RC `588e4cf`.
+[Provenance](l4-resume-team/run13/provenance.json) records the exact commits;
+[build digests](l4-resume-team/run13/build/binaries.json) identify the binaries.
+The controller descends from run4/attempt9 through run12. Its only identity
+correction accepts the same session ID and either rollout path, with attributed
+`launch_ready` or `notify` idle. An inline generated check first exited 1 with
+`alpha rollout was not rebound`, then exited 0 after that correction. No product
+change, controller test suite, or offline audit was added.
+
+| Step | Outcome | Runtime evidence / classification |
+|---|---|---|
+| 1. Initialize and exchange/read both markers | PASS | [Raw outcome](l4-resume-team/run13/step1-outcome.json), [ready identity](l4-resume-team/run13/step1-ready-session.json), both transport receipts and explicit reads in [state/journal](l4-resume-team/run13/step1-state.json). Runtime; $0.003932600, 7/16 conservative inputs. |
+| 2. Stop every seat; retain resumable identity | PENDING | Awaiting live result. |
+| 3. Accept both stopped-seat backlogs | PENDING | Awaiting live result. |
+| 4. Resume the canonical team once | PENDING | Awaiting live result. |
+| 5. Verify identities, cards and backlog delivery | PENDING | Awaiting live result. |
+| 6. Explicit reads, no replay or member executors | PENDING | Awaiting live result. |
+
+The complete sanitized daemon JSONL, raw receipts, captures, journal export and
+turn costs live under [run13/](l4-resume-team/run13/). Outcome JSON files are
+controller-written and remain byte-exact. Independent Opus evidence review is
+the orchestrator's separate stage; this lane has no Opus execution tool.
