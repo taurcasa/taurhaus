@@ -1143,6 +1143,9 @@ mod tests {
     #[cfg(all(target_os = "linux", feature = "mesh-bridged-backend"))]
     hosted_stop_cases! {
         hosted_stop_session_reaps_host_when_tui_already_gone => "gone",
+        // Regression: e4de06f9b, member-stop lane finding 3: a detached TUI must not strand its host.
+        hosted_stop_session_reaps_host_after_attached_pane_closed => "detached",
+        hosted_stop_session_reaps_host_after_tmux_server_closed => "server_gone",
         hosted_stop_session_reaps_attached_host => "pane",
         // Regression: 732d0029 let a stale non-hosted record hide a live hosted pane.
         hosted_stop_session_stale_lead_collision_reaps_both => "collision",
@@ -1184,7 +1187,15 @@ mod tests {
         }
         if matches!(
             mode,
-            "pane" | "stale" | "busy" | "released" | "previous" | "collision" | "stale_collision"
+            "pane"
+                | "stale"
+                | "busy"
+                | "released"
+                | "previous"
+                | "collision"
+                | "stale_collision"
+                | "detached"
+                | "server_gone"
         ) {
             use crate::coordination::runtime::{RecordingCoordinationRuntime, RuntimeCall};
             let runtime = RecordingCoordinationRuntime::default();
@@ -1285,6 +1296,12 @@ mod tests {
                 Duration::from_millis(if mode == "busy" { 5000 } else { 1000 }),
             )
         });
+        if mode == "detached" {
+            scratch.run(&["new-window", "-d", "/bin/sh"]);
+            scratch.run(&["kill-pane", "-t", &pane]);
+        } else if mode == "server_gone" {
+            scratch.run(&["kill-server"]);
+        }
         let response = crate::daemon::handlers::handle_stop_session(
             "stop",
             &serde_json::json!({"tmux_pane":pane, "cli_tool":"codex"}),
