@@ -10169,3 +10169,56 @@ fn hosted_add_requires_target_team_canonical_messaging() {
         assert_eq!(TeamConfigStore::load(tmp.path(), "team").unwrap(), config);
     }
 }
+
+#[test]
+fn initialize_pipeline_seeds_each_project_standard() {
+    // Regression: d662df09e roles referenced the standard without seeding projects.
+    let tmp = TempDir::new().unwrap();
+    let lead_project = tmp.path().join("lead-project");
+    let agent_project = tmp.path().join("agent-project");
+    let bare_project = tmp.path().join("bare-project");
+    fs::create_dir_all(lead_project.join("docs")).unwrap();
+    fs::create_dir_all(agent_project.join("docs")).unwrap();
+    fs::create_dir_all(&bare_project).unwrap();
+    let mut orchestrator = new_orchestrator(
+        &tmp,
+        Arc::new(FakeBackend::default()),
+        Arc::new(RecordingCoordinationRuntime::default()),
+    );
+    let report = orchestrator
+        .initialize_team(&InitializeTeamRequest {
+            messaging: None,
+            team_name: "standard-seed".into(),
+            team_description: None,
+            lead_mode: LeadMode::LaunchNew,
+            lead: setup_config(
+                "lead",
+                "codex",
+                "gpt-6-astra",
+                lead_project.to_str().unwrap(),
+            ),
+            agents: vec![
+                setup_config(
+                    "worker",
+                    "codex",
+                    "gpt-6-astra",
+                    agent_project.to_str().unwrap(),
+                ),
+                setup_config(
+                    "peer",
+                    "codex",
+                    "gpt-6-astra",
+                    bare_project.to_str().unwrap(),
+                ),
+            ],
+        })
+        .unwrap();
+    assert_eq!(report.failed_step, None, "{report:?}");
+    for project in [lead_project, agent_project] {
+        assert_eq!(
+            fs::read_to_string(project.join("docs/team-delivery-standard.md")).unwrap(),
+            include_str!("../../../../docs/team-delivery-standard.md")
+        );
+    }
+    assert!(!bare_project.join("docs").exists());
+}

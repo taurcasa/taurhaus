@@ -673,6 +673,7 @@ impl CoordinationOrchestrator {
         }
 
         for member in members {
+            seed_project_delivery_standard(&member.project_path)?;
             let seed = crate::coordination::stores::MemberRuntimeRecord {
                 schema_version: 3,
                 member_name: member.name.clone(),
@@ -944,5 +945,113 @@ impl Drop for TemporaryCanonicalPolicy {
                 tracing::warn!(%error, "failed to remove canonical policy file");
             }
         }
+    }
+}
+
+/// Embed at build time: the Windows app and WSL daemon need no source checkout.
+fn seed_project_delivery_standard(project: &std::path::Path) -> std::io::Result<()> {
+    use std::io::Write;
+
+    let docs = project.join("docs");
+    let mut fields = serde_json::Map::new();
+    fields.insert("project_path".into(), serde_json::json!(project));
+    if !docs.is_dir() {
+        fields.insert("reason".into(), serde_json::json!("no_docs_directory"));
+        tracing::debug!(project = %project.display(), "project delivery standard skipped: no docs directory");
+        taurhaus_lib::logging::emit_global(
+            "debug",
+            "coordination",
+            "coordination.project.standard_skipped",
+            None,
+            fields,
+        );
+        return Ok(());
+    }
+    let mut file = match std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(docs.join("team-delivery-standard.md"))
+    {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => return Ok(()),
+        Err(error) => return Err(error),
+    };
+    file.write_all(include_str!("../../../../docs/team-delivery-standard.md").as_bytes())?;
+    tracing::info!(project = %project.display(), "project delivery standard seeded");
+    taurhaus_lib::logging::emit_global(
+        "info",
+        "coordination",
+        "coordination.project.standard_seeded",
+        None,
+        fields,
+    );
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use taurhaus_lib::logging::{install_global_sink, LogFileState};
+
+    #[test]
+    fn initialize_seeds_standard_once_and_preserves_existing_content() {
+        // Regression: d662df09e roles referenced a standard absent in new projects.
+        let _guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+        let temp = tempfile::tempdir().unwrap();
+        let log_path = temp.path().join("events.jsonl");
+        let sink = LogFileState::new(log_path.clone()).unwrap();
+        install_global_sink(&sink);
+        std::fs::create_dir(temp.path().join("docs")).unwrap();
+        seed_project_delivery_standard(temp.path()).unwrap();
+        let standard = temp.path().join("docs/team-delivery-standard.md");
+        assert_eq!(
+            std::fs::read_to_string(&standard).unwrap(),
+            include_str!("../../../../docs/team-delivery-standard.md")
+        );
+        seed_project_delivery_standard(temp.path()).unwrap();
+        std::fs::write(&standard, "Project-owned standard\n").unwrap();
+        seed_project_delivery_standard(temp.path()).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(standard).unwrap(),
+            "Project-owned standard\n"
+        );
+        sink.flush_for_test().unwrap();
+        let rows: Vec<serde_json::Value> = std::fs::read_to_string(log_path)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        let seeded: Vec<_> = rows
+            .iter()
+            .filter(|row| row["event"] == "coordination.project.standard_seeded")
+            .collect();
+        assert_eq!(seeded.len(), 1);
+        assert_eq!(seeded[0]["level"], "INFO");
+    }
+
+    #[test]
+    fn initialize_skips_standard_without_docs() {
+        let _guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+        let temp = tempfile::tempdir().unwrap();
+        let log_path = temp.path().join("events.jsonl");
+        let sink = LogFileState::new(log_path.clone()).unwrap();
+        install_global_sink(&sink);
+        seed_project_delivery_standard(temp.path()).unwrap();
+        assert!(!temp.path().join("docs").exists());
+        sink.flush_for_test().unwrap();
+        let rows: Vec<serde_json::Value> = std::fs::read_to_string(log_path)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        let skipped = rows
+            .iter()
+            .find(|row| row["event"] == "coordination.project.standard_skipped")
+            .unwrap();
+        assert_eq!(skipped["level"], "DEBUG");
+        assert_eq!(skipped["reason"], "no_docs_directory");
+        assert!(!rows
+            .iter()
+            .any(|row| row["event"] == "coordination.project.standard_seeded"));
     }
 }
