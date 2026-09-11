@@ -375,7 +375,7 @@ class Trial:
         source=credential_source(source,authorized_source=AUTHORIZED_AUTH_SOURCE)
         assert not list((self.root/'codex').iterdir())
         shutil.copyfile(source,self.root/'codex/auth.json');(self.root/'codex/auth.json').chmod(0o600)
-        self.log('auth_copy',copied_files=['auth.json'],mode='0600',initial_codex_entries=['auth.json'],source_label=source.parent.name+'/'+source.name,source_sha256=hashlib.sha256((self.root/'codex/auth.json').read_bytes()).hexdigest())
+        self.log('auth_copy',copied_files=['auth.json'],mode='0600',initial_codex_entries=['auth.json'],source_label=source.parent.name+'/'+source.name)
         package=Path(shutil.which('codex')).resolve().parents[1]
         native=next(package.glob('node_modules/@openai/codex-linux-x64/vendor/*/bin/codex'))
         for name,path in [*native_runtime(native),('claude',Path(shutil.which('claude')).resolve()),('mesh',CHECKOUT.parent/'mesh-l6/target/debug/mesh'),('taurhaus-daemon',CHECKOUT/'src-tauri/target/release/taurhaus-daemon')]:
@@ -636,7 +636,7 @@ class Trial:
         report=json.loads(report_path.read_text())
         verified=hashlib.sha256(report_path.read_bytes()).hexdigest()==self.config().get('messaging_downgrade_sha256')
         authority=json.loads((self.team/'state/messaging-authority.json').read_text())
-        format_boundary(self.config(),authority,self.format_history,self.journals(),verified)
+        format_boundary(self.config(),authority,self.format_history,self.journals(),verified,expected_legacy_format=0)
         after=self.projection(self.bid)
         assert after and after.get('message_id')==self.bid,'B logical identity lost'
         assert after['read']==self.read_before,'independent B read changed'

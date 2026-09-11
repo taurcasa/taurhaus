@@ -1,5 +1,5 @@
 {"at": 1789100105.6409845, "kind": "candidate_preflight", "product_commit": "33443fe79b8e835a69ef3edf2bece38a9f75646a", "checkout_tip": "50a36d848858294d9c7b87060aee0bece411b21c", "product_diff": "", "mesh_commit": "3015cb0fda5328d1f8c793b528275e6205683208", "mesh_diff": "", "flush_tolerance_count": 2, "protocol": 27}
-{"at": 1789100105.642302, "kind": "auth_copy", "copied_files": ["auth.json"], "mode": "0600", "initial_codex_entries": ["auth.json"], "source_label": ".codex-account-b/auth.json", "source_sha256": "62ac028feba6bc825edbcb021635fc60b6a75d5f385446dc63439182bd5020bd"}
+{"at": 1789100105.642302, "kind": "auth_copy", "copied_files": ["auth.json"], "mode": "0600", "initial_codex_entries": ["auth.json"], "source_label": ".codex-account-b/auth.json"}
 {"at": 1789100105.9059281, "kind": "binary", "name": "codex", "sha256": "56ef98ab4032d317ab26e9b5e5a175650717351edb16ed9cde0cb6d1734d62da"}
 {"at": 1789100105.9724908, "kind": "binary", "name": "codex-code-mode-host", "sha256": "3e85d67471825f73d02ff5f7e047ca1f6ca8caa3f59e4c6e8d9ca6ca7302cb45"}
 {"at": 1789100106.1940856, "kind": "binary", "name": "claude", "sha256": "0399c793ff571d5946ef923d80b4f330d05ac4b6842a6b0775468f5d389403c0"}

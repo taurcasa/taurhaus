@@ -1,6 +1,7 @@
 {
   "step": 3,
   "outcome": "FAIL",
-  "classification": "mesh",
-  "reason": "required resulting format 1 not observed"
+  "classification": "harness",
+  "reason": "required resulting format 1 not observed",
+  "review_correction": "The recorded assertion inherited run2 format 1; the binding third-run ruling imposes no format-1 requirement. Runtime was not re-executed; steps 4-6 remain NOT RUN."
 }

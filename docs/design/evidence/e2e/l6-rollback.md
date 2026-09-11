@@ -1,18 +1,21 @@
-# FAIL — L6 run3 stopped at step 3: Mesh downgrade publishes format 0 and member ownership before the required handoff
+# INCOMPLETE — L6 run3 stopped at step 3 on an inherited harness predicate
 
 ## Run3 result (2026-09-11)
 
-**Runtime FAIL, classified as a Mesh contract mismatch against the binding run3 ruling.**
+**Recorded runtime FAIL at step 3, classified as a harness-predicate stop.**
 The lead successfully stopped the canonical owner and downgraded with B pending.
 The next assertion failed: `required resulting format 1 not observed`.
-Mesh `3015cb0` publishes `messaging_format: 0` and `delivery_owner: members` inside
-its downgrade operation. The ruling requires format 1 followed by a separate
-ownership handoff. This is an observed disagreement between the prescribed route
-and the RC implementation, not a claim that legacy data was lost or corrupted.
-No product change or second paid attempt was made.
+That expectation came from the superseded **run2** ruling and its helper, imported
+unchanged into run3; the binding **third-run** ruling imposes no format-1 value.
+Mesh `3015cb0` publishes the documented legacy `messaging_format: 0` and
+`delivery_owner: members` during downgrade. This trial did not measure the
+subsequent ownership command, marker removal, fresh C delivery or full reconciliation.
+The review correction takes the explicitly offered **no-rerun** option: preserve
+this trial, correct its classification, and keep steps 4–6 unmeasured. No product
+change or additional paid attempt was made.
 
-The controller exited **1** after **70.10 seconds**. Steps 4–6 were not run, as the
-spec requires stopping on the first failed step. Mandatory teardown passed.
+The controller exited **1** after **70.10 seconds**. Steps 4–6 were not run because the
+controller treated its inherited assertion as a failed step. Mandatory teardown passed.
 All required gates subsequently exited **0**. The independent Opus lens is
 **unavailable** in this session; no full workflow PASS or release approval is claimed.
 
@@ -20,9 +23,9 @@ All required gates subsequently exited **0**. The independent Opus lens is
 | --- | --- | --- |
 | 1. Initialize; deliver/read A; observe B pending during ordinary work | **PASS** | S-runtime. Production canonical initialization, attributed activity, one A submission/read/reply, B accepted with no begun transport and scheduler opportunity. [Pending boundary](l6-rollback/run3/run/step1-pending-boundary.json). |
 | 2. Lead stops owner, waits for exit/marker, downgrades with B pending | **PASS, operation only** | S-runtime. Stop exit 0; owner exits, operator marker exists; downgrade exit 0; B is projected under its original logical ID with disposition `pending`, `read: false`. This does not assert the required resulting format/ownership boundary. [Commands and report](l6-rollback/run3/run/step2-command.json). |
-| 3. Settle; retry once if temporarily refused; verify committed format boundary | **FAIL** | Mesh contract mismatch. No refusal or retry occurred. Ordinary work settled with attributed idle; actual format is 0 instead of required 1. Config also already says `members`. [Outcome](l6-rollback/run3/run/step3-outcome.json), [analysis](l6-rollback/run3/analysis.json). |
+| 3. Settle; retry once if temporarily refused; verify committed format boundary | **FAIL** | Harness-predicate stop. No refusal or retry occurred. Ordinary work settled with attributed idle; format 0 was rejected by the inherited run2 format-1 assertion. Run3 does not require 1. Config already says `members`; the explicit ownership command remains untested. [Outcome](l6-rollback/run3/run/step3-outcome.json), [analysis](l6-rollback/run3/analysis.json). |
 | 4. Explicit members handoff, request/report/epoch boundary, marker removed last | **NOT RUN** | Blocked by step 3. No `team delivery --owner members` call, no handoff request and no `delivery_owner_changed` event. Marker remains. |
-| 5. Start guarded RC member executor; account for B; send/reply C | **NOT RUN** | Blocked by step 3. Controller never starts the executor or sends C. A production-started RC member executor delivered B during step 3; that observation is not substituted for step 5. |
+| 5. Start guarded RC member executor; account for B; send/reply C | **NOT RUN** | Blocked by step 3. Controller never starts the executor or sends C. An RC member executor attributed to Taurhaus delivered B during step 3; that observation is not substituted for step 5. |
 | 6. Explicit read/ack and reconciliation across both boundaries; export/teardown | **NOT RUN** | Final read/ack sequence and two-boundary reconciliation were not attempted. Failure export and teardown separately passed. |
 
 ### Owner-stop product observation
@@ -43,8 +46,17 @@ JSONL contains **235 rows**, including shutdown; it is not an event-filtered ext
 [owner census](l6-rollback/run3/run/owner-census.jsonl),
 [pre-stop identity](l6-rollback/run3/run/step2-owner-before.json).
 
-A **separate member executor** (host PID **1628609**, start ticks **32067925**)
-was observed after downgrade; the controller's executor-start step was not reached.
+A **Taurhaus-started member executor** (host PID **1628609**, start ticks
+**32067925**) was observed after downgrade. This starter attribution is inferred
+from the retained `mesh daemon --pane %2 --team l6-rollback-run3 --name alpha
+--claude-dir …` argv matching Taurhaus's `spawn_mesh_daemon_at_root`
+([system.rs](../../../../src-tauri/src/coordination/runtime/system.rs), lines 279–300)
+and the private namespace's actors: the controller never reached its executor
+start, leaving the private Taurhaus daemon as the coordinator that could spawn it.
+No parent PID was retained, so this is source/argv attribution rather than a
+recorded parent-child edge. **Taurhaus product observation:** that executor
+injected B while `owner-stopped.json` was still present and before the explicit
+handoff command was attempted.
 B received one legacy `tmux_injected` row at `04:15:41.600Z`, then alpha explicitly
 read B and replied `B-2c3955c5` at `04:16:14.479Z`. This is not a restarted team owner.
 The exact process, workflow, native tool-result and reply rows are retained in
@@ -63,7 +75,14 @@ failure export. The authority marker is `transition: complete`, with legacy cut
 `5f7ae87c5a1228e236077cbac00cd977a5bd05b7e442a5e4b23a4e72c1325b09`.
 The format operation advances epoch **2 → 3**, but produces no separate ownership
 boundary event. The downgrade report and rollback compatibility projection are
-retained; this does not fulfill step 4's durable handoff requirements.
+retained; step 4's durable handoff requirements remain untested.
+**Untested source-level observation:** Mesh's
+`/home/mstie/projects/mesh-l6/src/delivery/ownership.rs:395-404` takes the same-owner
+path when owner is already `members` and no handoff file exists: it verifies
+`rollback.json`, calls `clear_owner_stop()`, and returns `Ok(())` without creating
+a new handoff or epoch. This is a mechanism to examine in a future execution,
+not an observed ownership-command failure. Mesh `USAGE.md:74-81` documents
+stop → downgrade → members handoff.
 [Boundary snapshot](l6-rollback/run3/run/step2-after-format.json),
 [RC source excerpt](l6-rollback/run3/mesh-downgrade-source.txt).
 
@@ -120,8 +139,8 @@ The new offline guards first failed against the inherited controller: **4 failur
 credentials or starting CLIs. Regression comments name the historical controller
 commits. [Tests](l6-rollback/run3/controller_test.py),
 [first red](l6-rollback/run3/red.txt), [predicate red](l6-rollback/run3/predicates-red.txt),
-[green](l6-rollback/run3/green.txt). The live assertion failed on the unchanged RC;
-no product fix was attempted in this evidence lane.
+[green](l6-rollback/run3/green.txt). The live assertion failed in the inherited
+harness predicate; no product fix was attempted in this evidence lane.
 
 | Exact command from checkout root, after teardown | Exit |
 | --- | --- |
@@ -143,24 +162,33 @@ activity-path value; it did not abort a wait or remove daemon rows.
   Its versioned run3 controller/evidence is retained in this checkout; the run3
   controller reuses the lane-6 run2 derivative with the required stop, pending and
   metering corrections. No other Taurhaus checkout was modified.
-- The binding format-1/separate-handoff route conflicts with RC downgrade behavior.
-  It was not silently changed to accept format 0 or to skip the ownership boundary.
-  Steps 4–6 remain NOT RUN after the step-3 failure.
+- The run2 format-1 expectation was incorrectly carried into run3. The binding
+  third-run ruling does not impose it. The review fixes run3's helper call to
+  select the RC's legacy format 0, while preserving run2's default expectation.
+  No rerun was performed; steps 4–6 remain NOT RUN after the harness-predicate stop.
 - The owner observation covers stop through failure, not a completed handoff.
   The named operator-stop skip is observed; no `rollback_pending` claim is made.
 - Required independent Opus review is unavailable: no callable Workflow/Opus tool
   or Opus collaboration model. No substitute self-review is claimed.
   [Review availability](l6-rollback/run3/review.json).
 
-Exact runtime controller: [controller.py](l6-rollback/run3/controller.py).
-Its unchanged helper imports and hashes are in
-[controller provenance](l6-rollback/run3/controller-provenance.json).
+Original executed controller: commit `22643c6f`'s
+`docs/design/evidence/e2e/l6-rollback/run3/controller.py`.
+The current [controller.py](l6-rollback/run3/controller.py) includes the review's
+format selection and credential-log corrections and has not been run live.
+[Controller provenance](l6-rollback/run3/controller-provenance.json) retains the
+original run's hashes; they do not describe the corrected helper/controller.
 From this checkout, the controller accepts `--auth-source "$AUTHORIZED_SOURCE"`
 (the spec's authorized account-b file only) and an optional `--out NEW_DIRECTORY`.
 The output must be new; this is reproduction documentation, not permission to
 restart the paid run. Exact RPCs/commands/exits/digests are retained in
-[events](l6-rollback/run3/run/events.jsonl). Offline analysis is reproducible with
-`python3 -B docs/design/evidence/e2e/l6-rollback/run3/analyze.py`.
+[events](l6-rollback/run3/run/events.jsonl). Its raw `stopped` row preserves the
+original erroneous runtime classification; the step outcome and analysis carry
+the review correction. The only event redaction removes the credential digest
+from `auth_copy`, retaining the source label, file list and mode.
+The historical `run3/analyze.py` reproduces the **superseded** interpretation;
+do not use it to overwrite corrected `analysis.json`. It remains unchanged to
+respect this fix's named-file boundary.
 
 ## Historical runs 1–2 (retained unchanged)
 

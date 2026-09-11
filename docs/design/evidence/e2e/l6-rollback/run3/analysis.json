@@ -1,8 +1,7 @@
 {
-  "classification": "mesh contract mismatch against binding run3 ruling; no product modification",
+  "classification": "harness",
   "failed_step": 3,
   "reason": "required resulting format 1 not observed",
-  "required_format": 1,
   "actual_format": 0,
   "owner_before_format": "team",
   "owner_after_format": "members",
@@ -127,7 +126,13 @@
         ]
       }
     ],
-    "daemon_jsonl_rows": 235
+    "daemon_jsonl_rows": 235,
+    "member_executor_starter": {
+      "product": "taurhaus",
+      "basis": "Source/argv attribution: the retained mesh daemon --pane %2 --team l6-rollback-run3 --name alpha --claude-dir argv matches spawn_mesh_daemon_at_root; the controller never reached its executor start and the private Taurhaus daemon was the other coordinator in the PID namespace. Parent PID was not retained.",
+      "source": "src-tauri/src/coordination/runtime/system.rs:279-300",
+      "observation": "B received its single legacy tmux_injected row at 04:15:41.600Z while owner-stopped.json remained present and the explicit handoff had not been attempted. This is a member executor, not a restarted team owner."
+    }
   },
   "messages": {
     "A": {
@@ -1018,5 +1023,12 @@
     "controller_issued_inputs": 1,
     "mesh_terminal_deliveries": 2,
     "legacy_terminal_deliveries": 1
+  },
+  "inherited_run2_expected_format": 1,
+  "review_correction": "Harness-predicate stop, not an observed Mesh route failure. The third-run ruling requires a committed legacy boundary, not format 1. No runtime re-execution in this review fix.",
+  "ownership_source_observation": {
+    "classification": "UNTESTED source-level observation",
+    "source": "/home/mstie/projects/mesh-l6/src/delivery/ownership.rs:395-404",
+    "mechanism": "When previous owner already equals members and no handoff.json exists, verified_rollback runs and clear_owner_stop removes the marker before returning Ok; this path creates no new handoff or epoch. The run never executed team delivery --owner members."
   }
 }
