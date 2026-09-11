@@ -221,6 +221,45 @@ impl SessionActivityHub {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shared_hub_refresh_is_private_to_its_test_thread() {
+        // Regression: 3000bc3e let a test's refresh poll every other test's seat.
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().to_path_buf();
+        let (other, calls, lease) = std::thread::spawn(move || {
+            let hub = SessionActivityHub::shared();
+            let calls = Arc::new(AtomicUsize::new(0));
+            let counter = calls.clone();
+            let lease = hub.register_host(
+                root.join("socket"),
+                root,
+                RuntimeSession {
+                    session_id: Some("thread".into()),
+                    ..Default::default()
+                },
+                Arc::new(move || {
+                    counter.fetch_add(1, Ordering::SeqCst);
+                }),
+            );
+            (hub, calls, lease)
+        })
+        .join()
+        .unwrap();
+        let hub = SessionActivityHub::shared();
+        hub.refresh_hosts();
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            0,
+            "another test's seat was polled"
+        );
+        other.refresh_hosts();
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        drop(lease);
+        assert!(other.runtime_snapshot().runtime_sessions.is_empty());
+    }
+
     #[test]
     fn attaching_host_pane_versions_and_updates_both_snapshots() {
         // Regression: 1b19edd2 changed only the private entry without waking app readers.

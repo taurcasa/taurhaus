@@ -229,6 +229,8 @@ pub(crate) struct HostProcess {
     uncertain: bool,
     reconnect_failures: u32,
     reconnect_after: Option<Instant>,
+    #[cfg(test)]
+    pub activity_clock_for_test: Option<Instant>,
     pub deferred_compaction: Option<chrono::DateTime<chrono::Utc>>,
 }
 
@@ -249,7 +251,11 @@ impl HostProcess {
             return Err("host socket must be a new short absolute private path".into());
         }
         let timeout_seconds = guard.remaining().map_err(|e| e.to_string())?.as_secs_f64();
-        let child = Command::new(&launch.program)
+        #[cfg(test)]
+        let mut command = tests::fixture_command(launch);
+        #[cfg(not(test))]
+        let mut command = Command::new(&launch.program);
+        let child = command
             .args(&launch.arguments)
             .args(["--listen", &format!("unix://{}", socket.display())])
             .envs(&launch.environment)
@@ -276,6 +282,8 @@ impl HostProcess {
             uncertain: false,
             reconnect_failures: 0,
             reconnect_after: None,
+            #[cfg(test)]
+            activity_clock_for_test: None,
             deferred_compaction: None,
         };
         host.stderr =
@@ -308,6 +316,9 @@ impl HostProcess {
                 host.rpc = Some(Rpc {
                     socket: Some(WebSocket::connect(stream, guard)?),
                     activity_socket: socket.into(),
+                    #[cfg(test)]
+                    activity_hub:
+                        taurhaus_lib::daemon::session_activity::SessionActivityHub::shared(),
                     events: VecDeque::new(),
                     compactions: VecDeque::new(),
                     thread_id: String::new(),
@@ -442,6 +453,14 @@ impl HostProcess {
     }
 
     #[cfg(test)]
+    pub fn set_activity_hub_for_test(
+        &mut self,
+        hub: Arc<taurhaus_lib::daemon::session_activity::SessionActivityHub>,
+    ) {
+        self.rpc.as_mut().unwrap().activity_hub = hub;
+    }
+
+    #[cfg(test)]
     pub fn disconnect_for_test(&mut self) {
         self.rpc.as_mut().unwrap().socket = None;
     }
@@ -500,7 +519,10 @@ impl HostProcess {
     }
 
     pub fn activity_retry_due(&self) -> bool {
-        !self.needs_reconnect() || self.reconnect_after.is_none_or(|at| Instant::now() >= at)
+        let now = Instant::now();
+        #[cfg(test)]
+        let now = self.activity_clock_for_test.unwrap_or(now);
+        !self.needs_reconnect() || self.reconnect_after.is_none_or(|at| now >= at)
     }
 
     /// Read the thread response and queued notifications, without cloning cached events/requests.
@@ -624,7 +646,10 @@ impl HostProcess {
                 let backoff =
                     Duration::from_secs(1 << self.reconnect_failures.min(4).saturating_sub(1))
                         .min(Duration::from_secs(5));
-                self.reconnect_after = Some(Instant::now() + backoff);
+                let now = Instant::now();
+                #[cfg(test)]
+                let now = self.activity_clock_for_test.unwrap_or(now);
+                self.reconnect_after = Some(now + backoff);
                 if self.reconnect_failures == 1 {
                     tracing::warn!(event = "hosted.rpc.reconnect_failed", thread_id = %rpc.thread_id,
                         "Host reconnect failed; background retries will back off");
@@ -916,6 +941,8 @@ fn event_turns(events: &VecDeque<Value>, thread_id: &str) -> Vec<Value> {
 }
 
 struct Rpc {
+    #[cfg(test)]
+    activity_hub: Arc<taurhaus_lib::daemon::session_activity::SessionActivityHub>,
     activity_socket: PathBuf,
     socket: Option<WebSocket>,
     events: VecDeque<Value>,
@@ -932,11 +959,11 @@ struct Rpc {
 }
 impl Rpc {
     fn publish_activity(&self) {
-        taurhaus_lib::daemon::session_activity::SessionActivityHub::shared().publish_host_status(
-            &self.activity_socket,
-            &self.thread_id,
-            &self.status,
-        );
+        #[cfg(test)]
+        let hub = &self.activity_hub;
+        #[cfg(not(test))]
+        let hub = taurhaus_lib::daemon::session_activity::SessionActivityHub::shared();
+        hub.publish_host_status(&self.activity_socket, &self.thread_id, &self.status);
     }
 
     fn observe(&mut self, frame: &Value) {
@@ -1483,7 +1510,13 @@ def client(connection):
                         boundary_event('turn/started', turn={'id':turn_id,'status':'inProgress','items':[]})
                         boundary_event('item/started', turnId=turn_id, item=item)
                         boundary_event('thread/tokenUsage/updated', turnId=turn_id, tokenUsage={'last':{'totalTokens':6344}})
-                        boundary_event('item/completed', turnId=turn_id, item=item, completedAtMs=compact.get("completedAtMs", int(time.time()*1000)-1000))
+                        completed_ms = compact.get("completedAtMs", int(time.time()*1000)-1000)
+                        # The real host persists the boundary consumed by the native hook.
+                        import datetime
+                        timestamp = datetime.datetime.fromtimestamp(completed_ms/1000, datetime.timezone.utc).isoformat()
+                        with open(os.path.join(root, 'rollout-'+tid+'.jsonl'), 'a') as rollout:
+                            rollout.write(json.dumps({'type':'compacted','timestamp':timestamp,'payload':{}})+'\n')
+                        boundary_event('item/completed', turnId=turn_id, item=item, completedAtMs=completed_ms)
                         if not compact.get('busy'):
                             boundary_event('thread/status/changed', status={'type':'idle'})
                             boundary_event('turn/completed', turn={'id':turn_id,'status':'completed','items':[]})
@@ -1565,7 +1598,9 @@ def client(connection):
                 elif method == 'thread/read' and error and error['code'] == -32603 and pending_items:
                     items_and_completion(pending_items)
                     pending_items = None
-                if approval: emit(approval)
+                if approval:
+                    if os.path.exists(os.path.join(root, 'delayed-approval')): time.sleep(0.5)
+                    emit(approval)
 with socket.socket(socket.AF_UNIX) as listener:
     listener.bind(address); listener.listen(4)
     while True:
@@ -1581,6 +1616,24 @@ with socket.socket(socket.AF_UNIX) as listener:
         taurhaus_lib::session_scanner::launch::HostedLaunch::from_rendered(&command, root, None)
             .unwrap()
     }
+    // Execute generated scripts through their interpreter: parallel forks can
+    // temporarily inherit a writing fd even after the fixture writer closes it.
+    pub(super) fn fixture_command(launch: &HostedLaunch) -> Command {
+        let script = std::fs::read_to_string(&launch.program).unwrap_or_default();
+        let interpreter = match script.lines().next() {
+            Some("#!/usr/bin/python3") => Some("/usr/bin/python3"),
+            Some("#!/bin/sh") => Some("/bin/sh"),
+            _ => None,
+        };
+        if let Some(interpreter) = interpreter {
+            let mut command = Command::new(interpreter);
+            command.arg(&launch.program);
+            command
+        } else {
+            Command::new(&launch.program)
+        }
+    }
+
     fn spawn(
         launch: &HostedLaunch,
         root: &Path,
@@ -1594,6 +1647,21 @@ with socket.socket(socket.AF_UNIX) as listener:
                 error.to_string()
             },
         )
+    }
+
+    #[test]
+    fn hosted_fixture_launch_tolerates_an_inherited_script_writer() {
+        // Regression: cadd533e exec'd freshly written scripts; another test's
+        // fork can retain a writable descriptor until exec, producing ETXTBSY.
+        let tmp = tempfile::tempdir().unwrap();
+        let launch = fixture(tmp.path());
+        let _writer = std::fs::OpenOptions::new()
+            .write(true)
+            .open(&launch.program)
+            .unwrap();
+        let guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
+        let mut host = spawn(&launch, tmp.path(), None, &guard).unwrap();
+        assert!(host.alive());
     }
 
     #[test]

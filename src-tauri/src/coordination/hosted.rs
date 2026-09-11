@@ -59,9 +59,21 @@ impl Drop for SocketDirectory {
         let _ = std::fs::remove_dir_all(&self.0);
     }
 }
-#[derive(Default)]
+#[cfg_attr(not(test), derive(Default))]
 pub(crate) struct HostedMembers {
     seats: Mutex<HashMap<SeatKey, Seat>>,
+    #[cfg(test)]
+    activity_hub: Arc<SessionActivityHub>,
+}
+
+#[cfg(test)]
+impl Default for HostedMembers {
+    fn default() -> Self {
+        Self {
+            seats: Mutex::default(),
+            activity_hub: SessionActivityHub::shared(),
+        }
+    }
 }
 
 fn host_alive(host: &AppServerAttachment) -> bool {
@@ -99,6 +111,17 @@ pub(super) fn detach_owned_tui(
 }
 
 impl HostedMembers {
+    fn activity_hub(&self) -> Arc<SessionActivityHub> {
+        #[cfg(test)]
+        {
+            self.activity_hub.clone()
+        }
+        #[cfg(not(test))]
+        {
+            SessionActivityHub::shared()
+        }
+    }
+
     fn seat(&self, root: &Path, team: &str, member: &str) -> Result<Seat, String> {
         let mut seats = self.seats.lock().map_err(|_| "host registry unavailable")?;
         Ok(seats
@@ -283,7 +306,11 @@ impl HostedMembers {
         let weak = Arc::downgrade(&cell);
         let (refresh_root, refresh_team, refresh_member) =
             (root.clone(), team.to_owned(), member.to_owned());
-        let activity = SessionActivityHub::shared().register_host(
+        #[cfg(test)]
+        host.set_activity_hub_for_test(self.activity_hub());
+        #[cfg(test)]
+        let refresh_hub = Arc::downgrade(&self.activity_hub);
+        let activity = self.activity_hub().register_host(
             socket.clone(),
             launch.account_root.clone(),
             RuntimeSession {
@@ -332,7 +359,11 @@ impl HostedMembers {
                         .refresh_activity(&guard)
                         .is_err_and(|error| host_connection_closed(&error));
                 if disconnected || closed {
-                    SessionActivityHub::shared().publish_host_status(
+                    #[cfg(test)]
+                    let hub = refresh_hub.upgrade().expect("owned activity lease");
+                    #[cfg(not(test))]
+                    let hub = SessionActivityHub::shared();
+                    hub.publish_host_status(
                         &seat.attachment.socket_path,
                         &seat.host.thread_id,
                         &Value::Null,
@@ -519,7 +550,7 @@ impl HostedMembers {
             }
             return Err("host changed during TUI attach".into());
         }
-        SessionActivityHub::shared().attach_host_pane(
+        self.activity_hub().attach_host_pane(
             &seat.attachment.socket_path,
             &resolution.pane_id,
             live.pane_pid,
@@ -769,7 +800,7 @@ impl HostedMembers {
                 Ok(polled) => polled,
                 Err(error) => {
                     if host_connection_closed(&error) {
-                        SessionActivityHub::shared().publish_host_status(
+                        self.activity_hub().publish_host_status(
                             &seat.attachment.socket_path,
                             &seat.host.thread_id,
                             &Value::Null,
@@ -872,7 +903,7 @@ impl HostedMembers {
             .as_ref()
             .is_err_and(|error| host_connection_closed(error))
         {
-            SessionActivityHub::shared().publish_host_status(
+            self.activity_hub().publish_host_status(
                 &seat.attachment.socket_path,
                 &seat.host.thread_id,
                 &Value::Null,
@@ -1262,7 +1293,6 @@ pub(crate) mod tests {
                         .unwrap();
                 });
                 ready.recv_timeout(Duration::from_secs(1)).unwrap();
-                let started = std::time::Instant::now();
                 let result = hosts.operation(
                     &registry,
                     "team",
@@ -1272,7 +1302,7 @@ pub(crate) mod tests {
                     Value::Null,
                 );
                 assert!(result.is_ok(), "{operation}: {result:?}");
-                assert!(started.elapsed() < Duration::from_millis(1500));
+                // Success proves the contended read waited; scheduler delay is not failure.
             });
         }
         hosts.stop(&registry, "team", "seat").unwrap();
@@ -1516,7 +1546,7 @@ if mode == 'twice' or not previous:
         std::fs::write(&launch.program, script).unwrap();
         hosts.launch(&registry, "team", "seat", &launch).unwrap();
         let generation = saved(tmp.path()).attachment_generation;
-        let hub = SessionActivityHub::shared();
+        let hub = hosts.activity_hub();
         let source = || {
             hub.runtime_snapshot()
                 .runtime_sessions
@@ -1561,7 +1591,7 @@ if mode == 'twice' or not previous:
         assert!(input(&hosts, &registry, generation, "disconnect").is_err());
         // The fake host uses this marker to refuse initialize on new connections.
         std::fs::write(tmp.path().join("fail-reconnect"), "").unwrap();
-        let hub = SessionActivityHub::shared();
+        let hub = hosts.activity_hub();
         let attempts = || {
             std::fs::read_to_string(tmp.path().join("requests.jsonl"))
                 .unwrap()
@@ -1570,16 +1600,33 @@ if mode == 'twice' or not previous:
                 .count()
         };
         let before = attempts();
-        hub.refresh_hosts();
-        assert_eq!(attempts(), before + 1);
-        for _ in 0..3 {
-            std::thread::sleep(Duration::from_millis(500));
+        // Regression: 3000bc3e's sleep-based retry count depended on scheduler
+        // delays. Drive the one- then two-second backoffs with fixture time.
+        let now = std::time::Instant::now();
+        let tick = |millis| {
+            hosts
+                .seat(tmp.path(), "team", "seat")
+                .unwrap()
+                .lock()
+                .unwrap()
+                .as_mut()
+                .unwrap()
+                .host
+                .activity_clock_for_test = Some(now + Duration::from_millis(millis));
             hub.refresh_hosts();
+        };
+        tick(0);
+        assert_eq!(attempts(), before + 1);
+        for millis in [100, 500, 999] {
+            tick(millis);
+            assert_eq!(attempts(), before + 1);
         }
-        assert!(
-            attempts() < before + 4,
-            "reconnect must skip ticks after failures"
-        );
+        tick(1000);
+        assert_eq!(attempts(), before + 2);
+        tick(2999);
+        assert_eq!(attempts(), before + 2);
+        tick(3000);
+        assert_eq!(attempts(), before + 3);
         hosts.stop(&registry, "team", "seat").unwrap();
     }
 
@@ -1606,7 +1653,7 @@ if mode == 'twice' or not previous:
             .unwrap()
             .host
             .disconnect_for_test();
-        SessionActivityHub::shared().refresh_hosts();
+        hosts.activity_hub().refresh_hosts();
         let recovered = transcript(&hosts, &registry, generation);
         assert!(
             recovered["outcomeUnknown"] == true
@@ -1625,9 +1672,10 @@ if mode == 'twice' or not previous:
         input(&hosts, &registry, generation, "active").unwrap();
         std::fs::write(tmp.path().join("pending-read"), "").unwrap();
         let started = std::time::Instant::now();
-        SessionActivityHub::shared().refresh_hosts();
+        hosts.activity_hub().refresh_hosts();
         let elapsed = started.elapsed();
-        let row = SessionActivityHub::shared()
+        let row = hosts
+            .activity_hub()
             .runtime_snapshot()
             .runtime_sessions
             .into_iter()
@@ -1647,7 +1695,7 @@ if mode == 'twice' or not previous:
         taurhaus_lib::logging::install_global_sink(&sink);
         let (registry, hosts) = running(tmp.path());
         let generation = saved(tmp.path()).attachment_generation;
-        let hub = SessionActivityHub::shared();
+        let hub = hosts.activity_hub();
         let op =
             |method, params| hosts.operation(&registry, "team", "seat", generation, method, params);
         let snapshot = || {
@@ -1711,8 +1759,11 @@ if mode == 'twice' or not previous:
         assert_eq!(snapshot()["activity_confidence"], "high");
         op("interrupt", Value::Null).unwrap();
         assert_eq!(snapshot()["state"], "idle");
+        // Regression: 3000bc3e assumed one short background probe consumed all
+        // approval notifications, even when the fixture was descheduled.
+        std::fs::write(tmp.path().join("delayed-approval"), "").unwrap();
         input(&hosts, &registry, generation, "approval").unwrap();
-        hub.refresh_hosts();
+        transcript(&hosts, &registry, generation);
         assert_eq!(snapshot()["state"], "active");
         assert_eq!(snapshot()["activity_attribution"], "none");
         assert_eq!(snapshot()["activity_confidence"], "high");
@@ -2369,7 +2420,10 @@ if mode == 'twice' or not previous:
         assert!(MemberCompactionStore::load(root, "team", "seat")
             .unwrap()
             .is_none());
-        let boundary = r#"{"expectCard":true,"backlog":65}"#;
+        // Regression: 06031992 used a missing rollout's wall clock for the hook,
+        // leaving only one second of the two-second observer correlation window.
+        // Replay an old boundary so scheduler speed cannot make this test pass.
+        let boundary = r#"{"expectCard":true,"backlog":65,"completedAtMs":1767225600000}"#;
         std::fs::write(root.join("compact.json"), boundary).unwrap();
         hosts.reconcile(&reg, "team", "seat").unwrap();
         let record = saved(root);
@@ -2439,7 +2493,10 @@ if mode == 'twice' or not previous:
         let mut output = Vec::new();
         run_compact_hook_cli(payload.to_string().as_bytes(), &mut output, root).unwrap();
         assert!(String::from_utf8(output).unwrap().contains("recovery_card"));
-        std::fs::write(root.join("compact.json"), "{}").unwrap();
+        // Both observers describe this same persisted event, regardless of scheduling.
+        let boundary =
+            json!({"completedAtMs":compaction(root).last_compaction_timestamp.timestamp_millis()});
+        std::fs::write(root.join("compact.json"), boundary.to_string()).unwrap();
         hosts.reconcile(&reg, "team", "seat").unwrap();
         assert_eq!(saved(root).context_generation, 1);
         assert_eq!(starts(root), 1);

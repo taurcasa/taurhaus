@@ -2,7 +2,9 @@
 pub mod hosted_activity;
 #[cfg(test)]
 use std::path::Path;
-use std::sync::{Arc, Condvar, Mutex, OnceLock};
+#[cfg(not(test))]
+use std::sync::OnceLock;
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -447,9 +449,21 @@ impl SessionActivityHub {
 
     /// Access publication without starting process/tmux discovery.
     pub fn shared() -> Arc<Self> {
-        static HUB: OnceLock<Arc<SessionActivityHub>> = OnceLock::new();
-        HUB.get_or_init(|| Arc::new(SessionActivityHub::new()))
-            .clone()
+        #[cfg(test)]
+        {
+            // Libtest gives each test its own thread. Fixtures capture this hub
+            // before moving work to helper threads, so refreshes stay test-local.
+            thread_local! {
+                static HUB: Arc<SessionActivityHub> = Arc::new(SessionActivityHub::new());
+            }
+            HUB.with(Arc::clone)
+        }
+        #[cfg(not(test))]
+        {
+            static HUB: OnceLock<Arc<SessionActivityHub>> = OnceLock::new();
+            HUB.get_or_init(|| Arc::new(SessionActivityHub::new()))
+                .clone()
+        }
     }
 
     /// Get the latest snapshot immediately (non-blocking).

@@ -143,6 +143,9 @@ impl HostOperationLock {
 impl Drop for HostOperationLock {
     fn drop(&mut self) {
         HOST_OPERATION_HELD.set(false);
+        // Test forks can retain this descriptor briefly; release fixture exclusion now.
+        #[cfg(test)]
+        let _ = fs2::FileExt::unlock(&self._file);
         // Closing the descriptor releases exclusion. Never unlink its inode.
     }
 }
@@ -922,6 +925,17 @@ fn inode_matches(_file: &File, _path: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn hosted_fixture_guard_releases_inherited_lock_descriptor() {
+        // Regression: cadd533e released flock only on final close. Parallel
+        // fixture forks can retain the open file description until exec.
+        let tmp = tempfile::tempdir().unwrap();
+        let guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
+        let _inherited = guard._file.try_clone().unwrap();
+        drop(guard);
+        assert!(HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).is_ok());
+    }
+
     #[test]
     #[cfg(unix)]
     fn host_operation_lock_excludes_mesh_and_never_replaces_inode() {
