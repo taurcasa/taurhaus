@@ -4027,10 +4027,22 @@ fn operator_resume_renders_recorded_session_for_capturing_harnesses() {
                 MemberRuntimeStore::load(tmp.path(), "resume-recorded", "seat").unwrap();
             record.session_id = session_id.map(str::to_string);
             // Regression: 106f06c7 resumed missing Codex rollouts without fallback.
-            record.jsonl_path = deleted.then(|| tmp.path().join("deleted-rollout.jsonl"));
-            record.health = HealthState::SessionDead;
+            let rollout = tmp.path().join("rollout.jsonl");
+            fs::write(&rollout, "").unwrap();
+            if deleted {
+                fs::remove_file(&rollout).unwrap();
+            }
+            record.jsonl_path = Some(rollout);
+            // Regression: 39eeb33a / e2e lane 4 run 9 (106f06c7): the
+            // supported stop's offline reconciliation discarded the conversation.
+            record.health = HealthState::Healthy;
+            record.pane_id = Some("%stopped".into());
             MemberRuntimeStore::save(tmp.path(), "resume-recorded", "seat", &record).unwrap();
 
+            runtime.set_pane_exists("%stopped", false);
+            orchestrator
+                .reconcile_team_liveness("resume-recorded")
+                .unwrap();
             let report = orchestrator
                 .resume_member_with_cli_commands(
                     &ResumeMemberRequest {
@@ -4084,6 +4096,29 @@ fn operator_resume_renders_recorded_session_for_capturing_harnesses() {
                 let updated =
                     MemberRuntimeStore::load(tmp.path(), "resume-recorded", "seat").unwrap();
                 assert_eq!(updated.applied_effort.as_deref(), Some(effort), "{launch}");
+            }
+            if effort.is_none() {
+                MemberRuntimeStore::update(tmp.path(), "resume-recorded", "seat", |r| {
+                    r.health = HealthState::Healthy;
+                    r.pane_id = record.pane_id.clone();
+                    r.session_id = record.session_id.clone();
+                    r.jsonl_path = record.jsonl_path.clone();
+                })
+                .unwrap();
+                let offset = runtime.calls().len();
+                let report = orchestrator
+                    .resume_team_with_cli_commands_and_layout(
+                        &crate::coordination::requests::ResumeTeamRequest {
+                            team_name: "resume-recorded".into(),
+                        },
+                        &CliCommandSettings::default(),
+                        "new_window",
+                    )
+                    .unwrap();
+                assert!(report.resumed, "{report:?}");
+                assert!(runtime.calls()[offset..].iter().any(|call| matches!(
+                    call, RuntimeCall::SendKeys { keys, .. } if keys == launch
+                )));
             }
         }
     }
@@ -5762,12 +5797,9 @@ fn effort_team(
     cli_tool: CliTool,
     launch_effort: Option<&str>,
 ) -> CoordinationOrchestrator {
-    runtime.set_detected_runtime_session(
-        "%21",
-        cli_tool,
-        Some("session-effort"),
-        Some("/tmp/effort.jsonl"),
-    );
+    let rollout = tmp.path().join("effort.jsonl");
+    fs::write(&rollout, "").unwrap();
+    runtime.set_detected_runtime_session("%21", cli_tool, Some("session-effort"), rollout.to_str());
     runtime.set_pane_identity("%21", Some(2021), Some(1_755_000_021));
     let mut orchestrator = new_orchestrator(tmp, Arc::new(FakeBackend::default()), runtime);
     orchestrator
