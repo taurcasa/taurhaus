@@ -1722,7 +1722,7 @@ change, controller test suite, or offline audit was added.
 | Step | Outcome | Runtime evidence / classification |
 |---|---|---|
 | 1. Initialize and exchange/read both markers | PASS | [Raw outcome](l4-resume-team/run13/step1-outcome.json), [ready identity](l4-resume-team/run13/step1-ready-session.json), both transport receipts and explicit reads in [state/journal](l4-resume-team/run13/step1-state.json). Runtime; $0.003932600, 7/16 conservative inputs. |
-| 2. Stop every seat; retain resumable identity | PENDING | Awaiting live result. |
+| 2. Stop every seat; retain resumable identity | PASS | [Raw outcome](l4-resume-team/run13/step2-outcome.json), [converged alpha record](l4-resume-team/run13/step2-alpha-converged-runtime-record.json), [zero-seat census](l4-resume-team/run13/step2-stop-poll.json). Runtime; spend unchanged. |
 | 3. Accept both stopped-seat backlogs | PENDING | Awaiting live result. |
 | 4. Resume the canonical team once | PENDING | Awaiting live result. |
 | 5. Verify identities, cards and backlog delivery | PENDING | Awaiting live result. |
