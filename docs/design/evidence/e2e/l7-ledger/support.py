@@ -5,7 +5,10 @@ import re
 
 def clean(value):
     if isinstance(value, dict):
-        return {k: ('<message-body-redacted>' if k in ('body', 'message', 'text', 'content', 'summary', 'description', 'instructions') else clean(v))
+        if str(value.get('event', '')).startswith('usage.'):
+            return {k: clean(v) for k,v in value.items() if k in ('ts','level','component','event','run_id')} | {'private_usage_details': '<redacted>'}
+        daemon = 'event' in value and 'component' in value
+        return {k: ('<message-body-redacted>' if k in ('body', 'message', 'text', 'content', 'summary', 'description', 'instructions') and not (daemon and k == 'message') else clean(v))
                 for k, v in value.items()
                 if not any(word in k.lower().replace('_', '') for word in ('installationid', 'accountusage', 'accountobservations', 'controltoken', 'idtoken', 'accesstoken', 'refreshtoken', 'apikey', 'authorization')) and k not in ('auth', 'token')}
     if isinstance(value, list):
