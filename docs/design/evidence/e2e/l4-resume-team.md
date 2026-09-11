@@ -1606,3 +1606,9 @@ the observer to `session_dead`. No product code changed.
   binding; health converged to `session_dead` and `daemon_pid` cleared.
   [Immediate](l4-resume-team/run12/step2-alpha-runtime-record.json),
   [converged](l4-resume-team/run12/step2-alpha-converged-runtime-record.json).
+
+- Step 3 **PASS (runtime)**: each stopped seat accepted one pending obligation,
+  with no submitted/native/read receipt. Scheduler health deferred alpha for
+  `runtime session dead` and beta for `native_host_not_live`.
+  [Alpha](l4-resume-team/run12/step3-alpha-backlog.json),
+  [beta](l4-resume-team/run12/step3-beta-backlog.json).

@@ -1,10 +1,14 @@
 {
   "markers": {
     "old/alpha": "L4_old_alpha_e340a3",
-    "old/beta": "L4_old_beta_203eb7"
+    "old/beta": "L4_old_beta_203eb7",
+    "pending/alpha": "L4_pending_alpha_72107c",
+    "pending/beta": "L4_pending_beta_f2f791"
   },
   "message_ids": {
     "old/alpha": "567de1ae-d411-49c5-a476-7e0765fe1afd",
-    "old/beta": "de2c8432-bbd1-467e-8450-b55ffdbffaa2"
+    "old/beta": "de2c8432-bbd1-467e-8450-b55ffdbffaa2",
+    "pending/alpha": "a401f602-8ef3-4413-94f6-d464d28e4bfb",
+    "pending/beta": "e8e336a6-1a2a-4c86-a03d-cc98f1e3b372"
   }
 }
