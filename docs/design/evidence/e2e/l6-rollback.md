@@ -929,8 +929,11 @@ suite first failed importing its absent helpers, then passed. These are harness
 assertion tests, not product fixes or a substitute runtime PASS. The executed
 startup helper's false result against actual ready/read evidence is retained.
 
-Gates, run after teardown: results pending in this intermediate failure-packet
-commit. No `src-tauri/` diff, so the conditional Rust-unit gate does not apply.
+Gates, run after teardown: **`just check-quick` 0; `just lint` 0;
+`just test-contracts` 0**. The [gate results](l6-rollback/run4/checks-result.json)
+retain exact commands, elapsed times, targets and final log lines. The
+[offline export audit](l6-rollback/run4/final-audit.json) passes. No `src-tauri/`
+diff, so the conditional Rust-unit gate does not apply.
 
 Deviations: the specified L2 worktree no longer exists, so its versioned run3
 controller/evidence was read in this checkout; Mesh's full stage2b brief is

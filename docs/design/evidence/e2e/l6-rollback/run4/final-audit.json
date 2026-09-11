@@ -1,0 +1,16 @@
+{
+  "evidence_audit": "PASS",
+  "runtime_verdict": "FAIL step (a), harness readiness predicate; (b)-(e) NOT RUN",
+  "controller_exit": 1,
+  "gate_exits": {
+    "just check-quick": 0,
+    "just lint": 0,
+    "just test-contracts": 0
+  },
+  "offline_tests": 6,
+  "cleanup": "PASS",
+  "independent_Opus_review": "unavailable",
+  "retained_files": 51,
+  "aliases": 3,
+  "daemon_rows": 251
+}
