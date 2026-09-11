@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "tmux",
+    "send-keys",
+    "-t",
+    "%2",
+    "Enter"
+  ],
+  "exit": 0,
+  "output": ""
+}

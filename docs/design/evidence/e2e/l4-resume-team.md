@@ -1,12 +1,8 @@
-# INCOMPLETE — latest run 11, step 2: harness/spec health spelling mismatch
+# INCOMPLETE — latest run 12 in progress, step 1 passed
 
-Step 1 passed. Step 2 stopped after the full 100-second poll: the ruling requires
-`sessionDead`, but this base serializes and emits `session_dead`. All supported
-seat stops completed; alpha retained its ready-session identity, rollout and pane
-binding, and cleared `daemon_pid`. Steps 3–6 were not run. Raw outcomes remain
-byte-exact, with a separate **harness** adjudication. Metered spend **$0.004636680**,
-**7/16 inputs**. Teardown verified zero survivors; all three gates exited **0**.
-See [Run 11](#run-11). Independent Opus review remains unavailable; no lane PASS.
+Run12 uses the verified `session_dead` wire literal. Step 1 exchanged and explicitly
+read both markers over tmux and app_server. Steps 2–6 are pending.
+See [Run 12](#run-12).
 
 ## Historical run 2 — hosted process exited before transport readiness
 
@@ -1592,3 +1588,14 @@ checkout's `src-tauri/target`. No `src-tauri/` file changed, so the conditional
 - [Independent Opus review](l4-resume-team/run11/review-availability.json) could not
   run: this session exposes no Opus model or Workflow execution tool. It remains
   the orchestrator's separate review stage. No cross-family review is claimed.
+
+## Run 12
+
+Offline red: three stop-observer assertions failed against the inherited `sessionDead`
+literal. Green: 41 controller tests and six preflight tests passed after correcting
+the observer to `session_dead`. No product code changed.
+
+- Step 1 **PASS (runtime)**: warm-up, canonical initialize, both seat exchanges and
+  explicit reads. Alpha attributed idle; ready session retained for the stop check.
+  [Outcome](l4-resume-team/run12/step1-outcome.json),
+  [ready session](l4-resume-team/run12/step1-ready-session.json).

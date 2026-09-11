@@ -1,0 +1,18 @@
+{
+  "argv": [
+    "/tmp/th-l4-run12-8h8oubj9/home/.local/bin/mesh",
+    "read",
+    "--json",
+    "--last",
+    "16",
+    "--mark-read",
+    "--claude-dir",
+    "/tmp/th-l4-run12-8h8oubj9/claude",
+    "--team",
+    "l4-resume",
+    "--name",
+    "beta"
+  ],
+  "exit": 0,
+  "output": "{\"body_refs\": \"immutable full bodies retained; no truncation\", \"bytes_read\": 30958, \"coverage\": {\"expired_bytes_deleted\": false, \"known_gaps\": [\"native-foreign-writers-excluded\", \"taurhaus-writer-legacy\", \"task-workflow-atomicity-unavailable\", \"review-proof-unavailable\"], \"last_gap_sequence\": null, \"observed_gap_count\": 0, \"purge_implemented\": false, \"status\": \"partial\"}, \"coverage_scope\": \"scanned-delta\", \"cursor\": \"<signed-read-cursor-redacted>\", \"done\": true, \"exposed_bytes\": 87, \"log_epoch\": \"d589d18b-bbe0-4c00-bfb3-6376ba23498e\", \"messages\": [{\"from\": \"lead\", \"id\": \"cfd6dc99-dcd1-440a-aaad-c93b6a51b872\", \"message_id\": \"de2c8432-bbd1-467e-8450-b55ffdbffaa2\", \"read\": false, \"summary\": \"L4 old marker\", \"text\": \"ACTION REQUIRED: Reply exactly L4_old_beta_203eb7. No tools are needed for this marker.\", \"timestamp\": \"2026-09-11T05:31:30.594Z\"}], \"outcomes\": [{\"attempt_id\": \"d18d4ae9-96e7-4fa0-8bbf-644677ad48b3\", \"delivery_id\": \"cfd6dc99-dcd1-440a-aaad-c93b6a51b872\", \"evidence\": \"{\\\"class\\\": \\\"rpc_accepted_not_comprehension\\\", \\\"expected_turn_id\\\": null, \\\"method\\\": \\\"turn/start\\\", \\\"reconciliation_required\\\": false, \\\"request_id\\\": \\\"6a28da2a-9bc9-4170-91af-57cfd2e3c839\\\", \\\"thread_id\\\": \\\"01a08ef2-b52c-7ce0-8eff-423deeff1523\\\", \\\"turn_id\\\": \\\"01a08ef3-1f9a-78a0-a75b-1545d17114e4\\\"}\", \"offer_id\": null, \"owner_fence\": 2, \"stage\": \"native_enqueued\"}], \"team_id\": \"2b0c9c9ed4861297bb05c88b41ceff36ebe0724306849fe5ce5514728dd64fe0\"}"
+}

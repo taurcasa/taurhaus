@@ -20,5 +20,6 @@
     }
   },
   "build": "Reused checkout-local run10 binaries; digests match and product source is unchanged. Mesh tip unchanged; no build or Mesh mutation.",
-  "reference": "Run11 controller descended from run4/attempt9 isolation. Run12 corrects only the stop-health wire literal, offline red first."
+  "reference": "Run11 controller descended from run4/attempt9 isolation. Run12 corrects only the stop-health wire literal, offline red first.",
+  "controller_commit": "6167779aae86cef4cf5610bbe8454b718ca42aea"
 }
