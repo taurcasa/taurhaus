@@ -1,0 +1,43 @@
+{
+  "step1": {
+    "initialization": {
+      "ledger_id": "d95221c0-cd88-442e-be13-e47d79e2cee1",
+      "log_epoch": "bab5abb4-0896-46b4-ad90-49e75a98b80a",
+      "team_incarnation_id": "0b55e22bf0e4979ac25dc4256d359023a8c8305ce67386ac5d1780c9fd2ee0d6"
+    },
+    "assignment_receipt": {
+      "assignment_id": "82389a66-5af4-4353-88f5-b5f32af3ebae",
+      "delivered": true,
+      "id": "e8a179c6-e5d2-427f-aa25-a6851a9005ab",
+      "task_id": "1"
+    }
+  },
+  "step2": {
+    "status": "unavailable",
+    "reason": "Assignment submitted; no consumed_by_read or qualifying tool-result exposure. Note instruction never sent."
+  },
+  "step3": {
+    "source_committed": false,
+    "ledger_receipt": null,
+    "reason": "No RESULT or completion requested."
+  },
+  "step4": {
+    "retry_count": 0,
+    "reason": "No original ledger declaration; no lifecycle replay."
+  },
+  "step5": {
+    "snapshot_count": 0,
+    "offline_views": [],
+    "reason": "Blocked by step 2."
+  },
+  "step6": {
+    "audit_step": "NOT RUN",
+    "failure_export": "PASS",
+    "teardown": "PASS"
+  },
+  "mesh_command_exits": [
+    0,
+    0,
+    0
+  ]
+}

@@ -1,3 +1,121 @@
+# Lane 7 run5 — FAIL at step 2: assignment uptake unproven; workflow incomplete
+
+Run5 executed the committed four-trial controller on the rebuilt **26c06132**
+product base. Step 1 passed and was committed as `6e06ae39`. Step 2 exhausted
+its **120-second** settlement window before sending the note instruction.
+The controller reported **mesh** at this delivery boundary; the underlying
+cause remains unresolved. This is a retained failed runtime trial, not a
+ledger-intake failure or a demonstrated new idle-edge defect.
+
+| Ordered step | Outcome | Classification and evidence |
+| --- | --- | --- |
+| 1. Real assignment and ledger init | **PASS** | **S-runtime**; task create, assign and ledger init each exited 0. [Packet](l7-ledger/run5/step1-packet.json), [immutable assignment](l7-ledger/run5/step1-immutable-assignment.json), [manifest](l7-ledger/run5/step1-manifest.json), [init receipt](l7-ledger/run5/step1-init-receipt.json). |
+| 2. Seat note, intake and live render | **FAIL before instruction send** | **mesh**, raw controller boundary attribution; source cause unresolved. Assignment submitted, but no qualifying read/tool-result exposure. [Outcome](l7-ledger/run5/step2-outcome.json), [diagnostic](l7-ledger/run5/assignment-delivery-diagnostic.json). |
+| 3. RESULT source and ledger submission | **NOT RUN** | Blocked by step 2. No source commitment, RESULT, or intake rejection. |
+| 4. One ledger-only retry | **NOT RUN** | Blocked by step 2. Zero ledger retries and no lifecycle replay. |
+| 5. Frozen snapshot and offline render | **NOT RUN** | Blocked by step 2. No artifacts or boundary bundle. |
+| 6. Full receipt reconciliation | **NOT RUN** | Required artifact receipts unavailable. Failure export and teardown separately **PASS**. [Receipt table](l7-ledger/run5/receipt-table.json). |
+
+Task `1` retains assignment `82389a66-5af4-4353-88f5-b5f32af3ebae` and remains
+**pending**. Ledger `d95221c0-cd88-442e-be13-e47d79e2cee1` binds that exact
+assignment. Onboarding message `3630ea73-7754-42a7-86de-8a59c3ac402f` had both
+submission and `consumed_by_read` from alpha before the assignment. Assignment
+message `3e76b819-7fdd-4d7c-9f69-f65f0707addb` had a submitted receipt, with no
+qualifying consumption proof. No subsequent send occurred.
+[Commands, RPCs and exits](l7-ledger/run5/events.jsonl),
+[journal](l7-ledger/run5/team/state/messaging-v2/segments/000001.jsonl),
+[task](l7-ledger/run5/tasks/1.json).
+
+The daemon observed the real seat's native completion and reported fresh
+`source: notify`, `state: idle` throughout the failed assignment wait. Its
+last retained activity has output age **93 seconds**. No captured activity row
+has `source: none`; therefore this trial does not demonstrate the specific
+post-turn decay described in the fifth-trial ruling. The 40-row native rollout
+contains one completed turn; its captured tail retains row identities and
+hashes, with private text omitted. Two notify identities are retained.
+[Final activity](l7-ledger/run5/final-activity.json),
+[notify records](l7-ledger/run5/notify-records.jsonl),
+[native tail](l7-ledger/run5/rollout-tail.json),
+[adjudication](l7-ledger/run5/adjudication.json).
+
+**Historical correction:** the orchestrator attributes trials 1–4 on
+`106f06c7` to the Taurhaus idle-edge defect fixed by **PR #176**. That ruling
+supersedes the old run-4 raw Mesh classification and unresolved-cause prose
+preserved below. Run5 contains `26c06132` (#176 and #177); its actual observations
+above are reported separately.
+
+Runtime exited **1** after **143.990 seconds**. Teardown verified **zero owned
+survivors**, a closed private port, and removal of the scratch root and copied
+credential. All **189 physical daemon lines** are retained as 189 sanitized
+JSONL records, including shutdown. No account usage rows were present.
+[Exit](l7-ledger/run5/controller-exit.json), [cleanup](l7-ledger/run5/cleanup.json),
+[log manifest](l7-ledger/run5/daemon-log-manifest.json),
+[complete daemon log](l7-ledger/run5/taurhaus.log.jsonl).
+
+| Run5 spend | API-equivalent USD | Conservative USD |
+| --- | --- | --- |
+| `01a08e41-57a6-7410-b76d-60380a8ee2d4` — completed native turn | **0.00407104** | **0.05322840** |
+| `01a08e41-59c9-79c1-a1f0-9d925800219d` — notify-only identity | **Unavailable** | **Unavailable** |
+| Claude lead — login-only, zero paid inputs | **0** | **0** |
+
+There were **2 observed identities**, **2 input reservations**, and one seat
+attachment generation. Run5 used its fresh **12 inputs / USD 0.20 / 12 minutes**
+budget; historical trials did not gate it. The input and runtime bounds were
+met. Total spend and dollar-cap compliance remain **unverified**, because the
+notify-only identity has no retained counters. These are inherited rate
+estimates, not invoices. Workflow implementer/reviewer spend is separately
+owned by the orchestrator and unavailable here. Metering gated no lifecycle
+operation, and no paid retry or authorization question followed the failure.
+[Every spend](l7-ledger/run5/spend-summary.json),
+[original controller meter](l7-ledger/run5/cost-ledger.json).
+
+`just build-daemon` and the pinned Mesh build both exited **0**, using the
+respective checkout-local targets with one build job. Cargo admission used
+30-second polls and waited only while at least three Cargo processes were
+already running. Other lanes later started additional Cargo processes; none
+was signalled. Merge-base verification succeeded for `26c06132`. Mesh remained
+`1f7447f` with no source or descriptor edit. The private runtime used protocol
+**27**, Codex **0.153.4**, **gpt-5.6-luna / low**, both native Codex siblings, the
+canonical production messaging policy, a login-only lead, and scratch-only
+roots in a private PID namespace/tmux server.
+[Build commands and exits](l7-ledger/run5/builds.json),
+[preflight](l7-ledger/run5/preflight.json),
+[candidate](l7-ledger/run5/candidate.json); binary SHA-256 digests are in the
+`binary` rows of [events](l7-ledger/run5/events.jsonl).
+
+The [controller](l7-ledger/run5/controller-at-execution.py),
+[runtime](l7-ledger/run5/runtime-at-execution.py), and
+[helpers](l7-ledger/run5/support-at-execution.py) ran unchanged. The additional
+[passive collector](l7-ledger/run5_capture.py) only reads the controller-recorded
+scratch root and retains native identity evidence; it never sends, writes live
+state, or changes settlement. Two offline privacy tests failed first because
+the collector was absent, then passed; all **14 existing controller tests**
+also passed. This adds no product regression fix.
+[Red](l7-ledger/run5/capture-red.txt), [green](l7-ledger/run5/capture-green.txt),
+[controller checks](l7-ledger/run5/controller-green.txt).
+
+Post-teardown gates: **`just check-quick` 0**, **`just lint` 0**,
+**`just test-contracts` 0**. No `src-tauri/` diff was made, so
+`just test-rust-unit` is inapplicable.
+[Gate results](l7-ledger/run5/checks-result.json),
+[Cargo admission](l7-ledger/run5/gate-cargo-polls.jsonl),
+[execution record](l7-ledger/run5/execution.json),
+[public evidence validation](l7-ledger/run5/public-evidence-check.json).
+The byte-identical alpha runtime alias is recorded in
+[deduplication](l7-ledger/run5/deduplication.json).
+
+Deviations and limits: the designated lane-2 checkout no longer exists; its
+committed run-3 controller was read in this checkout. The pinned Mesh checkout
+contains no `docs/design/ledger-*.md`; its `USAGE.md` ledger contract was read.
+The prescribed unchanged controller stopped at the first failed boundary, so
+steps 3–6 were not executed. Native tail capture is sanitized identity/hash
+evidence, not public model/message text. One notify-only cost is unavailable.
+The independent **Opus lens is unavailable** in this executor's model/tool
+inventory; the orchestrator must supply it. No workflow PASS, release approval,
+product change, Mesh commit, descriptor change, or plan-ledger edit is claimed.
+
+## Historical fourth trial (superseded attribution; retained verbatim)
+
 # Lane 7 — FAIL at step 2: assignment delivery unavailable; workflow incomplete
 
 The fourth explicitly requested trial passed and committed step 1. Step 2

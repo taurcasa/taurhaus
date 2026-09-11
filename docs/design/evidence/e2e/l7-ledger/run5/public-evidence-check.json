@@ -1,0 +1,11 @@
+{
+  "violations": [],
+  "complete_daemon_rows": 189,
+  "controller_unchanged": true,
+  "cleanup_passed": true,
+  "gate_exits": [
+    0,
+    0,
+    0
+  ]
+}

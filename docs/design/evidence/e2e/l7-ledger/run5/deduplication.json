@@ -1,0 +1,37 @@
+{
+  "byte_identical_aliases": {
+    "team/runtime/alpha.json": "final-runtime.json"
+  },
+  "pane_normalization": [
+    {
+      "file": "step1-initial-pane-1.txt",
+      "original_lines": 48,
+      "retained_lines": 37,
+      "operation": "remove trailing empty redacted pane lines"
+    },
+    {
+      "file": "final-pane-1.txt",
+      "original_lines": 48,
+      "retained_lines": 37,
+      "operation": "remove trailing empty redacted pane lines"
+    },
+    {
+      "file": "step1-initial-pane-2.txt",
+      "original_lines": 60,
+      "retained_lines": 33,
+      "operation": "remove trailing empty redacted pane lines"
+    },
+    {
+      "file": "final-pane-0.txt",
+      "original_lines": 48,
+      "retained_lines": 1,
+      "operation": "remove trailing empty redacted pane lines"
+    },
+    {
+      "file": "step1-initial-pane-0.txt",
+      "original_lines": 48,
+      "retained_lines": 1,
+      "operation": "remove trailing empty redacted pane lines"
+    }
+  ]
+}

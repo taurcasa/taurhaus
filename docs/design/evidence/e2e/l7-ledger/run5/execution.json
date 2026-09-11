@@ -1,0 +1,37 @@
+{
+  "controller_command": "L7_RUN_NAME=run5 python3 -B docs/design/evidence/e2e/l7-ledger/controller.py --auth-source <explicit-authorized-source>",
+  "controller_exit": 1,
+  "passive_capture_command": "python3 -B docs/design/evidence/e2e/l7-ledger/run5_capture.py",
+  "capture_scope": "Repeated read-only observations of the recorded scratch root while controller waited; no injected messages or lifecycle mutations.",
+  "native_version": {
+    "version": "codex-cli 0.153.4",
+    "exit": 0,
+    "stdout_sha256": "616dba4e87de2b1f07e61fe30ff4a5b3b075986c986c466ac5d244597eac0f36"
+  },
+  "tests": [
+    {
+      "command": "python3 -B docs/design/evidence/e2e/l7-ledger/run5_capture_test.py",
+      "phase": "red",
+      "exit": 1,
+      "reason": "ModuleNotFoundError: no run5_capture implementation yet"
+    },
+    {
+      "command": "python3 -B docs/design/evidence/e2e/l7-ledger/run5_capture_test.py",
+      "phase": "green",
+      "exit": 0,
+      "tests": 2
+    },
+    {
+      "command": "python3 -B docs/design/evidence/e2e/l7-ledger/controller_test.py",
+      "exit": 0,
+      "tests": 14
+    }
+  ],
+  "gate_driver": "Existing gates.command, with OUT=run5 and LOGS=.check-logs/l7-ledger-run5; cleanup asserted before sequential commands.",
+  "gate_commands": [
+    "just check-quick",
+    "just lint",
+    "just test-contracts"
+  ],
+  "rust_unit_gate": "inapplicable: no src-tauri diff"
+}

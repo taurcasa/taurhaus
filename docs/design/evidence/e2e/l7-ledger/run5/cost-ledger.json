@@ -41,13 +41,5 @@
       "at": 1789093060.3792443,
       "generation": 1
     }
-  ],
-  "prior_run_inputs": 9,
-  "prior_known_usd": 0.01830316,
-  "prior_unmetered_turns": [
-    "01a08e08-9df0-70f3-86be-c40886758378",
-    "01a08e2e-1175-7d03-9902-46ed51d64976",
-    "01a08e21-fb15-7083-815d-d6f69fb4dc35",
-    "01a08e1c-ab41-7551-b212-03c5d70f5ca4"
   ]
 }

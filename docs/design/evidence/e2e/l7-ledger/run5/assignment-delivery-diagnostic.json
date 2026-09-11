@@ -1,0 +1,38 @@
+{
+  "message_id": "3e76b819-7fdd-4d7c-9f69-f65f0707addb",
+  "proof": null,
+  "activity": {
+    "version": 1,
+    "observed_at": "2026-09-11T02:19:12.820167293+00:00",
+    "stall_recent_activity": false,
+    "stall_no_output": true,
+    "stall_no_active_process": false,
+    "active_non_shell_process": true,
+    "recent_io": false,
+    "pane_alive": true,
+    "pane_foreign": false,
+    "last_output_age_secs": 93,
+    "activity_confidence": "idle",
+    "confidence": "high",
+    "last_observed_at": "2026-09-11T02:19:12.817451677+00:00",
+    "source": "notify",
+    "state": "idle"
+  },
+  "native_tool_results": [
+    {
+      "timestamp": "2026-09-11T02:17:26.156Z",
+      "call_id": "call_oegECIB7fvn4KYNYckVkAsYf",
+      "sha256": "ab39e8c51a4bb9eeb95e11696dfa104a6f4f9c2daa5d3a30cb0b5a2e3029b8c5"
+    },
+    {
+      "timestamp": "2026-09-11T02:17:32.473Z",
+      "call_id": "call_hi4sc26yc1u84d64PlkKoEUE",
+      "sha256": "ea0e7f7f86c4832d1ff06d29041091919ca241f66d664f26cd3758ed1c4f2fe8"
+    },
+    {
+      "timestamp": "2026-09-11T02:17:35.604Z",
+      "call_id": "call_qnB1Lufwozr3xd8Q02Uh0Smj",
+      "sha256": "87e5329fcdf5f7395b04a40b0436a81fd5a7b823fa5fb9e69d366150e06fbca2"
+    }
+  ]
+}

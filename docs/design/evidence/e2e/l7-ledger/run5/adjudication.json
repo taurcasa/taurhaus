@@ -1,0 +1,43 @@
+{
+  "verdict": "FAIL at step 2; workflow incomplete",
+  "classification": "mesh delivery boundary (raw controller attribution); underlying cause unresolved",
+  "taurhaus_none_regression_observed": false,
+  "final_source": "notify",
+  "step2_instruction_sent": false,
+  "prior_trials_ruling": "Trials 1\u20134 attribution corrected by orchestrator to taurhaus, fixed by PR #176; historical raw packets preserved.",
+  "steps": [
+    {
+      "step": 1,
+      "outcome": "PASS",
+      "classification": "S-runtime",
+      "at": 1789093061.1448636
+    },
+    {
+      "step": 2,
+      "outcome": "FAIL",
+      "classification": "mesh",
+      "reason": "previous delivery has not settled; no send allowed"
+    },
+    {
+      "step": 3,
+      "outcome": "NOT RUN",
+      "reason": "blocked by step 2"
+    },
+    {
+      "step": 4,
+      "outcome": "NOT RUN",
+      "reason": "blocked by step 2"
+    },
+    {
+      "step": 5,
+      "outcome": "NOT RUN",
+      "reason": "blocked by step 2"
+    },
+    {
+      "step": 6,
+      "outcome": "NOT RUN",
+      "reason": "blocked by step 2"
+    }
+  ],
+  "review": "Opus unavailable in tool/model inventory; no independent lens claimed."
+}

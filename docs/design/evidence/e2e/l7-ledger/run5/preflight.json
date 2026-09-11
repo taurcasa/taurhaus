@@ -1,0 +1,20 @@
+{
+  "merge_base_command": "git merge-base --is-ancestor 26c06132 HEAD",
+  "exit": 0,
+  "merge_base": "26c0613283118a68c877ec2f47903a3c555179d3",
+  "mesh_commit": "1f7447fec04d6c7b6407488b7b5069a05b5be891",
+  "codex_version": "0.153.4",
+  "native_siblings": [
+    "codex",
+    "codex-code-mode-host"
+  ],
+  "controller_sha256": "0c2249467cb0b1cdb7d0fc67ce931c38f7ff6e084ab7ff65242abceaf14306b5",
+  "runtime_sha256": "b559e174f43e2a33e16d06eba4475ecb28a507cce4129dc490808e8fe1851172",
+  "runtime_command": "L7_RUN_NAME=run5 python3 -B docs/design/evidence/e2e/l7-ledger/controller.py --auth-source <explicit-authorized-source>",
+  "descriptor": "unchanged; tmux only",
+  "unavailable_references": [
+    "designated lane-2 checkout no longer exists; read committed lane-2/run3 controller in this checkout",
+    "Mesh docs/design/ledger-*.md absent at pinned revision; read USAGE.md ledger contract"
+  ],
+  "opus_review": "unavailable: no Opus model in available collaboration inventory; orchestrator review required"
+}

@@ -1,0 +1,21 @@
+{
+  "id": "1",
+  "subject": "L7 tiny artifact round trip",
+  "description": "<message-body-redacted>",
+  "status": "pending",
+  "owner": "alpha",
+  "metadata": {
+    "assigned_at": "2026-09-11T02:17:40.386Z",
+    "assigned_by": "lead",
+    "assignment_context": {},
+    "assignment_delivery": {
+      "delivered": true,
+      "message_id": "e8a179c6-e5d2-427f-aa25-a6851a9005ab"
+    },
+    "assignment_id": "82389a66-5af4-4353-88f5-b5f32af3ebae",
+    "completion_signal": "Complete only when instructed with RESULT.md through --summary-file.",
+    "deliverable": "OBSERVATION.md and RESULT.md, each at most 2048 bytes.",
+    "first_step": "Explicitly read/mark the inbox with mesh read --json --mark-read, paging until done; accept and start this assignment with its full assignment ID; reply TASK_READY and await explicit artifact instructions.",
+    "review_route": "Lead checks ledger receipts and offline read-back; stop after the requested completion."
+  }
+}
