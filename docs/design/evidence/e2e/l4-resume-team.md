@@ -969,14 +969,22 @@ classified that boundary as Taurhaus; the final classification is **harness**
 based on the native startup error. The separate product observation—initialize
 reported completed despite the exited alpha TUI—is retained, not silently
 corrected or used to claim a successful initialization.
-[Pane/error](l4-resume-team/run8/step1-observer-alpha-pane.json),
+Initialize launches the tmux seat and hosted app-server concurrently against
+the fresh scratch CODEX_HOME; PR #164 retries this SQLite startup race on the
+hosted launch path, while the tmux launch path has no equivalent child-startup
+retry (its retry covers sending keys only), so this packet classifies the
+observed native failure as a harness flake and flags the retry asymmetry for
+product follow-up without claiming a proven product defect or a guaranteed
+successful retry.
+[Pane/error](l4-resume-team/run8/final-pane3.json),
 [operation status](l4-resume-team/run8/step1-operation.json),
-[classification](l4-resume-team/run8/step1-outcome.json),
+[observer outcome](l4-resume-team/run8/step1-outcome.json),
+[classification adjudication](l4-resume-team/run8/step1-adjudication.json),
 [analysis](l4-resume-team/run8/runtime-analysis.json).
 
 | Step | Outcome / classification | Evidence |
 |---|---|---|
-| 1. Initialize, exchange/read one marker per seat, retain identities/receipts | **FAIL / harness**: alpha native startup failed before markers; beta completed onboarding | [Outcome](l4-resume-team/run8/step1-outcome.json), [final state](l4-resume-team/run8/final-state.json) |
+| 1. Initialize, exchange/read one marker per seat, retain identities/receipts | **FAIL / harness** (adjudicated; observer: taurhaus): alpha native startup failed before markers; beta completed onboarding | [Outcome](l4-resume-team/run8/step1-outcome.json), [adjudication](l4-resume-team/run8/step1-adjudication.json), [final state](l4-resume-team/run8/final-state.json) |
 | 2. Stop every seat through supported session-stop | **NOT RUN / not evaluated**: binding stop after step 1 | [Outcome](l4-resume-team/run8/step2-outcome.json) |
 | 3. Accept both stopped-seat obligations; prove pending via acceptance, no transport receipt and member health refusal | **NOT RUN / not evaluated** | [Outcome](l4-resume-team/run8/step3-outcome.json) |
 | 4. One whole-team resume and status polling | **NOT RUN / not evaluated**: no resume RPC | [Outcome](l4-resume-team/run8/step4-outcome.json) |
@@ -1084,9 +1092,52 @@ Deviations: steps 2–6 were not run because step 1 failed, as the binding stop
 rule requires. The specified attempt-9 reference worktree does not exist
 (`git show` exit 128); run 7’s existing sandbox layout was reused as directed.
 The historical observer functions were replayed offline because run 7’s final
-commit already contains both fixes. One additional read-only private alpha pane
-capture identified the startup error. A fresh independent Opus evidence lens
-remains with the orchestrator; this implementer has no callable Opus/Workflow
-runner and claims no review approval. No product edit, descriptor mutation,
+commit already contains both fixes. The additional read-only private alpha pane
+capture confirms the automatic `final-pane3.json` capture; its nonblank lines
+are identical and add no evidence. The supplied independent Opus evidence lens
+drives the offline fix round below; approval remains with the orchestrator.
+No product edit, descriptor mutation,
 Mesh commit, install/release, plan-ledger edit, account/root move, crash/stress
 injection, or operator-process kill occurred.
+
+### Run 8 review fix round
+
+All six supplied findings were verified. The generated step-5 test invokes the
+controller with numeric card contexts and string runtime `contextGeneration`,
+matching the Rust serialization contract. Before the fix it failed with
+`alpha recovery receipt generation mismatch`; four classifier subcases also
+failed because `cap` matched `capabilities`/`capture` or a Mesh refusal lost to
+the harness branch. Converting both runtime generations to integers and giving
+explicit Mesh refusals precedence with specific cap phrases passed **32 offline
+tests**. Negative controls still reject mismatched generations and duplicate
+cards for both alpha and beta. Regression comments name introducing commit
+`4a4c65d8`. Command: `python3 -B -m unittest discover -s
+docs/design/evidence/e2e/l4-resume-team/run8 -v` (exit **0**; the preceding
+`-p test_run8.py` red run exited **1**, five assertion failures).
+
+The step-1 outcome's original four fields and exact `save()` formatting were
+reconstructed from the unchanged controller failure event after the earlier
+manual edit in `543236ef`; the later harness interpretation now lives only in
+the separate `step1-adjudication.json` sidecar rather than extra outcome fields;
+that sidecar references the outcome and the automatic pane
+capture. Historical events, executed-source hashes and cleanup evidence remain
+unchanged. The controller now omits the redundant post-deletion `auth_removed`
+flag; `root_removed` already covers deletion of the scratch credential copy.
+
+This fix round launches no paid seats and adds **0 inputs / $0 spend**. The
+original run remains step 1 **FAIL / harness** (adjudicated), steps 2–6 **NOT RUN /
+not evaluated**, with **$0.001065640** total metered spend. The controller's
+one-run guard and binding stop rule preclude rerunning run8 or claiming live
+resume coverage from these offline fixes.
+
+Review-round gates ran from this checkout root after the original teardown:
+`just check-quick` **0** (2,521 frontend tests), `just lint` **0**, and
+`just test-contracts` **0**. The existing `run8/gates.py` runner was reused with
+only its output destination redirected to `.check-logs/run8-review/`, preserving
+the original run's gate artifacts. Each Cargo admission probe saw one existing
+Cargo process, so no wait was required; each command used one build job and
+this checkout's own `src-tauri/target`. Scratch harness homes were removed when
+the runner exited **0** and its child commands had finished. No Rust diff:
+`just test-rust-unit` remains inapplicable. Evidence consistency verification
+also exited **0**, comparing the reconstructed outcome bytes against `save()`
+and the unchanged failure event. `git diff --check` passed.

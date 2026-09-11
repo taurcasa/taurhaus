@@ -1,10 +1,6 @@
 {
   "step": 1,
   "outcome": "FAIL",
-  "classification": "harness",
-  "reason": "alpha attribution/idle missing",
-  "automated_observer_classification": "taurhaus",
-  "classification_basis": "Alpha native Codex 0.153.4 exited on a scratch SQLite queue migration error before it acquired a session identity. The observer initially classified the missing-attribution boundary as Taurhaus. Initialize reporting completed despite the exited TUI is a separate product observation.",
-  "native_reason": "failed to migrate queue DB: while executing migration 1: error returned from database: (code: 1) table queued_items already exists",
-  "evidence": "step1-observer-alpha-pane.json"
+  "classification": "taurhaus",
+  "reason": "alpha attribution/idle missing"
 }
