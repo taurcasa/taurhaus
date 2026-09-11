@@ -5055,7 +5055,8 @@ fn resume_report_carries_onboarding_wake_failure() {
         report.warnings,
         vec![
             "onboarding wake failed: daemon spawn failed: Backend error: forced onboarding wake spawn failure"
-                .to_string()
+                .to_string(),
+            "team daemon skipped: lead control credential is missing for 'team-lead'".to_string(),
         ]
     );
     assert_eq!(
