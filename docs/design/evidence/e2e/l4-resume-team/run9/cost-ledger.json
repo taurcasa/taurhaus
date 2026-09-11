@@ -1,12 +1,25 @@
 {
-  "paid_inputs": 4,
+  "paid_inputs": 7,
   "turn_ids": [
     "01a08e00-05f9-7f01-b87d-716e7ce27c52",
     "01a08e00-1251-7ff1-bf9e-76cb0247d30b",
     "01a08e00-32cf-76e1-8833-e4204ada1404",
-    "01a08e00-55e0-7143-9030-46325a6fbae4"
+    "01a08e00-55e0-7143-9030-46325a6fbae4",
+    "01a08e01-ce73-7863-8c53-9ac34c5f213d",
+    "01a08e01-d5db-7323-b683-753c2cbe6ac1",
+    "01a08e01-eb37-71b1-8be8-7abc1c95d862"
   ],
   "turns": [
+    {
+      "turn_id": "01a08e01-ce73-7863-8c53-9ac34c5f213d",
+      "session_id": "01a08e01-c73b-7220-bdf1-9e46093b6f59",
+      "observer": "rollout-cumulative",
+      "input": 20200,
+      "cached_input": 12800,
+      "output": 174,
+      "api_equivalent_usd": 0.0019448,
+      "conservative_usd": 0.0244488
+    },
     {
       "turn_id": "01a08e00-1251-7ff1-bf9e-76cb0247d30b",
       "session_id": "01a08dff-fd88-7aa2-99b1-7ba3a2dbbdc7",
@@ -40,20 +53,40 @@
     {
       "turn_id": "01a08e00-55e0-7143-9030-46325a6fbae4",
       "thread_id": "01a08dff-fd5d-7353-afc7-47007e90b0dc",
-      "input": 11412,
-      "cached_input": 6912,
-      "output": 14,
+      "input": 12123,
+      "cached_input": 11008,
+      "output": 52,
       "observer": "host",
-      "api_equivalent_usd": 0.00105504,
-      "conservative_usd": 0.0137112
+      "api_equivalent_usd": 0.00050556,
+      "conservative_usd": 0.01461
+    },
+    {
+      "turn_id": "01a08e01-d5db-7323-b683-753c2cbe6ac1",
+      "thread_id": "01a08dff-fd5d-7353-afc7-47007e90b0dc",
+      "input": 12123,
+      "cached_input": 11008,
+      "output": 52,
+      "observer": "host",
+      "api_equivalent_usd": 0.00050556,
+      "conservative_usd": 0.01461
+    },
+    {
+      "turn_id": "01a08e01-eb37-71b1-8be8-7abc1c95d862",
+      "thread_id": "01a08dff-fd5d-7353-afc7-47007e90b0dc",
+      "input": 12290,
+      "cached_input": 11008,
+      "output": 12,
+      "observer": "host",
+      "api_equivalent_usd": 0.00049096,
+      "conservative_usd": 0.0147624
     }
   ],
   "unmetered": [],
-  "api_equivalent_usd": 0.00474808,
-  "conservative_usd": 0.0793716,
+  "api_equivalent_usd": 0.00713992,
+  "conservative_usd": 0.1340916,
   "basis": "Prior trial packet Luna input/cached/output rates $0.20/$0.02/$1.20 per million; conservative all tokens at $1.20/M, not an invoice.",
-  "seat_start_reservations": 3,
-  "inputs_plus_conservative_starts": 7,
+  "seat_start_reservations": 5,
+  "inputs_plus_conservative_starts": 12,
   "model": "gpt-5.6-luna",
   "effort": "low",
   "max_inputs": 16,
@@ -62,10 +95,13 @@
     "01a08e00-05f9-7f01-b87d-716e7ce27c52",
     "01a08e00-1251-7ff1-bf9e-76cb0247d30b",
     "01a08e00-32cf-76e1-8833-e4204ada1404",
-    "01a08e00-55e0-7143-9030-46325a6fbae4"
+    "01a08e00-55e0-7143-9030-46325a6fbae4",
+    "01a08e01-ce73-7863-8c53-9ac34c5f213d",
+    "01a08e01-d5db-7323-b683-753c2cbe6ac1",
+    "01a08e01-eb37-71b1-8be8-7abc1c95d862"
   ],
   "attachment_generations": {
-    "alpha": 1,
-    "beta": 2
+    "alpha": 2,
+    "beta": 3
   }
 }

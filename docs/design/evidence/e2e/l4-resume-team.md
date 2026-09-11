@@ -1172,3 +1172,8 @@ Step 3 **PASS / runtime**: one pending obligation accepted for each stopped
 seat; both have no submitted/consumed/native-enqueued receipt and the matching
 member health refusal. See `step3-alpha-backlog.json` and
 `step3-beta-backlog.json`. No presentation while stopped; no additional spend.
+
+Step 4 **PASS / runtime**: the single `resume_team` operation
+`team-resume_4adb1fcec0784e92844f1f4d869b1bb1` completed, resumed all three
+members, and started the team daemon without failed members or a daemon warning.
+Recovery/pending turns are settling; final spend reconciliation follows teardown.
