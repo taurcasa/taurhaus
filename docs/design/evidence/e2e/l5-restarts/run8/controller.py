@@ -335,10 +335,8 @@ try:
     assert source.is_file() and not source.is_symlink()
     shutil.copyfile(source, ROOT / "codex/auth.json")
     (ROOT / "codex/auth.json").chmod(0o600)
-    native = None
-    if not native:
-        package = Path(shutil.which("codex")).resolve().parents[1]
-        native = next(package.glob("node_modules/@openai/codex-linux-x64/vendor/*/bin/codex"))
+    package = Path(shutil.which("codex")).resolve().parents[1]
+    native = next(package.glob("node_modules/@openai/codex-linux-x64/vendor/*/bin/codex"))
     for name, source in [("codex", native), ("codex-code-mode-host", Path(native).with_name("codex-code-mode-host")), ("mesh", "/home/mstie/projects/mesh-l5/target/debug/mesh"),
                          ("claude", Path(shutil.which("claude")).resolve()),
                          ("taurhaus-daemon", CHECKOUT / "src-tauri/target/release/taurhaus-daemon")]:

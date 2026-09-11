@@ -6,7 +6,7 @@ from pathlib import Path
 from support import clean, complete_rows
 from pack import unpack
 B=Path(__file__).resolve().parent;P=B/'runtime'
-packet=unpack(json.loads((P/'snapshots.json').read_text())) if (P/'snapshots.json').exists() else {}
+packet={}
 def text(name):return (P/name).read_text() if (P/name).exists() else packet[name]
 def read(name,default=None):
  try:return json.loads(text(name))
@@ -16,51 +16,60 @@ def runtime_verdict(steps, windows):
  failed=next((s for s in steps if s['outcome']=='FAIL'),None)
  if failed:return f"FAIL step {failed['step']} ({failed['classification']}); later steps NOT RUN"
  if len(steps)!=6 or any(s['outcome']!='PASS' for s in steps):return 'UNPROVED — run 8: incomplete runtime steps'
+ if any(w.get('boundary')=='taurhaus-backlog' and w.get('seat')=='beta' and w.get('completed_at') is None for w in windows):
+  return 'UNPROVED — run 8: required working-window coverage (harness structural limit)'
  if len(windows)!=4 or any(w['outcome']!='PASS' for w in windows):
   return 'UNPROVED — run 8: required working-window coverage (harness timing)'
  return 'PASS — run 8: all six steps'
 
-events=complete_rows(text('events.jsonl'));cleanup=read('cleanup.json');ledger=read('cost-ledger.json')
-assert not cleanup['survivors'] and all(cleanup[k] for k in ['port_closed','root_removed','auth_removed','auth_copy_removed_before_root'])
-steps=[]
-for n in range(1,7):
- outcome=read(f'step{n}-outcome.json')
- if outcome is None:
-  stop=next((e for e in events if e['kind']=='stopped' and e.get('step')==n),None)
-  outcome={'step':n,'outcome':'FAIL' if stop else 'NOT RUN','classification':'harness setup' if stop else 'blocked by earlier failure','reason':stop.get('error') if stop else None}
-  (P/f'step{n}-outcome.json').write_text(json.dumps(outcome,indent=2)+'\n')
- steps.append(outcome)
-usage=read('usage-events.json',[]);turns=[]
-for tid in ledger['turn_ids']:
- rows=[r for r in usage if r['payload'].get('turn_id')==tid]
- generations=[g for g in ledger['generations'] if g['turn_id']==tid]
- start=next((r['timestamp'] for r in rows if r['payload']['type']=='task_started'),None)
- end=next((r['timestamp'] for r in rows if r['payload']['type']=='task_complete'),None)
- turns.append({'turn_id':tid,'thread_id':rows[0]['thread_id'] if rows else 'notify-only session','started':start,'completed':end,
-  'duration_seconds':round(seconds(end)-seconds(start),3) if start and end else None,
-  'generations':generations,'metered_usd':round(sum(g['api_equivalent_usd'] for g in generations),9) if generations else None})
-start=next(r['at'] for r in events if r['kind']=='warmup_started')
-end=next(r['at'] for r in events if r['kind']=='cleanup')
-assert end-start<900 and ledger['paid_inputs']<=20 and ledger['api_equivalent_usd']<=.30
-failed=next((s for s in steps if s['outcome']=='FAIL'),None)
-result={'verdict':runtime_verdict(steps,read('working-windows.json',[])),
- 'step_outcomes':steps,'runtime_seconds':end-start,'started_utc':datetime.datetime.fromtimestamp(start,datetime.timezone.utc).isoformat(),
- 'cleanup_utc':datetime.datetime.fromtimestamp(end,datetime.timezone.utc).isoformat(),
- 'restart_boundaries':[r for r in events if r['kind'] in ['normal_daemon_stop','post_daemon_stop','post_daemon_restart','normal_mesh_restart_initiated','pending_boundary_sample']],
- 'identities':{s:read(f'team/runtime/{s}.json') for s in ['alpha','beta']},'config':read('team/config.json'),
- 'owner_census':read('step5-owner-census.json'),'obligation_accounting':read('obligation-accounting.json'),
- 'observed_obligation_accounting':read('observed-obligation-accounting.json'),
- 'working_windows':read('working-windows.json'),'turns':turns,'spend':ledger,'cleanup':cleanup,'controller_exit':read('controller-exit.json')['exit'],
- 'daemon_jsonl':{'rows':len(complete_rows(text('taurhaus.log.jsonl'))),'sha256':hashlib.sha256((P/'taurhaus.log.jsonl').read_bytes()).hexdigest()},
- 'transient_refusals':[r for r in events if r['kind']=='transient_refusal'],
- 'candidate':dict(json.loads((B/'candidate.json').read_text()),binaries=[r for r in events if r['kind']=='binary']),
- 'gates':{n:json.loads((B/f'gates/gate-{n}.json').read_text()) for n in ['check-quick','lint','test-contracts']},
- 'gate_cleanup':json.loads((B/'gates/gate-cleanup.json').read_text()),
- 'deviations':['Spec-referenced integration checkout absent (git show exit 128); inspected its retained attempt9 sources here and messaging run2 sources read-only.',
- 'Beta original Taurhaus-boundary turn has no completed >=30-second interval; paced work after recovery is not substituted. Required timing coverage remains unproved (harness).',
- 'Warm-up quit needed one recorded Enter confirmation after loading; no model prompt or restart added.',
- 'Unknown-cost inputs counted separately; metered estimate is not an invoice or complete billed spend.',
- 'Independent Opus evidence lens and implementer/reviewer metering belong to invoking orchestrator; Opus unavailable in this tool surface.',
- ]}
-(B/'final-audit.json').write_text(json.dumps(clean(result),indent=2)+'\n')
-print(json.dumps({k:result[k] for k in ['verdict','runtime_seconds','daemon_jsonl']}))
+WINDOW_LIMIT="At the Taurhaus boundary the hosted seat beta's host is stopped, so a completed original turn spanning that boundary cannot exist; windows.py's predicate cannot be satisfied for beta in any rerun with this controller. This is a harness structural limit, not retryable timing or a product failure. For an orchestrator ruling: measure the observed working interval from task_started to normal_daemon_stop and require >=30 s before stopping the host, or drop the completed-turn requirement at the boundary that terminates it. Run8 crossed after only about 3.459 s; resumed execution is not a substitute. No paid rerun is needed for this evidence correction."
+
+def main():
+ global packet
+ packet=unpack(json.loads((P/'snapshots.json').read_text())) if (P/'snapshots.json').exists() else {}
+ events=complete_rows(text('events.jsonl'));cleanup=read('cleanup.json');ledger=read('cost-ledger.json')
+ assert not cleanup['survivors'] and all(cleanup[k] for k in ['port_closed','root_removed','auth_removed','auth_copy_removed_before_root'])
+ steps=[]
+ for n in range(1,7):
+  outcome=read(f'step{n}-outcome.json')
+  if outcome is None:
+   stop=next((e for e in events if e['kind']=='stopped' and e.get('step')==n),None)
+   outcome={'step':n,'outcome':'FAIL' if stop else 'NOT RUN','classification':'harness setup' if stop else 'blocked by earlier failure','reason':stop.get('error') if stop else None}
+   (P/f'step{n}-outcome.json').write_text(json.dumps(outcome,indent=2)+'\n')
+  steps.append(outcome)
+ usage=read('usage-events.json',[]);turns=[]
+ for tid in ledger['turn_ids']:
+  rows=[r for r in usage if r['payload'].get('turn_id')==tid]
+  generations=[g for g in ledger['generations'] if g['turn_id']==tid]
+  start=next((r['timestamp'] for r in rows if r['payload']['type']=='task_started'),None)
+  end=next((r['timestamp'] for r in rows if r['payload']['type']=='task_complete'),None)
+  turns.append({'turn_id':tid,'thread_id':rows[0]['thread_id'] if rows else 'notify-only session','started':start,'completed':end,
+   'duration_seconds':round(seconds(end)-seconds(start),3) if start and end else None,
+   'generations':generations,'metered_usd':round(sum(g['api_equivalent_usd'] for g in generations),9) if generations else None})
+ start=next(r['at'] for r in events if r['kind']=='warmup_started')
+ end=next(r['at'] for r in events if r['kind']=='cleanup')
+ assert end-start<900 and ledger['paid_inputs']<=20 and ledger['api_equivalent_usd']<=.30
+ failed=next((s for s in steps if s['outcome']=='FAIL'),None)
+ result={'verdict':runtime_verdict(steps,read('working-windows.json',[])),
+  'step_outcomes':steps,'runtime_seconds':end-start,'started_utc':datetime.datetime.fromtimestamp(start,datetime.timezone.utc).isoformat(),
+  'cleanup_utc':datetime.datetime.fromtimestamp(end,datetime.timezone.utc).isoformat(),
+  'restart_boundaries':[r for r in events if r['kind'] in ['normal_daemon_stop','post_daemon_stop','post_daemon_restart','normal_mesh_restart_initiated','pending_boundary_sample']],
+  'identities':{s:read(f'team/runtime/{s}.json') for s in ['alpha','beta']},'config':read('team/config.json'),
+  'owner_census':read('step5-owner-census.json'),'obligation_accounting':read('obligation-accounting.json'),
+  'observed_obligation_accounting':read('observed-obligation-accounting.json'),
+  'working_windows':read('working-windows.json'),'turns':turns,'spend':ledger,'cleanup':cleanup,'controller_exit':read('controller-exit.json')['exit'],
+  'daemon_jsonl':{'rows':len(complete_rows(text('taurhaus.log.jsonl'))),'sha256':hashlib.sha256((P/'taurhaus.log.jsonl').read_bytes()).hexdigest()},
+  'transient_refusals':[r for r in events if r['kind']=='transient_refusal'],
+  'candidate':dict(json.loads((B/'candidate.json').read_text()),binaries=[r for r in events if r['kind']=='binary']),
+  'gates':{n:json.loads((B/f'gates/gate-{n}.json').read_text()) for n in ['check-quick','lint','test-contracts']},
+  'gate_cleanup':json.loads((B/'gates/gate-cleanup.json').read_text()),
+  'deviations':['Spec-referenced integration checkout absent (git show exit 128); inspected its retained attempt9 sources here and messaging run2 sources read-only.',
+  WINDOW_LIMIT,
+  'Warm-up quit needed one recorded Enter confirmation after loading; no model prompt or restart added.',
+  'Unknown-cost inputs counted separately; metered estimate is not an invoice or complete billed spend.',
+  'Independent Opus evidence lens and implementer/reviewer metering belong to invoking orchestrator; Opus unavailable in this tool surface.',
+  ]}
+ (B/'final-audit.json').write_text(json.dumps(clean(result),indent=2)+'\n')
+ print(json.dumps({k:result[k] for k in ['verdict','runtime_seconds','daemon_jsonl']}))
+
+if __name__=='__main__':main()

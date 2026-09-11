@@ -87,6 +87,7 @@ def explicit_read(seat,label):
  # Keep unread/mark-read filters unchanged through every returned cursor.
  cursor=None;page=0
  while True:
+  assert page<100,'read page cap exceeded (100)'
   args=['read','--unread','--mark-read','--json']
   if cursor:args+=['--since',cursor]
   value=parse(mesh(args,f'{label}-{seat}-read-{page}.txt',seat))
@@ -96,6 +97,7 @@ def explicit_read(seat,label):
  # Independently page the canonical journal reader, even on empty pages.
  cursor=None;page=0
  while True:
+  assert page<100,'journal page cap exceeded (100)'
   args=['journal','read']
   if cursor:args+=['--since',cursor]
   value=parse(mesh(args,f'{label}-{seat}-journal-{page}.txt',seat))
@@ -218,7 +220,8 @@ if __name__=='__main__':
      rs=receipts(mid)
      targets=[t for t in accepted[0]['payload']['delivery_targets'] if t['recipient']==seat]
      assert len(targets)==1,'accepted target missing or duplicate'
-     if label=='mesh-backlog':assert transport_proven(accepted[0]['payload'],rs,seat,transport(seat),True),'transport accounting changed'
+     # Step 5 established the native witness; this rechecks receipt accounting only.
+     if label=='mesh-backlog':assert transport_proven(accepted[0]['payload'],rs,seat,transport(seat),True),'receipt accounting changed (native witness established at step 5)'
      accounting.append({'label':label,'seat':seat,'message':item,'accepted':accepted[0],'receipts':rs})
      assert len([r for r in rs if r.get('stage') in ['submitted','native_enqueued']])<=1,'duplicate exposure receipt'
      assert read_by_seat(rs,seat),'unread obligation'
@@ -232,3 +235,77 @@ if __name__=='__main__':
   try:action({'op':'fail','reason':f'step {n}: {e}'})
   except Exception:pass
   raise
+
+
+# Inline offline tests keep this review confined to the requested packet files.
+# Run: PYTHONPATH=docs/design/evidence/e2e/l5-restarts/run8 python3 -m unittest steps.ReviewRegressions
+import unittest
+from unittest.mock import patch
+
+class ReviewRegressions(unittest.TestCase):
+ def render_report(self):
+  import tempfile
+  with tempfile.TemporaryDirectory() as directory:
+   base=Path(directory)/'l5-restarts/run8';base.mkdir(parents=True)
+   (base/'final-audit.json').write_text((B/'final-audit.json').read_text())
+   document=base.parent.parent/'l5-restarts.md'
+   document.write_text('# Old verdict\n\nRun7: historical spend.\n\n## Historical run6 continuation verdict\n\nOlder evidence.\n')
+   namespace={'__file__':str(base/'report.py'),'__name__':'__main__'}
+   code=compile((B/'report.py').read_text(),str(B/'report.py'),'exec')
+   exec(code,namespace)
+   first=document.read_text()
+   exec(code,namespace)
+   self.assertEqual(document.read_text(),first,'regeneration must be idempotent')
+   return first
+ def test_report_structural_limit(self):
+  # // Regression: d90ce598 called an impossible completed hosted turn mere timing.
+  report=self.render_report()
+  self.assertIn('harness structural limit',report.splitlines()[0])
+  self.assertIn('normal_daemon_stop',report)
+  self.assertIn('cannot',report)
+  self.assertIn('orchestrator',report)
+  self.assertIn('3.459',report)
+ def test_report_history(self):
+  # // Regression: d90ce598 orphaned the displaced run7 lead below run8's headline.
+  report=self.render_report()
+  self.assertLess(report.index('## Historical run7 verdict'),report.index('Run7:'))
+ def test_report_cost_and_duration(self):
+  # // Regression: d90ce598 omitted conservative spend and rendered null as None.
+  report=self.render_report().split('## Run8 — eighth-attempt evidence',1)[1]
+  self.assertIn('$0.361888800',report)
+  self.assertIn('all input at the output rate',report)
+  self.assertIn('| taurhaus-backlog / beta | — |',report)
+ def test_report_controller_disclosure(self):
+  # // Regression: d90ce598 labelled a controller needing an external Enter exact.
+  report=self.render_report()
+  paragraph=next(p for p in report.split('\n\n') if '(l5-restarts/run8/controller.py)' in p)
+  self.assertIn('out-of-band Enter',paragraph)
+  self.assertIn('warmup-quit-confirmation.json',paragraph)
+ def test_audit_structural_verdict(self):
+  # // Regression: d90ce598 classified the terminated original hosted turn as timing.
+  import ast
+  tree=ast.parse((B/'audit.py').read_text())
+  fn=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='runtime_verdict')
+  scope={};exec(compile(ast.Module(body=[fn],type_ignores=[]),'audit','exec'),scope)
+  audit=json.loads((B/'final-audit.json').read_text())
+  self.assertIn('harness structural limit',scope['runtime_verdict'](audit['step_outcomes'],audit['working_windows']))
+ def test_read_caps_each_reader(self):
+  # // Regression: 1ae4ece0 followed endlessly advancing cursors without a local cap.
+  for reader in ['read','journal']:
+   with self.subTest(reader=reader):
+    calls=[]
+    def fake_mesh(args,name,seat):
+     calls.append(args)
+     if len(calls)>150:raise RuntimeError('test safety bound exceeded')
+     return json.dumps({'done':args[0]!=reader,'cursor':str(len(calls))})
+    with patch(__name__+'.mesh',side_effect=fake_mesh),patch(__name__+'.snap'):
+     with self.assertRaisesRegex(AssertionError,reader+' page cap exceeded'):
+      explicit_read('beta','offline')
+ def test_read_follows_empty_pages_to_done(self):
+  # // Regression: 1ae4ece0 lacked a local bound; bounding must preserve cursor reads.
+  pages=[{'done':False,'cursor':'r1'}, {'done':True},
+         {'done':False,'cursor':'j1'}, {'done':True}]
+  with patch(__name__+'.mesh',side_effect=[json.dumps(p) for p in pages]) as mocked,patch(__name__+'.snap'):
+   explicit_read('beta','offline')
+  self.assertEqual(mocked.call_args_list[1].args[0],['read','--unread','--mark-read','--json','--since','r1'])
+  self.assertEqual(mocked.call_args_list[3].args[0],['journal','read','--since','j1'])

@@ -1,4 +1,6 @@
-# UNPROVED — run 8: required working-window coverage (harness timing)
+# UNPROVED — run 8: required working-window coverage (harness structural limit)
+
+## Historical run7 verdict
 
 Run7: 14 inputs; $0.018016400 metered; 2 unknown-cost inputs; 336.60 seconds. All owned runtime processes and scratch authentication removed. See the [run7 packet](#run7--seventh-attempt-evidence).
 
@@ -1546,12 +1548,12 @@ This review adds **0 Codex inputs / $0 seat spend**; all original measured spend
 
 Taurhaus `26c06132`, protocol 27; Mesh `310144d`, unchanged enabled Codex 0.153.4 descriptor. Both native siblings copied; alpha tmux, beta app_server, gpt-5.6-luna at low; canonical initialize and login-only Claude lead.
 
-**UNPROVED — run 8: required working-window coverage (harness timing)**. Runtime 199.87 seconds; 15/20 counted inputs (including one unprompted warm-up); $0.016596320/$0.30 metered; 2 unknown-cost turns. Unknown is never treated as free. Independent Opus review remains with the invoking orchestrator.
+**UNPROVED — run 8: required working-window coverage (harness structural limit)**. Runtime 199.87 seconds; 15/20 counted inputs (including one unprompted warm-up); $0.016596320/$0.30 metered; 2 unknown-cost turns. Conservative estimate $0.361888800: charges all input at the output rate; this exceeds $0.30 but is not the metered basis of the cap. Unknown is never treated as free. Independent Opus review remains with the invoking orchestrator.
 
 | Step | Outcome / classification | Evidence |
 |---|---|---|
 | 1 | PASS — runtime | [Outcome](l5-restarts/run8/runtime/step1-outcome.json). Both baselines delivered and explicitly read. |
-| 2 | PASS — runtime | [Outcome](l5-restarts/run8/runtime/step2-outcome.json). Both markers pending at the Taurhaus boundary; beta original >=30-second window UNPROVED (harness timing). |
+| 2 | PASS — runtime | [Outcome](l5-restarts/run8/runtime/step2-outcome.json). Both markers pending at the Taurhaus boundary; beta original >=30-second window UNPROVED (harness structural limit: host stopped at boundary). |
 | 3 | PASS — runtime | [Outcome](l5-restarts/run8/runtime/step3-outcome.json). Normal Taurhaus restart; new PID/start ticks and protocol 27; supported beta recovery. |
 | 4 | PASS — runtime | [Outcome](l5-restarts/run8/runtime/step4-outcome.json). Both backlog IDs delivered/read once; stable identities; no baseline replay. |
 | 5 | PASS — runtime | [Outcome](l5-restarts/run8/runtime/step5-outcome.json). Mesh owner epoch/PID changed; both fresh IDs exposed once; owner census PASS. |
@@ -1559,7 +1561,7 @@ Taurhaus `26c06132`, protocol 27; Mesh `310144d`, unchanged enabled Codex 0.153.
 
 ### Runtime evidence
 
-[Exact controller](l5-restarts/run8/controller.py), [ordered steps](l5-restarts/run8/steps.py), [commands, RPCs and exits](l5-restarts/run8/runtime/events.jsonl), [complete daemon JSONL](l5-restarts/run8/runtime/taurhaus.log.jsonl), [lossless snapshots](l5-restarts/run8/runtime/snapshots.json), [final audit](l5-restarts/run8/final-audit.json). Snapshot filenames map to SHA-256-keyed payloads; `pack.unpack` restores them. Panes contain at most 60 lines.
+[Retained controller](l5-restarts/run8/controller.py) needed one recorded out-of-band Enter during warm-up ([confirmation](l5-restarts/run8/warmup-quit-confirmation.json)); it is not replayable unattended as committed. Binary setup and read bounds below include offline review corrections. [Ordered steps](l5-restarts/run8/steps.py), [commands, RPCs and exits](l5-restarts/run8/runtime/events.jsonl), [complete daemon JSONL](l5-restarts/run8/runtime/taurhaus.log.jsonl), [lossless snapshots](l5-restarts/run8/runtime/snapshots.json), [original sealed audit](l5-restarts/run8/final-audit.json) (its timing label is superseded by this review and the corrected audit.py). Snapshot filenames map to SHA-256-keyed payloads; `pack.unpack` restores them. Panes contain at most 60 lines.
 
 Daemon JSONL: 624 complete rows, SHA-256 `a819de4765d1f40e8b5bb132aa69bf1236195c71b7576d089b82d3ab35d1645e`. Controller exit 0; 0 transient controller refusals observed; the retry policy allows named busy refusals within 65 seconds.
 
@@ -1602,11 +1604,13 @@ Inherited packet rates: $0.20/$0.02/$1.20 per million uncached input/cached inpu
 | Boundary / seat | Original working seconds | Outcome |
 |---|---:|---|
 | taurhaus-backlog / alpha | 45.367 | PASS — runtime |
-| taurhaus-backlog / beta | None | UNPROVED — harness timing |
+| taurhaus-backlog / beta | — | UNPROVED — harness structural limit |
 | mesh-backlog / alpha | 44.97 | PASS — runtime |
 | mesh-backlog / beta | 44.947 | PASS — runtime |
 
-Beta at the first boundary: the pending sample occurred 3.459 seconds after its original turn started, before a python3 command was retained. That original turn has no completion record; execution after supported recovery cannot prove its original >=30-second window. This required subclaim is UNPROVED — harness timing, despite the six delivery/restart/read predicates passing.
+At the Taurhaus boundary the hosted seat beta's host is stopped, so a completed original turn spanning that boundary cannot exist; windows.py's predicate cannot be satisfied for beta in any rerun with this controller. This is a harness structural limit, not retryable timing or a product failure. For an orchestrator ruling: measure the observed working interval from task_started to normal_daemon_stop and require >=30 s before stopping the host, or drop the completed-turn requirement at the boundary that terminates it. Run8 crossed after only about 3.459 s; resumed execution is not a substitute. No paid rerun is needed for this evidence correction.
+
+The pending sample was 3.459 seconds after task_started; normal_daemon_stop followed immediately. The host events have no original turn completion, and step3-resume-result records reused_pane: false and launch_host: owned thread resumed. Crossing later while the original turn remains active still terminates it, so timing alone cannot satisfy the current predicate. All six delivery/restart/read predicates passed.
 
 Measured intervals use original turns, never a resumed substitute. Pending samples, daemon PID/start ticks, seat identities, owner epoch and process census are retained in the final audit and lossless snapshots.
 
@@ -1640,8 +1644,27 @@ Gate timing and exact outputs are retained under [gate sidecars](l5-restarts/run
 ### Deviations and limits
 
 - Spec-referenced integration checkout absent (git show exit 128); inspected its retained attempt9 sources here and messaging run2 sources read-only.
-- Beta original Taurhaus-boundary turn has no completed >=30-second interval; paced work after recovery is not substituted. Required timing coverage remains unproved (harness).
+- At the Taurhaus boundary the hosted seat beta's host is stopped, so a completed original turn spanning that boundary cannot exist; windows.py's predicate cannot be satisfied for beta in any rerun with this controller. This is a harness structural limit, not retryable timing or a product failure. For an orchestrator ruling: measure the observed working interval from task_started to normal_daemon_stop and require >=30 s before stopping the host, or drop the completed-turn requirement at the boundary that terminates it. Run8 crossed after only about 3.459 s; resumed execution is not a substitute. No paid rerun is needed for this evidence correction.
 - Warm-up quit needed one recorded Enter confirmation after loading; no model prompt or restart added.
 - Unknown-cost inputs counted separately; metered estimate is not an invoice or complete billed spend.
 - Independent Opus evidence lens and implementer/reviewer metering belong to invoking orchestrator; Opus unavailable in this tool surface.
 - No product change, Mesh descriptor edit/commit, install, release, plan ledger edit, or mutation in another Taurhaus checkout.
+
+### Offline review correction — 2026-09-11
+
+All nine supplied findings were verified and addressed locally. This correction adds **0 Codex inputs / $0 seat spend**; it does not rerun the paid lane or change its six runtime PASS outcomes. The original sealed sidecars remain historical measurements. The structural working-window limit requires an orchestrator ruling before any new attempt.
+
+Seven inline offline checks in `steps.ReviewRegressions` exercise report regeneration twice, historical heading placement, structural verdict and measurement alternative, conservative spend/null duration, warm-up disclosure, pagination limits for both readers, and cursor continuation through empty pages. Regression comments name d90ce598 and 1ae4ece0. Red: exit 1, four failures and three errors (including both unbounded-reader subtests); green: all seven pass, exit 0. The 48 inherited packet tests also pass, exit 0. Tests use temporary reports and mocked commands; no real CLI or credential access.
+
+`PYTHONPATH=docs/design/evidence/e2e/l5-restarts/run8 python3 -m unittest steps.ReviewRegressions` and `PYTHONPATH=docs/design/evidence/e2e/l5-restarts/run8 python3 -m unittest discover -s docs/design/evidence/e2e/l5-restarts/run8 -p '*_test.py'` run from the checkout root.
+
+| Review gate (exact command) | Exit | Seconds |
+|---|---:|---:|
+| `just check-quick` | 0 | 18.50 |
+| `just lint` | 0 | 6.23 |
+| `just test-contracts` (initial) | 101 | 5.48 |
+| `just test-contracts` (retry) | 0 | 5.33 |
+
+The initial contract run scanned its own new `.check-logs` output and tripped `retired_gemini_tool_literal_does_not_return`. Moving only these review logs into the excluded checkout-local target directory fixed the harness artifact collision; no product/test predicate changed. Exact output, timings and Cargo preflights remain locally under `src-tauri/target/l5-run8-review-initial/` and `src-tauri/target/l5-run8-review-retry/`. These untracked logs are outside the committed evidence packet to keep this fix limited to the named files.
+
+Both gate sessions used the retained credential-free sandbox after the recorded runtime teardown; both cleanup records confirm all children waited and scratch roots removed. At most two existing Cargo processes were observed before starting one job, using this checkout’s own target. No Rust diff; the conditional Rust unit gate does not apply. No daemon rebuild or paid rerun was needed for this offline correction.
