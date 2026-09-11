@@ -1,8 +1,12 @@
-# INCOMPLETE — latest run 12 in progress, step 1 passed
+# FAIL — latest run 12, step 5: resumed alpha backlog blocked by unattributed activity
 
-Run12 uses the verified `session_dead` wire literal. Step 1 exchanged and explicitly
-read both markers over tmux and app_server. Steps 2–6 are pending.
-See [Run 12](#run-12).
+Steps 1–4 passed, including the whole-team stop and one successful `resume_team`.
+Step 5 failed: alpha resumed its recorded session but stayed unattributed; Mesh
+reported `pending: activity not freshly idle`. Beta received its backlog once.
+Step 6 was not run. Classification: **Taurhaus product failure**; raw outcomes
+remain byte-exact. Metered spend **$0.008163800**, **11/16 inputs**. Teardown found
+zero survivors; all three gates exited **0**. See [Run 12](#run-12).
+Independent Opus evidence review remains the orchestrator's separate stage.
 
 ## Historical run 2 — hosted process exited before transport readiness
 
@@ -1591,28 +1595,119 @@ checkout's `src-tauri/target`. No `src-tauri/` file changed, so the conditional
 
 ## Run 12
 
-Offline red: three stop-observer assertions failed against the inherited `sessionDead`
-literal. Green: 41 controller tests and six preflight tests passed after correcting
-the observer to `session_dead`. No product code changed.
+### Result and ordered steps
 
-- Step 1 **PASS (runtime)**: warm-up, canonical initialize, both seat exchanges and
-  explicit reads. Alpha attributed idle; ready session retained for the stop check.
-  [Outcome](l4-resume-team/run12/step1-outcome.json),
-  [ready session](l4-resume-team/run12/step1-ready-session.json).
+**FAIL at step 5 (Taurhaus); step 6 NOT RUN.** This fresh run executed once, using
+Taurhaus base `ac2bc513` and Mesh `3015cb0` (`release/overhaul-rc`), protocol 27,
+real Codex 0.153.4 with `gpt-5.6-luna` / low, alpha tmux, beta app_server and a
+login-only Claude lead. The shipped hosted descriptor was enabled. The existing
+checkout-local daemon and Mesh digests matched run10; no product-source change
+required a rebuild. [Provenance](l4-resume-team/run12/provenance.json),
+[capabilities](l4-resume-team/run12/delivery-capabilities.json).
 
-- Step 2 **PASS (runtime)**: supported stop completed for all three seats; no seat
-  panes or Codex siblings survived. Beta's daemon-owned host stopped and its thread
-  remained recorded. Alpha retained the step-1 ready session, rollout and pane
-  binding; health converged to `session_dead` and `daemon_pid` cleared.
-  [Immediate](l4-resume-team/run12/step2-alpha-runtime-record.json),
-  [converged](l4-resume-team/run12/step2-alpha-converged-runtime-record.json).
+The inherited observer's `sessionDead` spelling was corrected offline, before
+execution. Three regression checks first failed; all **41 controller tests** and
+**six preflight tests** then passed. The tests use generated data/mocked commands,
+and the regression comment identifies `ba431fbb` and the `48f5d010` failure record.
+[Red](l4-resume-team/run12/red.txt), [green](l4-resume-team/run12/green.txt),
+[preflight](l4-resume-team/run12/preflight.txt). No product code changed.
 
-- Step 3 **PASS (runtime)**: each stopped seat accepted one pending obligation,
-  with no submitted/native/read receipt. Scheduler health deferred alpha for
-  `runtime session dead` and beta for `native_host_not_live`.
-  [Alpha](l4-resume-team/run12/step3-alpha-backlog.json),
-  [beta](l4-resume-team/run12/step3-beta-backlog.json).
+| Step | Outcome / classification | Runtime evidence |
+|---|---|---|
+| 1 | PASS / runtime | Scratch home warmed and quit cleanly; canonical initialize completed. Each seat replied once to its marker, with alpha `submitted`, beta `native_enqueued`, and explicit reads. Alpha attributed idle; ready session captured. |
+| 2 | PASS / runtime | All three supported stops completed; no seat panes or Codex siblings survived. Beta's owned host ended, thread retained. Alpha retained the ready session, rollout and pane binding; converged to `session_dead` with `daemon_pid` cleared. |
+| 3 | PASS / runtime | One obligation per stopped seat accepted with projection `pending`, no presentation receipt; scheduler deferred alpha for `runtime session dead`, beta for `native_host_not_live`. |
+| 4 | PASS / runtime | Exactly one `resume_team` completed, resuming lead, alpha and beta; no failed member or team-daemon refusal. |
+| 5 | FAIL / Taurhaus | `resumed pending markers missing` after the 120-second poll. Alpha had zero resumed backlog transport receipts/replies; beta had one native receipt and one reply. |
+| 6 | NOT RUN / not evaluated | Mandatory stop after step 5; no post-resume explicit-read/journal/executor certification claimed. |
 
-- Step 4 **PASS (runtime)**: the single `coordination.resume_team` completed with
-  lead, alpha and beta resumed; no failed member or team-daemon refusal.
-  [Operation and status samples](l4-resume-team/run12/step4-operation.json).
+Each passed step was committed before releasing the next controller checkpoint.
+The [step-1 ready session](l4-resume-team/run12/step1-ready-session.json),
+[immediate stop record](l4-resume-team/run12/step2-alpha-runtime-record.json),
+[converged stop record](l4-resume-team/run12/step2-alpha-converged-runtime-record.json),
+[alpha backlog](l4-resume-team/run12/step3-alpha-backlog.json),
+[beta backlog](l4-resume-team/run12/step3-beta-backlog.json), and
+[resume status samples](l4-resume-team/run12/step4-operation.json) retain the boundaries.
+All six raw `stepN-outcome.json` files are pinned in
+[outcome integrity](l4-resume-team/run12/outcome-integrity.json); adjudication is separate.
+
+### Failure boundary
+
+[Step-5 adjudication](l4-resume-team/run12/step5-adjudication.json) retains launch,
+activity, recovery, receipt and reply evidence. Alpha's command used
+`resume '01a08ef2-b53e-75d3-a017-3bf0bfa459e6'`, with `mode: resume` on
+`launch.command.rendered`; no `launch.resume.fallback` event occurred. However,
+the final runtime still referenced the original rollout/session. The resumed PID
+7621 in pane `%15` was `idle` with `activity_attribution: none`; delivery health
+reported `IO error: delivery: pending: activity not freshly idle`. The generation-2
+recovery card remained `accepted` with zero offered/read bytes and no matching
+native card. The backlog likewise had zero transport receipts and zero replies.
+The complete criterion therefore fails independently of the new-rollout check.
+
+Beta retained thread `01a08ef2-b52c-7ce0-8eff-423deeff1523` with a new owned host
+and attachment generation 3. One matching generation-3 recovery card appeared in
+native context; the pending marker had one `native_enqueued` receipt and one reply.
+The host's `thread/resume` request is selected by the checked-out
+`HostProcess::launch` path (`hosted_process.rs:343–355`); raw request frames are not
+in the packet, so this is not claimed as direct wire capture. Team incarnation
+remained unchanged; generations advanced lead 1→2, alpha 1→2 and beta 1→3.
+
+This is an observed product failure boundary, not proof of the exact scanner root
+cause. No product fix, paid retry, forced input, fake activity or altered predicate
+followed it. Step 6 remains unrun even though retained data contains earlier reads.
+
+### Every spend
+
+| Seat / input | Turn ID | API-equivalent USD |
+|---|---|---:|
+| beta model turn | `01a08ef2-be90-7133-8979-66c14955d3cd` | 0.001074640 |
+| beta model turn | `01a08ef3-1f9a-78a0-a75b-1545d17114e4` | 0.000320760 |
+| beta model turn | `01a08ef4-6937-77f1-9d76-e3dfbc9d36be` | 0.001218440 |
+| beta model turn | `01a08ef4-8893-74e1-85f2-151fb62e68ec` | 0.001220440 |
+| alpha model turn | `01a08ef2-cb1c-7870-9fa4-b57b8f98f465` | 0.002655200 |
+| alpha model turn | `01a08ef2-f8a0-7eb2-93fa-fa95228bd369` | 0.001674320 |
+| Total metered | 6 observed turns | **0.008163800** |
+
+[Cost ledger](l4-resume-team/run12/cost-ledger.json) and
+[spend audit](l4-resume-team/run12/final-spend-audit.json) retain every token count,
+turn ID and observer. Six observed turns plus five conservative start reservations
+(warm-up, two initial seats, two resumed seats) total **11/16**. Warm-up sent no
+model prompt and had no turn ID; any unreported startup cost stays unknown, not
+zero. All six observed model turns are metered. Claude took zero model turns.
+Rates are the inherited trial basis ($0.20 input / $0.02 cached / $1.20 output per
+million), not an invoice; all-output-rate subtotal **$0.108556800**.
+Runs 1–11 are history. Metering never gated a lifecycle operation. No review model
+ran; implementer accounting is separate and owned by the orchestrator.
+
+### Teardown, gates and deviations
+
+The controller exited **1** after teardown. [Cleanup](l4-resume-team/run12/cleanup.json)
+and the read-only [audit](l4-resume-team/run12/final-audit.json) verify zero surviving
+owned processes, a closed private port, removed scratch root/auth and unchanged
+Mesh source. Runtime was **266.769 seconds**, below 15 minutes.
+The complete sanitized persisted [daemon JSONL](l4-resume-team/run12/taurhaus.log.jsonl)
+retains **635 rows**; account-usage rows are excluded under the evidence
+privacy contract. [Events](l4-resume-team/run12/events.jsonl) retain commands/RPCs;
+pane excerpts are at most 60 lines. Privacy audit found no violations.
+
+| Gate (checkout root, after teardown) | Exit |
+|---|---:|
+| `just check-quick` | 0 |
+| `just lint` | 0 |
+| `just test-contracts` | 0 |
+
+[Gate summary](l4-resume-team/run12/gate-summary.json) retains commands, exits,
+timings and logs. Cargo admission probes used the specified process pattern;
+each saw fewer than three existing Cargo processes. Gates used one job and this
+checkout's `src-tauri/target`. No `src-tauri/` diff, so `just test-rust-unit` was not
+required. No full gate, install, release, Mesh commit or other-checkout mutation.
+
+- The run stopped at step 5 as required; step 6 and the remaining step-5 assertions
+  were not executed. Offline adjudication does not promote them to PASS.
+- Existing binary reuse was authorized and verified by digests/source history.
+- The historical initialize-completed/startup-exit issue remains a separate
+  [product follow-up](l4-resume-team/run12/product-followups.json), not a run12
+  step failure; it did not recur here.
+- [Independent Opus review](l4-resume-team/run12/review-availability.json) is
+  unavailable in this implementer session (no Opus model or Workflow execution
+  tool); it remains the orchestrator's separate review stage. No review is claimed.

@@ -1,0 +1,40 @@
+{
+  "after_teardown": true,
+  "commands": [
+    {
+      "command": [
+        "just",
+        "check-quick"
+      ],
+      "cwd": "/home/mstie/projects/taurhaus-l4-resume-team",
+      "exit_code": 0,
+      "seconds": 20.94,
+      "log_lines": 2724
+    },
+    {
+      "command": [
+        "just",
+        "lint"
+      ],
+      "cwd": "/home/mstie/projects/taurhaus-l4-resume-team",
+      "exit_code": 0,
+      "seconds": 6.53,
+      "log_lines": 17
+    },
+    {
+      "command": [
+        "just",
+        "test-contracts"
+      ],
+      "cwd": "/home/mstie/projects/taurhaus-l4-resume-team",
+      "exit_code": 0,
+      "seconds": 5.51,
+      "log_lines": 88
+    }
+  ],
+  "rust_unit_required": false,
+  "reason": "No src-tauri/ diff; no product change.",
+  "cargo_jobs": 1,
+  "cargo_admission": "pgrep before each gate; wait only if >=3 existing cargo processes; 30-second polls, 30-minute bound.",
+  "target": "src-tauri/target"
+}

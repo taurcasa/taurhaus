@@ -1,0 +1,6 @@
+{
+  "step": 5,
+  "outcome": "FAIL",
+  "classification": "taurhaus",
+  "reason": "resumed pending markers missing"
+}
