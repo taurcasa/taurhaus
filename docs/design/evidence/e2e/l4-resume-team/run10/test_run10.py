@@ -81,3 +81,11 @@ class Run10ObservedGuardRegression(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError,'poll boundary'): lane.step2()
         self.assertEqual(calls,['%1','%2','%3'])
         self.assertGreaterEqual(lane.wait.call_args.kwargs['timeout'],60)
+
+class CursorPrivacy(unittest.TestCase):
+    def test_signed_cursor_in_tool_output_and_wrapped_pane_is_redacted(self):
+        # // Regression: 99c59ab8 scrubbed JSON cursor keys but retained plaintext tool-output cursors.
+        token='a'*160+'.'+'b'*64
+        for original in ['cursor: '+token, 'a'*140]:
+            self.assertNotIn('a'*96,controller.clean(original))
+        self.assertEqual(controller.clean('checksum: '+'c'*64),'checksum: '+'c'*64)

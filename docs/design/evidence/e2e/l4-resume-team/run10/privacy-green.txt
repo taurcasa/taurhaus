@@ -1,0 +1,52 @@
+test_signed_cursor_in_tool_output_and_wrapped_pane_is_redacted (test_run10.CursorPrivacy.test_signed_cursor_in_tool_output_and_wrapped_pane_is_redacted) ... ok
+test_never_send_over_an_unfinished_recipient_delivery (test_run10.PendingDelivery.test_never_send_over_an_unfinished_recipient_delivery) ... ok
+test_fallback_is_rejected_even_if_final_launch_is_resume (test_run10.ResumeContract.test_fallback_is_rejected_even_if_final_launch_is_resume) ... ok
+test_metering_does_not_gate_resume_lifecycle (test_run10.ResumeContract.test_metering_does_not_gate_resume_lifecycle) ... ok
+test_capture_happens_immediately_after_alpha_stop (test_run10.RetainedStop.test_capture_happens_immediately_after_alpha_stop) ... ok
+test_erased_identity_or_live_handles_rejected (test_run10.RetainedStop.test_erased_identity_or_live_handles_rejected) ... ok
+test_retained_identity_accepted (test_run10.RetainedStop.test_retained_identity_accepted) ... ok
+test_immediate_capture_does_not_abort_before_stopping_other_seats (test_run10.Run10ObservedGuardRegression.test_immediate_capture_does_not_abort_before_stopping_other_seats) ... ok
+test_late_rollout_path_binding_is_not_identity_loss (test_run10.Run10ObservedGuardRegression.test_late_rollout_path_binding_is_not_identity_loss) ... ok
+test_failure_classification_respects_mesh_origin_and_cap_phrases (test_run8.ObserverRegressions.test_failure_classification_respects_mesh_origin_and_cap_phrases) ... ok
+test_hosted_resume_opens_meter_epoch (test_run8.ObserverRegressions.test_hosted_resume_opens_meter_epoch) ... ok
+test_null_snapshot_fields_remain_absent (test_run8.ObserverRegressions.test_null_snapshot_fields_remain_absent) ... ok
+test_recorded_resume_with_new_attributed_rollout (test_run8.ResumeIdentity.test_recorded_resume_with_new_attributed_rollout) ... ok
+test_step5_recovery_context_matches_string_runtime_generation (test_run8.ResumeIdentity.test_step5_recovery_context_matches_string_runtime_generation) ... ok
+test_unrelated_words_do_not_claim_harness_failure (test_run9.Classification.test_unrelated_words_do_not_claim_harness_failure) ... ok
+test_composer_clean_exit_sqlite_and_single_input (test_run9.Warmup.test_composer_clean_exit_sqlite_and_single_input) ... ok
+test_failed_exit_rejected (test_run9.Warmup.test_failed_exit_rejected) ... ok
+test_missing_sqlite_rejected (test_run9.Warmup.test_missing_sqlite_rejected) ... ok
+test_no_composer_rejected (test_run9.Warmup.test_no_composer_rejected) ... ok
+test_warmup_precedes_initialize (test_run9.Warmup.test_warmup_precedes_initialize) ... ok
+test_busy_read_keeps_cleanup_polling (test_support.BusyObservation.test_busy_read_keeps_cleanup_polling) ... ok
+test_other_read_errors_remain_failures (test_support.BusyObservation.test_other_read_errors_remain_failures) ... ok
+test_counts_every_response_in_a_tool_turn_once (test_support.CumulativeUsage.test_counts_every_response_in_a_tool_turn_once) ... ok
+test_complete_log_retains_repeated_diagnostics_excludes_usage (test_support.Guards.test_complete_log_retains_repeated_diagnostics_excludes_usage) ... ok
+test_complete_native_runtime (test_support.Guards.test_complete_native_runtime) ... ok
+test_missing_sibling_copies_nothing (test_support.Guards.test_missing_sibling_copies_nothing) ... ok
+test_native_runtime_failure_is_harness (test_support.Guards.test_native_runtime_failure_is_harness) ... ok
+test_opt_in_refusal_is_mesh (test_support.Guards.test_opt_in_refusal_is_mesh) ... ok
+test_unmetered_turn_never_reports_zero_total (test_support.Guards.test_unmetered_turn_never_reports_zero_total) ... ok
+test_busy_deadline_allows_sixty_seconds (test_support.Run5Busy.test_busy_deadline_allows_sixty_seconds) ... ok
+test_busy_stop_retries_only_refusals (test_support.Run5Busy.test_busy_stop_retries_only_refusals) ... ok
+test_lock_busy_read_is_pending (test_support.Run5Busy.test_lock_busy_read_is_pending) ... ok
+test_real_refusal_is_not_retried (test_support.Run5Busy.test_real_refusal_is_not_retried) ... ok
+test_any_transport_or_consumed_receipt_disproves_stopped_backlog (test_support.Run6Backlog.test_any_transport_or_consumed_receipt_disproves_stopped_backlog) ... ok
+test_backlog_requires_recipient_acceptance_projection_and_health (test_support.Run6Backlog.test_backlog_requires_recipient_acceptance_projection_and_health) ... ok
+test_census_includes_native_sibling (test_support.Run6Backlog.test_census_includes_native_sibling) ... ok
+test_controller_polls_member_health_for_both_stopped_seats (test_support.Run6Backlog.test_controller_polls_member_health_for_both_stopped_seats) ... ok
+test_resume_headroom_uses_metered_cost_not_all_tokens_at_output_rate (test_support.Run6Backlog.test_resume_headroom_uses_metered_cost_not_all_tokens_at_output_rate) ... ok
+test_stopped_backlog_needs_no_pending_receipt (test_support.Run6Backlog.test_stopped_backlog_needs_no_pending_receipt) ... ok
+test_controller_uses_the_single_nonfatal_headroom_rule (test_support.Run7Metering.test_controller_uses_the_single_nonfatal_headroom_rule) ... ok
+test_meter_gap_does_not_block_runtime_completion (test_support.Run7Metering.test_meter_gap_does_not_block_runtime_completion) ... ok
+test_over_cap_observation_keeps_exporting_and_refuses_next_input (test_support.Run7Metering.test_over_cap_observation_keeps_exporting_and_refuses_next_input) ... ok
+test_privacy_includes_sources_with_only_exact_auth_allowlist (test_support.Run7Metering.test_privacy_includes_sources_with_only_exact_auth_allowlist) ... ok
+test_resumed_counter_epochs_accumulate_without_aborting (test_support.Run7Metering.test_resumed_counter_epochs_accumulate_without_aborting) ... ok
+test_spend_basis_is_explicit (test_support.Run7Metering.test_spend_basis_is_explicit) ... ok
+test_nested_json_with_null_method_and_cursor_remains_exportable (test_support.Run7Redaction.test_nested_json_with_null_method_and_cursor_remains_exportable) ... ok
+test_observer_attribute_error_is_harness (test_support.Run7Redaction.test_observer_attribute_error_is_harness) ... ok
+
+----------------------------------------------------------------------
+Ran 47 tests in 0.928s
+
+OK

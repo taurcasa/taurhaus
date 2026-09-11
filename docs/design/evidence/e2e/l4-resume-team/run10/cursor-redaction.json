@@ -1,0 +1,21 @@
+{
+  "scope": "Plaintext signed read cursors and long wrapped hex cursor fragments; ordinary 64-character digests retained. Controller outcomes excluded and unchanged.",
+  "changes": [
+    {
+      "file": "privacy-red.txt",
+      "redacted_fragments": 2
+    },
+    {
+      "file": "final-pane4.json",
+      "redacted_fragments": 1
+    },
+    {
+      "file": "step1-pane4.json",
+      "redacted_fragments": 1
+    },
+    {
+      "file": "rollouts.json",
+      "redacted_fragments": 2
+    }
+  ]
+}

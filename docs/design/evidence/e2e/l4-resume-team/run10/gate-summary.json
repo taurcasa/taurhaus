@@ -1,0 +1,56 @@
+{
+  "gates": [
+    {
+      "command": [
+        "just",
+        "check-quick"
+      ],
+      "cwd": "/home/mstie/projects/taurhaus-l4-resume-team",
+      "exit_code": 0,
+      "seconds": 44.33,
+      "log_lines": 2723
+    },
+    {
+      "command": [
+        "just",
+        "lint"
+      ],
+      "cwd": "/home/mstie/projects/taurhaus-l4-resume-team",
+      "exit_code": 0,
+      "seconds": 47.18,
+      "log_lines": 18
+    },
+    {
+      "command": [
+        "just",
+        "test-contracts"
+      ],
+      "cwd": "/home/mstie/projects/taurhaus-l4-resume-team",
+      "exit_code": 0,
+      "seconds": 47.51,
+      "log_lines": 89
+    }
+  ],
+  "runner_exit_code": 0,
+  "after_teardown": true,
+  "rust_diff": false,
+  "test_rust_unit": "not required: run10 changed no src-tauri file",
+  "offline": {
+    "before_live": {
+      "tests": 44,
+      "exit_code": 0
+    },
+    "preflight": {
+      "tests": 6,
+      "exit_code": 0
+    },
+    "stop_fix": {
+      "tests": 46,
+      "exit_code": 0
+    },
+    "privacy_fix": {
+      "tests": 47,
+      "exit_code": 0
+    }
+  }
+}

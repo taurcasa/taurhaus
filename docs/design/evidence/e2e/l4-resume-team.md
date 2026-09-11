@@ -4,7 +4,8 @@ Step 1 passed. Step 2 aborted on an invalid controller assertion about an earlie
 null rollout path; steps 3–6 were not run. The controller’s original failure
 classification is preserved, with a separate **harness** adjudication. Metered
 spend is **$0.004654280**, **7/16 inputs** including conservative start reservations.
-Teardown found zero survivors. See [Run 10](#run-10); gates are recorded below.
+Teardown found zero survivors; all three required gates exited **0**.
+See [Run 10](#run-10) for the evidence and review boundary.
 
 ## Historical run 2 — hosted process exited before transport readiness
 
@@ -1429,7 +1430,27 @@ violations. Runtime lasted 51.695 seconds. The complete sanitized persisted
 [daemon JSONL](l4-resume-team/run10/taurhaus.log.jsonl) contains 194 rows;
 account-usage events are excluded as required. No install/release occurred.
 
-Gates run after teardown; final exits are recorded in the gate summary below.
+All exact gates ran from the checkout root after teardown with isolated homes:
+
+| Command | Exit |
+|---|---:|
+| `just check-quick` | 0 |
+| `just lint` | 0 |
+| `just test-contracts` | 0 |
+
+[Gate summary](l4-resume-team/run10/gate-summary.json) and per-command logs
+retain exits and Cargo admission probes. No `src-tauri/` file changed in run10,
+so the conditional `just test-rust-unit` gate was not required. No full
+`just check` was run by this implementer.
+
+A final privacy guard reproduced plaintext signed read cursors escaping the
+JSON-key sanitizer ([red](l4-resume-team/run10/privacy-red.txt), exit 1).
+The exporter now redacts full signed cursors and long wrapped hex fragments;
+ordinary 64-character digests remain intact. All
+[47 offline tests](l4-resume-team/run10/privacy-green.txt) pass, exit 0.
+[Redaction accounting](l4-resume-team/run10/cursor-redaction.json) names the
+sanitized excerpts. This affects evidence privacy only, not the byte-exact
+controller outcome files or the executed-source copies.
 
 ### Deviations and review boundary
 

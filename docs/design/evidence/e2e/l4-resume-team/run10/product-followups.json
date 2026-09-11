@@ -1,0 +1,16 @@
+{
+  "items": [
+    {
+      "origin": "run8; carried forward by binding run9 ruling",
+      "finding": "initialize reported completed while alpha process had exited at startup",
+      "run10_observed": false,
+      "classification": "product follow-up, not a run10 step failure"
+    },
+    {
+      "origin": "run10 immediate post-stop observation",
+      "finding": "alpha retains session_id and has a populated jsonl_path, while health/panePid/paneStartTime still reflect the previous process",
+      "classification": "unverified; no >=60-second convergence window was observed due to controller abort",
+      "evidence": "step2-alpha-runtime-record.json"
+    }
+  ]
+}

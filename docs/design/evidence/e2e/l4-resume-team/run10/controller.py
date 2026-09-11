@@ -37,6 +37,7 @@ def clean(value):
         return {k:('<signed-read-cursor-redacted>' if k=='cursor' and v else clean(v)) for k,v in value.items() if 'installation' not in k.lower() and k.lower() not in {'auth','accountid','account_id','controlauthtokenhash','accesstoken','refreshtoken','idtoken','access_token','refresh_token','id_token','rate_limits','ratelimits','account_observations'}}
     if isinstance(value,list): return [v for x in value if (v:=clean(x)) is not None]
     if isinstance(value,str):
+        value=re.sub(r'\b[0-9a-f]{96,}(?:\.[0-9a-f]{64})?\b','<signed-read-cursor-redacted>',value)
         if value.lstrip().startswith(('{','[')):
             try: return json.dumps(clean(json.loads(value)))
             except ValueError: pass
