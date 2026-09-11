@@ -1,0 +1,20 @@
+{
+  "checkout": "/home/mstie/projects/taurhaus-l5-restarts",
+  "branch": "feat/e2e-l5-restarts",
+  "product_base": "26c06132",
+  "mesh_commit": "310144de1f7939e7fbb2d80ab42ebd00580ce15d",
+  "descriptor_sha256": "927d658b88c04f9f6d3be38e9bbc7a4396c3cabe30cf7c22343b466973663944",
+  "descriptor": "0.153.4 enabled in RC; unchanged",
+  "credential_source": "<authorized-source>",
+  "credential_transport": "L5_CREDENTIAL_SOURCE environment variable provided explicitly to controller; only auth.json copied, mode 0600, no fallback",
+  "command": "L5_CREDENTIAL_SOURCE=<authorized-source> python3 docs/design/evidence/e2e/l5-restarts/run8/execute.py",
+  "reference_deviation": "The spec-referenced integration attempt9 checkout no longer exists (git show exit 128). Reused the already-retained run3 continuation adaptation and inspected messaging run2 source read-only.",
+  "caps": {
+    "paid_inputs": 20,
+    "metered_usd": 0.3,
+    "runtime_seconds": 900
+  },
+  "review": "Independent Opus evidence lens is owned by invoking orchestrator; not performed by implementer.",
+  "run_label": "run8",
+  "controller_parent": "40068c69ab558a12fd22078d02dc9eb8fc77c534"
+}
