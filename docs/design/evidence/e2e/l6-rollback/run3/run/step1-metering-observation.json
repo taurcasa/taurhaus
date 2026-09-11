@@ -1,0 +1,144 @@
+{
+  "paid_inputs": 2,
+  "turns": [
+    {
+      "turn_id": "01a08ead-2da2-7221-8383-af06dcdc4ac8",
+      "usd": 0.00161804,
+      "completed": true,
+      "usage": {
+        "input_tokens": 20641,
+        "cached_input_tokens": 15872,
+        "output_tokens": 289
+      },
+      "conservative_usd": 0.025116
+    },
+    {
+      "turn_id": "01a08ead-51fb-7963-ae25-6dc7ccb5d00a",
+      "usd": 0.004273320000000001,
+      "completed": true,
+      "usage": {
+        "input_tokens": 93093,
+        "cached_input_tokens": 83456,
+        "output_tokens": 564
+      },
+      "conservative_usd": 0.1123884
+    },
+    {
+      "turn_id": "01a08ead-2f79-7cf2-8276-6de193ec9722",
+      "usd": null,
+      "completed": true,
+      "source": "notify-only",
+      "classification": "unknown-but-not-a-model-input"
+    }
+  ],
+  "usage_rows": [
+    {
+      "at": "2026-09-11T04:15:13.249Z",
+      "turn_id": "01a08ead-2da2-7221-8383-af06dcdc4ac8",
+      "usage": {
+        "input_tokens": 9243,
+        "cached_input_tokens": 6912,
+        "output_tokens": 146
+      },
+      "usd": 0.0007796400000000001
+    },
+    {
+      "at": "2026-09-11T04:15:17.165Z",
+      "turn_id": "01a08ead-2da2-7221-8383-af06dcdc4ac8",
+      "usage": {
+        "input_tokens": 11398,
+        "cached_input_tokens": 8960,
+        "output_tokens": 143
+      },
+      "usd": 0.0008384000000000001
+    },
+    {
+      "at": "2026-09-11T04:15:21.781Z",
+      "turn_id": "01a08ead-51fb-7963-ae25-6dc7ccb5d00a",
+      "usage": {
+        "input_tokens": 12358,
+        "cached_input_tokens": 11008,
+        "output_tokens": 129
+      },
+      "usd": 0.0006449599999999999
+    },
+    {
+      "at": "2026-09-11T04:15:25.429Z",
+      "turn_id": "01a08ead-51fb-7963-ae25-6dc7ccb5d00a",
+      "usage": {
+        "input_tokens": 13715,
+        "cached_input_tokens": 12032,
+        "output_tokens": 142
+      },
+      "usd": 0.0007476399999999999
+    },
+    {
+      "at": "2026-09-11T04:15:28.381Z",
+      "turn_id": "01a08ead-51fb-7963-ae25-6dc7ccb5d00a",
+      "usage": {
+        "input_tokens": 16100,
+        "cached_input_tokens": 13056,
+        "output_tokens": 83
+      },
+      "usd": 0.0009695200000000001
+    },
+    {
+      "at": "2026-09-11T04:15:30.521Z",
+      "turn_id": "01a08ead-51fb-7963-ae25-6dc7ccb5d00a",
+      "usage": {
+        "input_tokens": 16588,
+        "cached_input_tokens": 15104,
+        "output_tokens": 68
+      },
+      "usd": 0.00068048
+    },
+    {
+      "at": "2026-09-11T04:15:33.778Z",
+      "turn_id": "01a08ead-51fb-7963-ae25-6dc7ccb5d00a",
+      "usage": {
+        "input_tokens": 16993,
+        "cached_input_tokens": 16128,
+        "output_tokens": 131
+      },
+      "usd": 0.00065276
+    },
+    {
+      "at": "2026-09-11T04:15:35.369Z",
+      "turn_id": "01a08ead-51fb-7963-ae25-6dc7ccb5d00a",
+      "usage": {
+        "input_tokens": 17339,
+        "cached_input_tokens": 16128,
+        "output_tokens": 11
+      },
+      "usd": 0.0005779600000000001
+    }
+  ],
+  "metering_complete": true,
+  "api_equivalent_usd": 0.00589136,
+  "conservative_usd": 0.1375044,
+  "rates_usd_per_million": {
+    "input": 0.2,
+    "cached_input": 0.02,
+    "output": 1.2
+  },
+  "rate_source": "Inherited integration/messaging packet; estimates, not invoices",
+  "input_reservations": [
+    {
+      "reason": "production initialization/onboarding",
+      "step": 1,
+      "at": 1789100106.5473666,
+      "generation": null
+    },
+    {
+      "reason": "A",
+      "step": 1,
+      "at": 1789100117.584518,
+      "generation": 1
+    }
+  ],
+  "rollout_turns": 2,
+  "controller_input_attempts": 0,
+  "controller_issued_inputs": 0,
+  "mesh_terminal_deliveries": 2,
+  "legacy_terminal_deliveries": 0
+}

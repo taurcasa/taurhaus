@@ -1,0 +1,36 @@
+{
+  "commands": [
+    {
+      "command": "just build-daemon",
+      "cwd": "/home/mstie/projects/taurhaus-l6-rollback",
+      "target": "/home/mstie/projects/taurhaus-l6-rollback/src-tauri/target",
+      "exit": 0,
+      "elapsed_s": 187.624,
+      "last_lines": [
+        "   Compiling taurhaus v0.9.7 (/home/mstie/projects/taurhaus-l6-rollback/src-tauri)",
+        "    Finished `release` profile [optimized] target(s) in 3m 07s"
+      ]
+    },
+    {
+      "command": "cargo build -j 1",
+      "cwd": "/home/mstie/projects/mesh-l6",
+      "target": "/home/mstie/projects/mesh-l6/target",
+      "exit": 0,
+      "elapsed_s": 6.516,
+      "last_lines": [
+        "   Compiling mesh v0.2.29 (/home/mstie/projects/mesh-l6)",
+        "    Finished `dev` profile [unoptimized + debuginfo] target(s) in 6.49s"
+      ]
+    }
+  ],
+  "binaries": [
+    {
+      "path": "/home/mstie/projects/taurhaus-l6-rollback/src-tauri/target/release/taurhaus-daemon",
+      "sha256": "9515670b1f7aaeb3053494474b2a586dec9fce24fc778947112b945ac25435b8"
+    },
+    {
+      "path": "/home/mstie/projects/mesh-l6/target/debug/mesh",
+      "sha256": "4b2a147b416e33f4cc545bcd52542dcd4d93a5e2c466906b9cc1937f27ab5899"
+    }
+  ]
+}

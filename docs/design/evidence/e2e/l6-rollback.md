@@ -1,4 +1,4 @@
-# L6 rollback — run2 FAIL at step 2 (Mesh lifetime owner-lock refusal)
+# L6 rollback — run3 IN PROGRESS (step 1 PASS)
 
 Review correction: step 1 passes; step 2 fails on a non-quiescence refusal.
 The original controller continued and stopped at the step-3 readiness poll.
@@ -564,3 +564,5 @@ Each gate's exact `pgrep -af '(^|/)cargo( |$)'` admission probe returned **1**
 (no matches), count **0**; no 30-second waits were needed. Gates used
 `CARGO_BUILD_JOBS=1` and this checkout's `src-tauri/target`. No `src-tauri/`
 source diff exists, so conditional `just test-rust-unit` does not apply.
+
+Run2 step 1: PASS (S-runtime); see run3/run/step1-outcome.json.
