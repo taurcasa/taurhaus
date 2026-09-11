@@ -331,6 +331,8 @@ This means teams are not sourced from SQLite ownership records; visibility is pr
 
 **Decision**: UI snapshot reads are disk-first and avoid runtime probing. Liveness repair runs only in explicit recovery flows and the daemon-owned background self-heal scheduler.
 
+To roll back a canonical team, stop its live owner with `mesh team-daemon stop`, downgrade with `mesh team format --legacy --quiescent`, select `mesh team delivery --owner members`, then start the member executors. Mesh's durable owner-stop and handoff markers keep taurhaus self-heal from reclaiming the owner during this window; member-owned delivery keeps it skipped after downgrade. Resume still recovers seats but honours the owner-stop marker and warns; taurhaus never clears these markers. Mesh start/restart-self owns removal of the owner-stop marker.
+
 - Fast-path reads:
   - `coordination_get_project_mesh_snapshot`
   - `coordination_get_live_team_status`

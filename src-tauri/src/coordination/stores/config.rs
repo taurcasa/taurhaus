@@ -305,6 +305,15 @@ struct NativeMemberWire {
 }
 
 impl TeamConfigStore {
+    /// Mesh owns these markers; only a definite absence permits owner recovery.
+    pub(crate) fn delivery_marker_present(root: &Path, team: &str, marker: &str) -> bool {
+        let path = team_dir(root, team).join("state/delivery").join(marker);
+        match std::fs::symlink_metadata(path) {
+            Ok(_) => true,
+            Err(err) => err.kind() != std::io::ErrorKind::NotFound,
+        }
+    }
+
     pub fn team_owns_delivery(root: &Path, team: &str) -> Result<bool, CoordinationError> {
         match Self::load(root, team) {
             Ok(config) => {
@@ -313,6 +322,14 @@ impl TeamConfigStore {
             Err(CoordinationError::NotFound(_)) => Ok(false),
             Err(e) => Err(e),
         }
+    }
+
+    /// Canonical configs require explicit team ownership before owner recovery.
+    pub(crate) fn members_own_delivery(config: &TeamConfig) -> bool {
+        let owner = config.extra.get("delivery_owner").and_then(Value::as_str);
+        owner == Some("members")
+            || (config.extra.get("messaging_format") == Some(&Value::from(2))
+                && owner != Some("team"))
     }
 
     /// Load a single team configuration from `<teams_dir>/<team_name>/config.json`.

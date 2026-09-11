@@ -251,6 +251,10 @@ fn emit_pass_completed(summary: &BackgroundSelfHealPassResult, duration: Duratio
         Value::from(summary.teams_skipped),
     );
     fields.insert(
+        "owner_ensure_refused".to_string(),
+        Value::from(summary.owner_ensure_refused),
+    );
+    fields.insert(
         "teams_reconciled".to_string(),
         Value::from(summary.teams_reconciled),
     );
@@ -578,6 +582,29 @@ mod tests {
 
         assert_eq!(completed["level"], "INFO");
         assert_eq!(completed["fields"]["teams_reconciled"], 1);
+    }
+
+    #[test]
+    fn self_heal_completion_emits_separate_owner_refusal_count() {
+        // Regression: b6b0064e conflated pass skips and owner ensure refusals
+        // in the completion event, hiding that member reconciliation still ran.
+        let _log_guard = crate::test_support::acquire_global_log_test_guard();
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        let event_rx = install_log_tap(temp.path());
+        let summary = crate::coordination::state::BackgroundSelfHealPassResult {
+            teams_scanned: 3,
+            teams_skipped: 2,
+            teams_reconciled: 1,
+            owner_ensure_refused: 1,
+            ..Default::default()
+        };
+
+        emit_pass_completed(&summary, Duration::from_millis(7));
+        let completed = receive_event(&event_rx, "self_heal.pass.completed");
+        crate::commands::logging::clear_test_tap();
+
+        assert_eq!(completed["fields"]["teams_skipped"], 2);
+        assert_eq!(completed["fields"]["owner_ensure_refused"], 1);
     }
 
     // Regression: 50251e68 omitted per-team errors from the protocol-21

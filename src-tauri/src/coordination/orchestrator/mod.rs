@@ -62,6 +62,7 @@ pub struct TeamSelfHealResult {
     pub runtime_candidate_found: bool,
     pub member_liveness_reconciled: bool,
     pub team_daemon_ensured: bool,
+    pub team_daemon_skip_reason: Option<&'static str>,
 }
 
 /// Per-step teardown status for runtime member removal.
