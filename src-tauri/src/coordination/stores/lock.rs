@@ -308,7 +308,7 @@ fn terminal_write_for_pane_with_runtime<T>(
             if record.health == crate::coordination::domain::HealthState::SessionDead {
                 use crate::coordination::runtime::{pane_belongs_to_member, PaneOwnership};
                 let owned = _runtime.live_pane(pane)?.is_some_and(|live| {
-                    !live.is_dead && pane_belongs_to_member(&record, &live) == PaneOwnership::Owned
+                    live.is_dead || pane_belongs_to_member(&record, &live) == PaneOwnership::Owned
                 });
                 if !owned {
                     return Err(CoordinationError::Conflict(
@@ -1016,6 +1016,163 @@ mod tests {
             })
             .unwrap();
         }
+    }
+
+    #[test]
+    fn resume_dead_pane_cleanup_is_admitted_before_recreate() {
+        // Regression: 0d5c16bf refused SessionDead terminal writes for remain-on-exit
+        // panes, so resume created a replacement while leaking the old dead pane.
+        use super::super::{MemberRuntimeRecord, MemberRuntimeStore, TeamConfigStore};
+        use crate::coordination::domain::{HealthState, Member};
+        use crate::coordination::runtime::{
+            resolve_or_create_pane_for_member, CoordinationRuntime, RecordingCoordinationRuntime,
+            RuntimeCall,
+        };
+        use crate::session_scanner::cli_tool::CliTool;
+        struct CleanupRuntime<'a> {
+            root: &'a Path,
+            inner: RecordingCoordinationRuntime,
+        }
+        impl CoordinationRuntime for CleanupRuntime<'_> {
+            fn create_aitx_pane(
+                &self,
+                project_id: &str,
+                tmux_layout: &str,
+            ) -> Result<String, CoordinationError> {
+                self.inner.create_aitx_pane(project_id, tmux_layout)
+            }
+            fn send_tmux_keys_with_enter(
+                &self,
+                pane_id: &str,
+                keys: &str,
+            ) -> Result<(), CoordinationError> {
+                self.inner.send_tmux_keys_with_enter(pane_id, keys)
+            }
+            fn detect_session_id(
+                &self,
+                pane_id: &str,
+                cli_tool: CliTool,
+            ) -> Result<Option<String>, CoordinationError> {
+                self.inner.detect_session_id(pane_id, cli_tool)
+            }
+            fn join_mesh(
+                &self,
+                team_name: &str,
+                member_name: &str,
+                project_id: &str,
+                member_type: &str,
+                model: &str,
+                claude_dir: &str,
+            ) -> Result<(), CoordinationError> {
+                self.inner.join_mesh(
+                    team_name,
+                    member_name,
+                    project_id,
+                    member_type,
+                    model,
+                    claude_dir,
+                )
+            }
+            fn spawn_mesh_daemon(
+                &self,
+                pane_id: &str,
+                team_name: &str,
+                member_name: &str,
+            ) -> Result<u32, CoordinationError> {
+                self.inner
+                    .spawn_mesh_daemon(pane_id, team_name, member_name)
+            }
+            fn pane_belongs_to_project(
+                &self,
+                pane_id: &str,
+                project_id: &str,
+            ) -> Result<bool, CoordinationError> {
+                self.inner.pane_belongs_to_project(pane_id, project_id)
+            }
+            fn pane_exists(&self, pane_id: &str) -> Result<bool, CoordinationError> {
+                self.inner.pane_exists(pane_id)
+            }
+            fn pane_is_dead(&self, pane_id: &str) -> Result<bool, CoordinationError> {
+                self.inner.pane_is_dead(pane_id)
+            }
+            fn pane_is_shell(&self, pane_id: &str) -> Result<bool, CoordinationError> {
+                self.inner.pane_is_shell(pane_id)
+            }
+            fn pane_current_command(
+                &self,
+                pane_id: &str,
+            ) -> Result<Option<String>, CoordinationError> {
+                self.inner.pane_current_command(pane_id)
+            }
+            fn kill_aitx_pane(&self, pane_id: &str) -> Result<(), CoordinationError> {
+                terminal_write_for_pane_with_runtime(
+                    self.root,
+                    pane_id,
+                    "teardown",
+                    &self.inner,
+                    || {
+                        assert!(taurhaus_lib::platform::terminal_io::active());
+                        self.inner
+                            .kill_aitx_pane(pane_id)
+                            .map_err(|e| e.to_string())
+                    },
+                )
+                .map_err(CoordinationError::Backend)
+            }
+            fn terminate_process_by_pid(&self, pid: u32) -> Result<(), CoordinationError> {
+                self.inner.terminate_process_by_pid(pid)
+            }
+            fn is_process_running_by_pid(&self, pid: u32) -> Result<bool, CoordinationError> {
+                self.inner.is_process_running_by_pid(pid)
+            }
+        }
+        let tmp = TempDir::new().unwrap();
+        TeamConfigStore::save(tmp.path(), "team", &serde_json::from_value(
+            serde_json::json!({"schema_version": 3, "name": "team", "created_at": chrono::Utc::now(), "members": []})
+        ).unwrap()).unwrap();
+        let runtime = CleanupRuntime {
+            root: tmp.path(),
+            inner: RecordingCoordinationRuntime::default(),
+        };
+        runtime.inner.set_pane_exists("%1", true);
+        runtime.inner.set_pane_dead("%1", true);
+        runtime.inner.set_pane_ownership("%1", true);
+        // A dead pane may no longer expose a process identity.
+        let record = MemberRuntimeRecord {
+            health: HealthState::SessionDead,
+            pane_id: Some("%1".into()),
+            pane_pid: Some(901),
+            pane_start_time: Some(42),
+            terminal_contract: 1,
+            ..Default::default()
+        };
+        MemberRuntimeStore::save(tmp.path(), "team", "seat", &record).unwrap();
+        let member: Member = serde_json::from_value(serde_json::json!({
+            "name": "seat", "role": "agent", "cli_tool": "codex", "project_path": tmp.path()
+        }))
+        .unwrap();
+        let resolution =
+            resolve_or_create_pane_for_member(&runtime, &member, Some(&record), "new_window")
+                .unwrap();
+        assert!(resolution.created_new_pane);
+        assert!(
+            !runtime.inner.pane_exists("%1").unwrap(),
+            "resume leaked the dead pane"
+        );
+        let changes: Vec<_> = runtime
+            .inner
+            .calls()
+            .into_iter()
+            .filter(|call| {
+                matches!(
+                    call,
+                    RuntimeCall::KillPane { .. } | RuntimeCall::CreatePane { .. }
+                )
+            })
+            .collect();
+        assert!(
+            matches!(&changes[..], [RuntimeCall::KillPane { pane_id }, RuntimeCall::CreatePane { .. }] if pane_id == "%1")
+        );
     }
 
     #[test]
