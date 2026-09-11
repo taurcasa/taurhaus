@@ -1,0 +1,113 @@
+{
+  "commands": [
+    {
+      "command": "just check-quick",
+      "cwd": "/home/mstie/projects/taurhaus-l7-ledger",
+      "target": "/home/mstie/projects/taurhaus-l7-ledger/src-tauri/target",
+      "exit": 127,
+      "elapsed_s": 346.946,
+      "last_lines": [
+        "    Checking openssl-probe v0.1.6",
+        "    Checking ryu v1.0.23",
+        "    Checking census v0.4.2",
+        "    Checking nu-ansi-term v0.50.3",
+        "    Checking fallible-streaming-iterator v0.1.9",
+        "    Checking unsafe-libyaml-norway v0.2.15",
+        "    Checking fallible-iterator v0.3.0",
+        "    Checking rustc-hash v1.1.0",
+        "    Checking lz4_flex v0.11.6",
+        "    Checking tantivy v0.22.1",
+        "    Checking rusqlite v0.32.1",
+        "    Checking serde_norway v0.9.42",
+        "    Checking tracing-subscriber v0.3.22",
+        "    Checking git2 v0.20.4",
+        "    Checking chrono v0.4.43",
+        "    Checking notify v7.0.0",
+        "    Checking ctrlc v3.5.1",
+        "    Checking reqwest v0.13.2",
+        "    Checking ignore v0.4.25",
+        "    Checking fs2 v0.4.3",
+        "    Checking socket2 v0.5.10",
+        "    Checking yansi v1.0.1",
+        "    Checking diff v0.1.13",
+        "    Checking pretty_assertions v1.4.1",
+        "    Finished `dev` profile [unoptimized + debuginfo] target(s) in 5m 44s",
+        "bun run typecheck",
+        "$ svelte-check",
+        "/usr/bin/bash: line 1: svelte-check: command not found",
+        "error: script \"typecheck\" exited with code 127",
+        "error: Recipe `check-quick` failed on line 234 with exit code 127"
+      ]
+    },
+    {
+      "command": "just lint",
+      "cwd": "/home/mstie/projects/taurhaus-l7-ledger",
+      "target": "/home/mstie/projects/taurhaus-l7-ledger/src-tauri/target",
+      "exit": 127,
+      "elapsed_s": 66.34,
+      "last_lines": [
+        "cd src-tauri && cargo clippy --all-targets -- -D warnings",
+        "   Compiling taurhaus v0.9.7 (/home/mstie/projects/taurhaus-l7-ledger/src-tauri)",
+        "    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1m 06s",
+        "bun run lint",
+        "$ bun run lint:structure",
+        "$ bun run lint:knip && bun run lint:deps",
+        "$ knip",
+        "/usr/bin/bash: line 1: knip: command not found",
+        "error: script \"lint:knip\" exited with code 127",
+        "error: script \"lint:structure\" exited with code 127",
+        "error: script \"lint\" exited with code 127",
+        "error: Recipe `lint-frontend` failed on line 251 with exit code 127"
+      ]
+    },
+    {
+      "command": "just test-contracts",
+      "cwd": "/home/mstie/projects/taurhaus-l7-ledger",
+      "target": "/home/mstie/projects/taurhaus-l7-ledger/src-tauri/target",
+      "exit": 0,
+      "elapsed_s": 260.853,
+      "last_lines": [
+        "test commands_coordination_types_avoids_domain_enum_definitions ... ok",
+        "test configured_account_root_remains_override_only ... ok",
+        "test coordination_cli_log_sink_test_uses_shared_global_guard ... ok",
+        "test coordination_modules_do_not_import_commands_layer ... ok",
+        "test daemon_listener_fixture_suites_run_without_a_global_thread_pin ... ok",
+        "test daemon_provider_boundary_uses_contract_modules ... ok",
+        "test generic_account_core_contains_no_tool_identity_literals ... ok",
+        "test heavy_unit_skips_match_integration_reruns ... ok",
+        "test hook_bridge_contract_pins_protocol_and_writer_coverage ... ok",
+        "test io_commands_use_tauris_async_execution_context ... ok",
+        "test legacy_settings_replacement_stays_std_only_and_atomic ... ok",
+        "test main_push_integration_runs_are_never_cancelled_by_newer_pushes ... ok",
+        "test mutable_scan_caches_are_not_global_statics ... ok",
+        "test native_hook_owns_stdout_until_receipt_and_never_writes_a_second_response ... ok",
+        "test project_removal_releases_the_db_before_waiting_for_search ... ok",
+        "test retired_claude_account_bridge_identifiers_do_not_return ... ok",
+        "test retired_gemini_tool_literal_does_not_return ... ok",
+        "test rust_integration_ci_caches_failed_builds ... ok",
+        "test rust_integration_ci_runs_on_every_pull_request ... ok",
+        "test rust_integration_recipe_runs_every_test_binary ... ok",
+        "test scanner_account_memory_never_opens_the_app_database ... ok",
+        "test task_deadline_policy_stays_pure_and_outside_placeholder_health_framework ... ok",
+        "test team_state_write_apis_stay_daemon_or_native_hook_owned ... ok",
+        "test terminal_child_mode_inherits_flock_and_exits_without_daemon_startup ... ok",
+        "test terminal_contract_pins_shared_spelling_and_write_boundaries ... ok",
+        "test the_tmux_focus_path_contains_no_hook_code ... ok",
+        "test transcript_compaction_pipeline_stays_retired ... ok",
+        "",
+        "test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.26s",
+        ""
+      ]
+    }
+  ],
+  "binaries": [
+    {
+      "path": "/home/mstie/projects/taurhaus-l7-ledger/src-tauri/target/release/taurhaus-daemon",
+      "sha256": "177c4f333aeaef73ae672109ee97c731ad50a3e166c244d93fe715ec5f144fd6"
+    },
+    {
+      "path": "/home/mstie/projects/mesh-l7/target/debug/mesh",
+      "sha256": "283f3673c1dad0aea0a3ee32945c88b032721d6e0b07c8f576699e16670ee083"
+    }
+  ]
+}

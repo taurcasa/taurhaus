@@ -1,0 +1,42 @@
+{
+  "owned_pid_start_pairs_still_alive": [],
+  "private_listener_closed": true,
+  "scratch_root_removed": true,
+  "public_runtime_data_privacy_issues": [],
+  "declared_product_base": "106f06c7",
+  "raw_controller_exit": 1,
+  "classification": "harness",
+  "steps": {
+    "1": "FAIL at startup before task/ledger operations",
+    "2": "NOT RUN",
+    "3": "NOT RUN",
+    "4": "NOT RUN",
+    "5": "NOT RUN",
+    "6": "NOT RUN"
+  },
+  "known_spend_usd": 0.00242444,
+  "known_conservative_usd": 0.0246468,
+  "unmetered_turn_ids": [
+    "01a08e08-9df0-70f3-86be-c40886758378"
+  ],
+  "independent_opus_review": "unavailable in this executor",
+  "gates": {
+    "just check-quick": 0,
+    "just lint": 0,
+    "just test-contracts": 0
+  },
+  "initial_gate_exits": {
+    "just check-quick": 127,
+    "just lint": 127,
+    "just test-contracts": 0
+  },
+  "dependency_prerequisite": {
+    "command": "bun install --frozen-lockfile",
+    "exit": 0
+  },
+  "offline_tests": {
+    "passed": 7,
+    "runtime_rerun": false
+  },
+  "rust_paths_changed": []
+}

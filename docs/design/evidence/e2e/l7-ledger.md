@@ -113,7 +113,22 @@ Cargo used checkout-local targets and one build worker; machine-wide admission
 waits only at three or more Cargo processes, with 30-second polls and a 30-minute
 queue deadline.
 
-Post-teardown required gates are running; final exit codes will replace this line.
+All required gates ran **after teardown** and now pass:
+
+| Command | Initial exit | Final exit | Result |
+| --- | --- | --- | --- |
+| `just check-quick` | 127 | **0** | Rust test compilation, Svelte check, 150 frontend files / 2,521 tests passed. |
+| `just lint` | 127 | **0** | Frontend and repository structure/workflow guards passed. |
+| `just test-contracts` | **0** | **0** | 68 tests passed: 15 renderers, 20 harness conformance, 33 module boundaries. |
+
+The two initial 127 exits were missing `svelte-check` / `knip` in this fresh
+checkout. `bun install --frozen-lockfile` exited **0**; only those two failed
+gates were retried. The final lint retry waited in 30-second polls while three
+other Cargo processes were present. No product-file edit was needed.
+[Initial gate results](l7-ledger/checks-result.json),
+[successful retries](l7-ledger/gate-retries.json),
+[Cargo admission observations](l7-ledger/gate-cargo-polls.jsonl),
+[final audit](l7-ledger/final-audit.json).
 No tracked `src-tauri/` diff exists, so `just test-rust-unit` is not required.
 
 Other deviations: the historical lane-2 worktree is absent, so its versioned
