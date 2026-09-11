@@ -1,0 +1,13 @@
+[
+  {
+    "obligation": {
+      "message_id": "803ed1c2-8d4b-4c4d-af31-91b6ddd90c64",
+      "delivery_id": "868fcd4b-2097-4738-aaf6-7b6f77e5bb36",
+      "recipient": "alpha",
+      "source_generation": "5fc00386-b47f-4b42-a41f-95065830260b",
+      "source_position": 8,
+      "body": "ACTION REQUIRED: Read this message explicitly, then reply exactly A-4dc8234c."
+    },
+    "since": "2026-09-11T05:16:12.304461781+00:00"
+  }
+]

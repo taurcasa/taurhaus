@@ -1,4 +1,4 @@
-# L6 rollback — run4 FAIL (harness startup predicate); rollback NOT RUN
+# L6 rollback — run5 IN PROGRESS (step 1 PASS)
 
 ## Run3 result (2026-09-11)
 
@@ -944,3 +944,5 @@ route completion. The required independent Opus evidence lens is unavailable
 from the tool/model surface; [review status](l6-rollback/run4/review.json) records
 that limitation. The overall workflow is **incomplete**, not PASS. No runtime
 step was green, so there are no numbered runtime PASS commits for run4.
+
+Run5 step 1: PASS (S-runtime); see run5/run/step1-outcome.json.
