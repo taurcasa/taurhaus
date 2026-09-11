@@ -212,16 +212,16 @@ pub fn get_team_roster_with_runtime_sessions(
                 None,
             );
             if view.host_activity.is_some() {
-                if let Some(activity) = runtime_sessions
-                    .iter()
-                    .find(|s| {
-                        s.group_id.as_deref() == Some(team_name)
-                            && s.member_name.as_deref() == Some(&view.member_name)
-                            && s.session_id == view.session_id
-                    })
-                    .and_then(taurhaus_lib::session_scanner::HostActivity::from_session)
-                {
-                    view.host_activity = Some(activity);
+                if let Some(session) = runtime_sessions.iter().find(|s| {
+                    s.group_id.as_deref() == Some(team_name)
+                        && s.member_name.as_deref() == Some(&view.member_name)
+                        && s.session_id == view.session_id
+                }) {
+                    view.host_activity =
+                        taurhaus_lib::session_scanner::HostActivity::from_session(session);
+                    // The snapshot knows whether the TUI is still attached; keep
+                    // the persisted binding only in hosted_runtime for stop/resume.
+                    view.pane_id = session.tmux_pane.clone();
                 }
             }
             view
@@ -384,6 +384,36 @@ mod tests {
         let rows = get_team_roster_with_runtime_sessions(tmp.path(), "team", &[]).unwrap();
         assert_eq!(rows[0].attached_health, Some(HealthState::SessionDead));
         assert!(rows[0].host_activity.is_none());
+    }
+
+    #[test]
+    fn hosted_roster_uses_snapshot_pane_presence_without_erasing_saved_binding() {
+        // Regression: cadd533eb, member-stop lane finding 3: the saved pane hid TUI detachment.
+        let tmp = tempfile::tempdir().unwrap();
+        let (registry, hosts) = super::super::hosted::tests::running(tmp.path());
+        MemberRuntimeStore::update(tmp.path(), "team", "seat", |r| {
+            r.pane_id = Some("%42".into())
+        })
+        .unwrap();
+        let mut session = RuntimeSession {
+            group_id: Some("team".into()),
+            member_name: Some("seat".into()),
+            session_id: Some("owned-thread".into()),
+            source: Some("host".into()),
+            ..Default::default()
+        };
+        let rows =
+            get_team_roster_with_runtime_sessions(tmp.path(), "team", &[session.clone()]).unwrap();
+        assert_eq!(rows[0].pane_id, None);
+        assert_eq!(
+            rows[0].runtime_record().unwrap().pane_id.as_deref(),
+            Some("%42")
+        );
+        assert_eq!(rows[0].host_activity.as_ref().unwrap().source, "host");
+        session.tmux_pane = Some("%43".into());
+        let rows = get_team_roster_with_runtime_sessions(tmp.path(), "team", &[session]).unwrap();
+        assert_eq!(rows[0].pane_id.as_deref(), Some("%43"));
+        hosts.stop(&registry, "team", "seat").unwrap();
     }
 
     fn ts(value: &str) -> DateTime<Utc> {

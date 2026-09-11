@@ -89,6 +89,13 @@ pub(crate) fn dispatch(
                 coordination_state.team_root_registry(),
             ),
         ),
+        #[cfg(all(feature = "mesh-bridged-backend", target_os = "linux"))]
+        protocol::method::STOP_MEMBER => handle_stop_member(
+            &request.id,
+            &request.params,
+            &coordination_state.hosted,
+            coordination_state.team_root_registry(),
+        ),
         protocol::method::NAVIGATE_TO_SESSION => {
             handle_navigate_to_session(&request.id, &request.params)
         }
@@ -1147,6 +1154,19 @@ pub(crate) fn handle_launch_session(id: &str, params: &serde_json::Value) -> Dae
             },
         ),
         Err(e) => DaemonResponse::err(id, "LAUNCH_ERROR", e),
+    }
+}
+
+#[cfg(all(feature = "mesh-bridged-backend", target_os = "linux"))]
+pub(crate) fn handle_stop_member(
+    id: &str,
+    params: &serde_json::Value,
+    hosts: &crate::coordination::hosted::HostedMembers,
+    registry: &crate::coordination::stores::TeamRootRegistry,
+) -> DaemonResponse {
+    match crate::daemon::hosted::handle(hosts, registry, "stop", params) {
+        Ok(result) => DaemonResponse::ok(id, result),
+        Err(error) => DaemonResponse::err(id, "STOP_ERROR", error),
     }
 }
 

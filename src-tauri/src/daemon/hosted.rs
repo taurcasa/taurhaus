@@ -14,7 +14,65 @@ pub(crate) fn handle(
         .as_str()
         .ok_or("missing member_name")?;
     let root = registry.resolve(team).map_err(|e| e.to_string())?;
-    let record = MemberRuntimeStore::load(&root, team, member).map_err(|e| e.to_string())?;
+    let record = MemberRuntimeStore::load(&root, team, member);
+    if operation == "stop" {
+        let config = crate::coordination::stores::TeamConfigStore::load(&root, team)
+            .map_err(|e| e.to_string())?;
+        let configured = config
+            .members
+            .iter()
+            .find(|m| m.name == member)
+            .ok_or("member is not on the team")?;
+        let record = match record {
+            Ok(record) => record,
+            Err(crate::coordination::errors::CoordinationError::NotFound(_)) => {
+                return Ok(serde_json::json!({"ok":true}));
+            }
+            Err(error) => return Err(error.to_string()),
+        };
+        // A recorded pane that now belongs to a foreign process is never
+        // touched, but that must not leave the daemon-owned host running:
+        // skip the TUI step and still reap the host.
+        let mut skipped_pane = None;
+        let pane = match record.pane_id.as_deref() {
+            Some(pane) if !crate::session_scanner::control::pane_matches_record(pane, &record)? => {
+                tracing::warn!(
+                    team,
+                    member,
+                    pane,
+                    "member stop: recorded pane belongs to another session; stopping the host only"
+                );
+                skipped_pane = Some(pane.to_string());
+                None
+            }
+            pane => pane,
+        };
+        stop_record(
+            hosts,
+            registry,
+            team,
+            member,
+            &record,
+            pane,
+            configured.cli_tool,
+        )?;
+        let mut reply = serde_json::json!({"ok":true});
+        if let Some(pane) = skipped_pane {
+            reply["skippedPane"] = serde_json::Value::String(pane);
+        }
+        return Ok(reply);
+    }
+    let record = record.map_err(|e| e.to_string())?;
+    if operation == "reconcile" {
+        if params["abandonUnknown"] == true {
+            let generation = params["generation"]
+                .as_u64()
+                .ok_or("missing attachment generation")?;
+            return hosts.abandon_unknown(registry, team, member, generation);
+        }
+        hosts.reconcile(registry, team, member)?;
+        return Ok(serde_json::json!({"ok":true}));
+    }
     let attachment = record.app_server.as_ref().ok_or("NOT_HOSTED")?;
     let generation = if operation == "transcript" {
         record.attachment_generation
@@ -23,12 +81,6 @@ pub(crate) fn handle(
             .as_u64()
             .ok_or("missing attachment generation")?
     };
-    if operation == "reconcile" {
-        if params["abandonUnknown"] != true {
-            return Err("Explicit abandon decision required".into());
-        }
-        return hosts.abandon_unknown(registry, team, member, generation);
-    }
     if operation == "transcript"
         && (attachment.state == "stopped" || attachment.state == "orphaned")
     {
@@ -90,13 +142,48 @@ pub(super) fn stop_session(
     let Some((team, member, record)) = matches.first().copied() else {
         return Ok(false);
     };
-    let host = record
-        .app_server
-        .as_ref()
-        .expect("matched hosted candidate has an app-server attachment");
-    let exit_status = hosts.stop_with_tui(registry, team, member, || {
-        crate::session_scanner::control::stop_hosted_tui(&params.tmux_pane, params.cli_tool)
-    })?;
+    stop_record(
+        hosts,
+        registry,
+        team,
+        member,
+        record,
+        Some(&params.tmux_pane),
+        params.cli_tool,
+    )?;
+    Ok(true)
+}
+
+fn stop_record(
+    hosts: &HostedMembers,
+    registry: &TeamRootRegistry,
+    team: &str,
+    member: &str,
+    record: &crate::coordination::stores::MemberRuntimeRecord,
+    pane: Option<&str>,
+    tool: crate::session_scanner::cli_tool::CliTool,
+) -> Result<(), String> {
+    let stop_tui = || {
+        if let Some(pane) = pane {
+            crate::session_scanner::control::stop_hosted_tui(pane, tool)?;
+        }
+        Ok(())
+    };
+    let Some(host) = record.app_server.as_ref() else {
+        hosts.reconcile(registry, team, member)?;
+        // Reconcile declines silently on a contended cell or a still-live
+        // host; a stop that leaves the seat owned must not report success.
+        if hosts.is_owned(registry, team, member)? {
+            return Err("hosted stop failed: the daemon still owns this member's host (busy or still running); retry the stop".into());
+        }
+        if let Some(pane) = pane {
+            crate::session_scanner::control::stop_tui_if_present(pane, tool, false)?;
+        }
+        let root = registry.resolve(team).map_err(|e| e.to_string())?;
+        super::state_writes::mark_member_stopped(&root, team, member, record)?;
+        return Ok(());
+    };
+    let exit_status = hosts.stop_with_tui(registry, team, member, stop_tui)?;
     let fields = serde_json::json!({"team":team, "member":member,
         "thread_id":host.thread_id, "exit_status":exit_status});
     tracing::info!(event = "hosted.stop_session.host_stopped", fields = %fields, "Hosted session stopped");
@@ -107,7 +194,7 @@ pub(super) fn stop_session(
         Some("Hosted session stopped".into()),
         fields.as_object().unwrap().clone(),
     );
-    Ok(true)
+    Ok(())
 }
 
 #[cfg(test)]
@@ -116,6 +203,139 @@ mod tests {
     use crate::coordination::hosted::tests::{input, running, saved, seat};
     use crate::coordination::hosted_process::tests::fixture;
     use serde_json::json;
+    #[test]
+    fn member_stop_releases_dead_owned_host_without_attachment() {
+        dead_owned_host_without_attachment("stop");
+    }
+
+    #[test]
+    fn member_reconcile_releases_dead_owned_host_without_attachment() {
+        dead_owned_host_without_attachment("reconcile");
+    }
+
+    fn dead_owned_host_without_attachment(operation: &str) {
+        // Regression: d612491fd missed the member-stop addendum: a dead owned
+        // seat without an app_server block could never be stopped and resumed.
+        let tmp = tempfile::tempdir().unwrap();
+        let (registry, hosts) = running(tmp.path());
+        let before = saved(tmp.path());
+        let roster = std::fs::read(tmp.path().join("team/config.json")).unwrap();
+        crate::coordination::hosted::tests::exit_owned_host(&hosts, tmp.path());
+        MemberRuntimeStore::update(tmp.path(), "team", "seat", |r| {
+            r.app_server = None;
+            r.health = crate::coordination::domain::HealthState::Healthy;
+        })
+        .unwrap();
+        handle(
+            &hosts,
+            &registry,
+            operation,
+            &json!({"team_name":"team", "member_name":"seat"}),
+        )
+        .unwrap();
+        assert_eq!(
+            saved(tmp.path()).health,
+            crate::coordination::domain::HealthState::SessionDead
+        );
+        assert_eq!(saved(tmp.path()).session_id, before.session_id);
+        hosts
+            .launch(&registry, "team", "seat", &fixture(tmp.path()))
+            .unwrap();
+        let resumed = saved(tmp.path());
+        assert_ne!(
+            resumed.app_server.as_ref().unwrap().process_id,
+            before.app_server.as_ref().unwrap().process_id
+        );
+        assert_eq!(
+            resumed.app_server.unwrap().thread_id,
+            before.app_server.unwrap().thread_id
+        );
+        assert_eq!(
+            std::fs::read(tmp.path().join("team/config.json")).unwrap(),
+            roster
+        );
+        hosts.stop(&registry, "team", "seat").unwrap();
+    }
+
+    #[test]
+    fn member_stop_without_runtime_is_already_stopped() {
+        // Regression: d612491fd exposed the runtime store's NotFound for an unlaunched member.
+        let tmp = tempfile::tempdir().unwrap();
+        let registry = seat(tmp.path());
+        std::fs::remove_file(tmp.path().join("team/runtime/seat.json")).unwrap();
+        assert_eq!(
+            handle(
+                &HostedMembers::default(),
+                &registry,
+                "stop",
+                &json!({"team_name":"team", "member_name":"seat"})
+            )
+            .unwrap(),
+            json!({"ok":true})
+        );
+        assert!(handle(
+            &HostedMembers::default(),
+            &registry,
+            "stop",
+            &json!({"team_name":"team", "member_name":"unknown"})
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn member_stop_keeps_roster_and_session_identity() {
+        // Regression: 2e627f5cb, member-stop lane finding 2: Stop only exposed roster removal.
+        let tmp = tempfile::tempdir().unwrap();
+        let (registry, hosts) = running(tmp.path());
+        let before = saved(tmp.path());
+        let config_path = tmp.path().join("team/config.json");
+        let roster = std::fs::read(&config_path).unwrap();
+        let result = handle(
+            &hosts,
+            &registry,
+            "stop",
+            &json!({
+                "team_name":"team", "member_name":"seat"
+            }),
+        );
+        assert_eq!(result.unwrap(), json!({"ok":true}));
+        let after = saved(tmp.path());
+        assert_eq!(
+            after.health,
+            crate::coordination::domain::HealthState::SessionDead
+        );
+        assert_eq!(after.session_id, before.session_id);
+        assert_eq!(after.app_server.as_ref().unwrap().thread_id, "owned-thread");
+        assert_eq!(std::fs::read(config_path).unwrap(), roster);
+        assert!(
+            !std::path::Path::new(&format!("/proc/{}", before.app_server.unwrap().process_id))
+                .exists()
+        );
+    }
+
+    #[test]
+    fn member_stop_refuses_when_the_seat_stays_owned_without_a_host_block() {
+        // Regression: member-stop lane round 2: a record without a host block
+        // whose seat is still live made the stop answer ok while the daemon
+        // kept owning (and running) the host.
+        let tmp = tempfile::tempdir().unwrap();
+        let (registry, hosts) = running(tmp.path());
+        let root = registry.resolve("team").unwrap();
+        crate::coordination::stores::MemberRuntimeStore::update(&root, "team", "seat", |record| {
+            record.app_server = None;
+        })
+        .unwrap();
+        let result = handle(
+            &hosts,
+            &registry,
+            "stop",
+            &json!({"team_name":"team", "member_name":"seat"}),
+        );
+        let error = result.expect_err("a still-owned live host must not report a successful stop");
+        assert!(error.contains("still owns"), "{error}");
+        assert!(hosts.is_owned(&registry, "team", "seat").unwrap());
+    }
+
     #[test]
     fn daemon_host_input_and_transcript_use_owned_member_and_generation() {
         let tmp = tempfile::tempdir().unwrap();

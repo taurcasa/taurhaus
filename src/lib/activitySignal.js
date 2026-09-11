@@ -246,3 +246,7 @@ export function hostActivityExplanation(record) {
   if (current.source === 'host_unavailable') return 'Uncertain · daemon-owned thread unavailable'
   return null
 }
+export function isTuiDetached(member) {
+  return member?.hosted === true && member?.source === 'host'
+    && String(member?.paneId ?? '').trim().length === 0
+}

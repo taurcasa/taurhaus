@@ -453,6 +453,7 @@ pub mod daemon {
             pub const COORDINATION_ADD_MEMBER: &str = "coordination.add_member";
             pub const COORDINATION_ADD_MEMBER_STATUS: &str = "coordination.add_member_status";
             pub const COORDINATION_REMOVE_MEMBER: &str = "coordination.remove_member";
+            pub use taurhaus_lib::daemon_api::protocol::method::STOP_MEMBER;
             pub const COORDINATION_REMOVE_MEMBER_STATUS: &str = "coordination.remove_member_status";
         }
 

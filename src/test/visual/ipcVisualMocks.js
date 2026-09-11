@@ -82,6 +82,7 @@ function createMockMap() {
     coordinationListTeams: vi.fn(),
     coordinationPreflightCheck: vi.fn(),
     coordinationRemoveMember: vi.fn(),
+    coordinationStopMember: vi.fn(),
     coordinationResumeMember: vi.fn(),
     coordinationResumeTeam: vi.fn(),
     coordinationSwitchTeamAccount: vi.fn(),

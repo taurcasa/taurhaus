@@ -923,6 +923,23 @@ impl HostedMembers {
         result
     }
 
+    /// Whether the registry still owns this member's seat: a contended cell
+    /// counts as owned, because whoever holds it may be running the host.
+    pub fn is_owned(
+        &self,
+        registry: &TeamRootRegistry,
+        team: &str,
+        member: &str,
+    ) -> Result<bool, String> {
+        let root = registry.resolve(team).map_err(|e| e.to_string())?;
+        let cell = self.seat(&root, team, member)?;
+        let owned = match cell.try_lock() {
+            Ok(guard) => guard.is_some(),
+            Err(_) => true,
+        };
+        Ok(owned)
+    }
+
     pub fn reconcile(
         &self,
         registry: &TeamRootRegistry,
@@ -956,6 +973,16 @@ impl HostedMembers {
             return Ok(());
         }
         MemberRuntimeStore::update(&root, team, member, |record| {
+            // Recover lost host metadata only from this daemon's matching owned
+            // seat; never turn an unrelated TUI session into a hosted resume.
+            if let Some(seat) = owned.as_ref().filter(|seat| {
+                record.app_server.is_none()
+                    && record.session_id.as_deref() == Some(&seat.attachment.thread_id)
+                    && record.attachment_generation == seat.generation
+                    && record.launch_root.as_ref() == Some(&seat.launch_root)
+            }) {
+                record.app_server = Some(seat.attachment.clone());
+            }
             if let Some(host) = &mut record.app_server {
                 let state = if owned.is_none() && host_alive(host) {
                     "orphaned"
@@ -969,6 +996,9 @@ impl HostedMembers {
                     record.attachment_generation = record.attachment_generation.saturating_add(1);
                     record.health = HealthState::SessionDead;
                 }
+            } else if owned.is_some() {
+                record.health = HealthState::SessionDead;
+                record.attachment_generation = record.attachment_generation.saturating_add(1);
             }
         })
         .map_err(|e| e.to_string())?;
@@ -1175,6 +1205,11 @@ fn record_host_delivery(root: &Path, team: &str, member: &str) -> Result<(), Str
 
 #[cfg(test)]
 pub(crate) mod tests {
+    pub(crate) fn exit_owned_host(hosts: &super::HostedMembers, root: &std::path::Path) {
+        let cell = hosts.seat(root, "team", "seat").unwrap();
+        cell.lock().unwrap().as_mut().unwrap().host.stop().unwrap();
+    }
+
     pub(crate) fn hold_stop_seat(
         hosts: &super::HostedMembers,
         root: &std::path::Path,

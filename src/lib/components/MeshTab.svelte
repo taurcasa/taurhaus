@@ -61,6 +61,7 @@
     const context = controller.confirmContext
     if (!context) return ''
     if (context.kind === 'disband') return 'Disband team?'
+    if (context.kind === 'stop') return 'Stop member?'
     if (context.kind === 'remove') return `Remove ${context.memberName}?`
     return 'Confirm Action'
   }
@@ -71,12 +72,16 @@
     if (context.kind === 'disband') {
       return `This will stop all active sessions and remove team '${resolvedTeamName}'.`
     }
+    if (context.kind === 'stop') {
+      return `Stop '${context.memberName}'? The seat's session ends; the member stays on the team and can be resumed.`
+    }
     return `This removes '${context.memberName}' from team '${resolvedTeamName}'.`
   }
 
   function confirmDialogLabel() {
     const context = controller.confirmContext
     if (!context) return 'Confirm'
+    if (context.kind === 'stop') return 'Stop'
     return context.kind === 'disband' ? 'Disband Team' : 'Remove Member'
   }
 
@@ -191,6 +196,7 @@
       onCloseNode={controller.clearSelectedNode}
       onResumeSelected={controller.resumeSelected}
       onStopSelected={controller.stopSelected}
+      onRemoveSelected={controller.removeSelected}
       onSwitchSelectedAccount={controller.switchSelectedAccount}
       onFocusSelectedPane={controller.focusSelectedPane}
       onCaptureRole={controller.openCaptureRoleDialog}

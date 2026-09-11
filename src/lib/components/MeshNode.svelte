@@ -1,6 +1,6 @@
 <script>
   import { accountState, opaqueBaseNotice } from '../accounts.svelte.js'
-  import { activityLevel, hostActivityExplanation } from '../activitySignal.js'
+  import { activityLevel, hostActivityExplanation, isTuiDetached } from '../activitySignal.js'
   import { getToolIcon } from '../toolLogos.js'
   import { normalizeTool } from '../toolRegistry.js'
   import { hasAccountLine, memberNodeHeight } from './meshLayout.js'
@@ -28,6 +28,8 @@
     accountFallbackFrom = '',
     status = 'offline',
     source = null,
+    hosted = false,
+    paneId = null,
     isCrossProject = false,
     projectLabel = '',
     selected = false,
@@ -80,7 +82,7 @@
   const nodeHeight = $derived(
     Number.isFinite(requestedHeight) && requestedHeight > 0
       ? requestedHeight
-      : memberNodeHeight(launchAccountResult, isLead)
+      : memberNodeHeight({ ...launchAccountResult, hosted, paneId, source }, isLead)
   )
 
   const safeName = $derived(String(name || '').trim() || 'unnamed')
@@ -107,6 +109,8 @@
   )
 
   const icon = $derived.by(() => getToolIcon(safeTool))
+
+  const tuiDetached = $derived(isTuiDetached({ hosted, source, paneId }))
 
   const activityTitle = $derived(hostActivityExplanation({ status, source }))
 
@@ -222,6 +226,9 @@
       </span>
     {/if}
 
+    {#if tuiDetached}
+      <span class="mesh-node-model" data-testid="mesh-node-tui-detached">TUI detached, host running</span>
+    {/if}
     {#if showAccountLine}
       <span
         class="mesh-node-account-line"

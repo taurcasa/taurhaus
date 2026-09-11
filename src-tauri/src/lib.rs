@@ -268,6 +268,8 @@ fn build_app() -> tauri::Builder<tauri::Wry> {
             #[cfg(feature = "mesh-bridged-backend")]
             commands::coordination::coordination_add_member,
             #[cfg(feature = "mesh-bridged-backend")]
+            commands::coordination::coordination_stop_member,
+            #[cfg(feature = "mesh-bridged-backend")]
             commands::coordination::coordination_remove_member,
             #[cfg(feature = "mesh-bridged-backend")]
             commands::coordination::coordination_list_teams,
@@ -812,6 +814,27 @@ fn init_coordination_cli_log_sink() -> Option<crate::commands::logging::LogFileS
 
 #[cfg(all(test, feature = "mesh-bridged-backend"))]
 mod tests {
+    #[test]
+    fn coordination_handlers_are_individually_feature_gated() {
+        // Regression: d612491fd moved remove_member's cfg onto stop_member.
+        let source = include_str!("lib.rs");
+        let handlers = source
+            .split(".invoke_handler(tauri::generate_handler![")
+            .nth(1)
+            .unwrap();
+        let handlers = handlers.split("])").next().unwrap();
+        let mut previous = "";
+        for line in handlers.lines().map(str::trim) {
+            if line.starts_with("commands::coordination::") {
+                assert_eq!(
+                    previous, "#[cfg(feature = \"mesh-bridged-backend\")]",
+                    "{line}"
+                );
+            }
+            previous = line;
+        }
+    }
+
     use super::init_coordination_cli_log_sink;
 
     use serde_json::Value;

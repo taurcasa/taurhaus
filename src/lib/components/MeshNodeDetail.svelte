@@ -1,6 +1,6 @@
 <script>
   import { focusFirstInteractiveElement, handleModalKeydown, registerModalLayer } from '../a11y.js'
-  import { activitySignal } from '../activitySignal.js'
+  import { activitySignal, isTuiDetached } from '../activitySignal.js'
   import { accountState } from '../accounts.svelte.js'
   import MarkdownRenderer from '../MarkdownRenderer.svelte'
   import HostedThread from './HostedThread.svelte'
@@ -714,6 +714,9 @@
                     <span class="inline-block h-2 w-2 rounded-full {statusDotTone}" aria-hidden="true"></span>
                   <span>{statusLabel}</span>
                 </span>
+      {#if isTuiDetached(node)}
+                  <span>TUI detached, host running</span>
+                {/if}
                 {#if subjectLabel}
                   <span class="{shellMutedTone}" data-testid="mesh-node-detail-subject">{subjectLabel}</span>
                 {/if}
@@ -743,6 +746,17 @@
             >
               Stop
             </button>
+            {#if node?.role !== 'lead'}
+              <button
+                class="inline-flex h-10 items-center gap-2 rounded-xl border px-4 text-[13px] font-medium transition {dangerActionTone}"
+                type="button"
+                onclick={() => invoke(actions?.onRemove)}
+                disabled={Boolean(actions?.stopDisabled) || typeof actions?.onRemove !== 'function'}
+                data-testid="mesh-node-detail-remove"
+              >
+                Remove from team
+              </button>
+            {/if}
             <button
               class="inline-flex h-10 items-center gap-2 rounded-xl border px-4 text-[13px] font-medium transition {secondaryActionTone}"
               type="button"

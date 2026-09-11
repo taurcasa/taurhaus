@@ -13,6 +13,25 @@ use crate::daemon::protocol::{
     CoordinationSetActiveProjectTeamResult,
 };
 
+pub(super) fn mark_member_stopped(
+    root: &Path,
+    team: &str,
+    member: &str,
+    stopped: &crate::coordination::stores::MemberRuntimeRecord,
+) -> Result<(), String> {
+    crate::coordination::stores::MemberRuntimeStore::update(root, team, member, |current| {
+        if current.pane_id == stopped.pane_id
+            && current.session_id == stopped.session_id
+            && current.pane_pid == stopped.pane_pid
+            && current.pane_start_time == stopped.pane_start_time
+        {
+            current.health = crate::coordination::domain::HealthState::SessionDead;
+        }
+    })
+    .map(|_| ())
+    .map_err(|e| e.to_string())
+}
+
 pub(crate) fn publish_operational_snapshots(
     teams_dir: &Path,
     params: CoordinationPublishOperationalSnapshotsParams,

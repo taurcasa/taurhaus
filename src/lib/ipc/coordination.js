@@ -27,6 +27,10 @@ export function coordinationDisbandTeam(teamName) {
   })).then((report) => normalizeInitializeTeamResult(report))
 }
 
+export function coordinationStopMember(teamName, memberName) {
+  return invokeOrMock('coordination_stop_member', { teamName, memberName }, () => ({ ok: true }))
+}
+
 export function coordinationRemoveMember(teamName, memberName) {
   return invokeOrMock('coordination_remove_member', { teamName, memberName }, () => ({
     teamName,

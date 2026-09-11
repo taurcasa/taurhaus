@@ -26,6 +26,7 @@ vi.mock('../ipc.js', () => ({
   coordinationInitializeTeam: vi.fn(),
   coordinationPreflightCheck: vi.fn(),
   coordinationRemoveMember: vi.fn(),
+  coordinationStopMember: vi.fn(),
   coordinationResumeTeam: vi.fn(),
   coordinationResumeMember: vi.fn(),
   coordinationSwitchTeamAccount: vi.fn(),
@@ -51,6 +52,7 @@ const {
   coordinationInitializeTeam,
   coordinationPreflightCheck,
   coordinationRemoveMember,
+  coordinationStopMember,
   coordinationResumeTeam,
   coordinationResumeMember,
   getRoleTemplate,
@@ -3626,18 +3628,68 @@ describe('MeshTab', () => {
     expect(coordinationGetProjectMeshSnapshot).toHaveBeenCalledTimes(1)
   })
 
+  // Regression: 2e627f5cb, member-stop lane finding 2: Stop removed the member from the roster.
+  it('stops selected runtime agent without removing the member', async () => {
+    await renderRuntime()
+    await fireEvent.click(screen.getByTestId('mesh-node-agent'))
+    await fireEvent.click(screen.getByTestId('mesh-node-detail-stop'))
+    expect(screen.getByTestId('confirm-dialog')).toHaveTextContent(
+      "Stop 'frontend-dev'? The seat's session ends; the member stays on the team and can be resumed."
+    )
+    expect(coordinationStopMember).not.toHaveBeenCalled()
+    await fireEvent.click(screen.getByTestId('confirm-dialog-confirm'))
+    await waitFor(() => {
+      expect(coordinationStopMember).toHaveBeenCalledWith('architecture-final', 'frontend-dev')
+    })
+    expect(coordinationRemoveMember).not.toHaveBeenCalled()
+  })
+
+  it('cancels a member stop without changing the roster', async () => {
+    await renderRuntime()
+    await fireEvent.click(screen.getByTestId('mesh-node-agent'))
+    await fireEvent.click(screen.getByTestId('mesh-node-detail-stop'))
+    await fireEvent.click(screen.getByTestId('confirm-dialog-cancel'))
+    expect(coordinationStopMember).not.toHaveBeenCalled()
+    expect(coordinationRemoveMember).not.toHaveBeenCalled()
+  })
+
+  it('reports member stop failure without removing the member', async () => {
+    coordinationStopMember.mockRejectedValueOnce(new Error('host member busy; retry'))
+    await renderRuntime()
+    await fireEvent.click(screen.getByTestId('mesh-node-agent'))
+    await fireEvent.click(screen.getByTestId('mesh-node-detail-stop'))
+    await fireEvent.click(screen.getByTestId('confirm-dialog-confirm'))
+    await waitFor(() => expect(screen.getByTestId('mesh-error')).toHaveTextContent('host member busy; retry'))
+    expect(coordinationRemoveMember).not.toHaveBeenCalled()
+    expect(screen.getByTestId('mesh-node-agent')).toBeInTheDocument()
+  })
+
+  it('carries snapshot TUI detachment into the canvas and detail without enabling focus', async () => {
+    await renderRuntime({ members: [
+      { name: 'team-lead', role: 'lead', cliTool: 'claude', sessionStatus: 'active' },
+      { name: 'seat', role: 'member', cliTool: 'codex', hosted: true, source: 'host', state: 'idle', paneId: null },
+    ] })
+    expect(screen.getByTestId('mesh-node-agent')).toHaveTextContent('TUI detached, host running')
+    await fireEvent.click(screen.getByTestId('mesh-node-agent'))
+    expect(screen.getByTestId('mesh-node-detail-focus')).toBeDisabled()
+    expect(screen.getAllByText('TUI detached, host running')).toHaveLength(2)
+  })
+
   it('removes selected runtime agent after confirm', async () => {
     await renderRuntime()
 
     await fireEvent.click(screen.getByTestId('mesh-node-agent'))
     await waitFor(() => {
-      expect(screen.getByTestId('mesh-node-detail-stop')).toBeInTheDocument()
+      expect(screen.getByTestId('mesh-node-detail-remove')).toBeInTheDocument()
     })
 
-    await fireEvent.click(screen.getByTestId('mesh-node-detail-stop'))
+    await fireEvent.click(screen.getByTestId('mesh-node-detail-remove'))
     await waitFor(() => {
       expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
     })
+    expect(screen.getByTestId('confirm-dialog')).toHaveTextContent(
+      "This removes 'frontend-dev' from team 'architecture-final'."
+    )
     await fireEvent.click(screen.getByTestId('confirm-dialog-confirm'))
 
     await waitFor(() => {
@@ -3823,7 +3875,7 @@ describe('MeshTab', () => {
     await renderRuntime()
 
     await fireEvent.click(screen.getByTestId('mesh-node-agent'))
-    await fireEvent.click(screen.getByTestId('mesh-node-detail-stop'))
+    await fireEvent.click(screen.getByTestId('mesh-node-detail-remove'))
     await waitFor(() => {
       expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
     })

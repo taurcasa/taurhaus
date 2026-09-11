@@ -30,6 +30,14 @@ describe('ipc module', () => {
     ipc = await import('./ipc.js')
   })
 
+  it('addresses member stop separately from roster removal', async () => {
+    window.__TAURI_INTERNALS__ = {}
+    tauriCore.invoke.mockResolvedValue({ ok: true })
+    await expect(ipc.coordinationStopMember('team', 'seat')).resolves.toEqual({ ok: true })
+    expect(tauriCore.invoke).toHaveBeenCalledWith('coordination_stop_member', { teamName: 'team', memberName: 'seat' })
+    expect(tauriCore.invoke).toHaveBeenCalledTimes(1)
+  })
+
   describe('isTauri()', () => {
     it('returns true when __TAURI_INTERNALS__ exists', () => {
       window.__TAURI_INTERNALS__ = {}
