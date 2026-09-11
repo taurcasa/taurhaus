@@ -140,6 +140,16 @@ cleanup precondition: `python3 -B docs/design/evidence/e2e/l7-ledger/gates.py
 `--log-dir .check-logs/l7-ledger-run5-review --output-dir
 .check-logs/l7-ledger-run5-review` to preserve historical results; its results
 are appended to the [execution record](l7-ledger/run5/execution.json).
+Review gates passed: `just check-quick` **0** (2,521 frontend tests),
+`just lint` **0**, `just test-contracts` **0** (68 assertions). The first contracts
+attempt exited **101**: its repository scan mistook a passing test-name string
+in an old ignored run5 JSON gate output for a retired tool literal. That output
+was preserved byte-for-byte under a `.log` extension, as were review result
+files, and all three gates were rerun successfully. No product/test-source fix
+was made. Exact exits, timings, Cargo admission polls and log digests are in the
+execution record. Gate children exited and were reaped; no new runtime cleanup
+was needed. No `src-tauri/` diff exists, so the Rust unit gate is inapplicable.
+
 This fix round starts no paid trial: additional seat inputs **0**, seat spend
 **USD 0**. It does not change the six-step outcomes or recover missing spend.
 
