@@ -1,0 +1,48 @@
+env -u TMUX 'CLAUDE_DIR=/tmp/th-l5-z4ddbnmd/claude' 'CODEX_HOME=/tmp/th-l5-z4ddbnmd/tmp/th-host-cd24de47c7e0493ca0cf3d57d6f56c40/tui' 'codex
+' '--remote' 'unix:///tmp/th-l5-z4ddbnmd/tmp/th-host-cd24de47c7e0493ca0cf3d57d6f56c40/rpc.sock' 'resume' '01a08e37-4943-7e72-9ad2-fd1def65ef
+93' '--no-alt-screen' '--strict-config'mstie@whocares:/tmp/th-l5-z4ddbnmd/project$ env -u TMUX 'CLAUDE_DIR=/tmp/th-l5-z4ddbnmd/claude' 'CODE
+X_HOME=/tmp/th-l5-z4ddbnmd/tmp/th-host-cd24de47c7e0493ca0cf3d57d6f56c40/tui' 'codex' '--remote' 'unix:///tmp/th-l5-z4ddbnmd/tmp/th-host-cd24
+de47c7e0493ca0cf3d57d6f56c40/rpc.sock' 'resume' '01a08e37-4943-7e72-9ad2-fd1def65ef93' '--no-alt-screen' '--strict-config'
+WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir "/tmp/th-l5-z4ddbn
+md/tmp" (codex_home: AbsolutePathBuf("/tmp/th-l5-z4ddbnmd/tmp/th-host-cd24de47c7e0493ca0cf3d57d6f56c40/tui"))
+
+• Working (0s • esc to interrupt)
+
+
+› Ask Codex to do anything
+
+  gpt-5.6-luna low · /tmp/th-l5-z4ddbnmd/project
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
