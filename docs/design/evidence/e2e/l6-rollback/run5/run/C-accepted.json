@@ -1,0 +1,13 @@
+{
+  "marker": "C-18c750f5",
+  "output": "[mesh] warning: actionable message missing required fields: task_id, first_step, deliverable, completion_signal\nmesh: coverage: gap; capture disabled; retained history unchanged\nmesh: coverage: gap; capture disabled; retained history unchanged\n[mesh] lead -> alpha: sent (id: 1e0864c1-b64b-422c-be1d-6545981c5e49)\n",
+  "projection": {
+    "id": "1e0864c1-b64b-422c-be1d-6545981c5e49",
+    "from": "lead",
+    "text": "ACTION REQUIRED: Read this message explicitly, then reply exactly C-18c750f5.",
+    "timestamp": "2026-09-11T05:16:54.093Z",
+    "read": false,
+    "summary": "C"
+  },
+  "message_id": "1e0864c1-b64b-422c-be1d-6545981c5e49"
+}

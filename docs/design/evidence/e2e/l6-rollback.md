@@ -1,4 +1,4 @@
-# L6 rollback — run5 IN PROGRESS (step 3 PASS)
+# L6 rollback — run5 IN PROGRESS (step 4 PASS)
 
 ## Run3 result (2026-09-11)
 
@@ -950,3 +950,5 @@ Run5 step 1: PASS (S-runtime); see run5/run/step1-outcome.json.
 Run5 step 2: PASS (S-runtime); see run5/run/step2-outcome.json.
 
 Run5 step 3: PASS (S-runtime); see run5/run/step3-outcome.json.
+
+Run5 step 4: PASS (S-runtime); see run5/run/step4-outcome.json.
