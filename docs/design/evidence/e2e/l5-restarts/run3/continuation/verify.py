@@ -1,7 +1,7 @@
 """Offline artifact integrity, sanitation and post-teardown checks."""
 import ast,hashlib,json,re,subprocess
 from pathlib import Path
-from support import clean
+from support import clean, allowed_operator_path
 from pack import unpack
 b=Path(__file__).resolve().parent
 for p in b.glob('*.py'):ast.parse(p.read_text())
@@ -18,7 +18,7 @@ for p in b.rglob('*'):
   for line in text.splitlines():
    row=json.loads(line);assert clean(row)==row,p
  for path in re.findall(r'(?<![\w/-])/home/[A-Za-z0-9_.-]+/[^\s"\']+',text):
-  assert any(path==root or path.startswith(root+'/') for root in ['/home/mstie/projects/taurhaus-l5-restarts','/home/mstie/projects/mesh-l5']),p
+  assert allowed_operator_path(path),p
 assert hashlib.sha256((b/'runtime/taurhaus.log.jsonl').read_bytes()).hexdigest()==a['daemon_jsonl']['sha256']
 assert not Path(a['cleanup']['root']).exists()
 survivors=[]
@@ -30,7 +30,7 @@ for p in Path('/proc').iterdir():
 assert not survivors,survivors
 assert not subprocess.check_output(['git','diff','--name-only','a7e6db7e','--','src-tauri','src'],text=True)
 assert not subprocess.check_output(['git','-C','/home/mstie/projects/mesh-l5','status','--porcelain'],text=True)
-result={'syntax':'pass','offline_tests':13,'packet_files':len(packet['files']),'unique_payloads':len(packet['payloads']),
+result={'syntax':'pass','offline_tests':18,'packet_files':len(packet['files']),'unique_payloads':len(packet['payloads']),
  'payload_hashes':'pass','sanitization':'pass','pane_bound':'<=60 lines','daemon_jsonl_sha256':a['daemon_jsonl']['sha256'],
  'scratch_survivors':survivors,'scratch_root_absent':True,'product_diff':False,'mesh_clean':True,
  'gates':{k:v['exit'] for k,v in a['gates'].items()}}

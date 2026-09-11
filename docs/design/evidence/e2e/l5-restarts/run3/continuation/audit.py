@@ -1,7 +1,7 @@
 """Assess the stopped runtime packet without launching a CLI or reading credentials."""
 import datetime,hashlib,json
 from pathlib import Path
-from support import complete_rows,pending,identity_preserved,clean
+from support import complete_rows,pending,identity_preserved,clean,owner_evidence
 B=Path(__file__).resolve().parent;P=B/'runtime'
 def read(name):return json.loads((P/name).read_text())
 def seconds(stamp):return datetime.datetime.fromisoformat(stamp).timestamp()
@@ -38,7 +38,12 @@ stop=event('normal_daemon_stop');restart=event('post_daemon_restart')
 old=stop['identity'];new=next(i for i in restart['identities'] if i['argv'][0].endswith('/taurhaus-daemon') and '--port' in i['argv'])
 assert (old['pid'],old['start_ticks'])!=(new['pid'],new['start_ticks']) and restart['ping']['protocol_version']==27
 assert final['epoch']['epoch']>before['epoch']['epoch'] and final['epoch']['pid']!=before['epoch']['pid']
-owners=complete_rows((P/'owner-observations.jsonl').read_text());assert all(len(o.get('owners',[]))<=1 for o in owners)
+owners=complete_rows((P/'owner-observations.jsonl').read_text())
+census=owner_evidence(owners)
+# Preserve original runtime verdicts separately; qualify the assessed step 5.
+recorded_steps=steps
+steps=[dict(s) for s in recorded_steps]
+steps[4].update(outcome=census['outcome'],classification=census['classification'],owner_evidence=census)
 usage=read('usage-events.json');ledger=read('cost-ledger.json');turns=[]
 for tid in ledger['turn_ids']:
  rows=[r for r in usage if r['payload'].get('turn_id')==tid]
@@ -53,11 +58,11 @@ stop_time=event('cleanup')['at'];assert stop_time-start<900
 assert ledger['paid_inputs']<=20 and ledger['api_equivalent_usd']<=.30
 samples=[r for r in events if r['kind']=='pending_boundary_sample'];assert len(samples)==2 and all(r['coverage']['pending_seats']==['alpha','beta'] for r in samples)
 intervals={r['label']:(event('normal_daemon_stop' if r['label']=='taurhaus-backlog' else 'normal_mesh_restart_initiated')['at']-r['at'])*1000 for r in samples}
-result={'verdict':'INCOMPLETE: six runtime checks PASS; first-boundary duration unproved and Opus review outstanding',
- 'step_outcomes':steps,'started_utc':datetime.datetime.fromtimestamp(start,datetime.timezone.utc).isoformat(),
+result={'verdict':'INCOMPLETE: first-boundary duration and step 5 owner exclusion unproved (harness)',
+ 'step_outcomes':steps,'recorded_step_outcomes':recorded_steps,'started_utc':datetime.datetime.fromtimestamp(start,datetime.timezone.utc).isoformat(),
  'cleanup_utc':datetime.datetime.fromtimestamp(stop_time,datetime.timezone.utc).isoformat(),'runtime_seconds':stop_time-start,
  'markers':markers,'sample_to_restart_ms':intervals,'old_daemon':old,'new_daemon':new,'protocol':27,
- 'before_identity':before,'final_identity':final,'owner_samples':len(owners),'max_simultaneous_observed_owners':max(len(o.get('owners',[])) for o in owners),
+ 'before_identity':before,'final_identity':final,'owner_samples':len(owners),'max_simultaneous_observed_owners':census['max_simultaneous_observed_owners'],'owner_evidence':census,
  'turns':turns,'spend':ledger,'cleanup':cleanup,'controller_exit':0,
  'daemon_jsonl':{'rows':len(complete_rows((P/'taurhaus.log.jsonl').read_text())), 'sha256':hashlib.sha256((P/'taurhaus.log.jsonl').read_bytes()).hexdigest()},
  'resume_operations':[r for r in events if r['kind']=='daemon_request' and r['request']['method']=='coordination.resume_member'],
@@ -65,6 +70,6 @@ result={'verdict':'INCOMPLETE: six runtime checks PASS; first-boundary duration 
  'candidate':{'product_commit':'a7e6db7e','mesh_commit':'310144d','descriptor':'enabled, unchanged','codex':'0.153.4','model':'gpt-5.6-luna','effort':'low','binaries':[r for r in events if r['kind']=='binary']},
  'gates':{n:json.loads((B/f'gates/gate-{n}.json').read_text()) for n in ['check-quick','lint','test-contracts']},
  'gate_cleanup':json.loads((B/'gates/gate-cleanup.json').read_text()),
- 'limitations':['First paced task selected unavailable python; minimum 30 seconds at first boundary unproved. Second tasks used python3 and completed after 44.955/45.649 seconds.', 'Pacing used an ordinary Python task, rather than free-form model streaming.', 'Two unknown-cost inputs; metered cap verified only.', 'Independent Opus evidence lens unavailable; review outstanding.']}
+ 'limitations':['First paced task selected unavailable python; minimum 30 seconds at first boundary unproved. Second tasks used python3 and completed after 44.955/45.649 seconds.', 'Pacing used an ordinary Python task, rather than free-form model streaming.', 'Two unknown-cost inputs; metered cap verified only.', 'Opus round 1 found the owner-process filter inert: zero owners sampled; no-overlapping-owners sub-claim UNPROVED (harness). Only restart-self stop/start output supplies sequencing evidence.']}
 (B/'final-audit.json').write_text(json.dumps(clean(result),indent=2)+'\n')
 print(json.dumps({k:result[k] for k in ['verdict','runtime_seconds','sample_to_restart_ms','daemon_jsonl']}))

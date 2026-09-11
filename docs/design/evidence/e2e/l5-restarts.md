@@ -1,11 +1,12 @@
-# Lane 5 run3 continuation — INCOMPLETE: six runtime checks PASS; timing and review limits
+# Lane 5 run3 continuation — INCOMPLETE: timing and owner exclusion unproved (harness)
 
-The user-authorized continuation completed and committed **all six runtime
-checks**. Both restart boundaries carried pending mail on both transports; every
-baseline and backlog ID has exactly one transport receipt and an explicit read.
-All gates and teardown pass. Full lane certification remains **incomplete**:
-the first boundary's >=30-second duration was not achieved, and the independent
-Opus review remains outstanding. See [continuation evidence](#run3-continuation--six-runtime-checks-completed).
+Both restart boundaries carried pending mail on both transports; every baseline
+and backlog ID has exactly one transport receipt and an explicit read. The first
+boundary's >=30-second duration was not achieved. Opus round 1 also found that
+**step 5's no-overlapping-owners sub-claim is UNPROVED — harness**: the owner
+filter matched nothing, with **zero owners in all three samples**. The original
+six controller PASS records remain historical observations of its predicates,
+not full lane certification. See [continuation evidence](#run3-continuation--six-runtime-checks-completed).
 Prior attempts below are historical.
 
 ## Historical first attempt and offline continuation
@@ -618,13 +619,14 @@ helper import error; all **13 tests** then passed. Repair commit **1d01e588**.
 | 2. Pending while working | **Pending checks PASS; duration incomplete — harness** | **429ad5cd**. Both matching sessions attributed active, each marker accepted with no transport receipt; immediate first restart. The first paced commands selected missing `python`, leaving the >=30-second duration unproved. |
 | 3. Taurhaus stop/restart and recovery | **PASS — runtime** | **5bf21b68**. SIGINT through the normal shutdown handler, new PID/start ticks, identical arguments and protocol 27; one successful supported beta resume. |
 | 4. First backlog and no baseline replay | **PASS — runtime** | **d85a1cb0**. Same logical sessions/team, monotonic generations, both original pending IDs delivered once and explicitly read; no duplicate baseline receipt. |
-| 5. Fresh backlog and Mesh restart-self | **PASS — runtime** | **dc8990f2**. Both seats pending; one restart-self, epoch 2→3, new team-owner PID; no overlapping owner in passive samples; both original fresh IDs delivered once and read. |
+| 5. Fresh backlog and Mesh restart-self | **Owner exclusion UNPROVED — harness; delivery checks PASS — runtime** | **dc8990f2**. Both seats pending; one restart-self, epoch 2→3, new team-owner PID; both original fresh IDs delivered once and read. The owner-process filter matched nothing: zero owners sampled. |
 | 6. Reconcile/read both boundaries | **PASS — runtime** | **b073b016**. All six accepted baseline/backlog targets reconcile to one transport receipt each and explicit read; no lost obligation or duplicate transport exposure in this bounded run. |
 
 The original numbered outcome files record the controller's predicate PASS.
-The headline and final assessment explicitly qualify step 2's duration; it is not
-silently promoted to full spec compliance. No blanket exactly-once guarantee or
-release approval is implied. [Final assessment](l5-restarts/run3/continuation/final-audit.json).
+The headline and final assessment qualify step 2's duration and step 5's missing
+owner census. The final assessment keeps the original records separately from
+its corrected step outcomes; neither is promoted to full spec compliance.
+No blanket exactly-once guarantee or release approval is implied. [Final assessment](l5-restarts/run3/continuation/final-audit.json).
 
 ### Runtime identities, boundaries and receipts
 
@@ -653,9 +655,15 @@ The same daemon executable, scratch data root and original port arguments were u
 Mesh boundary: team owner namespace **PID 2648 / ticks 30479457 / epoch 2** →
 **PID 5802 / ticks 30484467 / epoch 3**. Restart-self was initiated **0.208 ms**
 after the joint pending sample. No receipt wait, capture or commit intervened.
-The command reported the old owner stopped and the replacement started; passive
-owner observations never contained more than one owner. Sampling is bounded
-runtime evidence, not proof about every instant outside this run.
+The only owner sequencing evidence is Mesh's own
+[`step5-restart.txt`](l5-restarts/run3/continuation/runtime/snapshots.json)
+(in the losslessly packed snapshots): `[mesh team-daemon] stopped (PID 2648)` /
+`[mesh] restarted team-daemon (PID 5802)`. The passive probe required `run` in
+argv, but the real owner used `mesh team-daemon start --team l5-restarts --name lead`.
+All three [owner samples](l5-restarts/run3/continuation/runtime/owner-observations.jsonl)
+contain `owners: []`; the maximum observed owner count is **0**.
+**No-overlapping-owners is UNPROVED, classification: harness.** The epoch change
+and CLI stop/start report do not replace the missing process census.
 
 | Marker | Seat | Message ID | Delivery ID | Sole transport receipt |
 |---|---|---|---|---|
@@ -687,8 +695,9 @@ The >=30-second duration at the first boundary remains **unproved**.
 
 For the second boundary, both seats chose `python3`, completed the requested task,
 and stayed in their turns for **44.955 s (alpha)** and **45.649 s (beta)**.
-The original controller and model tool outputs are preserved; no post-hoc repair
-is represented as the executed first workload, and no additional restart was run.
+The executed controller remains available at **1d01e588**, and model tool outputs
+are preserved. The review fixes below do not change the executed first workload;
+no additional restart was run.
 
 ### Every input and spend
 
@@ -763,15 +772,72 @@ items and rollout/tool output remain available. Controller and contract-test
 stdout are preserved as JSON strings to retain exact whitespace. No tokens,
 auth contents, installation IDs or account usage rows are included.
 
-Remaining deviations are limited to the first duration failure, the ordinary
-paced-Python workload adaptation, two unknown-cost turns, and unavailable Opus
-review. The earlier missing reference checkout limitation is unchanged; its
-committed controller files were available in this checkout. The independent Opus
-lens remains with the invoking orchestrator: six passing runtime predicates do
-not substitute for it. The document therefore remains **INCOMPLETE**, with the
-completed transport/restart evidence available for review.
+Remaining runtime deviations are the first duration failure, the ordinary
+paced-Python workload adaptation, two unknown-cost turns, and the inert owner
+census. The earlier missing reference checkout limitation is unchanged; its
+committed controller files were available in this checkout. Opus round 1 supplied
+the independent evidence lens and identified the missing owner coverage.
+The document remains **INCOMPLETE**; closing this fix round does not certify the lane.
 
 Reproduction: `build.py`, unittest discovery, `execute.py`; after teardown,
 `gates.py`, `audit.py`, `pack.py`, and `verify.py`. Audit precedes packing; unpack
 first if re-running it against the retained packet. The exact pacing prompt's
 first-boundary limitation must be accounted for before any future full certification.
+
+
+### Opus round 1 correction (offline; no new runtime)
+
+Used the review's option **(b)**: preserve the runtime, disclose the absent owner
+census, and remove the vacuous green assertion from `steps.py` and `audit.py`.
+The tested assessment now requires observed owners across both epochs, rejects
+overlap, and reports an empty census as **UNPROVED — harness**. The historical
+`run` filter is annotated and retained; running this driver unchanged would now
+fail the owner-evidence check. A new instrumented runtime is needed to prove that
+sub-claim. No runtime rows, original step outcome files, daemon JSONL, or packed
+snapshots were rewritten. Source at **1d01e588** records the executed instrument;
+current source contains these offline review corrections.
+
+All five findings were verified. The duration finding needs no further change:
+the existing limitation stays explicit. The budget helper now gates the actual
+paid-submission path using `paid_inputs < 20` and `api_equivalent_usd < .30`;
+its tests cover those exact boundaries. The conservative estimate remains
+reported separately. The unused `host_poll` toggle was removed; the historical
+observer polled through the lifecycle window and recorded zero transient refusals.
+The credential source is now one visible literal with a shared, explicit
+sanitizer/verifier exception for that **filename only**, alongside the two
+allowed worktrees. Credential contents, sibling paths and secret fields remain
+redacted; these offline tests never open any real harness home or invoke a CLI.
+
+Red-first verification: **18 tests**, initially **4 failures and 3 errors**
+(missing census/path assessment helpers, hidden credential literal, unused budget
+helper, and both live cap boundaries accepted by the old helper); subsequently
+**18 passed**. Regression comments identify **1d01e588**, **dc8990f2**, and
+**d0eacf4d**. This fix round added **zero seat inputs and $0 seat spend**; the
+14-input runtime ledger and its two unknown costs above are unchanged.
+
+
+Fix-round gates, run after the recorded teardown with credential-free scratch
+homes, blocked real CLI wrappers, private PID namespaces, and this checkout's
+own `src-tauri/target`:
+
+| Exact command | Exit | Duration |
+|---|---:|---:|
+| `just check-quick` | **0** | 18.39 s |
+| `just lint` | **0** | 6.13 s |
+| `just test-contracts` (initial) | **101 — harness log placement** | 5.13 s |
+| `just test-contracts` (retry) | **0** | 5.13 s |
+
+The initial contract run scanned its own `.check-logs` output and flagged the
+retired-tool string in its test name and isolation metadata. Only these newly
+created logs were moved beneath `.check-logs/target/`, which that repository scan
+excludes; no product or test assertion changed. The exact contract gate then
+passed. Local logs remain in `.check-logs/target/l5-opus-round1/` and
+`.check-logs/target/l5-opus-round1-retry/`. Each Cargo preflight saw one existing
+foreign Cargo process; no wait or foreign-process stop was needed. Both gate
+controllers reaped their children and removed their scratch roots.
+
+Offline reassessment and artifact verification exited **0**, retaining **209
+packet files / 133 unique payloads**, the same 440-row daemon JSONL hash, zero
+scratch runtime survivors, and clean Mesh/product state. The final assessment's
+original gate records remain historical; this table records the fix-round reruns.
+`just test-rust-unit` was not required: this diff touches no `src-tauri/` files.

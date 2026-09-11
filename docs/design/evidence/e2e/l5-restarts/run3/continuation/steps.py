@@ -2,7 +2,7 @@
 import datetime, json, secrets, sys, time
 from pathlib import Path
 from actions import action
-from support import clean, complete_rows, delivered, pending, reply_seen, identity_preserved, attributed_activity, busy
+from support import clean, complete_rows, delivered, pending, reply_seen, identity_preserved, attributed_activity, busy, owner_evidence
 B=Path(__file__).resolve().parent;OUT=B/'runtime';TEAM='l5-restarts'
 
 def save(name,value): (OUT/name).write_text(json.dumps(clean(value),indent=2)+'\n')
@@ -157,7 +157,8 @@ if __name__=='__main__':
    for seat in ['alpha','beta']:settle('mesh-backlog',seat)
    unchanged(5);checkpoint(5)
    observations=complete_rows((OUT/'owner-observations.jsonl').read_text())
-   assert all(len(o.get('owners',[]))<=1 for o in observations), 'overlapping delivery owners observed'
+   census=owner_evidence(observations)
+   assert census['outcome']=='PASS', census['classification']+': '+census['reason']
   elif n==6:
    for seat in ['alpha','beta']:
     explicit_read(seat,'final')

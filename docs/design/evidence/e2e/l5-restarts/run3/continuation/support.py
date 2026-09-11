@@ -3,6 +3,13 @@ import json
 import re
 
 
+def allowed_operator_path(path):
+    # The spec authorizes this filename only; never its contents or sibling files.
+    return path == '/home/mstie/.codex/auth.json' or any(
+        path == root or path.startswith(root + '/') for root in
+        ['/home/mstie/projects/taurhaus-l5-restarts', '/home/mstie/projects/mesh-l5'])
+
+
 def clean(value):
     if isinstance(value, dict):
         if value.get('method', '').startswith('account/'):
@@ -15,8 +22,8 @@ def clean(value):
     if isinstance(value, list):
         return [v for item in value if (v := clean(item)) is not None]
     if isinstance(value, str):
-        return re.sub(r'(?<![\w/-])/home/[^/\s"\']+/(?!projects/(?:taurhaus-l5-restarts|taurhaus-msg|taurhaus|mesh-l5)(?:/|$))[^\s"\']*',
-                      '<operator-path-redacted>', value)
+        return re.sub(r"(?<![\w/-])/home/[^/\s\"']+/[^\s\"']*",
+                      lambda m: m[0] if allowed_operator_path(m[0]) else '<operator-path-redacted>', value)
     return value
 
 
@@ -55,9 +62,27 @@ def ledger(events, rollout_turn_ids=(), notify_records=()):
                  '$0.20/$0.02/$1.20 per million input/cached/output. Estimate, not invoice.'}
 
 
-def enforce_budget(turns, conservative_usd):
-    assert turns <= 20, 'turn budget reached'
-    assert conservative_usd <= .30, 'cost budget reached'
+def enforce_budget(turns, api_equivalent_usd):
+    """Require headroom before another paid submission; lifecycle calls bypass this."""
+    assert turns < 20, 'hard input cap: no further paid submission'
+    assert api_equivalent_usd < .30, 'hard metered dollar cap: no further paid submission'
+
+
+def owner_evidence(observations):
+    """Assess a bounded census; empty matches cannot establish owner exclusion."""
+    maximum = max((len(o.get('owners', [])) for o in observations), default=0)
+    epochs = {o['epoch']['epoch'] for o in observations
+              if o.get('owners') and o.get('epoch') and 'epoch' in o['epoch']}
+    if maximum > 1:
+        outcome, classification, reason = 'FAIL', 'runtime', 'overlapping delivery owners observed'
+    elif maximum == 0:
+        outcome, classification, reason = 'UNPROVED', 'harness', 'owner-process filter matched nothing; zero owners sampled'
+    elif len(epochs) < 2 or any('error' in o for o in observations):
+        outcome, classification, reason = 'UNPROVED', 'harness', 'owner census lacks readable observations across both epochs'
+    else:
+        outcome, classification, reason = 'PASS', 'runtime', 'one owner per passive sample across both epochs; bounded evidence only'
+    return {'outcome': outcome, 'classification': classification, 'reason': reason,
+            'samples': len(observations), 'max_simultaneous_observed_owners': maximum}
 
 
 def complete_rows(text):

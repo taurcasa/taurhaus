@@ -1,6 +1,51 @@
 {
-  "verdict": "INCOMPLETE: six runtime checks PASS; first-boundary duration unproved and Opus review outstanding",
+  "verdict": "INCOMPLETE: first-boundary duration and step 5 owner exclusion unproved (harness)",
   "step_outcomes": [
+    {
+      "step": 1,
+      "outcome": "PASS",
+      "classification": "runtime",
+      "at": 1789084278.078003
+    },
+    {
+      "step": 2,
+      "outcome": "PASS",
+      "classification": "runtime",
+      "at": 1789084288.5888526
+    },
+    {
+      "step": 3,
+      "outcome": "PASS",
+      "classification": "runtime",
+      "at": 1789084290.1755593
+    },
+    {
+      "step": 4,
+      "outcome": "PASS",
+      "classification": "runtime",
+      "at": 1789084302.6059954
+    },
+    {
+      "step": 5,
+      "outcome": "UNPROVED",
+      "classification": "harness",
+      "at": 1789084361.8943632,
+      "owner_evidence": {
+        "outcome": "UNPROVED",
+        "classification": "harness",
+        "reason": "owner-process filter matched nothing; zero owners sampled",
+        "samples": 3,
+        "max_simultaneous_observed_owners": 0
+      }
+    },
+    {
+      "step": 6,
+      "outcome": "PASS",
+      "classification": "runtime",
+      "at": 1789084366.0980473
+    }
+  ],
+  "recorded_step_outcomes": [
     {
       "step": 1,
       "outcome": "PASS",
@@ -2225,6 +2270,13 @@
   },
   "owner_samples": 3,
   "max_simultaneous_observed_owners": 0,
+  "owner_evidence": {
+    "outcome": "UNPROVED",
+    "classification": "harness",
+    "reason": "owner-process filter matched nothing; zero owners sampled",
+    "samples": 3,
+    "max_simultaneous_observed_owners": 0
+  },
   "turns": [
     {
       "turn_id": "01a08dbb-4242-72c0-80f0-a9e2458df810",
@@ -2986,6 +3038,6 @@
     "First paced task selected unavailable python; minimum 30 seconds at first boundary unproved. Second tasks used python3 and completed after 44.955/45.649 seconds.",
     "Pacing used an ordinary Python task, rather than free-form model streaming.",
     "Two unknown-cost inputs; metered cap verified only.",
-    "Independent Opus evidence lens unavailable; review outstanding."
+    "Opus round 1 found the owner-process filter inert: zero owners sampled; no-overlapping-owners sub-claim UNPROVED (harness). Only restart-self stop/start output supplies sequencing evidence."
   ]
 }

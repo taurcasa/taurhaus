@@ -73,11 +73,22 @@ class TmuxActivityRegression(unittest.TestCase):
   self.assertIsNone(actual['session_id'])
 
 class Run2Ruling(unittest.TestCase):
- def test_fresh_twenty_input_thirty_cent_cap(self):
+ def test_live_pre_submission_metered_cap(self):
+  # // Regression: 1d01e588 tested an unused conservative cap instead of the live metered gate.
   from support import enforce_budget
-  enforce_budget(20,.30)
-  for turns,cost in [(21,.01),(1,.301)]:
-   with self.assertRaises(AssertionError):enforce_budget(turns,cost)
+  enforce_budget(19,.299)
+  for turns,cost in [(20,.01),(1,.30),(21,.01),(1,.301)]:
+   with self.subTest(turns=turns,cost=cost), self.assertRaises(AssertionError):
+    enforce_budget(turns,cost)
+ def test_controller_calls_tested_gate_with_metered_cost(self):
+  # // Regression: 1d01e588 imported enforce_budget but used separate inline assertions.
+  import ast
+  from pathlib import Path
+  tree=ast.parse(Path(__file__).with_name('controller.py').read_text())
+  calls=[n for n in ast.walk(tree) if isinstance(n,ast.Call) and isinstance(n.func,ast.Name) and n.func.id=='enforce_budget']
+  self.assertEqual(len(calls),1)
+  self.assertEqual([ast.unparse(arg) for arg in calls[0].args],
+                   ["accounting['paid_inputs']", "accounting['api_equivalent_usd']"])
  def test_busy_uses_daemon_attribution_without_sidecar(self):
   # // Regression: f95ec193 let optional activity sidecars veto daemon busy evidence.
   from support import busy
@@ -112,5 +123,44 @@ class RestartRegression(unittest.TestCase):
   self.assertTrue(host_needs_resume({'result':{'stopped':True,'attachmentGeneration':2}}))
   self.assertTrue(host_needs_resume({'error':{'message':'not running'}}))
   self.assertFalse(host_needs_resume({'result':{'thread':{'status':{'type':'idle'}},'events':[]}}))
+
+class OwnerEvidenceRegression(unittest.TestCase):
+ def test_empty_census_is_unproved(self):
+  # // Regression: 1d01e588 selected team-daemon run; dc8990f2/d0eacf4d certified zero owners.
+  from support import owner_evidence
+  for samples in [[], [{'owners':[],'epoch':{'epoch':2}}, {'owners':[],'epoch':{'epoch':3}}]]:
+   actual=owner_evidence(samples)
+   self.assertEqual(actual['outcome'],'UNPROVED')
+   self.assertEqual(actual['classification'],'harness')
+   self.assertEqual(actual['max_simultaneous_observed_owners'],0)
+ def test_census_requires_both_epochs_and_rejects_overlap(self):
+  from support import owner_evidence
+  before={'owners':[{'pid':1}],'epoch':{'epoch':2}}
+  after={'owners':[{'pid':2}],'epoch':{'epoch':3}}
+  self.assertEqual(owner_evidence([before])['outcome'],'UNPROVED')
+  self.assertEqual(owner_evidence([before,after])['outcome'],'PASS')
+  self.assertEqual(owner_evidence([before,dict(after,owners=[{'pid':1},{'pid':2}])])['outcome'],'FAIL')
+  self.assertEqual(owner_evidence([before,after,{'error':'OSError'}])['outcome'],'UNPROVED')
+
+class OperatorPathRegression(unittest.TestCase):
+ def test_only_authorized_credential_filename_is_allowed(self):
+  # // Regression: 1d01e588 split the credential source literal, evading the path verifier.
+  from support import clean, allowed_operator_path
+  source='/home/mstie/.codex/auth.json'
+  for path in [source,'/home/mstie/projects/taurhaus-l5-restarts/file','/home/mstie/projects/mesh-l5/file']:
+   self.assertTrue(allowed_operator_path(path))
+   self.assertEqual(clean(path),path)
+  # Generate denied variants from the allowed literals; no fixture path is opened.
+  for path in [source+'.bak',source+'/child',source.replace('mstie','other'),
+               source.replace('auth.json','config.toml'),source.replace('.codex/auth.json','.claude/settings.json'),
+               '/home/mstie/projects/mesh-l5/file'.replace('mesh-l5/','mesh-l5-other/')]:
+   self.assertFalse(allowed_operator_path(path))
+   self.assertEqual(clean(path),'<operator-path-redacted>')
+  self.assertEqual(clean({'auth':source,'access_token':'synthetic'}),{'auth':'<redacted>','access_token':'<redacted>'})
+ def test_controller_credential_literal_is_visible_to_verifier(self):
+  import ast
+  from pathlib import Path
+  tree=ast.parse(Path(__file__).with_name('controller.py').read_text())
+  self.assertTrue(any(isinstance(n,ast.Constant) and n.value=='/home/mstie/.codex/auth.json' for n in ast.walk(tree)))
 
 if __name__=='__main__':unittest.main()

@@ -51,7 +51,6 @@ turns = []
 host_events = []
 previous_host_events = []
 last_host_poll = 0
-host_poll_enabled = True
 owner_stop = threading.Event()
 owner_thread = None
 marker = "cobalt" + secrets.token_hex(5)
@@ -164,6 +163,8 @@ def observe_owners():
     with (OUT / 'owner-observations.jsonl').open('w',buffering=1) as stream:
         while not owner_stop.is_set():
             try:
+                # Historical run3 defect retained: owners use start, so this census matched none.
+                # The corrected assessment reports UNPROVED; it requires a new run for coverage.
                 owners=[i for i in identities() if 'team-daemon' in i['argv'] and 'run' in i['argv']]
                 path=ROOT / 'claude/teams' / TEAM / 'state/delivery/epoch.json'
                 epoch=json.loads(path.read_text()) if path.exists() else None
@@ -227,7 +228,6 @@ def budget_check():
 
 def poll_host(force=False):
     global last_host_poll, previous_host_events
-    if not host_poll_enabled: return
     if not force and time.monotonic() - last_host_poll < 1:
         return
     last_host_poll = time.monotonic()
@@ -299,7 +299,7 @@ for sig in [signal.SIGTERM, signal.SIGINT]:
 exit_code = 1
 try:
     assert CHECKOUT.name == "taurhaus-l5-restarts"
-    source = Path("/home") / "mstie" / ".codex" / "auth.json"
+    source = Path("/home/mstie/.codex/auth.json")
     assert source.is_file() and not source.is_symlink()
     shutil.copyfile(source, ROOT / "codex/auth.json")
     (ROOT / "codex/auth.json").chmod(0o600)
@@ -424,8 +424,7 @@ try:
         if paid:
             accounting = budget_check()
             log("input_accounting", ledger=accounting)
-            assert accounting['paid_inputs'] < 20, "hard input cap: no further paid submission"
-            assert accounting['api_equivalent_usd'] < .30, "hard metered dollar cap: no further paid submission"
+            enforce_budget(accounting['paid_inputs'], accounting['api_equivalent_usd'])
 
         if action["op"] == "pending_restart":
             label=action['label']; boundary=action['boundary']
@@ -480,10 +479,6 @@ try:
         elif action["op"] == "snapshot":
             snapshot()
             (OUT / "identities.json").write_text(json.dumps(clean(identities()),indent=2))
-        elif action["op"] == "host_poll":
-            # Controller observation can stop around the sanctioned lifecycle RPCs.
-            # This never pauses or changes a product process.
-            host_poll_enabled = action["enabled"]
         elif action["op"] == "rpc_expected_error":
             value = rpc(action["method"], action["params"], allow_error=True)
             (OUT / action["save"]).write_text(json.dumps(value, indent=2))
