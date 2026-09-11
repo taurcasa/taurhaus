@@ -1,4 +1,12 @@
-# Lane 5 run3 continuation — INCOMPLETE: timing and owner exclusion unproved (harness)
+# Lane 5 run4 — FAIL step 1 (harness); steps 2–6 NOT RUN
+
+Run4 stopped on a baseline/startup inbox-read race after the required polling
+window. Neither restart was attempted. All three required gates passed after
+verified teardown. **3 inputs; $0.00302944 metered; one unknown-cost input.**
+See [run4 evidence](#run4--fourth-attempt-evidence-step-1-fails-harness).
+Earlier attempts below remain historical and do not establish run4 coverage.
+
+## Historical run3 continuation verdict
 
 Both restart boundaries carried pending mail on both transports; every baseline
 and backlog ID has exactly one transport receipt and an explicit read. The first
@@ -841,3 +849,165 @@ packet files / 133 unique payloads**, the same 440-row daemon JSONL hash, zero
 scratch runtime survivors, and clean Mesh/product state. The final assessment's
 original gate records remain historical; this table records the fix-round reruns.
 `just test-rust-unit` was not required: this diff touches no `src-tauri/` files.
+
+
+## Run4 — fourth-attempt evidence: step 1 fails (harness)
+
+**FAIL at step 1; steps 2–6 NOT RUN.** No product defect, restart-survival result,
+or >=30-second working-window claim is established by this attempt. Runtime
+was **139.100 seconds**, **2026-09-11 00:32:25.635–00:34:44.735 UTC**. The
+controller obeyed the stop-on-failure rule and did not retry a model input.
+Independent Opus review remains with the invoking orchestrator.
+
+[Assessed result and every turn](l5-restarts/run4/final-audit.json),
+[exact controller](l5-restarts/run4/controller.py),
+[ordered step driver](l5-restarts/run4/steps.py),
+[commands, RPCs, outputs and exits](l5-restarts/run4/runtime/events.jsonl),
+[losslessly packed snapshots](l5-restarts/run4/runtime/snapshots.json).
+
+### Ordered outcomes and classification
+
+| Step | Outcome / classification | Evidence and spend |
+|---|---|---|
+| 1. Initialize; complete/read baselines on both transports | **FAIL — harness timing** | Canonical initialization succeeded. Alpha's startup inbox read consumed the baseline, and its model replied, but no `submitted`/`native_enqueued` receipt exists for that baseline ID. The receipt predicate polled **120.7 s** before failing. Beta's baseline was never sent. All run4 spend belongs here: **3 inputs / $0.00302944 metered + one unknown-cost input**. |
+| 2. Working turns; retain pending markers | **NOT RUN — blocked by step 1** | No paced turns, backlog IDs or measured working windows. +0 inputs / $0. |
+| 3. Normal Taurhaus shutdown/restart | **NOT RUN — blocked by step 1** | No restart, new daemon identity or resume-member operation. +0 inputs / $0. |
+| 4. Backlog delivery and identity/replay checks | **NOT RUN — blocked by step 1** | No post-restart backlog or replay assessment. +0 inputs / $0. |
+| 5. Fresh backlog and Mesh restart-self | **NOT RUN — blocked by step 1** | No restart-self or owner epoch transition. +0 inputs / $0. |
+| 6. Reconcile both boundaries and export | **NOT RUN — blocked by step 1** | Cross-boundary accounting unproved. Failure export/teardown passed separately. +0 inputs / $0. |
+
+### Decisive baseline timeline
+
+Alpha logical session **`01a08de1-488a-7650-8eef-c2d1e25a8029`**, tmux `%2`,
+generation **1**; beta hosted thread **`01a08de1-4f57-7050-add8-d00258eb416a`**,
+pane `%3`, generation **1**. Team incarnation
+`a923cf7db5623fdd13c48f6859ad05ae5b8c3575c998f0b1e23b5b9a13f9ce1c`;
+delivery owner epoch **2**, namespace PID **3088**, start ticks **30729040**.
+Kernel owner identities are retained separately in the census.
+
+1. **00:32:35.926 UTC:** journal sequence 6 records a tmux `submitted` receipt
+   for alpha's **startup** message `d5c4f215-23c4-47b7-a8e5-f01e73912fd8`.
+2. **00:32:37.490:** sequence 7 accepts baseline
+   `2c7d03db-1d91-458e-ad93-92bd1e20a3e2`, delivery ID
+   `18315c8b-7840-4e7b-bb90-712f480fb388`, marker `L5_baseline_alpha_713599`.
+3. **00:32:38.915:** alpha's startup turn executes
+   `mesh read --unread --mark-read --team l5-restarts --name alpha`.
+4. **00:32:38.997:** sequence 9 records `consumed_by_read` for the baseline.
+5. **00:32:42.232:** alpha replies `L5_baseline_alpha_713599 done`.
+6. **00:34:44.445:** the observer fails its separate transport-receipt predicate:
+   `delivery receipt/read missing baseline alpha; polled 120.7s`.
+
+The retained journal has **nine rows**. The baseline has one accepted-target
+record, one explicit read, and **zero transport submission receipts**. Its
+uptake through the earlier startup notice is real, but cannot establish the
+required distinct baseline transport delivery. The controller admitted a fresh
+idle observation while startup notification work was still settling; the
+startup model read then covered the newly accepted baseline. This is a harness
+baseline-isolation race, not evidence of lost mail. The raw failure remains
+`unclassified pending evidence review`; `final-audit.json` preserves it alongside
+the assessed **harness** classification. No product patch or predicate weakening
+was applied after the failure.
+
+### Red-first run4 corrections and their coverage limits
+
+The initial discovery run failed **3 of 21 tests**: the retained run3
+`step1-identities.json` matched **zero** owners; the paced prompt omitted an
+explicit `python3`; the owner observer deduplicated unchanged samples.
+The retained owner is kernel PID **2805580**, start ticks **30479457**, running
+`mesh team-daemon start --team l5-restarts --name lead`.
+A separate red check failed because the full-window census assessor was absent.
+After correction, the final discovery command passes **22 tests**, exit **0**:
+
+```sh
+python3 -m unittest discover -s docs/design/evidence/e2e/l5-restarts/run4 -p '*test.py'
+```
+
+[Initial red](l5-restarts/run4/red.txt), [red exit metadata](l5-restarts/run4/red.json),
+[window red](l5-restarts/run4/window-red.txt), [regression tests](l5-restarts/run4/support_test.py),
+[final green](l5-restarts/run4/green.txt), [green metadata](l5-restarts/run4/green.json).
+Regression comments name the introducing commits. The census now matches
+`team-daemon` **and** `start`, retains every sample, and checks <=1-second gaps,
+window coverage, at most one owner per sample, and old PID departure before
+new-owner delivery. Both bounded prompts explicitly request **python3**, 400
+numbers and 0.1-second pacing (40 seconds). None was submitted in this failed run.
+
+The actual startup-only census retained **276 samples**, maximum gap
+**0.548539 seconds**, and maximum **one owner** per sample. This proves that the
+corrected filter works on live processes; **it does not prove exclusion during
+restart-self**, because that boundary was never reached. Measured working
+windows for **both seats at both boundaries: NOT RUN**.
+
+### Every input and spend
+
+Both Codex seats used **gpt-5.6-luna / low**. The login-only Claude lead took
+**zero paid turns**. These are fresh run4 totals; prior attempts are excluded.
+The generation rates are the inherited packet estimates, not invoice amounts.
+
+| Input / generation | Input / cached / output tokens | Metered USD |
+|---|---|---:|
+| beta turn `01a08de1-5857-7f61-a598-3c3ed1b20a54`, generation 1 | 11,128 / 6,912 / 62 | $0.00105584 |
+| alpha turn `01a08de1-6c45-76a0-8a80-a05e8812bcf1`, generation 1 | 9,244 / 3,840 / 95 | $0.00127160 |
+| same alpha input, generation 2 | 10,800 / 8,960 / 129 | $0.00070200 |
+| notify-only turn `01a08de1-6e01-7e52-90cb-0e7207c3615d` | unavailable; counted as one input | **unknown** |
+| **Total: 3 inputs / 3 metered generations** | | **$0.00302944 metered + unknown** |
+
+[Cost ledger](l5-restarts/run4/runtime/cost-ledger.json),
+[usage records](l5-restarts/run4/runtime/usage-events.json).
+The conservative metered estimate is **$0.03774960**. Input count, metered spend
+and runtime satisfy **20 / $0.30 / 900 seconds**; complete billed spend remains
+unknown. Unknown cost did not gate a lifecycle operation or cause this stop.
+No transient `host member busy` or `lock busy` refusals occurred.
+
+### Candidate, teardown, gates and packet integrity
+
+Taurhaus source remains **a7e6db7e / protocol 27** in this checkout. The
+checkout-local `just ensure-tauri-resources` and `just build-daemon`, and the
+Mesh **310144d** build in its designated worktree, all exited **0**. The shipped
+**0.153.4** descriptor stayed enabled and unchanged. Both native Codex siblings
+were copied; scratch startup verified **codex-cli 0.153.4**. Binary SHA-256s,
+original daemon arguments, canonical builder policy and explicit scratch roots
+are retained in [candidate evidence](l5-restarts/run4/candidate.json) and the
+runtime packet. No product, descriptor, install, release or plan-ledger change.
+
+The credential source is represented only as **`<authorized-source>`**. It was
+passed explicitly through `L5_CREDENTIAL_SOURCE`; only its `auth.json` was copied,
+mode **0600**, into the empty scratch Codex home. No fallback or operator-home
+access by trial children. The private PID namespace, private tmux, probed daemon
+port and all runtime roots were isolated; no observer opened an app-server
+socket. Unpaid gates used credential-free roots and blocked external harness CLIs.
+
+[Cleanup](l5-restarts/run4/runtime/cleanup.json) confirms **no survivors**, closed
+port, auth copy removed before scratch deletion, and root removed. Controller
+exit **1**, step driver exit **1**. The inherited outer `execute.py` returns
+**0** after a handled child failure; packed `execute-exit.json` records that
+wrapper behavior explicitly. The child exit and failed outcome govern the verdict.
+
+All exact gates ran **after teardown**, from this checkout root:
+
+| Gate | Exit | Evidence |
+|---|---:|---|
+| `just check-quick` | **0** | Rust format/test compilation; frontend checks and **2,519 tests / 150 files** passed. |
+| `just lint` | **0** | Clippy, frontend dependency checks, workflow syntax and gate guards passed. |
+| `just test-contracts` | **0** | Renderer, harness and module-boundary contracts passed. |
+| `just test-rust-unit` | **NOT RUN** | No `src-tauri/` diff; the Rust-diff rule does not apply. |
+
+[Gate exits and preflights](l5-restarts/run4/gates/),
+[verification](l5-restarts/run4/verification.json). Each Cargo gate preflight used
+`pgrep -af '(^|/)cargo( |$)'` and found no Cargo process (exit **1**); build
+preflights are retained separately. Every build/gate used one job and the
+checkout's own target directory. Gate cleanup passed; no started process remains.
+
+The complete sanitized daemon JSONL is retained directly: **326 rows**, SHA-256
+**`1bc979d4c40e72bf40311700680ad600120badf289c2aea51587ce950ea96921`**.
+The lossless snapshot packet contains **42 filenames / 35 unique payloads**;
+pane captures are <=60 lines. Verification regenerated the run4 record, checked
+hashes, sanitation, scratch absence, product-diff absence and a clean Mesh tree.
+The run4 heading and red/green sidecars describe this attempt, without carrying
+forward prior-run counts or an authorized credential-source literal.
+
+Deviations and remaining limits: step 1 blocked steps 2–6 as required by the
+failure rule; the referenced integration attempt9 checkout was absent (`git show`
+exit **128**), so the retained run3 controller and read-only messaging run2 sources
+were reused; the inherited outer wrapper reports zero despite the recorded child
+failure; one input is cost-unknown; independent Opus review is not claimed here.
+There was no paid retry, budget/authorization question, or product repair.

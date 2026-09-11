@@ -1,0 +1,9 @@
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/run4/steps.py", line 136, in <module>
+    for seat in ['alpha','beta']:send(seat,'baseline');settle('baseline',seat)
+                                                       ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/run4/steps.py", line 90, in settle
+    wait(lambda: delivered(receipts(mid),activity(seat),logical(rec(seat))), 'delivery receipt/read missing '+label+' '+seat)
+  File "/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/run4/steps.py", line 38, in wait
+    raise AssertionError(why+f'; polled {time.time()-begin:.1f}s')
+AssertionError: delivery receipt/read missing baseline alpha; polled 120.7s

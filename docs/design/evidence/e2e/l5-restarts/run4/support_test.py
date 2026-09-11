@@ -172,7 +172,7 @@ class Run4Regression(unittest.TestCase):
   self.assertEqual(len(matches),1)
   self.assertEqual(matches[0]['pid'],2805580)
  def test_both_boundaries_request_explicit_python3_pacing(self):
-  # // Regression: 31c7a8e7 inherited an ambiguous Python command; python exited 127.
+  # // Regression: 1d01e588 introduced an ambiguous Python command; python exited 127.
   from unittest.mock import patch
   import steps
   for seat in ['alpha','beta']:
