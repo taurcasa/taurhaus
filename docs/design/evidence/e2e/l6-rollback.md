@@ -16,8 +16,9 @@ change or additional paid attempt was made.
 
 The controller exited **1** after **70.10 seconds**. Steps 4–6 were not run because the
 controller treated its inherited assertion as a failed step. Mandatory teardown passed.
-All required gates subsequently exited **0**. The independent Opus lens is
-**unavailable** in this session; no full workflow PASS or release approval is claimed.
+All required gates subsequently exited **0**. The original execution could not
+launch its independent Opus lens; this correction addresses the supplied Opus
+round-1 findings. No full workflow PASS or release approval is claimed.
 
 | Ordered run3 step | Outcome | Classification and evidence |
 | --- | --- | --- |
@@ -168,9 +169,9 @@ activity-path value; it did not abort a wait or remove daemon rows.
   No rerun was performed; steps 4–6 remain NOT RUN after the harness-predicate stop.
 - The owner observation covers stop through failure, not a completed handoff.
   The named operator-stop skip is observed; no `rollback_pending` claim is made.
-- Required independent Opus review is unavailable: no callable Workflow/Opus tool
-  or Opus collaboration model. No substitute self-review is claimed.
-  [Review availability](l6-rollback/run3/review.json).
+- The original execution recorded independent Opus review as unavailable:
+  [review availability](l6-rollback/run3/review.json). This fix addresses the
+  supplied Opus round-1 findings; no new reviewer or live seat was launched.
 
 Original executed controller: commit `22643c6f`'s
 `docs/design/evidence/e2e/l6-rollback/run3/controller.py`.
@@ -189,6 +190,55 @@ from `auth_copy`, retaining the source label, file list and mode.
 The historical `run3/analyze.py` reproduces the **superseded** interpretation;
 do not use it to overwrite corrected `analysis.json`. It remains unchanged to
 respect this fix's named-file boundary.
+
+## Run3 review correction verification (2026-09-11)
+
+All four supplied findings were verified and addressed; none was skipped.
+The five new offline tests live in the named `run2/run2_rules.py` file to respect
+the requested file boundary. Run them from the checkout root:
+
+```sh
+python3 -B docs/design/evidence/e2e/l6-rollback/run2/run2_rules.py -v
+python3 -B docs/design/evidence/e2e/l6-rollback/run3/controller_test.py -v
+```
+
+Red: the new suite exited **1** with **3 failures and 1 error**: credential
+fingerprint retained, stop classified `mesh`, missing run3 format selection,
+and unsupported per-run format argument. A direct call with a synthetic valid
+format-0 boundary also exited **1** with the exact recorded assertion,
+`required resulting format 1 not observed`. Green: **5/5 new tests** and
+**6/6 existing controller tests** passed, both commands exit **0**. These checks
+read only source/retained evidence or disposable fixtures, never credentials,
+and invoke no CLI. The tests preserve run2's format-1 requirement while checking
+run3's format 0, completed transition, verified digest and unchanged history.
+Regression comments identify `22643c6f`, `011c2738` and `b840d330`.
+
+The correction's gates were rerun after the original teardown; no live trial
+was restarted. Original PID/start-tick identities were checked again: **no
+survivors**, and `/tmp/th-l6-5f67mhpk` remains absent. Cargo admission used the
+specified `pgrep` predicate and found **0 / 1 / 2** existing processes before the
+three respective gates, so no waiting was needed. Each gate used
+`CARGO_BUILD_JOBS=1` and this checkout's `src-tauri/target`.
+
+| Exact review gate from checkout root | Exit |
+| --- | --- |
+| `just check-quick` | 0 |
+| `just lint` | 0 |
+| `just test-contracts` | 0 |
+
+Gate logs and admission census are local under `.check-logs/l6-run3-review/`.
+No `src-tauri/` diff was introduced; the Rust unit gate was not required.
+The complete original daemon JSONL, cost ledger and outcomes of unexecuted steps
+are retained unchanged. **Additional trial inputs/spend: 0 / $0**; historical
+run3 remains **4 inputs / $0.01096096 estimated metered**, with each turn listed
+above. Implementer cost remains externally metered and unavailable here.
+
+The accepted no-rerun alternative is the material limitation: steps 1–2 remain
+S-runtime PASS (step 2 operation only), step 3 remains a recorded **harness FAIL**,
+and steps 4–6 remain **NOT RUN**. The corrected predicate is offline-verified;
+marker removal, durable handoff/epoch behavior, fresh C and two-boundary
+reconciliation have no new runtime evidence. The original analyzer is preserved
+within the named-file constraint and must not overwrite the corrected analysis.
 
 ## Historical runs 1–2 (retained unchanged)
 
