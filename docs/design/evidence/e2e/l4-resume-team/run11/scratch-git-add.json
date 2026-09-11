@@ -1,0 +1,9 @@
+{
+  "argv": [
+    "git",
+    "add",
+    "AGENTS.md"
+  ],
+  "exit": 0,
+  "output": ""
+}

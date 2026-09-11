@@ -1,11 +1,7 @@
-# INCOMPLETE — latest run 10, step 2: harness guard aborted
+# IN PROGRESS — latest run 11
 
-Step 1 passed. Step 2 aborted on an invalid controller assertion about an earlier
-null rollout path; steps 3–6 were not run. The controller’s original failure
-classification is preserved, with a separate **harness** adjudication. Metered
-spend is **$0.004654280**, **7/16 inputs** including conservative start reservations.
-Teardown found zero survivors; all three required gates exited **0**.
-See [Run 10](#run-10) for the evidence and review boundary.
+Run11 uses the corrected ready-session stop observer. Runtime outcomes are recorded
+under [run11](l4-resume-team/run11/); the historical runs below remain unchanged.
 
 ## Historical run 2 — hosted process exited before transport readiness
 
@@ -1468,3 +1464,26 @@ controller outcome files or the executed-source copies.
   again or counted as a run10 step failure.
 - No independent Opus lens ran in this implementer session. That review remains
   the orchestrator's separate workflow stage; this packet grants no lane PASS.
+
+
+## Run 11
+
+Prepared on `ac2bc513` ancestry without product changes or branch switching.
+Mesh `3015cb0` equals `release/overhaul-rc`; both existing binary digests match
+the preceding run10 build, and product source has not changed since that build.
+See [provenance](l4-resume-team/run11/provenance.json).
+
+The [red regression run](l4-resume-team/run11/red.txt) observed one failure and
+ten errors/subtest errors: the inherited guard lacked the ready-session argument
+and rejected converged retained pane handles. The corrected harness compares
+against the daemon's step-1 ready session, retains pane binding fields, stops all
+three members before judging, and polls `sessionDead` plus a cleared `daemon_pid`
+for up to 100 seconds. Both immediate and converged records are exported.
+[41 offline tests](l4-resume-team/run11/green.txt) and
+[6 preflight tests](l4-resume-team/run11/preflight.txt) passed before launch.
+
+Step 1 **PASS (runtime)**: both seats initialized, exchanged one marker each,
+and completed explicit read receipts; alpha `submitted`, beta `native_enqueued`.
+The [ready session](l4-resume-team/run11/step1-ready-session.json) records alpha's
+attributed idle identity and rollout path. Metered subtotal $0.004636680; 7/16
+inputs including three conservative startup reservations.

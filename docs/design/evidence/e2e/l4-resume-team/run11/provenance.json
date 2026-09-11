@@ -20,6 +20,6 @@
     }
   },
   "build": "Reused checkout-local binaries: digests equal run10 build; no product source changes since that build. No build or mutation in Mesh.",
-  "controller_commit": "pending",
+  "controller_commit": "ba431fbb8c8cefa454f8c2c60279fddb0e86627c",
   "reference": "Versioned run10 controller descends from required run4/attempt9 layout; no historical controller executed."
 }
