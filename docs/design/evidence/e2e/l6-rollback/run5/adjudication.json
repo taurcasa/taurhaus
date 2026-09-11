@@ -1,5 +1,5 @@
 {
-  "verdict": "FAIL step (d), harness: literal single-read criterion not met; operational rollback completed; Opus review unavailable",
+  "verdict": "PASS operational rollback (a)-(e); automatic-executor product observation NOT OBTAINED; full workflow incomplete (original Opus review unavailable)",
   "raw_controller_exit": 0,
   "raw_steps": [
     {
@@ -36,34 +36,68 @@
     "a": "PASS: A delivered/read/replied, B pending with scheduler opportunity, owner stopped, marker and named skip",
     "b": "PASS: format 0/members/verified rollback, transition complete, journal retained, B pending/unread under original id",
     "c": "PASS: same-owner exit 0 clears marker with unchanged owner/digest/epoch and no new handoff",
-    "d": "FAIL exact read-cardinality criterion: one B submission and reply, fresh C submission and reply; repeated seat reads violate literal one-read cardinality",
-    "e": "PASS operations: explicit reads/acks, identity reconciliation, export and teardown; performed after the unguarded read-cardinality miss"
+    "d": "PASS: one transport submission, first seat consumption and one reply per A/B/C; no duplicate executor; rereads are observations",
+    "e": "PASS: explicit reads/acks, identity reconciliation, export and teardown"
   },
-  "classification": "harness instructions and missing cardinality guard; no product rollback failure demonstrated",
+  "classification": "S-runtime operational PASS; automatic-executor observation NOT OBTAINED (no self-heal opportunity); original failure was an offline adjudication error",
   "messages": {
     "A": {
       "submissions": 1,
       "reads": 6,
       "assistant_replies": 1,
       "delivered": true,
+      "first_seat_consumptions": 1,
+      "first_read_at": "2026-09-11T05:16:15.579784375+00:00",
+      "reads_before_first_reply": [
+        "2026-09-11T05:16:15.579784375+00:00",
+        "2026-09-11T05:16:15.628Z",
+        "2026-09-11T05:16:18.774Z"
+      ],
+      "reads_after_first_reply": [
+        "2026-09-11T05:16:52.602Z",
+        "2026-09-11T05:16:59.911Z",
+        "2026-09-11T05:17:02.159Z"
+      ],
       "single_read": false,
-      "one_transport_delivery": true
+      "one_transport_delivery": true,
+      "passes_delivery_checks": true
     },
     "B": {
       "submissions": 1,
       "reads": 4,
       "assistant_replies": 1,
       "delivered": true,
+      "first_seat_consumptions": 1,
+      "first_read_at": "2026-09-11T05:16:49.972Z",
+      "reads_before_first_reply": [
+        "2026-09-11T05:16:49.972Z",
+        "2026-09-11T05:16:52.602Z"
+      ],
+      "reads_after_first_reply": [
+        "2026-09-11T05:16:59.911Z",
+        "2026-09-11T05:17:02.159Z"
+      ],
       "single_read": false,
-      "one_transport_delivery": true
+      "one_transport_delivery": true,
+      "passes_delivery_checks": true
     },
     "C": {
       "submissions": 1,
       "reads": 3,
       "assistant_replies": 1,
       "delivered": true,
+      "first_seat_consumptions": 1,
+      "first_read_at": "2026-09-11T05:16:57.351Z",
+      "reads_before_first_reply": [
+        "2026-09-11T05:16:57.351Z",
+        "2026-09-11T05:16:59.911Z"
+      ],
+      "reads_after_first_reply": [
+        "2026-09-11T05:17:02.159Z"
+      ],
       "single_read": false,
-      "one_transport_delivery": true
+      "one_transport_delivery": true,
+      "passes_delivery_checks": true
     }
   },
   "read_detail": {
@@ -78,7 +112,19 @@
     "reason": "Inherited AGENTS instructions specify unread read for every notification and another unfiltered read for marker messages. Alpha executed both; subsequent C and controller reconciliation also reread B. Retain all four rows; never relabel them one read or a second transport submission."
   },
   "executor": {
-    "starter": "controller, sanctioned guarded RC path; none attached immediately after (c)",
+    "starter": "controller, sanctioned guarded RC path; immediate census only, no product inference",
+    "product_observation": {
+      "status": "NOT OBTAINED",
+      "members_owned_window_start": "2026-09-11T05:16:36.153044+00:00",
+      "members_owned_window_end": "2026-09-11T05:17:03.903Z",
+      "self_heal_pass_timestamps": [
+        "2026-09-11T05:16:04.930Z",
+        "2026-09-11T05:16:34.939Z"
+      ],
+      "passes_in_window": [],
+      "reason": "A census before the next self-heal pass cannot establish automatic executor behavior.",
+      "future_observation": "After (c), hold for at least one full self-heal cadence with a bounded wait and census sampled throughout before concluding none is attached."
+    },
     "start_at": 1789103796.2663064,
     "verified_transition_complete_at": 1789103796.0575554,
     "handoff_end_at": 1789103796.1530442,
@@ -314,8 +360,8 @@
     "reason": "No Opus model or Workflow endpoint in active tool surface; no reviewer launched, no substitute claimed."
   },
   "deviations": [
-    "The runtime controller checked at most one submission but omitted a strict single-read-row guard, so C and final reconciliation ran after B had been read twice. No paid retry or product change.",
-    "Inherited instructions elicited unfiltered rereads; one-read cardinality is not claimed."
+    "Automatic member-executor product observation NOT OBTAINED: no self-heal pass after the members-owned boundary before teardown; controller started the executor after an immediate census.",
+    "Inherited instructions and required reconciliation elicited rereads; row multiplicity is retained but does not count as duplicate delivery. No paid retry or product change."
   ],
   "raw_outcome_hashes": {
     "step1-outcome.json": "40007f3f40914353945954b728881aee9c06941643bdcdd9bb635a0ddaf18b47",

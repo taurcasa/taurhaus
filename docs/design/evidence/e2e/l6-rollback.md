@@ -1,4 +1,4 @@
-# L6 rollback — run5 FAIL (harness read cardinality); operational rollback completed
+# L6 rollback — run5 operational PASS; automatic-executor observation NOT OBTAINED
 
 ## Run3 result (2026-09-11)
 
@@ -945,30 +945,24 @@ from the tool/model surface; [review status](l6-rollback/run4/review.json) recor
 that limitation. The overall workflow is **incomplete**, not PASS. No runtime
 step was green, so there are no numbered runtime PASS commits for run4.
 
-Run5 step 1: PASS (S-runtime); see run5/run/step1-outcome.json.
-
-Run5 step 2: PASS (S-runtime); see run5/run/step2-outcome.json.
-
-Run5 step 3: PASS (S-runtime); see run5/run/step3-outcome.json.
-
-Run5 step 4: PASS (S-runtime); see run5/run/step4-outcome.json.
-
-
 ## Run5 result (2026-09-11)
 
-**The complete operational escape route ran, but step (d) FAILS the literal single-read criterion (harness).**
+**The complete operational escape route (a)–(e) PASSES on the retained runtime evidence.**
 The raw controller reports PASS for (a)–(e), exits **0** after **65.03 s**,
-and is retained unchanged. The separate [adjudication](l6-rollback/run5/adjudication.json)
-qualifies step (d): B received **one legacy submission and one assistant reply**, but
-alpha explicitly read it twice during that reply turn. The inherited instructions
-asked for both an unread notification read and an unfiltered marker read. The
-controller checked transport cardinality but omitted a strict single-read check,
-so it continued to C and final reconciliation. This is a **harness instruction/guard
-limitation**, not evidence of a Mesh duplicate submission or failed rollback.
-No second paid execution or product change was made.
+and is retained unchanged. The corrected [adjudication](l6-rollback/run5/adjudication.json)
+applies the same delivery checks to A, B and C: at most one transport submission,
+seat consumption (or submission plus tool-result exposure), and one assistant reply.
+All three have one submission, a first seat consumption and one reply. B's later
+read rows are inbox re-listings, including the explicit reconciliation required
+by step (e); they are not new transport deliveries. The earlier headline FAIL
+incorrectly treated these rows as a cardinality violation and escalated only B.
+The automatic member-executor product observation is **NOT OBTAINED** because
+no self-heal pass occurred in the members-owned window. No paid rerun or product
+change was made.
 
-An independent Opus evidence lens is unavailable from this session's callable model
-and tool surface. No reviewer was launched and no cross-family review is claimed.
+The original execution recorded its independent Opus evidence lens as unavailable.
+This correction addresses the supplied Opus round-1 findings; no new reviewer
+was launched and no completed review approval is claimed.
 Consequently this packet makes **no full workflow PASS or release claim**.
 [Raw outcomes and hashes](l6-rollback/run5/analysis.json),
 [exact executed controller](l6-rollback/run5/controller.py),
@@ -979,8 +973,8 @@ Consequently this packet makes **no full workflow PASS or release claim**.
 | (a) Initialize; A; B pending; lead stops owner | PASS | **PASS, S-runtime.** Canonical initialize completed, composer and attributed idle verified, A delivered/read/replied. B accepted while active, no receipt or begun ambiguous transport, scheduler opportunity recorded. Stop exit 0, owner exited, durable lead marker and daemon's named skip retained. |
 | (b) Downgrade with B pending | PASS | **PASS, S-runtime.** Format command exit 0, no refusal/retry. Config commits `messaging_format: 0`, `delivery_owner: members`, verified `delivery_rollback_sha256`; authority `transition: complete`. Both digest reports verified, canonical history retained unchanged, B pending/unread under its original logical id. |
 | (c) Members same-owner handoff | PASS | **PASS, S-runtime.** Exit 0; stop marker present immediately before and absent immediately afterward. Owner and rollback digest unchanged. Epoch 3 remains 3; no new handoff request. |
-| (d) RC executor; B once; fresh C and reply | PASS | **FAIL exact read-cardinality criterion, harness.** No executor attached after (c); controller started one guarded lane RC executor. B and C each have exactly one legacy submission and one reply. B has two seat-read rows before its reply, so the literal one-read criterion is not met. No duplicate executor or transport replay was observed. |
-| (e) Explicit read/ack; reconcile; export; teardown | PASS | **PASS operations, S-runtime; overall lane remains incomplete.** A/B/C read and ack status verified, lead inbox reconciled, canonical journal retained, complete daemon JSONL exported, scratch processes and credentials removed. This ran after the missed step-(d) cardinality condition. |
+| (d) RC executor; B once; fresh C and reply | PASS | **PASS, S-runtime.** Controller started one guarded lane RC executor after an immediate census. B has one legacy submission, first seat read and one reply; fresh C also has one submission/read/reply. No duplicate executor or transport replay. Automatic-executor product observation **NOT OBTAINED**: no post-boundary self-heal pass. |
+| (e) Explicit read/ack; reconcile; export; teardown | PASS | **PASS, S-runtime.** A/B/C read and ack status verified, lead inbox reconciled, canonical journal retained, complete daemon JSONL exported, scratch processes and credentials removed. Required reconciliation rereads do not invalidate (d). |
 
 The command results and boundary snapshots are under [run5/run](l6-rollback/run5/run/):
 `step1-owner-stop.json`, `step1-pending-boundary.json`, `step2-command.json`,
@@ -1002,8 +996,12 @@ shutdown. No filtering to self-heal events, no observer errors, no lock edits,
 process freeze or synthetic activity. [Daemon stream](l6-rollback/run5/run/taurhaus.log.jsonl),
 [census](l6-rollback/run5/run/owner-census.jsonl).
 
-Unlike run3's product observation, this run found **no attached executor after (c)**.
-The controller's sanctioned start is recorded **0.209 s after
+Automatic member-executor product observation: **NOT OBTAINED**.
+The post-(c) members-owned window spanned **05:16:36.153Z–05:17:03.903Z**
+(the latter is the last retained daemon row). The only self-heal passes occurred
+at **05:16:04.930Z** and **05:16:34.939Z**, before verified `transition: complete`
+at **05:16:36.057Z**: **zero passes after either boundary**. The immediate census
+cannot establish a behavioral difference from earlier runs. The controller's sanctioned start is recorded **0.209 s after
 verified `transition: complete`**, and **0.113 s after (c) returned**.
 The first census shows the lane's RC digest, `--pane %2`, team `l6-rollback-run5`,
 member `alpha`, and host PID **2188929**; maximum concurrent alpha executors = **1**.
@@ -1011,7 +1009,9 @@ The direct Mesh start did not populate Taurhaus's `daemon_pid`; its actual argv,
 namespace PID, start ticks, executable digest and owned process ancestry are
 retained rather than asserting an unobserved runtime attachment.
 The manual start log and census establish the starter, not an inference that
-Taurhaus self-healed it. [Executor observation](l6-rollback/run5/adjudication.json).
+Taurhaus self-healed it. To obtain that product observation in a future run, hold
+after (c) for at least one full self-heal cadence with a bounded wait and census
+sampled throughout before concluding none is attached. [Executor observation](l6-rollback/run5/adjudication.json).
 
 ### Run5 identity and read accounting
 
@@ -1027,10 +1027,16 @@ projection at **05:16:52.602Z** in the same native turn before replying. B appea
 again in alpha's unfiltered C read (**05:16:59.911Z**) and the controller's explicit
 final reconciliation (**05:17:02.159Z**): **four retained B read rows**, not one.
 The first B tool-result shows `read: false`; later ones show `read: true`.
-These are explicit rereads, not four executor deliveries. The audit retains the
+These are explicit rereads, not four executor deliveries. The scratch `AGENTS.md`
+asks for an unread notification read plus an unfiltered marker read
+(`controller.py:411`); C and step (e) add whole-inbox re-listings. The audit retains the
 full rows and does not silently collapse them. A has one canonical read receipt
 plus five workflow read records (including its mirrored initial read); C has three
-workflow reads. Each has one assistant reply and acknowledged final state.
+workflow reads. Each has one first seat consumption, one assistant reply and
+acknowledged final state. Read-row multiplicity (A=6, B=4, C=3) is descriptive
+for all three, never a delivery predicate. The sidecar derives read timestamps
+from retained histories and partitions them at each first assistant reply;
+A's canonical receipt and mirrored workflow row describe the same initial read.
 All three logical identities remain traceable across the measured boundaries;
 C originates in legacy format and therefore has no canonical acceptance row.
 
@@ -1060,6 +1066,12 @@ explicitly authorized `auth.json` was copied into empty scratch CODEX_HOME at 06
 no credential bytes or fingerprint exported. Both credentials and scratch root
 were removed. Teardown reports **zero survivors**, closed listener, removed auth
 and removed root. [Cleanup](l6-rollback/run5/run/cleanup.json).
+The original run5 packet path scan excludes Python sources. Its one committed
+operator-home path is the spec-authorized credential source constant in
+`run5/preflight.py:13` (`/home/mstie/.codex-account-b/auth.json`); that source is
+an explicit exception to the packet's path-clean claim. No credential file was
+read during this offline correction. The review cites the parent `audit.py`,
+but the Python exclusion is in `run5/audit.py:47`.
 
 **Five Codex input reservations/transport inputs**, including onboarding, A,
 ordinary work, B and C; **four native model turn IDs**, attachment generation **1**
@@ -1111,9 +1123,10 @@ load/stress test or plan-ledger change.
 Deviations: the specified L2 worktree is absent, so its versioned run3 controller
 and evidence were read here; the complete stage2b brief is absent, so its addendum,
 journal-stage3 analysis, USAGE and authoritative transition/ownership code were
-read. The inherited double-read instruction and missing cardinality guard are
-reported above; the controller reached C and (e) before offline adjudication caught
-that omission. Opus review is unavailable. Raw outcome files remain byte-exact;
+read. The automatic-executor observation was not obtained because the controller
+started the member executor before the next self-heal pass. Repeated reads are
+required/elicited by the harness and are not a missing delivery guard. Original
+Opus review availability remains recorded above. Raw outcome files remain byte-exact;
 all qualification lives in separate analysis/adjudication sidecars. The runtime
 route completion does not erase these limits or overwrite runs 1–4.
 
@@ -1122,3 +1135,23 @@ removed at runtime. Its retained `owner-stopped.json` is historical stop evidenc
 `step3-after-ownership.json` explicitly records the marker as absent. Duplicate
 snapshot paths resolve through `run5/export-manifest.json`; raw numbered outcomes
 and the complete streams remain directly retained.
+
+### Run5 round-1 offline correction
+
+Both major findings and all three minor/nit findings were verified against the
+retained rows. Four regression tests live in the named `run5/adjudicate.py` to
+keep this correction local; `// Regression:` comments identify `06178535` and
+`baa3c509`. Before implementation, all four failed (six errors including A/B/C
+subtests): missing delivery/first-consumption fields and missing self-heal-window
+assessment. After correction, all four and the two existing accounting tests pass.
+The generated timestamps use synthetic dates in the tests to guard against the
+old hardcoded B timestamps. Duplicate transport submissions/replies still fail;
+read-only delivery succeeds, and another reader alone cannot establish delivery.
+
+Original `run5/audit.py`, `final-audit.json` and prior test/gate logs are historical
+artifacts of the initial adjudication, including its superseded FAIL assertions;
+they are not current verdict checks. This correction changes only this document,
+`run5/adjudicate.py` and its generated `adjudication.json`. The original controller,
+raw outcomes and retained runtime streams remain byte-exact. No lane process or
+paid model turn was started; additional seat spend is **$0**. The original four
+metered spends and total **$0.01063136** above remain unchanged.
