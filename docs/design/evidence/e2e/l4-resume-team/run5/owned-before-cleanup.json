@@ -1,0 +1,145 @@
+[
+  {
+    "pid": 1762451,
+    "start_ticks": "29638318",
+    "namespace_pids": [
+      "1762451"
+    ],
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-l4-run5-r27_5fdf",
+      "/tmp/th-l4-run5-r27_5fdf",
+      "--chdir",
+      "/tmp/th-l4-run5-r27_5fdf/project",
+      "/bin/bash",
+      "/tmp/th-l4-run5-r27_5fdf/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 1762452,
+    "start_ticks": "29638318",
+    "namespace_pids": [
+      "1762452",
+      "1"
+    ],
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-l4-run5-r27_5fdf",
+      "/tmp/th-l4-run5-r27_5fdf",
+      "--chdir",
+      "/tmp/th-l4-run5-r27_5fdf/project",
+      "/bin/bash",
+      "/tmp/th-l4-run5-r27_5fdf/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 1762453,
+    "start_ticks": "29638319",
+    "namespace_pids": [
+      "1762453",
+      "2"
+    ],
+    "argv": [
+      "/bin/bash",
+      "/tmp/th-l4-run5-r27_5fdf/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 1762454,
+    "start_ticks": "29638319",
+    "namespace_pids": [
+      "1762454",
+      "3"
+    ],
+    "argv": [
+      "tmux",
+      "-D",
+      "-f",
+      "/dev/null",
+      ""
+    ]
+  },
+  {
+    "pid": 1762461,
+    "start_ticks": "29638329",
+    "namespace_pids": [
+      "1762461",
+      "9"
+    ],
+    "argv": [
+      "/bin/bash",
+      ""
+    ]
+  },
+  {
+    "pid": 1762463,
+    "start_ticks": "29638330",
+    "namespace_pids": [
+      "1762463",
+      "11"
+    ],
+    "argv": [
+      "/tmp/th-l4-run5-r27_5fdf/home/.local/bin/taurhaus-daemon",
+      "--port",
+      "48139",
+      "--data-dir",
+      "/tmp/th-l4-run5-r27_5fdf/data",
+      ""
+    ]
+  },
+  {
+    "pid": 1765931,
+    "start_ticks": "29638942",
+    "namespace_pids": [
+      "1765931",
+      "2496"
+    ],
+    "argv": [
+      "/tmp/th-l4-run5-r27_5fdf/home/.local/bin/mesh",
+      "team-daemon",
+      "start",
+      "--team",
+      "l4-resume",
+      "--name",
+      "lead",
+      "--claude-dir",
+      "/tmp/th-l4-run5-r27_5fdf/claude",
+      ""
+    ]
+  }
+]

@@ -1,0 +1,10 @@
+{
+  "classification": "harness",
+  "automated_observer_classification": "taurhaus",
+  "classification_basis": "Alpha native Codex 0.153.4 exited on a scratch SQLite queue migration error before it acquired a session identity. The observer initially classified the missing-attribution boundary as Taurhaus. Initialize reporting completed despite the exited TUI is a separate product observation.",
+  "native_reason": "failed to migrate queue DB: while executing migration 1: error returned from database: (code: 1) table queued_items already exists",
+  "evidence": "final-pane3.json",
+  "step": 1,
+  "outcome_file": "step1-outcome.json",
+  "provenance": "The controller outcome was previously edited in 543236ef. Its four fields and save() formatting are reconstructed from the unchanged failure event; this adjudication preserves the later interpretation separately."
+}

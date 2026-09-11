@@ -1,0 +1,17 @@
+{
+  "command": [
+    "python3",
+    "-B",
+    "-m",
+    "unittest",
+    "discover",
+    "-s",
+    "docs/design/evidence/e2e/l4-resume-team",
+    "-p",
+    "test_*.py"
+  ],
+  "red_exit_code": 1,
+  "red_reason": "ModuleNotFoundError: No module named 'preflight'",
+  "green_exit_code": 0,
+  "test_count": 3
+}

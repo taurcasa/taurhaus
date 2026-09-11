@@ -1,0 +1,577 @@
+[
+  {
+    "emittedAtMs": 1789056996812,
+    "method": "remoteControl/status/changed",
+    "params": {
+      "environmentId": null,
+      "serverName": "whocares",
+      "status": "disabled"
+    }
+  },
+  {
+    "emittedAtMs": 1789057000839,
+    "method": "thread/started",
+    "params": {
+      "thread": {
+        "agentNickname": null,
+        "agentRole": null,
+        "canAcceptDirectInput": true,
+        "cliVersion": "0.153.4",
+        "createdAt": 1789057000,
+        "cwd": "/tmp/th-l4-run4-haq4onp6/project",
+        "ephemeral": false,
+        "extra": null,
+        "forkedFromId": null,
+        "gitInfo": null,
+        "historyMode": "paginated",
+        "id": "01a08c1b-5e7c-7aa2-a6fa-7c4ce4902e51",
+        "model": "gpt-5.6-luna",
+        "modelProvider": "openai",
+        "name": null,
+        "parentThreadId": null,
+        "path": "/tmp/th-l4-run4-haq4onp6/codex/sessions/2026/09/10/rollout-2026-09-10T18-16-39-01a08c1b-5e7c-7aa2-a6fa-7c4ce4902e51.jsonl",
+        "preview": "",
+        "projectId": null,
+        "reasoningEffort": "low",
+        "recencyAt": 1789057000,
+        "section": null,
+        "sectionEnteredAt": null,
+        "sessionId": "01a08c1b-5e7c-7aa2-a6fa-7c4ce4902e51",
+        "source": "vscode",
+        "status": {
+          "type": "idle"
+        },
+        "threadSource": null,
+        "turns": [],
+        "updatedAt": 1789057000
+      }
+    }
+  },
+  {
+    "emittedAtMs": 1789057000839,
+    "method": "mcpServer/startupStatus/updated",
+    "params": {
+      "error": null,
+      "failureReason": null,
+      "name": "codex_apps",
+      "status": "starting",
+      "threadId": "01a08c1b-5e7c-7aa2-a6fa-7c4ce4902e51"
+    }
+  },
+  {
+    "emittedAtMs": 1789057001652,
+    "method": "thread/status/changed",
+    "params": {
+      "status": {
+        "activeFlags": [],
+        "type": "active"
+      },
+      "threadId": "01a08c1b-5e7c-7aa2-a6fa-7c4ce4902e51"
+    }
+  },
+  {
+    "emittedAtMs": 1789057001652,
+    "method": "turn/started",
+    "params": {
+      "threadId": "01a08c1b-5e7c-7aa2-a6fa-7c4ce4902e51",
+      "turn": {
+        "completedAt": null,
+        "durationMs": null,
+        "error": null,
+        "id": "01a08c1b-66b5-7621-9309-69066ef18368",
+        "items": [],
+        "itemsView": "notLoaded",
+        "startedAt": 1789057001,
+        "status": "inProgress"
+      }
+    }
+  },
+  {
+    "emittedAtMs": 1789057001754,
+    "method": "mcpServer/startupStatus/updated",
+    "params": {
+      "error": null,
+      "failureReason": null,
+      "name": "codex_apps",
+      "status": "ready",
+      "threadId": "01a08c1b-5e7c-7aa2-a6fa-7c4ce4902e51"
+    }
+  },
+  {
+    "emittedAtMs": 1789057002341,
+    "method": "thread/goal/cleared",
+    "params": {
+      "threadId": "01a08c1b-5e7c-7aa2-a6fa-7c4ce4902e51"
+    }
+  },
+  {
+    "emittedAtMs": 1789057005346,
+    "method": "item/started",
+    "params": {
+      "item": {
+        "clientId": null,
+        "content": [
+          {
+            "text": "[taurhaus] recovery_card\nIdentity: beta on l4-resume; key={\"card_schema\":1,\"recipient\":[\"be8866c5f8d3df1610162489660a6d564b77d4accbd5c43bebaa64a859254517\",\"e71dc328-0148-4efb-91e5-1513f4b8b6f1\"],\"context\":[1,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-l4-run4-haq4onp6/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-l4-run4-haq4onp6/claude\",\"harness_account_root\":\"/tmp/th-l4-run4-haq4onp6/codex\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-l4-run4-haq4onp6/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"66cbae1331c74e3410154db1011b7b55d2ac62b7a5876c76e15a2fe75e7d8824\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: 25da9d2fd69fba5436c4a8d63741359bcb24e155ab1ad8d86fdfdede6cfb2b3b; source=682540e4a3f9cfbca660a5add5db7fa379ff474f5fe7c2f18798f74d7e72c755; audience=unavailable\nProject cwd: /tmp/th-l4-run4-haq4onp6/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: low; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-10 16:16:40.847880951 UTC\nCurrent task: # \u2014 \nOperational constraints: unavailable\nFocal files: unavailable\nRole: unavailable\nPurpose: This is an isolated messaging trial. Reply briefly (at most 40 words). When a message assigns you a task, run exactly the mesh lifecycle commands it names. Never touch files. Do not send unsolicited messages.\n\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.",
+            "text_elements": [],
+            "type": "text"
+          }
+        ],
+        "id": "01a08c1b-7722-73f1-9550-d0cd5cb2a3b3",
+        "type": "userMessage"
+      },
+      "startedAtMs": 1789057005346,
+      "threadId": "01a08c1b-5e7c-7aa2-a6fa-7c4ce4902e51",
+      "turnId": "01a08c1b-66b5-7621-9309-69066ef18368"
+    }
+  },
+  {
+    "emittedAtMs": 1789057006047,
+    "method": "remoteControl/status/changed",
+    "params": {
+      "environmentId": null,
+      "serverName": "whocares",
+      "status": "disabled"
+    }
+  },
+  {
+    "emittedAtMs": 1789057006248,
+    "method": "deprecationNotice",
+    "params": {
+      "details": null,
+      "summary": "Full-history hydration is deprecated for paginated threads; use `excludeTurns: true`, then page with `thread/turns/list` and `thread/items/list`."
+    }
+  },
+  {
+    "emittedAtMs": 1789057006949,
+    "method": "thread/goal/cleared",
+    "params": {
+      "threadId": "01a08c1b-5e7c-7aa2-a6fa-7c4ce4902e51"
+    }
+  },
+  {
+    "emittedAtMs": 1789057007049,
+    "method": "thread/name/updated",
+    "params": {
+      "threadId": "01a08c1b-5e7c-7aa2-a6fa-7c4ce4902e51",
+      "threadName": "[taurhaus] recovery_card Identity: b"
+    }
+  },
+  {
+    "emittedAtMs": 1789057008451,
+    "method": "remoteControl/status/changed",
+    "params": {
+      "environmentId": null,
+      "serverName": "whocares",
+      "status": "disabled"
+    }
+  },
+  {
+    "emittedAtMs": 1789057008551,
+    "method": "deprecationNotice",
+    "params": {
+      "details": null,
+      "summary": "Full-history hydration is deprecated for paginated threads; use `excludeTurns: true`, then page with `thread/turns/list` and `thread/items/list`."
+    }
+  },
+  {
+    "emittedAtMs": 1789057009752,
+    "method": "thread/started",
+    "params": {
+      "thread": {
+        "agentNickname": null,
+        "agentRole": null,
+        "canAcceptDirectInput": true,
+        "cliVersion": "0.153.4",
+        "createdAt": 1789057009,
+        "cwd": "/tmp/th-l4-run4-haq4onp6/project",
+        "ephemeral": true,
+        "extra": null,
+        "forkedFromId": null,
+        "gitInfo": null,
+        "historyMode": "legacy",
+        "id": "01a08c1b-80ea-7423-ac2b-fca158668ae3",
+        "model": "gpt-5.6-luna",
+        "modelProvider": "openai",
+        "name": null,
+        "parentThreadId": null,
+        "path": null,
+        "preview": "",
+        "projectId": null,
+        "reasoningEffort": "low",
+        "recencyAt": 1789057009,
+        "section": null,
+        "sectionEnteredAt": null,
+        "sessionId": "01a08c1b-80ea-7423-ac2b-fca158668ae3",
+        "source": "vscode",
+        "status": {
+          "type": "idle"
+        },
+        "threadSource": "system",
+        "turns": [],
+        "updatedAt": 1789057009
+      }
+    }
+  },
+  {
+    "emittedAtMs": 1789057009853,
+    "method": "thread/goal/cleared",
+    "params": {
+      "threadId": "01a08c1b-5e7c-7aa2-a6fa-7c4ce4902e51"
+    }
+  },
+  {
+    "emittedAtMs": 1789057010253,
+    "method": "thread/status/changed",
+    "params": {
+      "status": {
+        "activeFlags": [],
+        "type": "active"
+      },
+      "threadId": "01a08c1b-80ea-7423-ac2b-fca158668ae3"
+    }
+  },
+  {
+    "emittedAtMs": 1789057010354,
+    "method": "item/completed",
+    "params": {
+      "completedAtMs": 1789057009853,
+      "item": {
+        "delivery": null,
+        "id": "msg_07d5683d18c4ef40016aa2d7ebb8b887d2ab8b0c82e3ac77d7",
+        "memoryCitation": null,
+        "phase": "final_answer",
+        "questions": null,
+        "text": "Unassigned recovery state preserved. Team lead, please provide the missing assignment identity, release signal, and required context.",
+        "type": "agentMessage"
+      },
+      "threadId": "01a08c1b-5e7c-7aa2-a6fa-7c4ce4902e51",
+      "turnId": "01a08c1b-66b5-7621-9309-69066ef18368"
+    }
+  },
+  {
+    "emittedAtMs": 1789057010855,
+    "method": "thread/tokenUsage/updated",
+    "params": {
+      "threadId": "01a08c1b-5e7c-7aa2-a6fa-7c4ce4902e51",
+      "tokenUsage": {
+        "last": {
+          "cacheWriteInputTokens": 0,
+          "cachedInputTokens": 6912,
+          "inputTokens": 11203,
+          "outputTokens": 52,
+          "reasoningOutputTokens": 23,
+          "totalTokens": 11255
+        },
+        "modelContextWindow": 31129,
+        "total": {
+          "cacheWriteInputTokens": 0,
+          "cachedInputTokens": 6912,
+          "inputTokens": 11203,
+          "outputTokens": 52,
+          "reasoningOutputTokens": 23,
+          "totalTokens": 11255
+        }
+      },
+      "turnId": "01a08c1b-66b5-7621-9309-69066ef18368"
+    }
+  },
+  {
+    "emittedAtMs": 1789057011655,
+    "method": "thread/status/changed",
+    "params": {
+      "status": {
+        "type": "idle"
+      },
+      "threadId": "01a08c1b-5e7c-7aa2-a6fa-7c4ce4902e51"
+    }
+  },
+  {
+    "emittedAtMs": 1789057011655,
+    "method": "turn/completed",
+    "params": {
+      "threadId": "01a08c1b-5e7c-7aa2-a6fa-7c4ce4902e51",
+      "turn": {
+        "completedAt": 1789057011,
+        "durationMs": 10014,
+        "error": null,
+        "id": "01a08c1b-66b5-7621-9309-69066ef18368",
+        "items": [
+          {
+            "delivery": null,
+            "id": "msg_07d5683d18c4ef40016aa2d7ebb8b887d2ab8b0c82e3ac77d7",
+            "memoryCitation": null,
+            "phase": "final_answer",
+            "questions": null,
+            "text": "Unassigned recovery state preserved. Team lead, please provide the missing assignment identity, release signal, and required context.",
+            "type": "agentMessage"
+          }
+        ],
+        "itemsView": "summary",
+        "startedAt": 1789057001,
+        "status": "completed"
+      }
+    }
+  },
+  {
+    "emittedAtMs": 1789057015161,
+    "method": "thread/status/changed",
+    "params": {
+      "status": {
+        "type": "idle"
+      },
+      "threadId": "01a08c1b-80ea-7423-ac2b-fca158668ae3"
+    }
+  },
+  {
+    "emittedAtMs": 1789057015760,
+    "method": "remoteControl/status/changed",
+    "params": {
+      "environmentId": null,
+      "serverName": "whocares",
+      "status": "disabled"
+    }
+  },
+  {
+    "emittedAtMs": 1789057015861,
+    "method": "deprecationNotice",
+    "params": {
+      "details": null,
+      "summary": "Full-history hydration is deprecated for paginated threads; use `excludeTurns: true`, then page with `thread/turns/list` and `thread/items/list`."
+    }
+  },
+  {
+    "emittedAtMs": 1789057015965,
+    "method": "thread/tokenUsage/updated",
+    "params": {
+      "threadId": "01a08c1b-5e7c-7aa2-a6fa-7c4ce4902e51",
+      "tokenUsage": {
+        "last": {
+          "cacheWriteInputTokens": 0,
+          "cachedInputTokens": 6912,
+          "inputTokens": 11203,
+          "outputTokens": 52,
+          "reasoningOutputTokens": 23,
+          "totalTokens": 11255
+        },
+        "modelContextWindow": 31129,
+        "total": {
+          "cacheWriteInputTokens": 0,
+          "cachedInputTokens": 6912,
+          "inputTokens": 11203,
+          "outputTokens": 52,
+          "reasoningOutputTokens": 23,
+          "totalTokens": 11255
+        }
+      },
+      "turnId": "01a08c1b-66b5-7621-9309-69066ef18368"
+    }
+  },
+  {
+    "emittedAtMs": 1789057015966,
+    "method": "thread/goal/cleared",
+    "params": {
+      "threadId": "01a08c1b-5e7c-7aa2-a6fa-7c4ce4902e51"
+    }
+  },
+  {
+    "emittedAtMs": 1789057021469,
+    "method": "thread/status/changed",
+    "params": {
+      "status": {
+        "activeFlags": [],
+        "type": "active"
+      },
+      "threadId": "01a08c1b-5e7c-7aa2-a6fa-7c4ce4902e51"
+    }
+  },
+  {
+    "emittedAtMs": 1789057021469,
+    "method": "turn/started",
+    "params": {
+      "threadId": "01a08c1b-5e7c-7aa2-a6fa-7c4ce4902e51",
+      "turn": {
+        "completedAt": null,
+        "durationMs": null,
+        "error": null,
+        "id": "01a08c1b-b572-7c10-b7f1-c1c4dba776cd",
+        "items": [],
+        "itemsView": "notLoaded",
+        "startedAt": 1789057021,
+        "status": "inProgress"
+      }
+    }
+  },
+  {
+    "emittedAtMs": 1789057021868,
+    "method": "item/started",
+    "params": {
+      "item": {
+        "clientId": null,
+        "content": [
+          {
+            "text": "[mesh message data] {\"assignment\":null,\"author\":\"lead\",\"body\":\"ACTION REQUIRED: Reply exactly L4_old_beta_42e146. No tools are needed for this marker.\",\"delivery_id\":\"5df3ca04-e361-4f57-a050-e132244a6806\",\"expectation\":null,\"message_id\":\"0104540f-79fb-4ede-9d1d-c8d624ba35c1\",\"metadata\":{},\"task\":null}\n",
+            "text_elements": [],
+            "type": "text"
+          }
+        ],
+        "id": "01a08c1b-b7ac-73c2-a986-8fd197f6c479",
+        "type": "userMessage"
+      },
+      "startedAtMs": 1789057021868,
+      "threadId": "01a08c1b-5e7c-7aa2-a6fa-7c4ce4902e51",
+      "turnId": "01a08c1b-b572-7c10-b7f1-c1c4dba776cd"
+    }
+  },
+  {
+    "emittedAtMs": 1789057021872,
+    "method": "item/completed",
+    "params": {
+      "completedAtMs": 1789057021868,
+      "item": {
+        "clientId": null,
+        "content": [
+          {
+            "text": "[mesh message data] {\"assignment\":null,\"author\":\"lead\",\"body\":\"ACTION REQUIRED: Reply exactly L4_old_beta_42e146. No tools are needed for this marker.\",\"delivery_id\":\"5df3ca04-e361-4f57-a050-e132244a6806\",\"expectation\":null,\"message_id\":\"0104540f-79fb-4ede-9d1d-c8d624ba35c1\",\"metadata\":{},\"task\":null}\n",
+            "text_elements": [],
+            "type": "text"
+          }
+        ],
+        "id": "01a08c1b-b7ac-73c2-a986-8fd197f6c479",
+        "type": "userMessage"
+      },
+      "threadId": "01a08c1b-5e7c-7aa2-a6fa-7c4ce4902e51",
+      "turnId": "01a08c1b-b572-7c10-b7f1-c1c4dba776cd"
+    }
+  },
+  {
+    "emittedAtMs": 1789057023776,
+    "method": "item/started",
+    "params": {
+      "item": {
+        "content": [],
+        "id": "rs_07d5683d18c4ef40016aa2d7faf99487d2b33f1726ebb1906a",
+        "summary": [],
+        "type": "reasoning"
+      },
+      "startedAtMs": 1789057023776,
+      "threadId": "01a08c1b-5e7c-7aa2-a6fa-7c4ce4902e51",
+      "turnId": "01a08c1b-b572-7c10-b7f1-c1c4dba776cd"
+    }
+  },
+  {
+    "emittedAtMs": 1789057023991,
+    "method": "item/completed",
+    "params": {
+      "completedAtMs": 1789057023989,
+      "item": {
+        "content": [],
+        "id": "rs_07d5683d18c4ef40016aa2d7faf99487d2b33f1726ebb1906a",
+        "summary": [],
+        "type": "reasoning"
+      },
+      "threadId": "01a08c1b-5e7c-7aa2-a6fa-7c4ce4902e51",
+      "turnId": "01a08c1b-b572-7c10-b7f1-c1c4dba776cd"
+    }
+  },
+  {
+    "emittedAtMs": 1789057023993,
+    "method": "item/started",
+    "params": {
+      "item": {
+        "delivery": null,
+        "id": "msg_07d5683d18c4ef40016aa2d7fb2fc887d2a77d3ddd1f5027a2",
+        "memoryCitation": null,
+        "phase": "final_answer",
+        "questions": null,
+        "text": "",
+        "type": "agentMessage"
+      },
+      "startedAtMs": 1789057023993,
+      "threadId": "01a08c1b-5e7c-7aa2-a6fa-7c4ce4902e51",
+      "turnId": "01a08c1b-b572-7c10-b7f1-c1c4dba776cd"
+    }
+  },
+  {
+    "emittedAtMs": 1789057024272,
+    "method": "item/completed",
+    "params": {
+      "completedAtMs": 1789057024196,
+      "item": {
+        "delivery": null,
+        "id": "msg_07d5683d18c4ef40016aa2d7fb2fc887d2a77d3ddd1f5027a2",
+        "memoryCitation": null,
+        "phase": "final_answer",
+        "questions": null,
+        "text": "L4_old_beta_42e146",
+        "type": "agentMessage"
+      },
+      "threadId": "01a08c1b-5e7c-7aa2-a6fa-7c4ce4902e51",
+      "turnId": "01a08c1b-b572-7c10-b7f1-c1c4dba776cd"
+    }
+  },
+  {
+    "emittedAtMs": 1789057024375,
+    "method": "thread/tokenUsage/updated",
+    "params": {
+      "threadId": "01a08c1b-5e7c-7aa2-a6fa-7c4ce4902e51",
+      "tokenUsage": {
+        "last": {
+          "cacheWriteInputTokens": 0,
+          "cachedInputTokens": 6912,
+          "inputTokens": 11362,
+          "outputTokens": 23,
+          "reasoningOutputTokens": 9,
+          "totalTokens": 11385
+        },
+        "modelContextWindow": 31129,
+        "total": {
+          "cacheWriteInputTokens": 0,
+          "cachedInputTokens": 13824,
+          "inputTokens": 22565,
+          "outputTokens": 75,
+          "reasoningOutputTokens": 32,
+          "totalTokens": 22640
+        }
+      },
+      "turnId": "01a08c1b-b572-7c10-b7f1-c1c4dba776cd"
+    }
+  },
+  {
+    "emittedAtMs": 1789057024672,
+    "method": "thread/status/changed",
+    "params": {
+      "status": {
+        "type": "idle"
+      },
+      "threadId": "01a08c1b-5e7c-7aa2-a6fa-7c4ce4902e51"
+    }
+  },
+  {
+    "emittedAtMs": 1789057024672,
+    "method": "turn/completed",
+    "params": {
+      "threadId": "01a08c1b-5e7c-7aa2-a6fa-7c4ce4902e51",
+      "turn": {
+        "completedAt": 1789057024,
+        "durationMs": 3105,
+        "error": null,
+        "id": "01a08c1b-b572-7c10-b7f1-c1c4dba776cd",
+        "items": [
+          {
+            "delivery": null,
+            "id": "msg_07d5683d18c4ef40016aa2d7fb2fc887d2a77d3ddd1f5027a2",
+            "memoryCitation": null,
+            "phase": "final_answer",
+            "questions": null,
+            "text": "L4_old_beta_42e146",
+            "type": "agentMessage"
+          }
+        ],
+        "itemsView": "summary",
+        "startedAt": 1789057021,
+        "status": "completed"
+      }
+    }
+  }
+]

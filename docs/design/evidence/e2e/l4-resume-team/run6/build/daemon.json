@@ -1,0 +1,10 @@
+{
+  "command": [
+    "just",
+    "build-daemon"
+  ],
+  "cwd": "/home/mstie/projects/taurhaus-l4-resume-team",
+  "exit_code": 0,
+  "seconds": 182.78,
+  "log_lines": 2
+}

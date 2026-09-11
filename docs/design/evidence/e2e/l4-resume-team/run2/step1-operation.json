@@ -1,0 +1,96 @@
+{
+  "method": "coordination.initialize_team",
+  "accepted": {
+    "run_id": "init_2b3cf70baf3b4185a9228f9c4ffecff9"
+  },
+  "status_samples": [
+    {
+      "outcome": {
+        "status": "running"
+      },
+      "run_id": "init_2b3cf70baf3b4185a9228f9c4ffecff9",
+      "steps": []
+    },
+    {
+      "outcome": {
+        "report": {
+          "failed_step": "launch_host",
+          "message": "Conflict: app-server exited before transport readiness",
+          "retryable": true,
+          "steps": [
+            {
+              "message": "configuration validated",
+              "status": "succeeded",
+              "step": "validate_configuration"
+            },
+            {
+              "message": "team created",
+              "status": "succeeded",
+              "step": "create_team"
+            },
+            {
+              "message": "lead added",
+              "status": "succeeded",
+              "step": "add_lead"
+            },
+            {
+              "message": "Conflict: app-server exited before transport readiness",
+              "status": "failed",
+              "step": "launch_host"
+            }
+          ],
+          "succeeded_steps": [
+            "validate_configuration",
+            "create_team",
+            "add_lead"
+          ],
+          "team_name": "l4-resume"
+        },
+        "status": "completed"
+      },
+      "run_id": "init_2b3cf70baf3b4185a9228f9c4ffecff9",
+      "steps": [
+        {
+          "message": null,
+          "status": "running",
+          "step": "validate_configuration"
+        },
+        {
+          "message": "configuration validated",
+          "status": "succeeded",
+          "step": "validate_configuration"
+        },
+        {
+          "message": null,
+          "status": "running",
+          "step": "create_team"
+        },
+        {
+          "message": "team created",
+          "status": "succeeded",
+          "step": "create_team"
+        },
+        {
+          "message": null,
+          "status": "running",
+          "step": "add_lead"
+        },
+        {
+          "message": "lead added",
+          "status": "succeeded",
+          "step": "add_lead"
+        },
+        {
+          "message": null,
+          "status": "running",
+          "step": "create_panes"
+        },
+        {
+          "message": "Conflict: app-server exited before transport readiness",
+          "status": "failed",
+          "step": "launch_host"
+        }
+      ]
+    }
+  ]
+}

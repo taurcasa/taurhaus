@@ -1,0 +1,3 @@
+{
+  "traceback": "Traceback (most recent call last):\n  File \"/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run4/controller.py\", line 516, in main\n    getattr(lane,'step'+str(step))()\n  File \"/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run4/controller.py\", line 337, in step2\n    self.wait(stopped,'supported stop_session left a recorded pane or Codex/app-server process alive',timeout=100)\n  File \"/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run4/controller.py\", line 201, in wait\n    raise AssertionError(reason)\nAssertionError: supported stop_session left a recorded pane or Codex/app-server process alive\n"
+}

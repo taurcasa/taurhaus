@@ -1,0 +1,48 @@
+.............EEEFE
+======================================================================
+ERROR: test_any_transport_or_consumed_receipt_disproves_stopped_backlog (test_support.Run6Backlog.test_any_transport_or_consumed_receipt_disproves_stopped_backlog)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run6/test_support.py", line 131, in test_any_transport_or_consumed_receipt_disproves_stopped_backlog
+    from support import stopped_backlog
+ImportError: cannot import name 'stopped_backlog' from 'support' (/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run6/support.py)
+
+======================================================================
+ERROR: test_backlog_requires_recipient_acceptance_projection_and_health (test_support.Run6Backlog.test_backlog_requires_recipient_acceptance_projection_and_health)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run6/test_support.py", line 122, in test_backlog_requires_recipient_acceptance_projection_and_health
+    from support import stopped_backlog
+ImportError: cannot import name 'stopped_backlog' from 'support' (/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run6/support.py)
+
+======================================================================
+ERROR: test_census_includes_native_sibling (test_support.Run6Backlog.test_census_includes_native_sibling)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run6/test_support.py", line 139, in test_census_includes_native_sibling
+    from support import seat_process
+ImportError: cannot import name 'seat_process' from 'support' (/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run6/support.py)
+
+======================================================================
+ERROR: test_stopped_backlog_needs_no_pending_receipt (test_support.Run6Backlog.test_stopped_backlog_needs_no_pending_receipt)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run6/test_support.py", line 116, in test_stopped_backlog_needs_no_pending_receipt
+    from support import stopped_backlog
+ImportError: cannot import name 'stopped_backlog' from 'support' (/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run6/support.py)
+
+======================================================================
+FAIL: test_resume_headroom_uses_metered_cost_not_all_tokens_at_output_rate (test_support.Run6Backlog.test_resume_headroom_uses_metered_cost_not_all_tokens_at_output_rate)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run6/test_support.py", line 148, in test_resume_headroom_uses_metered_cost_not_all_tokens_at_output_rate
+    require_headroom({'paid_inputs':4,'unmetered':[], 'api_equivalent_usd':.006,'conservative_usd':.08},4)
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/preflight.py", line 31, in require_headroom
+    assert ledger['conservative_usd'] + .05 * inputs <= .25, 'cost headroom'
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: cost headroom
+
+----------------------------------------------------------------------
+Ran 18 tests in 0.015s
+
+FAILED (failures=1, errors=4)

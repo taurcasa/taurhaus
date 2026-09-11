@@ -1,0 +1,6 @@
+{
+  "step": 2,
+  "outcome": "FAIL",
+  "classification": "taurhaus",
+  "reason": "supported stop_session did not settle panes/processes and retained alpha identity"
+}

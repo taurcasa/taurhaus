@@ -1,0 +1,78 @@
+test_unrelated_words_do_not_claim_harness_failure (test_run9.Classification.test_unrelated_words_do_not_claim_harness_failure) ... FAIL
+test_composer_clean_exit_sqlite_and_single_input (test_run9.Warmup.test_composer_clean_exit_sqlite_and_single_input) ... ERROR
+test_failed_exit_rejected (test_run9.Warmup.test_failed_exit_rejected) ... ERROR
+test_missing_sqlite_rejected (test_run9.Warmup.test_missing_sqlite_rejected) ... ERROR
+test_no_composer_rejected (test_run9.Warmup.test_no_composer_rejected) ... ERROR
+test_warmup_precedes_initialize (test_run9.Warmup.test_warmup_precedes_initialize) ... FAIL
+
+======================================================================
+ERROR: test_composer_clean_exit_sqlite_and_single_input (test_run9.Warmup.test_composer_clean_exit_sqlite_and_single_input)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run9/test_run9.py", line 46, in test_composer_clean_exit_sqlite_and_single_input
+    def test_composer_clean_exit_sqlite_and_single_input(self): self.exercise()
+                                                                ^^^^^^^^^^^^^^^
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run9/test_run9.py", line 36, in exercise
+    lane.warm_codex_home()
+    ^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Lane' object has no attribute 'warm_codex_home'
+
+======================================================================
+ERROR: test_failed_exit_rejected (test_run9.Warmup.test_failed_exit_rejected)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run9/test_run9.py", line 50, in test_failed_exit_rejected
+    with self.assertRaisesRegex(AssertionError,'warm-up.*exit'): self.exercise(exit_code='1')
+                                                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run9/test_run9.py", line 36, in exercise
+    lane.warm_codex_home()
+    ^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Lane' object has no attribute 'warm_codex_home'
+
+======================================================================
+ERROR: test_missing_sqlite_rejected (test_run9.Warmup.test_missing_sqlite_rejected)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run9/test_run9.py", line 48, in test_missing_sqlite_rejected
+    with self.assertRaisesRegex(AssertionError,'warm-up.*SQLite'): self.exercise(sqlite=False)
+                                                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run9/test_run9.py", line 36, in exercise
+    lane.warm_codex_home()
+    ^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Lane' object has no attribute 'warm_codex_home'
+
+======================================================================
+ERROR: test_no_composer_rejected (test_run9.Warmup.test_no_composer_rejected)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run9/test_run9.py", line 52, in test_no_composer_rejected
+    with self.assertRaisesRegex(AssertionError,'warm-up.*composer'): self.exercise(composer=False)
+                                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run9/test_run9.py", line 36, in exercise
+    lane.warm_codex_home()
+    ^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Lane' object has no attribute 'warm_codex_home'
+
+======================================================================
+FAIL: test_unrelated_words_do_not_claim_harness_failure (test_run9.Classification.test_unrelated_words_do_not_claim_harness_failure)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run9/test_run9.py", line 65, in test_unrelated_words_do_not_claim_harness_failure
+    self.assertEqual(classify_failure('unmeteredness observer mismatch'),'taurhaus')
+AssertionError: 'harness' != 'taurhaus'
+- harness
++ taurhaus
+
+
+======================================================================
+FAIL: test_warmup_precedes_initialize (test_run9.Warmup.test_warmup_precedes_initialize)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run9/test_run9.py", line 57, in test_warmup_precedes_initialize
+    self.assertIn('warm_codex_home',calls)
+AssertionError: 'warm_codex_home' not found in ['umask', 'cwd', 'exists', 'signal', 'setup', 'cleanup', 'snapshot', 'observe', 'event', 'event', 'throw', 'loads', 'unlink', 'monotonic', 'observe', 'sleep', 'read_text', 'time', 'format_exc', 'exists', 'monotonic']
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.008s
+
+FAILED (failures=2, errors=4)

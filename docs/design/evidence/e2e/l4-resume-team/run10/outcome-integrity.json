@@ -1,0 +1,12 @@
+{
+  "sha256": {
+    "step1-outcome.json": "a341dfa3a2e66189237b9d9abb661d8fc3893b7b63f178dc1b2ccab146f478a8",
+    "step2-outcome.json": "6d86bb670ffe6693fa2230dd146214a17ba12225e2ca343916f136e67e45fafe",
+    "step6-outcome.json": "6f3a2933d0a0ce076f9cfd69365bf27863442ac13a8538347ae06ca4de32d621",
+    "step4-outcome.json": "a4920bba9481b71132ebe99353fba779d6958d71dccc74238b0a3998cf36ff9b",
+    "step3-outcome.json": "f464919b0211bf86fb1565628f95688bcd2e0bacf05905e6a5678117519ebd24",
+    "step5-outcome.json": "4fd2dfd5d0c255a67b5d0f1db897de3fe643a0457dc25881967e5670dc5731b8"
+  },
+  "policy": "Controller-written outcomes retained byte-exact; adjudication is separate.",
+  "verified_after_adjudication_and_redaction": true
+}

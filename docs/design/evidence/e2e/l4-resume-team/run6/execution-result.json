@@ -1,0 +1,27 @@
+{
+  "controller_exit": 1,
+  "last_runtime_logs": [
+    "step4 checkpoint PASS",
+    "step5 failure: unmetered reset token counter (harness)",
+    "cleanup: survivors=[], port_closed=true, root_removed=true, auth_removed=true, mesh_source_unchanged=true"
+  ],
+  "offline_tests": {
+    "red": 1,
+    "green": 0,
+    "preflight": 0
+  },
+  "builds": {
+    "mesh": 0,
+    "resources": 0,
+    "daemon": 0
+  },
+  "gates": {
+    "check-quick": 0,
+    "lint": 0,
+    "test-contracts": 0
+  },
+  "gate_runner_exit": 0,
+  "cleanup_audit_exit": 0,
+  "rust_diff": false,
+  "rust_unit_gate": "not required; evidence-only changes"
+}

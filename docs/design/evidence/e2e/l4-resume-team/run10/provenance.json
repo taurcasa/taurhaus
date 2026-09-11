@@ -1,0 +1,17 @@
+{
+  "checkout": "/home/mstie/projects/taurhaus-l4-resume-team",
+  "branch": "feat/e2e-l4-resume-team",
+  "taurhaus_commit": "fd5dd9f0dbee8b99f023d8f1760daa54b9b4b649",
+  "required_base": "ac2bc513",
+  "ancestor_exit": 0,
+  "mesh_commit": "3015cb0fda5328d1f8c793b528275e6205683208",
+  "mesh_rc": "3015cb0fda5328d1f8c793b528275e6205683208",
+  "controller_commit": "99c59ab853442e8c9fa175ed93c916594ee3ce95",
+  "protocol": 27,
+  "model": "gpt-5.6-luna",
+  "effort": "low",
+  "historical_reference": {
+    "attempt9_read_exit": 128,
+    "reason": "referenced taurhaus-trial checkout does not exist; reused versioned run9 controller descended from run4"
+  }
+}

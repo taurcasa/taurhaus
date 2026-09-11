@@ -1,0 +1,18 @@
+{
+  "argv": [
+    "/tmp/th-l4-run13-y3brga1b/home/.local/bin/mesh",
+    "send",
+    "beta",
+    "ACTION REQUIRED: Reply exactly L4_old_beta_da975a. No tools are needed for this marker.",
+    "--summary",
+    "L4 old marker",
+    "--claude-dir",
+    "/tmp/th-l4-run13-y3brga1b/claude",
+    "--team",
+    "l4-resume",
+    "--name",
+    "lead"
+  ],
+  "exit": 0,
+  "output": "[mesh] warning: actionable message missing required fields: task_id, first_step, deliverable, completion_signal\n{\"message_id\":\"4d257a85-5f7b-4c18-8f87-a14a89de4901\",\"sequence\":12,\"status\":\"accepted\",\"projection\":\"pending\",\"delivery_targets\":[{\"delivery_id\":\"cd3ada69-f164-4cad-820e-0688b318a22f\",\"legacy_acceptance\":\"unknown\",\"legacy_id\":\"2d7c2469-abf9-4d25-9537-dc15649ba4e0\",\"member_id\":\"beta@l4-resume\",\"read_audience\":[{\"member_id\":\"2f728aad-f432-44b5-ae51-02b05b2571a5\",\"name\":\"lead\"},{\"member_id\":\"beta@l4-resume\",\"name\":\"beta\"}],\"recipient\":\"beta\",\"source_path\":\"inboxes/beta.json\"}]}\n"
+}

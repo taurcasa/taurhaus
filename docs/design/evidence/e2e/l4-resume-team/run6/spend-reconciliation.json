@@ -1,0 +1,10 @@
+{
+  "total_usd": null,
+  "cap_verified": false,
+  "unmetered_turns": [
+    "01a08d56-d5c7-7332-a3ef-765ba8611c34"
+  ],
+  "note": "Run 6 historical incomplete observation; field names corrected in run 7 review. Unknown total is never zero.",
+  "api_equivalent_subtotal_usd": 0.00621952,
+  "all_output_rate_subtotal_usd": 0.090996
+}

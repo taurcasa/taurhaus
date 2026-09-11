@@ -1,0 +1,62 @@
+{
+  "initialize_run_id": "init_e1e510f472fe4665ac911b7057d203d1",
+  "initialize_terminal_status": "completed",
+  "team_incarnation_id": "dbdd271ec1ce606eb3b657698c47546d55690ec52b35af65bf4556e0a2c40dce",
+  "identities": {
+    "lead": {
+      "session_id": null,
+      "paneId": "%2",
+      "attachmentGeneration": 1,
+      "contextGeneration": "0",
+      "appServer": null
+    },
+    "alpha": {
+      "session_id": null,
+      "paneId": "%3",
+      "attachmentGeneration": 1,
+      "contextGeneration": "0",
+      "appServer": null
+    },
+    "beta": {
+      "session_id": "01a08dd2-4077-75d2-8e6f-5c3307b683d3",
+      "paneId": "%4",
+      "attachmentGeneration": 1,
+      "contextGeneration": "0",
+      "appServer": {
+        "accountRoot": "/tmp/th-l4-run8-8x7tulna/codex",
+        "attachArgv": [
+          "codex",
+          "--remote",
+          "unix:///tmp/th-l4-run8-8x7tulna/tmp/th-host-a325eee4733c4901a8a8d9fd7e2fc316/rpc.sock",
+          "resume",
+          "01a08dd2-4077-75d2-8e6f-5c3307b683d3",
+          "--no-alt-screen",
+          "--strict-config"
+        ],
+        "build": "0.153.4",
+        "configuration": "strict-config/1",
+        "configurationDigest": "dcbb307909d6c66ff7806266864016527f43ac82a2f0c615fcb08207f4e93e3c",
+        "contract": 1,
+        "host": "taurhaus-daemon-owned-thread/1",
+        "hostGeneration": "87a026e4-9c0f-47ad-8a39-4007b786bb61",
+        "instructionSources": [
+          "/tmp/th-l4-run8-8x7tulna/project/AGENTS.md"
+        ],
+        "memberId": "beta@l4-resume",
+        "processId": 185,
+        "processStart": "30629664",
+        "socketPath": "/tmp/th-l4-run8-8x7tulna/tmp/th-host-a325eee4733c4901a8a8d9fd7e2fc316/rpc.sock",
+        "state": "ready",
+        "threadId": "01a08dd2-4077-75d2-8e6f-5c3307b683d3",
+        "transport": "unix-websocket",
+        "trust": "daemon-owned/1"
+      }
+    }
+  },
+  "classification": "harness",
+  "native_reason": "failed to migrate queue DB: while executing migration 1: error returned from database: (code: 1) table queued_items already exists",
+  "product_observation": "Production initialize completed even though alpha TUI had exited without a session identity. No product change was made.",
+  "step3_predicate": "offline-tested only: accepted recipient + pending projection + no transport/read receipt + stopped-member health refusal",
+  "step5_identity": "offline-tested only: alpha recorded resume command in mode resume; new rollout rebind and notify idle; beta recorded thread resume; advanced generations; one card and one backlog presentation each",
+  "runtime_coverage": "No baseline markers or explicit reads; no stop_session or resume_team RPC; steps 2\u20136 not executed."
+}

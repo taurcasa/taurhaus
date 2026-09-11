@@ -1,0 +1,71 @@
+{
+  "paid_inputs": 4,
+  "turn_ids": [
+    "01a08d3b-0271-7683-8d16-4e3776a9fbb1",
+    "01a08d3b-0e58-7c10-a2dc-e0f4f4dbf18e",
+    "01a08d3b-369b-7740-9f51-d7804f5609ff",
+    "01a08d3b-4d30-7ea2-b62c-cb3c75b09639"
+  ],
+  "turns": [
+    {
+      "turn_id": "01a08d3b-0271-7683-8d16-4e3776a9fbb1",
+      "thread_id": "01a08d3a-fc2e-7130-935c-8c71c9a96224",
+      "input": 10836,
+      "cached_input": 6912,
+      "output": 89,
+      "observer": "host",
+      "api_equivalent_usd": 0.00102984,
+      "conservative_usd": 0.01311
+    },
+    {
+      "turn_id": "01a08d3b-4d30-7ea2-b62c-cb3c75b09639",
+      "thread_id": "01a08d3a-fc2e-7130-935c-8c71c9a96224",
+      "input": 11969,
+      "cached_input": 6912,
+      "output": 14,
+      "observer": "host",
+      "api_equivalent_usd": 0.00116644,
+      "conservative_usd": 0.0143796
+    },
+    {
+      "turn_id": "01a08d3b-0e58-7c10-a2dc-e0f4f4dbf18e",
+      "session_id": "01a08d3a-f775-7763-992d-5da92c7bb7ca",
+      "observer": "rollout-cumulative",
+      "input": 20138,
+      "cached_input": 11776,
+      "output": 307,
+      "api_equivalent_usd": 0.00227632,
+      "conservative_usd": 0.024534
+    },
+    {
+      "turn_id": "01a08d3b-369b-7740-9f51-d7804f5609ff",
+      "session_id": "01a08d3a-f775-7763-992d-5da92c7bb7ca",
+      "observer": "rollout-cumulative",
+      "input": 23118,
+      "cached_input": 19968,
+      "output": 114,
+      "api_equivalent_usd": 0.00116616,
+      "conservative_usd": 0.0278784
+    }
+  ],
+  "unmetered": [],
+  "api_equivalent_usd": 0.00563876,
+  "conservative_usd": 0.079902,
+  "basis": "Prior trial packet Luna input/cached/output rates $0.20/$0.02/$1.20 per million; conservative all tokens at $1.20/M, not an invoice.",
+  "seat_start_reservations": 2,
+  "inputs_plus_conservative_starts": 6,
+  "model": "gpt-5.6-luna",
+  "effort": "low",
+  "max_inputs": 16,
+  "max_usd": 0.25,
+  "completed_turn_ids": [
+    "01a08d3b-0271-7683-8d16-4e3776a9fbb1",
+    "01a08d3b-0e58-7c10-a2dc-e0f4f4dbf18e",
+    "01a08d3b-369b-7740-9f51-d7804f5609ff",
+    "01a08d3b-4d30-7ea2-b62c-cb3c75b09639"
+  ],
+  "attachment_generations": {
+    "alpha": 1,
+    "beta": 2
+  }
+}

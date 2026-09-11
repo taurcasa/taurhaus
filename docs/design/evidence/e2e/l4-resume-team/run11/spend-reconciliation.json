@@ -1,0 +1,8 @@
+{
+  "total_usd": 0.00463668,
+  "api_equivalent_subtotal_usd": 0.00463668,
+  "all_output_rate_subtotal_usd": 0.0792432,
+  "cap_verified": true,
+  "unmetered_turns": [],
+  "note": "Unknown total is never zero spend. API-equivalent rates are not an invoice."
+}

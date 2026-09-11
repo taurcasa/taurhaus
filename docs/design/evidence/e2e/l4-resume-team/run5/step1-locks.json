@@ -1,0 +1,44 @@
+[
+  {
+    "path": ".lock",
+    "inode": 1578608,
+    "holders": []
+  },
+  {
+    "path": "daemons/team.pid.lock",
+    "inode": 1580800,
+    "holders": []
+  },
+  {
+    "path": "state/terminal/lead.lock",
+    "inode": 1578831,
+    "holders": []
+  },
+  {
+    "path": "state/terminal/alpha.lock",
+    "inode": 1578795,
+    "holders": []
+  },
+  {
+    "path": "state/terminal/beta.lock",
+    "inode": 1580396,
+    "holders": []
+  },
+  {
+    "path": "state/delivery/owner.lock",
+    "inode": 1580782,
+    "holders": [
+      "37: FLOCK  ADVISORY  WRITE 1765931 08:30:1580782 0 EOF"
+    ]
+  },
+  {
+    "path": "state/delivery/handoff.lock",
+    "inode": 1580784,
+    "holders": []
+  },
+  {
+    "path": "state/app-server/beta.lock",
+    "inode": 1578942,
+    "holders": []
+  }
+]

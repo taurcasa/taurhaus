@@ -1,0 +1,10 @@
+{
+  "command": "python3 docs/design/evidence/e2e/l4-resume-team/run11/controller.py",
+  "exit_code": 1,
+  "teardown_before_gates": {
+    "survivors": [],
+    "port_closed": true,
+    "root_removed": true,
+    "mesh_source_unchanged": true
+  }
+}

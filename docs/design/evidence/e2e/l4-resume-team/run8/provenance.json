@@ -1,0 +1,48 @@
+{
+  "run": 8,
+  "taurhaus_base": "106f06c7998efd5602780b27ddeb4a3244bb4e36",
+  "controller_commit": "4a4c65d8561479af85bb88616a7626f544113cc3",
+  "branch": "feat/e2e-l4-resume-team",
+  "mesh_commit": "f8ff76e11e75f8cf1c3b1124dadcdfe50e0789dc",
+  "mesh_descriptor": "shipped 0.153.4 app_server enabled; no edit",
+  "protocol": 27,
+  "runtime_model": "gpt-5.6-luna",
+  "effort": "low",
+  "codex_version_required": "0.153.4",
+  "fresh_budget": {
+    "inputs": 16,
+    "usd": 0.25,
+    "runtime_seconds": 900
+  },
+  "prior_runs": "1\u20137 are historical; no paid retry in run8",
+  "attempt9_reference": {
+    "exit": 128,
+    "reason": "specified reference worktree unavailable; reuse run7 private layout as directed"
+  },
+  "review": "Independent Opus evidence lens belongs to the orchestrator; no callable Opus/Workflow tool in this implementer lane.",
+  "tdd": {
+    "red_exit": 1,
+    "red_failures": 1,
+    "red_errors": 1,
+    "baseline_functions": {
+      "rollout_usage": "95d31ae3",
+      "clean": "5f102e6c"
+    },
+    "baseline_method": "Only these historical faulty functions were temporarily restored into the copied run7 controller before the offline red; final functions reuse the committed run7 fixes.",
+    "identity_red_exit": 1,
+    "green_exit": 0,
+    "green_tests": 30,
+    "preflight_exit": 0,
+    "preflight_tests": 6
+  },
+  "executed_files_sha256": {
+    "build.py": "bbdf997ca5209b82e046f2cd07d343de5dc5815ef1e62a928bd5dc7bb7dba645",
+    "test_run8.py": "ebcd3f5bf3cd6bf3c011a0c58d4ecba0800e32d614ac64920a738d6ac0915cd0",
+    "controller.py": "7080c2d020c9bf03ad5cadcf868cac4a9f69215044840a1bfb7f272a865adfc7",
+    "audit.py": "74460bc75dbe60f3149a18fbf56347341fb78574276978092b3a5b7b3a9d2329",
+    "test_support.py": "53da364792268176851b36c1edcff82b1336a425f8c36d8b8c2deadb31a359fa",
+    "support.py": "7b2e24505106ac32f3f965d6acde408b28f3312fd60cac80911ea9ff0d625af8",
+    "gates.py": "4fa128fbe1b1df1ed549d56282605c7a254d11dfba35ee100c0041f363a8099b"
+  },
+  "inherited_preflight_sha256": "11bd5a0fc3f25f1f8456b4da4a40c206673ab432cfc360d117bbefb4b0af0228"
+}

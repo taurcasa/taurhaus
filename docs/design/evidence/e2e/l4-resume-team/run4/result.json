@@ -1,0 +1,145 @@
+{
+  "verdict": "FAIL",
+  "classification": "taurhaus",
+  "steps": [
+    {
+      "step": 1,
+      "outcome": "PASS",
+      "classification": "runtime",
+      "at": 1789057025.9777834
+    },
+    {
+      "step": 2,
+      "outcome": "FAIL",
+      "classification": "taurhaus",
+      "reason": "supported stop_session left a recorded pane or Codex/app-server process alive"
+    },
+    {
+      "step": 3,
+      "outcome": "NOT RUN",
+      "classification": "not evaluated",
+      "reason": "stop after step 2"
+    },
+    {
+      "step": 4,
+      "outcome": "NOT RUN",
+      "classification": "not evaluated",
+      "reason": "stop after step 2"
+    },
+    {
+      "step": 5,
+      "outcome": "NOT RUN",
+      "classification": "not evaluated",
+      "reason": "stop after step 2"
+    },
+    {
+      "step": 6,
+      "outcome": "NOT RUN",
+      "classification": "not evaluated",
+      "reason": "stop after step 2"
+    }
+  ],
+  "runtime_exit_code": 1,
+  "gate_runner_exit_code": 0,
+  "gates": {
+    "check-quick": 0,
+    "lint": 0,
+    "test-contracts": 0
+  },
+  "offline_tests": {
+    "red_exit_codes": [
+      1,
+      1
+    ],
+    "green_exit_code": 0,
+    "passed": 9
+  },
+  "spend": {
+    "paid_inputs": 4,
+    "turn_ids": [
+      "01a08c1b-66b5-7621-9309-69066ef18368",
+      "01a08c1b-728c-7f53-b104-c73267729c74",
+      "01a08c1b-9acc-7263-852d-b7af72589335",
+      "01a08c1b-b572-7c10-b7f1-c1c4dba776cd"
+    ],
+    "turns": [
+      {
+        "turn_id": "01a08c1b-728c-7f53-b104-c73267729c74",
+        "session_id": "01a08c1b-57dc-7262-9bdf-781c0333c902",
+        "observer": "rollout-cumulative",
+        "input": 20128,
+        "cached_input": 11776,
+        "output": 202,
+        "api_equivalent_usd": 0.00214832,
+        "conservative_usd": 0.024396
+      },
+      {
+        "turn_id": "01a08c1b-9acc-7263-852d-b7af72589335",
+        "session_id": "01a08c1b-57dc-7262-9bdf-781c0333c902",
+        "observer": "rollout-cumulative",
+        "input": 22901,
+        "cached_input": 19968,
+        "output": 114,
+        "api_equivalent_usd": 0.00112276,
+        "conservative_usd": 0.027618
+      },
+      {
+        "turn_id": "01a08c1b-66b5-7621-9309-69066ef18368",
+        "thread_id": "01a08c1b-5e7c-7aa2-a6fa-7c4ce4902e51",
+        "input": 11203,
+        "cached_input": 6912,
+        "output": 52,
+        "observer": "host",
+        "api_equivalent_usd": 0.00105884,
+        "conservative_usd": 0.013506
+      },
+      {
+        "turn_id": "01a08c1b-b572-7c10-b7f1-c1c4dba776cd",
+        "thread_id": "01a08c1b-5e7c-7aa2-a6fa-7c4ce4902e51",
+        "input": 11362,
+        "cached_input": 6912,
+        "output": 23,
+        "observer": "host",
+        "api_equivalent_usd": 0.00105584,
+        "conservative_usd": 0.013662
+      }
+    ],
+    "unmetered": [],
+    "api_equivalent_usd": 0.00538576,
+    "conservative_usd": 0.079182,
+    "basis": "Prior trial packet Luna input/cached/output rates $0.20/$0.02/$1.20 per million; conservative all tokens at $1.20/M, not an invoice.",
+    "seat_start_reservations": 2,
+    "inputs_plus_conservative_starts": 6,
+    "model": "gpt-5.6-luna",
+    "effort": "low",
+    "max_inputs": 16,
+    "max_usd": 0.25,
+    "completed_turn_ids": [
+      "01a08c1b-66b5-7621-9309-69066ef18368",
+      "01a08c1b-728c-7f53-b104-c73267729c74",
+      "01a08c1b-9acc-7263-852d-b7af72589335",
+      "01a08c1b-b572-7c10-b7f1-c1c4dba776cd"
+    ],
+    "attachment_generations": {
+      "alpha": 1,
+      "beta": 1
+    }
+  },
+  "cleanup": {
+    "mesh_trial_binary_removed": true,
+    "survivors": [],
+    "port_closed": true,
+    "root_removed": true,
+    "auth_removed": true,
+    "mesh_descriptor_restore_exit": 0,
+    "scratch_resource_removed": true
+  },
+  "audit_exit_code": 0,
+  "rust_diff": false,
+  "deviations": [
+    "Stopped after step 2 failure; steps 3-6 not run and zero resume_team calls.",
+    "Bounded run-3 controller fixes: busy-read observation and cumulative per-turn metering, offline red-first.",
+    "Independent Opus evidence review remains with the orchestrator; no Opus tool callable in implementer session."
+  ],
+  "commit_notes": "Step 1 committed before step 2. No passing step-2 commit. No product changes."
+}

@@ -1,0 +1,17 @@
+{
+  "step": 2,
+  "outcome": "FAIL",
+  "classification": "harness",
+  "raw_classification": "taurhaus",
+  "reason": "Literal run11 health predicate requires sessionDead, but ac2bc513 HealthState serializes snake_case and the actual converged record is session_dead. All stops completed before judgment; the full 100-second poll ran. Session, ready rollout path and pane binding retained; daemon_pid cleared; no seat panes or processes survive.",
+  "source": [
+    "step2-alpha-runtime-record.json",
+    "step2-observed-convergence.json",
+    "step2-stop-poll.json",
+    "events.jsonl",
+    "src-tauri/src/coordination/domain.rs:92",
+    "src-tauri/src/coordination/domain.rs:201"
+  ],
+  "no_product_change": true,
+  "no_paid_retry": true
+}

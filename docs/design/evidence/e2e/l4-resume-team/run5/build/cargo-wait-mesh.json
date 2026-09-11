@@ -1,0 +1,8 @@
+[
+  {
+    "at": 1789075630.33651,
+    "exit": 0,
+    "count": 1,
+    "output": "1726803 <operator-path-redacted> test --lib --bins -- --test-threads=1 --skip daemon::server::tests:: --skip daemon::event_listener::tests:: --skip provider::daemon_client::tests:: --skip daemon::launcher::tests:: --skip daemon::watch::tests:: --skip fs::watcher::tests::watcher_starts_and_stops --skip fs::watcher::tests::unwatch_all_clears_everything --skip fs::watcher::tests::shared_tree_reconcile_stays_live_during_continued_callback_events\n"
+  }
+]

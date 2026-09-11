@@ -1,0 +1,44 @@
+{
+  "run": 9,
+  "taurhaus_base": "106f06c7998efd5602780b27ddeb4a3244bb4e36",
+  "controller_commit": "d02f90d06070af8d3275e9be9ee9ccb37eba4cee",
+  "branch": "feat/e2e-l4-resume-team",
+  "mesh_commit": "1f7447fec04d6c7b6407488b7b5069a05b5be891",
+  "mesh_descriptor": "shipped 0.153.4 app_server enabled; no edit",
+  "protocol": 27,
+  "runtime_model": "gpt-5.6-luna",
+  "effort": "low",
+  "codex_version_required": "0.153.4",
+  "fresh_budget": {
+    "inputs_including_warmup": 16,
+    "metered_usd": 0.25,
+    "runtime_seconds": 900
+  },
+  "prior_runs": "1\u20138 historical; run9 executes once",
+  "attempt9_reference": {
+    "exit": 128,
+    "reason": "specified reference checkout absent; reuse run8 private layout"
+  },
+  "review": "Independent Opus evidence lens remains with calling orchestrator",
+  "tdd": {
+    "warmup_red_exit": 1,
+    "warmup_red_failures": 2,
+    "warmup_red_errors": 4,
+    "historical_generation_replay_exit": 1,
+    "green_exit": 0,
+    "green_tests": 38,
+    "preflight_exit": 0,
+    "preflight_tests": 6
+  },
+  "executed_files_sha256": {
+    "build.py": "a065641682c10ac7bfaf2d2551cf9a3bec3d5e2f33d218672d1c759e3fec7598",
+    "test_run8.py": "2fe33c1433478685572324d21d3bae5aeb8f26bb85dac4648f75fc1f05431350",
+    "test_run9.py": "3fd755d20adb93e997312ffeb162b88b2228160f4bee461c1533d397b1361f3b",
+    "controller.py": "c4a0529ff691c04fed228492d7e375d60497d3a17706a16bc497cf631dc008d9",
+    "audit.py": "74460bc75dbe60f3149a18fbf56347341fb78574276978092b3a5b7b3a9d2329",
+    "test_support.py": "53da364792268176851b36c1edcff82b1336a425f8c36d8b8c2deadb31a359fa",
+    "support.py": "7ec81c6760f34d4ddaae26eb77b56f13b244e590c3db73a3cf2f6c89c1765acb",
+    "gates.py": "88c0c35119ce4bac8336b682aaf3860818686aa4ae4692f26ce8e2dde9d76474"
+  },
+  "inherited_preflight_sha256": "11bd5a0fc3f25f1f8456b4da4a40c206673ab432cfc360d117bbefb4b0af0228"
+}

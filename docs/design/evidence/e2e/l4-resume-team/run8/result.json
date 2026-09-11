@@ -1,0 +1,100 @@
+{
+  "verdict": "INCOMPLETE",
+  "controller_exit": 1,
+  "steps": [
+    {
+      "step": 1,
+      "outcome": "FAIL",
+      "classification": "harness",
+      "reason": "alpha attribution/idle missing",
+      "automated_observer_classification": "taurhaus",
+      "classification_basis": "Alpha native Codex 0.153.4 exited on a scratch SQLite queue migration error before it acquired a session identity. The observer initially classified the missing-attribution boundary as Taurhaus. Initialize reporting completed despite the exited TUI is a separate product observation.",
+      "native_reason": "failed to migrate queue DB: while executing migration 1: error returned from database: (code: 1) table queued_items already exists",
+      "evidence": "step1-observer-alpha-pane.json"
+    },
+    {
+      "step": 2,
+      "outcome": "NOT RUN",
+      "classification": "not evaluated",
+      "reason": "stop after step 1"
+    },
+    {
+      "step": 3,
+      "outcome": "NOT RUN",
+      "classification": "not evaluated",
+      "reason": "stop after step 1"
+    },
+    {
+      "step": 4,
+      "outcome": "NOT RUN",
+      "classification": "not evaluated",
+      "reason": "stop after step 1"
+    },
+    {
+      "step": 5,
+      "outcome": "NOT RUN",
+      "classification": "not evaluated",
+      "reason": "stop after step 1"
+    },
+    {
+      "step": 6,
+      "outcome": "NOT RUN",
+      "classification": "not evaluated",
+      "reason": "stop after step 1"
+    }
+  ],
+  "spend": {
+    "turns": [
+      {
+        "turn_id": "01a08dd2-46ba-7c01-8f1c-d4dc6cde0b2c",
+        "thread_id": "01a08dd2-4077-75d2-8e6f-5c3307b683d3",
+        "input": 11219,
+        "cached_input": 6912,
+        "output": 55,
+        "observer": "host",
+        "api_equivalent_usd": 0.00106564,
+        "conservative_usd": 0.0135288
+      }
+    ],
+    "observed_inputs": 1,
+    "seat_start_reservations": 2,
+    "count_including_reservations": 3,
+    "metered_usd": 0.00106564,
+    "all_output_rate_usd": 0.0135288,
+    "unmetered": [],
+    "claude_model_turns": 0,
+    "alpha_model_turns": 0,
+    "beta_model_turns": 1,
+    "caps_verified": {
+      "input_cap_verified": true,
+      "cost_cap_verified": true,
+      "runtime_cap_verified": true
+    },
+    "runtime_seconds": 113.427
+  },
+  "gates": {
+    "gate_exits": {
+      "check-quick": 0,
+      "lint": 0,
+      "test-contracts": 0
+    },
+    "rust_diff_exit": 0,
+    "test_rust_unit": "not applicable: no src-tauri diff",
+    "owned_gate_build_environment_survivors": []
+  },
+  "teardown": {
+    "survivors": [],
+    "port_closed": true,
+    "root_removed": true,
+    "auth_removed": true,
+    "mesh_source_unchanged": true
+  },
+  "deviations": [
+    "Stopped after native Codex SQLite migration failure at step1; steps2\u20136 not run.",
+    "Attempt9 reference checkout unavailable (exit128); reused run7 sandbox.",
+    "Run7 already contained final observer fixes; reproduced the faulty historical functions offline before restoring them.",
+    "Added one bounded read-only private alpha pane capture to classify startup failure.",
+    "Independent Opus evidence review remains with orchestrator; not available through this implementer tool surface."
+  ],
+  "product_changes": []
+}

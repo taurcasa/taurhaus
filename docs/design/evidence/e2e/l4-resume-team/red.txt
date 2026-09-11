@@ -1,0 +1,20 @@
+E
+======================================================================
+ERROR: test_preflight (unittest.loader._FailedTest.test_preflight)
+----------------------------------------------------------------------
+ImportError: Failed to import test module: test_preflight
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/unittest/loader.py", line 394, in _find_test_path
+    module = self._get_module_from_name(name)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/loader.py", line 337, in _get_module_from_name
+    __import__(name)
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/test_preflight.py", line 6, in <module>
+    from preflight import PrerequisiteError, validate_auth_source
+ModuleNotFoundError: No module named 'preflight'
+
+
+----------------------------------------------------------------------
+Ran 1 test in 0.000s
+
+FAILED (errors=1)

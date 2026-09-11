@@ -1,0 +1,6 @@
+{
+  "step": 1,
+  "outcome": "FAIL",
+  "classification": "taurhaus",
+  "reason": "alpha attribution/idle missing"
+}

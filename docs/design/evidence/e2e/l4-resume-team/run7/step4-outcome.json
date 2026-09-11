@@ -1,0 +1,23 @@
+{
+  "step": 4,
+  "outcome": "FAIL",
+  "classification": "harness",
+  "reason": "'NoneType' object has no attribute 'startswith'",
+  "original_controller_classification": "taurhaus",
+  "classification_correction": "controller-error.json locates the exception in clean(), not a product RPC refusal.",
+  "observations": [
+    {
+      "criterion": "single resume_team RPC succeeds",
+      "outcome": "PASS",
+      "classification": "runtime",
+      "evidence": "step4-operation.json"
+    },
+    {
+      "criterion": "alpha retains session identity",
+      "outcome": "FAIL",
+      "classification": "taurhaus",
+      "evidence": "runtime-analysis.json",
+      "source": "src-tauri/src/coordination/pipelines/members.rs:617-660"
+    }
+  ]
+}

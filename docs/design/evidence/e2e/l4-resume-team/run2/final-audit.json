@@ -1,0 +1,11 @@
+{
+  "owned_runtime_survivors": [],
+  "private_port_closed": true,
+  "scratch_root_removed": true,
+  "auth_copy_removed": true,
+  "mesh_status_exit": 0,
+  "mesh_status": "",
+  "resource_removed": true,
+  "disallowed_operator_home_paths": [],
+  "runtime_observation_seconds": 1.782
+}

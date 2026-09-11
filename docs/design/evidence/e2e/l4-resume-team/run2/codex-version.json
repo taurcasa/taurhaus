@@ -1,0 +1,29 @@
+{
+  "argv": [
+    "bwrap",
+    "--die-with-parent",
+    "--unshare-pid",
+    "--ro-bind",
+    "/",
+    "/",
+    "--tmpfs",
+    "/home",
+    "--tmpfs",
+    "/tmp",
+    "--tmpfs",
+    "/run",
+    "--proc",
+    "/proc",
+    "--dev",
+    "/dev",
+    "--bind",
+    "/tmp/th-l4-run2-4kzjugim",
+    "/tmp/th-l4-run2-4kzjugim",
+    "--chdir",
+    "/tmp/th-l4-run2-4kzjugim/project",
+    "/tmp/th-l4-run2-4kzjugim<operator-path-redacted>",
+    "--version"
+  ],
+  "exit": 0,
+  "output": "codex-cli 0.153.4\n"
+}

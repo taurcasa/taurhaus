@@ -1,0 +1,14 @@
+{
+  "argv": [
+    "git",
+    "-c",
+    "user.name=L4",
+    "-c",
+    "user.email=l4@example.invalid",
+    "commit",
+    "-qm",
+    "L4 instructions"
+  ],
+  "exit": 0,
+  "output": ""
+}

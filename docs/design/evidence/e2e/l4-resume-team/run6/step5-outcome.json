@@ -1,0 +1,16 @@
+{
+  "step": 5,
+  "outcome": "FAIL",
+  "classification": "harness",
+  "reason": "unmetered reset token counter",
+  "observations": [
+    {
+      "classification": "taurhaus",
+      "criterion": "step-5 session identity preserved",
+      "outcome": "FAIL",
+      "reason": "Alpha whole-team resume launched fresh with a new session id; beta used its recorded thread.",
+      "source": "src-tauri/src/coordination/pipelines/members.rs:617-660",
+      "evidence": "runtime-analysis.json"
+    }
+  ]
+}

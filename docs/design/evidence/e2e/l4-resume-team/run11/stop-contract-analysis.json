@@ -1,0 +1,55 @@
+{
+  "poll_first_pending_at": 1789103781.7799225,
+  "failure_at": 1789103882.0412562,
+  "poll_elapsed_seconds": 100.26133370399475,
+  "supported_stop_calls": [
+    {
+      "at": 1789103781.151895,
+      "step": 2,
+      "kind": "rpc_request",
+      "request": {
+        "id": "dbfe21125db6866d",
+        "method": "stop_session",
+        "params": {
+          "tmux_pane": "%4",
+          "cli_tool": "codex"
+        }
+      }
+    },
+    {
+      "at": 1789103781.2071629,
+      "step": 2,
+      "kind": "rpc_request",
+      "request": {
+        "id": "5d2c55e85070c8a4",
+        "method": "stop_session",
+        "params": {
+          "tmux_pane": "%5",
+          "cli_tool": "codex"
+        }
+      }
+    },
+    {
+      "at": 1789103781.5210078,
+      "step": 2,
+      "kind": "rpc_request",
+      "request": {
+        "id": "2bb5a92cd7183006",
+        "method": "stop_session",
+        "params": {
+          "tmux_pane": "%3",
+          "cli_tool": "claude"
+        }
+      }
+    }
+  ],
+  "resume_team_calls": 0,
+  "wire_contract": {
+    "source": "src-tauri/src/coordination/domain.rs",
+    "serializer": "#[serde(rename_all = \"snake_case\")]",
+    "test": "health_state_serializes_as_snake_case",
+    "expected": "session_dead",
+    "ruling_expected": "sessionDead"
+  },
+  "outcome_files_unchanged": true
+}

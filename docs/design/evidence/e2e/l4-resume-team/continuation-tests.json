@@ -1,0 +1,16 @@
+{
+  "red_exit": 1,
+  "red": "ImportError: cannot import name auth_source from preflight",
+  "green_exit": 0,
+  "tests": 5,
+  "command": "python3 -B -m unittest discover -s docs/design/evidence/e2e/l4-resume-team -p 'test_*.py'",
+  "authorization": "User continuation explicitly authorizes read-only CODEX_HOME/auth.json fallback copy, no logging, chmod 0600, delete scratch copy on teardown.",
+  "review_fix": {
+    "red_exit": 1,
+    "red": "ImportError: cannot import name require_resume_success",
+    "green_exit": 0,
+    "tests": 6,
+    "regression_commit": "4f946ee5",
+    "scope": "Resume report refusal guard; runtime steps 2-6 remain NOT RUN."
+  }
+}

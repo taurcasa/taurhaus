@@ -1,0 +1,6 @@
+{
+  "step": 1,
+  "outcome": "FAIL",
+  "classification": "taurhaus",
+  "reason": "coordination.initialize_team failed: {'failed_step': 'launch_host', 'message': 'Conflict: app-server exited before transport readiness', 'retryable': True, 'steps': [{'message': 'configuration validated', 'status': 'succeeded', 'step': 'validate_configuration'}, {'message': 'team created', 'status': 'succeeded', 'step': 'create_team'}, {'message': 'lead added', 'status': 'succeeded', 'step': 'add_lead'}, {'message': 'Conflict: app-server exited before transport readiness', 'status': 'failed', 'step': 'launch_host'}], 'succeeded_steps': ['validate_configuration', 'create_team', 'add_lead'], 'team_name': 'l4-resume'}"
+}

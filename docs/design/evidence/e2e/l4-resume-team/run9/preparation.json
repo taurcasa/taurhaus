@@ -1,0 +1,11 @@
+{
+  "run": "run9",
+  "offline_red_exit": 1,
+  "offline_green_exit": 0,
+  "offline_tests": 38,
+  "inherited_controller": "run8/controller.py at ab0cda6d",
+  "attempt9_reference_exit": 128,
+  "attempt9_reference_reason": "Referenced taurhaus-trial checkout is absent; reuse run8 sandbox layout",
+  "review_route": "Independent Opus evidence lens owned by calling orchestrator; implementation does not self-approve",
+  "product_followup": "Run8 initialize reported completed although alpha exited at startup; record separately, no product fix or run9 step failure inferred"
+}

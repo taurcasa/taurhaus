@@ -1,0 +1,31 @@
+{
+  "total_usd": null,
+  "metered_subtotal_usd": 0,
+  "cap_verified": false,
+  "unmetered_turns": [
+    "01a08b54-01ed-7271-a64a-5a85bb7f2b2f"
+  ],
+  "note": "Unknown total is never zero spend. Raw meter values are metered subtotals only.",
+  "alpha": {
+    "seat_start_attempts": 1,
+    "observed_turns": 0,
+    "observed_spend_usd": 0,
+    "note": "No paid input or usage record observed; no marker sent."
+  },
+  "beta": {
+    "seat_start_attempts": 1,
+    "observed_turns": 1,
+    "turn_id": "01a08b54-01ed-7271-a64a-5a85bb7f2b2f",
+    "spend_usd": null,
+    "note": "Hosted baseline onboarding submitted. No completion or token receipt retained; terminated at failure cleanup."
+  },
+  "lead": {
+    "model_turns": 0,
+    "spend_usd": 0,
+    "note": "Unauthenticated scratch Claude login screen only."
+  },
+  "controller_inputs": 0,
+  "codex_inputs_plus_conservative_start_reservations": 3,
+  "runtime_exit": 1,
+  "account_usage_rows_consulted": false
+}

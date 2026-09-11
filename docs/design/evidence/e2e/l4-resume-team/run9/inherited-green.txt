@@ -1,0 +1,10 @@
+test_failure_classification_respects_mesh_origin_and_cap_phrases (test_run8.ObserverRegressions.test_failure_classification_respects_mesh_origin_and_cap_phrases) ... ok
+test_hosted_resume_opens_meter_epoch (test_run8.ObserverRegressions.test_hosted_resume_opens_meter_epoch) ... ok
+test_null_snapshot_fields_remain_absent (test_run8.ObserverRegressions.test_null_snapshot_fields_remain_absent) ... ok
+test_recorded_resume_with_new_attributed_rollout (test_run8.ResumeIdentity.test_recorded_resume_with_new_attributed_rollout) ... ok
+test_step5_recovery_context_matches_string_runtime_generation (test_run8.ResumeIdentity.test_step5_recovery_context_matches_string_runtime_generation) ... ok
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.002s
+
+OK

@@ -1,0 +1,14 @@
+{
+  "runtime_processes_started": [],
+  "runtime_roots_created": [],
+  "survivors": [],
+  "daemon_started": false,
+  "app_server_started": false,
+  "tui_started": false,
+  "tmux_server_started": false,
+  "codex_started": false,
+  "auth_copied": false,
+  "auth_copy_remaining": false,
+  "listeners_started": [],
+  "verification": "Controller stops before any subprocess/socket/root creation or auth read/copy."
+}

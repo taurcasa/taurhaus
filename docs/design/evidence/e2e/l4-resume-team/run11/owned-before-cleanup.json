@@ -1,0 +1,145 @@
+[
+  {
+    "pid": 2164962,
+    "start_ticks": "32424773",
+    "namespace_pids": [
+      "2164962"
+    ],
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-l4-run11-h2xwbfug",
+      "/tmp/th-l4-run11-h2xwbfug",
+      "--chdir",
+      "/tmp/th-l4-run11-h2xwbfug/project",
+      "/bin/bash",
+      "/tmp/th-l4-run11-h2xwbfug/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 2164963,
+    "start_ticks": "32424773",
+    "namespace_pids": [
+      "2164963",
+      "1"
+    ],
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-l4-run11-h2xwbfug",
+      "/tmp/th-l4-run11-h2xwbfug",
+      "--chdir",
+      "/tmp/th-l4-run11-h2xwbfug/project",
+      "/bin/bash",
+      "/tmp/th-l4-run11-h2xwbfug/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 2164964,
+    "start_ticks": "32424773",
+    "namespace_pids": [
+      "2164964",
+      "2"
+    ],
+    "argv": [
+      "/bin/bash",
+      "/tmp/th-l4-run11-h2xwbfug/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 2164965,
+    "start_ticks": "32424774",
+    "namespace_pids": [
+      "2164965",
+      "3"
+    ],
+    "argv": [
+      "tmux",
+      "-D",
+      "-f",
+      "/dev/null",
+      ""
+    ]
+  },
+  {
+    "pid": 2164971,
+    "start_ticks": "32424784",
+    "namespace_pids": [
+      "2164971",
+      "9"
+    ],
+    "argv": [
+      "/bin/bash",
+      ""
+    ]
+  },
+  {
+    "pid": 2164973,
+    "start_ticks": "32424785",
+    "namespace_pids": [
+      "2164973",
+      "11"
+    ],
+    "argv": [
+      "/tmp/th-l4-run11-h2xwbfug/home/.local/bin/taurhaus-daemon",
+      "--port",
+      "44881",
+      "--data-dir",
+      "/tmp/th-l4-run11-h2xwbfug/data",
+      ""
+    ]
+  },
+  {
+    "pid": 2170486,
+    "start_ticks": "32426060",
+    "namespace_pids": [
+      "2170486",
+      "4015"
+    ],
+    "argv": [
+      "/tmp/th-l4-run11-h2xwbfug/home/.local/bin/mesh",
+      "team-daemon",
+      "start",
+      "--team",
+      "l4-resume",
+      "--name",
+      "lead",
+      "--claude-dir",
+      "/tmp/th-l4-run11-h2xwbfug/claude",
+      ""
+    ]
+  }
+]

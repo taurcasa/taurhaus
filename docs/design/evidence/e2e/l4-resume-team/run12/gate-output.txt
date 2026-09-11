@@ -1,0 +1,3 @@
+{"command": ["just", "check-quick"], "cwd": "/home/mstie/projects/taurhaus-l4-resume-team", "exit_code": 0, "seconds": 20.94, "log_lines": 2724}
+{"command": ["just", "lint"], "cwd": "/home/mstie/projects/taurhaus-l4-resume-team", "exit_code": 0, "seconds": 6.53, "log_lines": 17}
+{"command": ["just", "test-contracts"], "cwd": "/home/mstie/projects/taurhaus-l4-resume-team", "exit_code": 0, "seconds": 5.51, "log_lines": 88}

@@ -1,0 +1,22 @@
+Offline historical observer replay; no runtime mutation.
+test_failure_classification_respects_mesh_origin_and_cap_phrases (test_run8.ObserverRegressions.test_failure_classification_respects_mesh_origin_and_cap_phrases) ... ok
+test_hosted_resume_opens_meter_epoch (test_run8.ObserverRegressions.test_hosted_resume_opens_meter_epoch) ... ok
+test_null_snapshot_fields_remain_absent (test_run8.ObserverRegressions.test_null_snapshot_fields_remain_absent) ... ok
+test_recorded_resume_with_new_attributed_rollout (test_run8.ResumeIdentity.test_recorded_resume_with_new_attributed_rollout) ... ok
+test_step5_recovery_context_matches_string_runtime_generation (test_run8.ResumeIdentity.test_step5_recovery_context_matches_string_runtime_generation) ... FAIL
+
+======================================================================
+FAIL: test_step5_recovery_context_matches_string_runtime_generation (test_run8.ResumeIdentity.test_step5_recovery_context_matches_string_runtime_generation)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run9/test_run8.py", line 93, in test_step5_recovery_context_matches_string_runtime_generation
+    lane.step5()
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run9/controller.py", line 406, in step5
+    assert self.record(member)['attachmentGeneration']>self.old[member]['attachmentGeneration'], member+' attachment not advanced'
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: lead attachment not advanced
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.002s
+
+FAILED (failures=1)

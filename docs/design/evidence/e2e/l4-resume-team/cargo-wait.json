@@ -1,0 +1,77 @@
+[
+  {
+    "at": 1789027121.746794,
+    "exit_code": 0,
+    "output": "2831906 <operator-path-redacted> build --release --bin taurhaus-daemon\n"
+  },
+  {
+    "at": 1789027402.0168972,
+    "exit_code": 0,
+    "output": "2885973 <operator-path-redacted> build --bin mesh\n"
+  },
+  {
+    "at": 1789027422.0433207,
+    "exit_code": 0,
+    "output": "2891420 <operator-path-redacted> build --release --bin taurhaus-daemon\n2891675 <operator-path-redacted> check --tests\n"
+  },
+  {
+    "at": 1789027492.1101751,
+    "exit_code": 0,
+    "output": "2891675 <operator-path-redacted> check --tests\n"
+  },
+  {
+    "at": 1789027602.2122545,
+    "exit_code": 0,
+    "output": "2927742 <operator-path-redacted> check --all-targets\n"
+  },
+  {
+    "at": 1789027642.250518,
+    "exit_code": 0,
+    "output": "2932627 <operator-path-redacted> test --test cli_renderers --test module_boundary_assertions --test harness_conformance -- --test-threads=1\n"
+  },
+  {
+    "at": 1789027782.379667,
+    "exit_code": 0,
+    "output": "2964640 <operator-path-redacted> build --bin mesh\n"
+  },
+  {
+    "at": 1789027802.4157414,
+    "exit_code": 0,
+    "output": "2968313 <operator-path-redacted> check --tests\n"
+  },
+  {
+    "at": 1789027852.4811418,
+    "exit_code": 0,
+    "output": "2997909 <operator-path-redacted> check --all-targets\n"
+  },
+  {
+    "at": 1789027862.5011356,
+    "exit_code": 0,
+    "output": "2998292 <operator-path-redacted> build --release --bin taurhaus-daemon\n"
+  },
+  {
+    "at": 1789027872.5114934,
+    "exit_code": 0,
+    "output": "2998292 <operator-path-redacted> build --release --bin taurhaus-daemon\n3004437 <operator-path-redacted> check --all-targets\n"
+  },
+  {
+    "at": 1789027902.5433793,
+    "exit_code": 0,
+    "output": "2998292 <operator-path-redacted> build --release --bin taurhaus-daemon\n"
+  },
+  {
+    "at": 1789027912.5735211,
+    "exit_code": 0,
+    "output": "2998292 <operator-path-redacted> build --release --bin taurhaus-daemon\n3010648 <operator-path-redacted> test --test cli_renderers --test module_boundary_assertions --test harness_conformance -- --test-threads=1\n"
+  },
+  {
+    "at": 1789027992.6593997,
+    "exit_code": 0,
+    "output": "3033401 <operator-path-redacted> check --tests\n"
+  },
+  {
+    "at": 1789028002.6732502,
+    "exit_code": 1,
+    "output": ""
+  }
+]

@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "tmux",
+    "new-window",
+    "-d",
+    "-t",
+    "taurhaus",
+    "/bin/bash -c '/tmp/th-l4-run7-b3xvm4ag/home/.local/bin/mesh send beta '\"'\"'ACTION REQUIRED: Reply exactly L4_pending_beta_650942. No tools are needed for this marker.'\"'\"' --summary '\"'\"'L4 pending marker'\"'\"' --claude-dir /tmp/th-l4-run7-b3xvm4ag/claude --team l4-resume --name lead >/tmp/th-l4-run7-b3xvm4ag/1c2457e0.out 2>&1; echo $? >/tmp/th-l4-run7-b3xvm4ag/1c2457e0.status'"
+  ],
+  "exit": 0,
+  "output": ""
+}

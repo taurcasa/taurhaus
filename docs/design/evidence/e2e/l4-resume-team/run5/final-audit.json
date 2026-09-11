@@ -1,0 +1,13 @@
+{
+  "owned_processes_rechecked": 7,
+  "survivors": [],
+  "scratch_root_removed": true,
+  "auth_removed": true,
+  "shipped_mesh_binary_retained": true,
+  "mesh_descriptor_diff_exit": 0,
+  "daemon_jsonl_rows": 344,
+  "privacy_violations": [],
+  "runtime_seconds": 201.199,
+  "executed_controller_and_support_commit": "36b43bdd2088884670a87ede1042885dccbfc774",
+  "gate_processes_excluded": "No gate is a trial seat; gate runner waits its own children."
+}

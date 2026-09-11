@@ -1,0 +1,62 @@
+[
+  {
+    "ts": "2026-09-10T08:39:37.265Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "coordination.step.started",
+    "run_id": "run_d470c58eb8db431b864fc1b7fd23d74f",
+    "message": "Coordination step lifecycle event",
+    "operation": "initialize_team",
+    "status": "running",
+    "step": "validate_configuration",
+    "team_name": "l4-resume"
+  },
+  {
+    "ts": "2026-09-10T08:39:37.265Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "coordination.step.completed",
+    "run_id": "run_d470c58eb8db431b864fc1b7fd23d74f",
+    "message": "Coordination step lifecycle event",
+    "operation": "initialize_team",
+    "status": "succeeded",
+    "step": "validate_configuration",
+    "team_name": "l4-resume"
+  },
+  {
+    "ts": "2026-09-10T08:39:38.045Z",
+    "level": "WARN",
+    "component": "backend",
+    "event": "coordination.step.failed",
+    "run_id": "run_d470c58eb8db431b864fc1b7fd23d74f",
+    "message": "Coordination step lifecycle event",
+    "operation": "initialize_team",
+    "status": "failed",
+    "step": "launch_host",
+    "team_name": "l4-resume"
+  },
+  {
+    "ts": "2026-09-10T08:39:37.573Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "coordination.step.started",
+    "run_id": "run_d470c58eb8db431b864fc1b7fd23d74f",
+    "message": "Coordination step lifecycle event",
+    "operation": "initialize_team",
+    "status": "running",
+    "step": "create_panes",
+    "team_name": "l4-resume"
+  },
+  {
+    "ts": "2026-09-10T08:39:37.573Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "coordination.step.completed",
+    "run_id": "run_d470c58eb8db431b864fc1b7fd23d74f",
+    "message": "Coordination step lifecycle event",
+    "operation": "initialize_team",
+    "status": "succeeded",
+    "step": "add_lead",
+    "team_name": "l4-resume"
+  }
+]

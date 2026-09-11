@@ -1,0 +1,16 @@
+{
+  "model_requested": "gpt-5.6-luna",
+  "effort_requested": "low",
+  "seat_starts": 0,
+  "paid_inputs": 0,
+  "turns": [],
+  "generations": [],
+  "seat_spend_usd": 0,
+  "codex_spend_usd": 0,
+  "claude_spend_usd": 0,
+  "max_codex_inputs": 16,
+  "max_seat_usd": 0.25,
+  "max_runtime_seconds": 900,
+  "basis": "No runtime launch or model input occurred; not inferred from reset counters.",
+  "implementer_reviewer_spend": "Separate orchestrator budget; not exposed to this controller."
+}

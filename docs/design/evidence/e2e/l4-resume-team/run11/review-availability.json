@@ -1,0 +1,6 @@
+{
+  "status": "unavailable",
+  "reason": "No independent Opus agent or Workflow execution tool is available in this implementer session; the callable collaboration models do not include Opus. No review model ran. Orchestrator review remains required; no lane PASS is claimed.",
+  "review_model_used": null,
+  "review_spend_usd": null
+}

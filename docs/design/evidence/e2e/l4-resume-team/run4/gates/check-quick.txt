@@ -1,0 +1,60 @@
+ ✓ src/lib/shell/navigation.test.js (18 tests) 15ms
+ ✓ src/lib/meshCache.test.js (5 tests) 27ms
+ ✓ src/lib/accountMenu.test.js (15 tests) 14ms
+ ✓ src/lib/mockData.test.js (13 tests) 9ms
+ ✓ e2e/helpers/clickUntil.test.js (7 tests) 10ms
+ ✓ src/lib/modelCatalog.test.js (21 tests) 8ms
+ ✓ src/lib/ipc/contracts.test.js (3 tests) 20ms
+ ✓ e2e/helpers/onboarding.test.js (4 tests) 7ms
+ ✓ src/lib/sidebarBridge.test.js (15 tests) 7ms
+ ✓ src/lib/ipc/templatePayloads.test.js (14 tests) 9ms
+ ✓ src/lib/themeTokens.test.js (5 tests) 10ms
+ ✓ src/lib/ipc/normalize.test.js (6 tests) 4ms
+ ✓ src/lib/shell/projectSelectionController.test.js (2 tests) 8ms
+ ✓ src/lib/SidebarAccounts.test.js (19 tests) 3422ms
+     ✓ ticks the account a fresh launch uses, and none on the history rows  367ms
+     ✓ pins from the Claude account submenu without launching, and clears it again  393ms
+     ✓ offers no usable account on a resume the team runtime would take over  365ms
+ ✓ src/lib/components/roleVersioning.test.js (4 tests) 4ms
+ ✓ src/lib/assetCache.test.js (11 tests) 5ms
+ ✓ src/lib/shell/sessionLifecycleController.test.js (6 tests) 6ms
+ ✓ src/lib/windowsNsisPayloadHash.test.js (4 tests) 5ms
+ ✓ src/lib/ipc/templateResponses.test.js (11 tests) 12ms
+ ✓ src/lib/pathUtils.test.js (13 tests) 5ms
+ ✓ src/lib/components/templateBrowserUtils.test.js (13 tests) 6ms
+ ✓ src/lib/shell/daemonStatusController.test.js (2 tests) 6ms
+ ✓ src/lib/meshDefaults.test.js (5 tests) 7ms
+ ✓ src/lib/fileClassifier.test.js (11 tests) 5ms
+ ✓ src/lib/daemonStatus.test.js (8 tests) 4ms
+ ✓ src/lib/toolLogos.test.js (7 tests) 6ms
+ ✓ src/lib/format.test.js (8 tests) 4ms
+ ✓ src/visual-host/query.test.js (6 tests) 4ms
+ ✓ src/app.css.test.js (2 tests) 3ms
+ ✓ src/lib/fileChange.test.js (12 tests) 3ms
+ ✓ src/lib/projectOptions.test.js (3 tests) 3ms
+ ✓ src/lib/batchRegistrationProgress.test.js (3 tests) 1ms
+ ✓ src/lib/shell/shortcuts.test.js (4 tests) 4ms
+ ✓ src/smoke.test.js (1 test) 1ms
+ ✓ src/lib/errorCopy.test.js (8 tests) 3ms
+ ✓ src/lib/ipc/system.test.js (2 tests) 2ms
+ ✓ e2e/helpers/meshTiming.test.js (2 tests) 2ms
+ ✓ src/lib/components/meshBuilderUtils.test.js (1 test) 2ms
+ ✓ src/lib/components/meshTabRuntime.warnings.test.js (2 tests) 1ms
+ ✓ src/lib/ipc/templates.test.js (1 test) 2ms
+ ✓ src/test/visual/ipcMockCoverage.test.js (2 tests) 2ms
+ ✓ src/visual-host/registry.test.js (4 tests) 3ms
+ ✓ scripts/workflow-procedures.test.mjs (226 tests) 8442ms
+     ✓ kills the whole detached group when its owner stops refreshing the lease  2224ms
+     ✓ leaves a run alone while its owner keeps the lease fresh  6031ms
+stderr | src/lib/components/MeshTab.test.js > MeshTab > suppresses skipped team folder discovery warnings from the inline availability banner
+[mesh] suppressed internal discovery warning: skipped team folder 'taureval-1773711699719' because config is missing or invalid
+
+ ✓ src/lib/components/MeshTab.test.js (75 tests) 7699ms
+     ✓ auto-collapses the resume progress tray after completion  5261ms
+
+ Test Files  150 passed (150)
+      Tests  2518 passed (2518)
+   Start at  18:23:03
+   Duration  11.95s (transform 46.74s, setup 0ms, import 100.00s, tests 52.98s, environment 48.73s)
+
+Quick check passed.

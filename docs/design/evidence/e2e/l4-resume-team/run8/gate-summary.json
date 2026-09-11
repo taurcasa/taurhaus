@@ -1,0 +1,10 @@
+{
+  "gate_exits": {
+    "check-quick": 0,
+    "lint": 0,
+    "test-contracts": 0
+  },
+  "rust_diff_exit": 0,
+  "test_rust_unit": "not applicable: no src-tauri diff",
+  "owned_gate_build_environment_survivors": []
+}

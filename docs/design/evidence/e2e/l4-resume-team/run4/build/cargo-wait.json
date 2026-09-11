@@ -1,0 +1,12 @@
+[
+  {
+    "at": 1789056579.1823728,
+    "exit": 0,
+    "output": "3095206 <operator-path-redacted> build --bin mesh\n"
+  },
+  {
+    "at": 1789056585.208867,
+    "exit": 1,
+    "output": ""
+  }
+]

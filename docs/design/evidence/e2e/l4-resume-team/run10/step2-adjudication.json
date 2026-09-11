@@ -1,0 +1,17 @@
+{
+  "outcome": "FAIL",
+  "classification": "harness",
+  "reason": "The new run10 guard requires the earlier step1 jsonl_path to be non-null and equal after stop. It was null in that snapshot; the post-stop record has a non-null path and the same recorded session_id. No path-loss claim is supported.",
+  "evidence": [
+    "step2-alpha-runtime-record.json",
+    "original-identities.json",
+    "step1-state.json",
+    "events.jsonl"
+  ],
+  "limitations": [
+    "Only alpha stop_session was invoked. Beta and lead were terminated by teardown, not the supported step2 operations.",
+    "The immediate record still reports healthy and retains panePid/paneStartTime. The guard aborted before the required >=60-second liveness observation; this is an unverified product observation, not a proven product failure.",
+    "Steps 3\u20136 were not run; the #181 full stop/resume contract remains unverified by run10."
+  ],
+  "raw_outcome_unchanged": true
+}

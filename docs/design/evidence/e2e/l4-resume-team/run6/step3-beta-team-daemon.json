@@ -1,0 +1,15 @@
+{
+  "argv": [
+    "/tmp/th-l4-run6-1y1sx1qi/home/.local/bin/mesh",
+    "team-daemon",
+    "status",
+    "--claude-dir",
+    "/tmp/th-l4-run6-1y1sx1qi/claude",
+    "--team",
+    "l4-resume",
+    "--name",
+    "lead"
+  ],
+  "exit": 0,
+  "output": "[mesh] team-daemon is running for team l4-resume (PID 2439)\n[mesh] delivery owner=team epoch=2 live=true\n[mesh] adapter lead: mode=tmux source=default diagnostic=none\n[mesh] adapter alpha: mode=tmux source=default diagnostic=none\n[mesh] adapter beta: mode=app_server source=config diagnostic=none\n[mesh] delivery lead: root=/tmp/th-l4-run6-1y1sx1qi/claude incarnation=5663698652764ea16f167254f8528fc7f9d4f56f5d190a1810b5a2fcac7d232b epoch=2 heartbeat=2026-09-10T22:00:23.696679265+00:00 pending_since=none pending_age_secs=unknown stuck=false failures=0 completed=1 error=none deferred=none stale=false\n[mesh] delivery alpha: root=/tmp/th-l4-run6-1y1sx1qi/claude incarnation=5663698652764ea16f167254f8528fc7f9d4f56f5d190a1810b5a2fcac7d232b epoch=2 heartbeat=2026-09-10T22:00:23.715759912+00:00 pending_since=none pending_age_secs=unknown stuck=false failures=0 completed=2 error=none deferred=IO error: delivery: pending: runtime session dead stale=false\n[mesh] delivery beta: root=/tmp/th-l4-run6-1y1sx1qi/claude incarnation=5663698652764ea16f167254f8528fc7f9d4f56f5d190a1810b5a2fcac7d232b epoch=2 heartbeat=2026-09-10T22:00:24.429784415+00:00 pending_since=none pending_age_secs=unknown stuck=false failures=0 completed=1 error=none deferred=IO error: delivery: pending: native_host_not_live stale=false\n"
+}

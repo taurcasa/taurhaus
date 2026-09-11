@@ -1,0 +1,15 @@
+{
+  "command": "python3 -B -m unittest discover -s docs/design/evidence/e2e/l4-resume-team/run4 -p test_support.py",
+  "red": {
+    "exit": 1,
+    "reason": "ImportError: cannot import name 'observe_host' from 'support'"
+  },
+  "meter_red": {
+    "exit": 1,
+    "reason": "ImportError: cannot import name 'rollout_usage' from 'support'"
+  },
+  "green": {
+    "exit": 0,
+    "tests": 9
+  }
+}

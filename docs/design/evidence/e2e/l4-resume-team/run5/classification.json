@@ -1,0 +1,24 @@
+{
+  "step": 3,
+  "controller_outcome": "FAIL",
+  "controller_classification": "taurhaus",
+  "audited_classification": "harness",
+  "reason": "alpha pending receipt missing while stopped",
+  "explanation": "The inherited assertion requires payload.stage=pending in journal rows. The RC defers a dead tmux session during runtime resolution before constructing delivery receipts, reporting health.last_defer_reason instead. A stopped team therefore need not produce the asserted journal receipt. This does not prove a Taurhaus defect or whole-team resume success.",
+  "evidence": [
+    "pending-alpha-send.json",
+    "final-state.json: files/state/delivery/health-alpha.json",
+    "step3-outcome.json",
+    "controller.py: step3"
+  ],
+  "mesh_source_at_310144d": [
+    "src/delivery/runtime.rs:171-172: dead session returns pending refusal",
+    "src/delivery/runtime.rs:337-347: resolve calls idle",
+    "src/delivery/scheduler.rs:443: canonical cycle resolves before delivery",
+    "src/delivery/scheduler.rs:268-272: pending refusal updates health.last_defer_reason"
+  ],
+  "observed_no_presentation": true,
+  "resume_team_rpc_count": 0,
+  "beta_pending_send_count": 0,
+  "runtime_retried": false
+}

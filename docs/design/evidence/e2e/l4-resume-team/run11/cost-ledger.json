@@ -1,0 +1,71 @@
+{
+  "paid_inputs": 4,
+  "turn_ids": [
+    "01a08ee4-49f7-7132-adc9-1a49081ca109",
+    "01a08ee4-5705-7472-9dd0-1421e532a219",
+    "01a08ee4-7825-7c90-afb0-eb4df8e74a58",
+    "01a08ee4-96e9-7493-a9e1-5f98401f256e"
+  ],
+  "turns": [
+    {
+      "turn_id": "01a08ee4-49f7-7132-adc9-1a49081ca109",
+      "thread_id": "01a08ee4-402f-7653-b69c-8aa92ba9874c",
+      "input": 11215,
+      "cached_input": 6912,
+      "output": 72,
+      "observer": "host",
+      "api_equivalent_usd": 0.00108524,
+      "conservative_usd": 0.0135444
+    },
+    {
+      "turn_id": "01a08ee4-96e9-7493-a9e1-5f98401f256e",
+      "thread_id": "01a08ee4-402f-7653-b69c-8aa92ba9874c",
+      "input": 11396,
+      "cached_input": 11008,
+      "output": 11,
+      "observer": "host",
+      "api_equivalent_usd": 0.00031096,
+      "conservative_usd": 0.0136884
+    },
+    {
+      "turn_id": "01a08ee4-5705-7472-9dd0-1421e532a219",
+      "session_id": "01a08ee4-401e-7371-9cc3-a51d32283603",
+      "observer": "rollout-cumulative",
+      "input": 20147,
+      "cached_input": 11776,
+      "output": 191,
+      "api_equivalent_usd": 0.00213892,
+      "conservative_usd": 0.0244056
+    },
+    {
+      "turn_id": "01a08ee4-7825-7c90-afb0-eb4df8e74a58",
+      "session_id": "01a08ee4-401e-7371-9cc3-a51d32283603",
+      "observer": "rollout-cumulative",
+      "input": 22909,
+      "cached_input": 19968,
+      "output": 95,
+      "api_equivalent_usd": 0.00110156,
+      "conservative_usd": 0.0276048
+    }
+  ],
+  "unmetered": [],
+  "api_equivalent_usd": 0.00463668,
+  "conservative_usd": 0.0792432,
+  "basis": "Prior trial packet Luna input/cached/output rates $0.20/$0.02/$1.20 per million; conservative all tokens at $1.20/M, not an invoice.",
+  "seat_start_reservations": 3,
+  "inputs_plus_conservative_starts": 7,
+  "model": "gpt-5.6-luna",
+  "effort": "low",
+  "max_inputs": 16,
+  "max_usd": 0.25,
+  "completed_turn_ids": [
+    "01a08ee4-49f7-7132-adc9-1a49081ca109",
+    "01a08ee4-5705-7472-9dd0-1421e532a219",
+    "01a08ee4-7825-7c90-afb0-eb4df8e74a58",
+    "01a08ee4-96e9-7493-a9e1-5f98401f256e"
+  ],
+  "attachment_generations": {
+    "alpha": 1,
+    "beta": 2
+  }
+}

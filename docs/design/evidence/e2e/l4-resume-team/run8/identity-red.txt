@@ -1,0 +1,16 @@
+test_hosted_resume_opens_meter_epoch (test_run8.ObserverRegressions.test_hosted_resume_opens_meter_epoch) ... ok
+test_null_snapshot_fields_remain_absent (test_run8.ObserverRegressions.test_null_snapshot_fields_remain_absent) ... ok
+test_recorded_resume_with_new_attributed_rollout (test_run8.ResumeIdentity.test_recorded_resume_with_new_attributed_rollout) ... ERROR
+
+======================================================================
+ERROR: test_recorded_resume_with_new_attributed_rollout (test_run8.ResumeIdentity.test_recorded_resume_with_new_attributed_rollout)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run8/test_run8.py", line 41, in test_recorded_resume_with_new_attributed_rollout
+    from support import require_alpha_resume
+ImportError: cannot import name 'require_alpha_resume' from 'support' (/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run8/support.py)
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.001s
+
+FAILED (errors=1)

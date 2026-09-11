@@ -1,0 +1,19 @@
+{
+  "checkout": "/home/mstie/projects/taurhaus-l4-resume-team",
+  "branch": "feat/e2e-l4-resume-team",
+  "source_head": "5f849523cbf13701558039400589f769402f455e",
+  "required_product_base": "6398bfa3",
+  "base_is_ancestor": true,
+  "mesh_commit": "fcb9647f46deef7c298df472f5550bf1c59e182f",
+  "protocol": 27,
+  "model": "gpt-5.6-luna",
+  "effort": "low",
+  "test_red_exit": 1,
+  "test_green_exit": 0,
+  "fresh_budget": {
+    "max_codex_inputs": 16,
+    "max_usd": 0.25,
+    "max_runtime_seconds": 900
+  },
+  "review": "Independent Opus lens unavailable in callable tools; orchestrator pending."
+}

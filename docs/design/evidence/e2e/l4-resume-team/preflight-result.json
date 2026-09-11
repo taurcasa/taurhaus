@@ -1,0 +1,49 @@
+{
+  "status": "unavailable",
+  "classification": "harness",
+  "boundary": "preflight before step 1",
+  "reason": "missing explicit disposable auth.json source; no fallback permitted",
+  "exit_code": 78,
+  "at": 1789027159.2235007,
+  "auth_source_environment_variable": "L4_DISPOSABLE_AUTH_JSON",
+  "auth_source_provided": false,
+  "real_harness_homes_accessed": false,
+  "steps": [
+    {
+      "step": 1,
+      "outcome": "NOT RUN",
+      "classification": "harness",
+      "reason": "prerequisite blocked before initialize"
+    },
+    {
+      "step": 2,
+      "outcome": "NOT RUN",
+      "classification": "harness",
+      "reason": "prerequisite blocked before initialize"
+    },
+    {
+      "step": 3,
+      "outcome": "NOT RUN",
+      "classification": "harness",
+      "reason": "prerequisite blocked before initialize"
+    },
+    {
+      "step": 4,
+      "outcome": "NOT RUN",
+      "classification": "harness",
+      "reason": "prerequisite blocked before initialize"
+    },
+    {
+      "step": 5,
+      "outcome": "NOT RUN",
+      "classification": "harness",
+      "reason": "prerequisite blocked before initialize"
+    },
+    {
+      "step": 6,
+      "outcome": "NOT RUN",
+      "classification": "harness",
+      "reason": "prerequisite blocked before initialize"
+    }
+  ]
+}

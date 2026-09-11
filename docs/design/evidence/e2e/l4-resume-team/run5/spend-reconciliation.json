@@ -1,0 +1,7 @@
+{
+  "total_usd": 0.079902,
+  "metered_subtotal_usd": 0.079902,
+  "cap_verified": true,
+  "unmetered_turns": [],
+  "note": "Unknown total is never zero spend. Raw meter values are metered subtotals only."
+}

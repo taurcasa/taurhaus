@@ -1,0 +1,809 @@
+{
+  "method": "coordination.resume_team",
+  "accepted": {
+    "run_id": "team-resume_4adb1fcec0784e92844f1f4d869b1bb1"
+  },
+  "status_samples": [
+    {
+      "outcome": {
+        "status": "running"
+      },
+      "run_id": "team-resume_4adb1fcec0784e92844f1f4d869b1bb1",
+      "steps": [
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": null,
+          "stage": "prepare_member",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": "member request and runtime state prepared",
+          "stage": "prepare_member",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": null,
+          "stage": "acquire_pane",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": "created pane %14",
+          "stage": "acquire_pane",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": null,
+          "stage": "launch_session",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "outcome": {
+        "status": "running"
+      },
+      "run_id": "team-resume_4adb1fcec0784e92844f1f4d869b1bb1",
+      "steps": [
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": null,
+          "stage": "prepare_member",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": "member request and runtime state prepared",
+          "stage": "prepare_member",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": null,
+          "stage": "acquire_pane",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": "created pane %14",
+          "stage": "acquire_pane",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": null,
+          "stage": "launch_session",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": "cli session launched",
+          "stage": "launch_session",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": null,
+          "stage": "capture_session_identity",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": "session identity unavailable",
+          "stage": "capture_session_identity",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": null,
+          "stage": "start_member_daemon",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": "not required for claude",
+          "stage": "start_member_daemon",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": null,
+          "stage": "commit_runtime",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": "runtime state updated",
+          "stage": "commit_runtime",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": null,
+          "stage": "deliver_onboarding",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": "onboarding delivered",
+          "stage": "deliver_onboarding",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": null,
+          "stage": "join_mesh",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": "mesh joined",
+          "stage": "join_mesh",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 2,
+          "member_name": "alpha",
+          "message": null,
+          "stage": "prepare_member",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 2,
+          "member_name": "alpha",
+          "message": "member request and runtime state prepared",
+          "stage": "prepare_member",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 2,
+          "member_name": "alpha",
+          "message": null,
+          "stage": "acquire_pane",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 2,
+          "member_name": "alpha",
+          "message": "created pane %15",
+          "stage": "acquire_pane",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 2,
+          "member_name": "alpha",
+          "message": null,
+          "stage": "launch_session",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "outcome": {
+        "status": "running"
+      },
+      "run_id": "team-resume_4adb1fcec0784e92844f1f4d869b1bb1",
+      "steps": [
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": null,
+          "stage": "prepare_member",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": "member request and runtime state prepared",
+          "stage": "prepare_member",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": null,
+          "stage": "acquire_pane",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": "created pane %14",
+          "stage": "acquire_pane",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": null,
+          "stage": "launch_session",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": "cli session launched",
+          "stage": "launch_session",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": null,
+          "stage": "capture_session_identity",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": "session identity unavailable",
+          "stage": "capture_session_identity",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": null,
+          "stage": "start_member_daemon",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": "not required for claude",
+          "stage": "start_member_daemon",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": null,
+          "stage": "commit_runtime",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": "runtime state updated",
+          "stage": "commit_runtime",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": null,
+          "stage": "deliver_onboarding",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": "onboarding delivered",
+          "stage": "deliver_onboarding",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": null,
+          "stage": "join_mesh",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": "mesh joined",
+          "stage": "join_mesh",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 2,
+          "member_name": "alpha",
+          "message": null,
+          "stage": "prepare_member",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 2,
+          "member_name": "alpha",
+          "message": "member request and runtime state prepared",
+          "stage": "prepare_member",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 2,
+          "member_name": "alpha",
+          "message": null,
+          "stage": "acquire_pane",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 2,
+          "member_name": "alpha",
+          "message": "created pane %15",
+          "stage": "acquire_pane",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 2,
+          "member_name": "alpha",
+          "message": null,
+          "stage": "launch_session",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 2,
+          "member_name": "alpha",
+          "message": "cli session launched",
+          "stage": "launch_session",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 2,
+          "member_name": "alpha",
+          "message": null,
+          "stage": "capture_session_identity",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 2,
+          "member_name": "alpha",
+          "message": "session identity captured",
+          "stage": "capture_session_identity",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 2,
+          "member_name": "alpha",
+          "message": null,
+          "stage": "join_mesh",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 2,
+          "member_name": "alpha",
+          "message": "mesh joined",
+          "stage": "join_mesh",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 2,
+          "member_name": "alpha",
+          "message": null,
+          "stage": "start_member_daemon",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 2,
+          "member_name": "alpha",
+          "message": "mesh daemon started",
+          "stage": "start_member_daemon",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 2,
+          "member_name": "alpha",
+          "message": null,
+          "stage": "commit_runtime",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 2,
+          "member_name": "alpha",
+          "message": "runtime state updated",
+          "stage": "commit_runtime",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 2,
+          "member_name": "alpha",
+          "message": null,
+          "stage": "deliver_onboarding",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 2,
+          "member_name": "alpha",
+          "message": "onboarding delivered",
+          "stage": "deliver_onboarding",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 3,
+          "member_name": "beta",
+          "message": null,
+          "stage": "prepare_member",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 3,
+          "member_name": "beta",
+          "message": "member request and runtime state prepared",
+          "stage": "prepare_member",
+          "status": "succeeded"
+        }
+      ]
+    },
+    {
+      "outcome": {
+        "report": {
+          "failed_members": [],
+          "resumed": true,
+          "resumed_members": [
+            "lead",
+            "alpha",
+            "beta"
+          ],
+          "started_team_daemon": true,
+          "team_daemon_warning": null,
+          "team_name": "l4-resume",
+          "total_members": 3,
+          "warnings": [
+            "lead: existing pane was not reusable for 'lead'; created a new pane",
+            "alpha: existing pane was not reusable for 'alpha'; created a new pane"
+          ]
+        },
+        "status": "completed"
+      },
+      "run_id": "team-resume_4adb1fcec0784e92844f1f4d869b1bb1",
+      "steps": [
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": null,
+          "stage": "prepare_member",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": "member request and runtime state prepared",
+          "stage": "prepare_member",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": null,
+          "stage": "acquire_pane",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": "created pane %14",
+          "stage": "acquire_pane",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": null,
+          "stage": "launch_session",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": "cli session launched",
+          "stage": "launch_session",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": null,
+          "stage": "capture_session_identity",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": "session identity unavailable",
+          "stage": "capture_session_identity",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": null,
+          "stage": "start_member_daemon",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": "not required for claude",
+          "stage": "start_member_daemon",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": null,
+          "stage": "commit_runtime",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": "runtime state updated",
+          "stage": "commit_runtime",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": null,
+          "stage": "deliver_onboarding",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": "onboarding delivered",
+          "stage": "deliver_onboarding",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": null,
+          "stage": "join_mesh",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 1,
+          "member_name": "lead",
+          "message": "mesh joined",
+          "stage": "join_mesh",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 2,
+          "member_name": "alpha",
+          "message": null,
+          "stage": "prepare_member",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 2,
+          "member_name": "alpha",
+          "message": "member request and runtime state prepared",
+          "stage": "prepare_member",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 2,
+          "member_name": "alpha",
+          "message": null,
+          "stage": "acquire_pane",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 2,
+          "member_name": "alpha",
+          "message": "created pane %15",
+          "stage": "acquire_pane",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 2,
+          "member_name": "alpha",
+          "message": null,
+          "stage": "launch_session",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 2,
+          "member_name": "alpha",
+          "message": "cli session launched",
+          "stage": "launch_session",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 2,
+          "member_name": "alpha",
+          "message": null,
+          "stage": "capture_session_identity",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 2,
+          "member_name": "alpha",
+          "message": "session identity captured",
+          "stage": "capture_session_identity",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 2,
+          "member_name": "alpha",
+          "message": null,
+          "stage": "join_mesh",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 2,
+          "member_name": "alpha",
+          "message": "mesh joined",
+          "stage": "join_mesh",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 2,
+          "member_name": "alpha",
+          "message": null,
+          "stage": "start_member_daemon",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 2,
+          "member_name": "alpha",
+          "message": "mesh daemon started",
+          "stage": "start_member_daemon",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 2,
+          "member_name": "alpha",
+          "message": null,
+          "stage": "commit_runtime",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 2,
+          "member_name": "alpha",
+          "message": "runtime state updated",
+          "stage": "commit_runtime",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 2,
+          "member_name": "alpha",
+          "message": null,
+          "stage": "deliver_onboarding",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 2,
+          "member_name": "alpha",
+          "message": "onboarding delivered",
+          "stage": "deliver_onboarding",
+          "status": "succeeded"
+        },
+        {
+          "member_count": 3,
+          "member_index": 3,
+          "member_name": "beta",
+          "message": null,
+          "stage": "prepare_member",
+          "status": "running"
+        },
+        {
+          "member_count": 3,
+          "member_index": 3,
+          "member_name": "beta",
+          "message": "member request and runtime state prepared",
+          "stage": "prepare_member",
+          "status": "succeeded"
+        }
+      ]
+    }
+  ]
+}

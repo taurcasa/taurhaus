@@ -1,0 +1,109 @@
+test_all_stops_precede_poll_and_both_captures_are_saved (test_run11.ReadyStop.test_all_stops_precede_poll_and_both_captures_are_saved) ... FAIL
+test_ready_path_and_retained_pane_handles_are_accepted (test_run11.ReadyStop.test_ready_path_and_retained_pane_handles_are_accepted) ... ERROR
+test_wrong_ready_identity_path_health_or_binding_rejected (test_run11.ReadyStop.test_wrong_ready_identity_path_health_or_binding_rejected) ... 
+  test_wrong_ready_identity_path_health_or_binding_rejected (test_run11.ReadyStop.test_wrong_ready_identity_path_health_or_binding_rejected) (change={'session_id': 'other'}) ... ERROR
+  test_wrong_ready_identity_path_health_or_binding_rejected (test_run11.ReadyStop.test_wrong_ready_identity_path_health_or_binding_rejected) (change={'jsonl_path': '/scratch/other.jsonl'}) ... ERROR
+  test_wrong_ready_identity_path_health_or_binding_rejected (test_run11.ReadyStop.test_wrong_ready_identity_path_health_or_binding_rejected) (change={'jsonl_path': None}) ... ERROR
+  test_wrong_ready_identity_path_health_or_binding_rejected (test_run11.ReadyStop.test_wrong_ready_identity_path_health_or_binding_rejected) (change={'paneId': None}) ... ERROR
+  test_wrong_ready_identity_path_health_or_binding_rejected (test_run11.ReadyStop.test_wrong_ready_identity_path_health_or_binding_rejected) (change={'panePid': None}) ... ERROR
+  test_wrong_ready_identity_path_health_or_binding_rejected (test_run11.ReadyStop.test_wrong_ready_identity_path_health_or_binding_rejected) (change={'paneStartTime': None}) ... ERROR
+  test_wrong_ready_identity_path_health_or_binding_rejected (test_run11.ReadyStop.test_wrong_ready_identity_path_health_or_binding_rejected) (change={'health': 'healthy'}) ... ERROR
+  test_wrong_ready_identity_path_health_or_binding_rejected (test_run11.ReadyStop.test_wrong_ready_identity_path_health_or_binding_rejected) (change={'health': 'session_dead'}) ... ERROR
+  test_wrong_ready_identity_path_health_or_binding_rejected (test_run11.ReadyStop.test_wrong_ready_identity_path_health_or_binding_rejected) (change={'daemon_pid': 9}) ... ERROR
+
+======================================================================
+ERROR: test_ready_path_and_retained_pane_handles_are_accepted (test_run11.ReadyStop.test_ready_path_and_retained_pane_handles_are_accepted)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run11/test_run11.py", line 17, in test_ready_path_and_retained_pane_handles_are_accepted
+    support.require_stopped_identity(self.old, self.dead, self.ready)
+TypeError: require_stopped_identity() takes 2 positional arguments but 3 were given
+
+======================================================================
+ERROR: test_wrong_ready_identity_path_health_or_binding_rejected (test_run11.ReadyStop.test_wrong_ready_identity_path_health_or_binding_rejected) (change={'session_id': 'other'})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run11/test_run11.py", line 25, in test_wrong_ready_identity_path_health_or_binding_rejected
+    support.require_stopped_identity(self.old, {**self.dead, **change}, self.ready)
+TypeError: require_stopped_identity() takes 2 positional arguments but 3 were given
+
+======================================================================
+ERROR: test_wrong_ready_identity_path_health_or_binding_rejected (test_run11.ReadyStop.test_wrong_ready_identity_path_health_or_binding_rejected) (change={'jsonl_path': '/scratch/other.jsonl'})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run11/test_run11.py", line 25, in test_wrong_ready_identity_path_health_or_binding_rejected
+    support.require_stopped_identity(self.old, {**self.dead, **change}, self.ready)
+TypeError: require_stopped_identity() takes 2 positional arguments but 3 were given
+
+======================================================================
+ERROR: test_wrong_ready_identity_path_health_or_binding_rejected (test_run11.ReadyStop.test_wrong_ready_identity_path_health_or_binding_rejected) (change={'jsonl_path': None})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run11/test_run11.py", line 25, in test_wrong_ready_identity_path_health_or_binding_rejected
+    support.require_stopped_identity(self.old, {**self.dead, **change}, self.ready)
+TypeError: require_stopped_identity() takes 2 positional arguments but 3 were given
+
+======================================================================
+ERROR: test_wrong_ready_identity_path_health_or_binding_rejected (test_run11.ReadyStop.test_wrong_ready_identity_path_health_or_binding_rejected) (change={'paneId': None})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run11/test_run11.py", line 25, in test_wrong_ready_identity_path_health_or_binding_rejected
+    support.require_stopped_identity(self.old, {**self.dead, **change}, self.ready)
+TypeError: require_stopped_identity() takes 2 positional arguments but 3 were given
+
+======================================================================
+ERROR: test_wrong_ready_identity_path_health_or_binding_rejected (test_run11.ReadyStop.test_wrong_ready_identity_path_health_or_binding_rejected) (change={'panePid': None})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run11/test_run11.py", line 25, in test_wrong_ready_identity_path_health_or_binding_rejected
+    support.require_stopped_identity(self.old, {**self.dead, **change}, self.ready)
+TypeError: require_stopped_identity() takes 2 positional arguments but 3 were given
+
+======================================================================
+ERROR: test_wrong_ready_identity_path_health_or_binding_rejected (test_run11.ReadyStop.test_wrong_ready_identity_path_health_or_binding_rejected) (change={'paneStartTime': None})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run11/test_run11.py", line 25, in test_wrong_ready_identity_path_health_or_binding_rejected
+    support.require_stopped_identity(self.old, {**self.dead, **change}, self.ready)
+TypeError: require_stopped_identity() takes 2 positional arguments but 3 were given
+
+======================================================================
+ERROR: test_wrong_ready_identity_path_health_or_binding_rejected (test_run11.ReadyStop.test_wrong_ready_identity_path_health_or_binding_rejected) (change={'health': 'healthy'})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run11/test_run11.py", line 25, in test_wrong_ready_identity_path_health_or_binding_rejected
+    support.require_stopped_identity(self.old, {**self.dead, **change}, self.ready)
+TypeError: require_stopped_identity() takes 2 positional arguments but 3 were given
+
+======================================================================
+ERROR: test_wrong_ready_identity_path_health_or_binding_rejected (test_run11.ReadyStop.test_wrong_ready_identity_path_health_or_binding_rejected) (change={'health': 'session_dead'})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run11/test_run11.py", line 25, in test_wrong_ready_identity_path_health_or_binding_rejected
+    support.require_stopped_identity(self.old, {**self.dead, **change}, self.ready)
+TypeError: require_stopped_identity() takes 2 positional arguments but 3 were given
+
+======================================================================
+ERROR: test_wrong_ready_identity_path_health_or_binding_rejected (test_run11.ReadyStop.test_wrong_ready_identity_path_health_or_binding_rejected) (change={'daemon_pid': 9})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run11/test_run11.py", line 25, in test_wrong_ready_identity_path_health_or_binding_rejected
+    support.require_stopped_identity(self.old, {**self.dead, **change}, self.ready)
+TypeError: require_stopped_identity() takes 2 positional arguments but 3 were given
+
+======================================================================
+FAIL: test_all_stops_precede_poll_and_both_captures_are_saved (test_run11.ReadyStop.test_all_stops_precede_poll_and_both_captures_are_saved)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run11/test_run11.py", line 52, in test_all_stops_precede_poll_and_both_captures_are_saved
+    lane.step2()
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run11/controller.py", line 379, in step2
+    self.wait(stopped,'supported stop_session did not settle panes/processes and retained alpha identity',timeout=100)
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run11/test_run11.py", line 48, in wait
+    self.assertTrue(test())
+AssertionError: False is not true
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.001s
+
+FAILED (failures=1, errors=10)

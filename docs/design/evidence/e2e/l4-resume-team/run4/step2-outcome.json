@@ -1,0 +1,6 @@
+{
+  "step": 2,
+  "outcome": "FAIL",
+  "classification": "taurhaus",
+  "reason": "supported stop_session left a recorded pane or Codex/app-server process alive"
+}

@@ -1,0 +1,10 @@
+{
+  "command": [
+    "python3",
+    "-B",
+    "docs/design/evidence/e2e/l4-resume-team/run9/controller.py"
+  ],
+  "exit_code": 1,
+  "started_at": 1789088692.1749885,
+  "ended_at": 1789088909.34579
+}

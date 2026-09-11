@@ -1,0 +1,29 @@
+{
+  "turns": [
+    {
+      "turn_id": "01a08dd2-46ba-7c01-8f1c-d4dc6cde0b2c",
+      "thread_id": "01a08dd2-4077-75d2-8e6f-5c3307b683d3",
+      "input": 11219,
+      "cached_input": 6912,
+      "output": 55,
+      "observer": "host",
+      "api_equivalent_usd": 0.00106564,
+      "conservative_usd": 0.0135288
+    }
+  ],
+  "observed_inputs": 1,
+  "seat_start_reservations": 2,
+  "count_including_reservations": 3,
+  "metered_usd": 0.00106564,
+  "all_output_rate_usd": 0.0135288,
+  "unmetered": [],
+  "claude_model_turns": 0,
+  "alpha_model_turns": 0,
+  "beta_model_turns": 1,
+  "caps_verified": {
+    "input_cap_verified": true,
+    "cost_cap_verified": true,
+    "runtime_cap_verified": true
+  },
+  "runtime_seconds": 113.427
+}

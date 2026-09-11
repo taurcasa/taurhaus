@@ -1,0 +1,8 @@
+[
+  {
+    "at": 1789105265.4091134,
+    "exit": 0,
+    "count": 1,
+    "output": "2407563 <operator-path-redacted> test --test delivery_adapter composer -- --test-threads=1\n"
+  }
+]

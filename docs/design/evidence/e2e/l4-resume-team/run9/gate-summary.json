@@ -1,0 +1,41 @@
+{
+  "after_teardown": true,
+  "commands": [
+    {
+      "command": [
+        "just",
+        "check-quick"
+      ],
+      "cwd": "/home/mstie/projects/taurhaus-l4-resume-team",
+      "exit_code": 0,
+      "seconds": 34.19,
+      "log_lines": 2735
+    },
+    {
+      "command": [
+        "just",
+        "lint"
+      ],
+      "cwd": "/home/mstie/projects/taurhaus-l4-resume-team",
+      "exit_code": 0,
+      "seconds": 38.37,
+      "log_lines": 18
+    },
+    {
+      "command": [
+        "just",
+        "test-contracts"
+      ],
+      "cwd": "/home/mstie/projects/taurhaus-l4-resume-team",
+      "exit_code": 0,
+      "seconds": 21.46,
+      "log_lines": 89
+    }
+  ],
+  "rust_diff": false,
+  "test_rust_unit": "NOT REQUIRED: no src-tauri diff",
+  "preflight_exit": 0,
+  "offline_tests_exit": 0,
+  "offline_tests_count": 38,
+  "gate_runner_exit": 0
+}

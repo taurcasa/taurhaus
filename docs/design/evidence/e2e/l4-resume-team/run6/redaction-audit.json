@@ -1,0 +1,9 @@
+{
+  "additional_redactions": [
+    "step1-read-beta-0.json",
+    "step1-read-alpha-0.json",
+    "step1-pane3.json",
+    "final-pane14.json"
+  ],
+  "reason": "Remove scratch signed-read receipt capabilities and wrapped continuation; message IDs, journal rows, metering and native replies unchanged."
+}

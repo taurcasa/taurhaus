@@ -1,0 +1,283 @@
+[
+  {
+    "pid": 3291517,
+    "start_ticks": "33119636",
+    "namespace_pids": [
+      "3291517"
+    ],
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-l4-run13-y3brga1b",
+      "/tmp/th-l4-run13-y3brga1b",
+      "--chdir",
+      "/tmp/th-l4-run13-y3brga1b/project",
+      "/bin/bash",
+      "/tmp/th-l4-run13-y3brga1b/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 3291518,
+    "start_ticks": "33119636",
+    "namespace_pids": [
+      "3291518",
+      "1"
+    ],
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-l4-run13-y3brga1b",
+      "/tmp/th-l4-run13-y3brga1b",
+      "--chdir",
+      "/tmp/th-l4-run13-y3brga1b/project",
+      "/bin/bash",
+      "/tmp/th-l4-run13-y3brga1b/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 3291519,
+    "start_ticks": "33119637",
+    "namespace_pids": [
+      "3291519",
+      "2"
+    ],
+    "argv": [
+      "/bin/bash",
+      "/tmp/th-l4-run13-y3brga1b/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 3291520,
+    "start_ticks": "33119637",
+    "namespace_pids": [
+      "3291520",
+      "3"
+    ],
+    "argv": [
+      "tmux",
+      "-D",
+      "-f",
+      "/dev/null",
+      ""
+    ]
+  },
+  {
+    "pid": 3291526,
+    "start_ticks": "33119647",
+    "namespace_pids": [
+      "3291526",
+      "9"
+    ],
+    "argv": [
+      "/bin/bash",
+      ""
+    ]
+  },
+  {
+    "pid": 3291528,
+    "start_ticks": "33119648",
+    "namespace_pids": [
+      "3291528",
+      "11"
+    ],
+    "argv": [
+      "/tmp/th-l4-run13-y3brga1b/home/.local/bin/taurhaus-daemon",
+      "--port",
+      "47959",
+      "--data-dir",
+      "/tmp/th-l4-run13-y3brga1b/data",
+      ""
+    ]
+  },
+  {
+    "pid": 3297694,
+    "start_ticks": "33120889",
+    "namespace_pids": [
+      "3297694",
+      "3846"
+    ],
+    "argv": [
+      "/tmp/th-l4-run13-y3brga1b/home/.local/bin/mesh",
+      "team-daemon",
+      "start",
+      "--team",
+      "l4-resume",
+      "--name",
+      "lead",
+      "--claude-dir",
+      "/tmp/th-l4-run13-y3brga1b/claude",
+      ""
+    ]
+  },
+  {
+    "pid": 3318708,
+    "start_ticks": "33131474",
+    "namespace_pids": [
+      "3318708",
+      "7550"
+    ],
+    "argv": [
+      "-bash",
+      ""
+    ]
+  },
+  {
+    "pid": 3319107,
+    "start_ticks": "33131511",
+    "namespace_pids": [
+      "3319107",
+      "7565"
+    ],
+    "argv": [
+      "claude",
+      "--dangerously-skip-permissions",
+      "--model",
+      "claude-haiku-4-5",
+      "--team-name",
+      "l4-resume",
+      "--agent-name",
+      "lead",
+      "--agent-id",
+      "lead@l4-resume",
+      "--agent-type",
+      "orchestrator",
+      "-n",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 3319881,
+    "start_ticks": "33131630",
+    "namespace_pids": [
+      "3319881",
+      "7600"
+    ],
+    "argv": [
+      "-bash",
+      ""
+    ]
+  },
+  {
+    "pid": 3319897,
+    "start_ticks": "33131667",
+    "namespace_pids": [
+      "3319897",
+      "7616"
+    ],
+    "argv": [
+      "codex",
+      "--sandbox",
+      "danger-full-access",
+      "--ask-for-approval",
+      "never",
+      "resume",
+      "01a08f4e-46a0-7212-ac96-f37e4659e3ab",
+      "-c",
+      "notify=[\"/tmp/th-l4-run13-y3brga1b/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]",
+      "-m",
+      "gpt-5.6-luna",
+      "-c",
+      "model_reasoning_effort=\"low\"",
+      ""
+    ]
+  },
+  {
+    "pid": 3320571,
+    "start_ticks": "33131789",
+    "namespace_pids": [
+      "3320571",
+      "8108"
+    ],
+    "argv": [
+      "codex",
+      "-c",
+      "sandbox_mode=\"danger-full-access\"",
+      "-c",
+      "approval_policy=\"never\"",
+      "-c",
+      "model=\"gpt-5.6-luna\"",
+      "-c",
+      "model_reasoning_effort=\"low\"",
+      "app-server",
+      "--listen",
+      "unix:///tmp/th-l4-run13-y3brga1b/tmp/th-host-3911f3bee217487cb843ce5ccb38f567/rpc.sock",
+      ""
+    ]
+  },
+  {
+    "pid": 3321751,
+    "start_ticks": "33132113",
+    "namespace_pids": [
+      "3321751",
+      "8884"
+    ],
+    "argv": [
+      "-bash",
+      ""
+    ]
+  },
+  {
+    "pid": 3321869,
+    "start_ticks": "33132150",
+    "namespace_pids": [
+      "3321869",
+      "8970"
+    ],
+    "argv": [
+      "codex",
+      "--remote",
+      "unix:///tmp/th-l4-run13-y3brga1b/tmp/th-host-3911f3bee217487cb843ce5ccb38f567/rpc.sock",
+      "resume",
+      "01a08f4e-4698-7613-bf47-74bf5abf63b1",
+      "--no-alt-screen",
+      "--strict-config",
+      ""
+    ]
+  },
+  {
+    "pid": 3322150,
+    "start_ticks": "33132178",
+    "namespace_pids": [
+      "3322150",
+      "9179"
+    ],
+    "argv": [
+      "/tmp/th-l4-run13-y3brga1b/home/.local/bin/codex-code-mode-host",
+      ""
+    ]
+  }
+]

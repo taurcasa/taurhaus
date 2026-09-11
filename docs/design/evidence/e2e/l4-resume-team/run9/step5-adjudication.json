@@ -1,0 +1,14 @@
+{
+  "controller_outcome": "step5-outcome.json",
+  "classification": "taurhaus",
+  "reason": "alpha launch mode must be resume",
+  "evidence": [
+    "taurhaus.log.jsonl:382",
+    "step5-alpha-identity.json",
+    "step2-state.json: files.runtime/alpha.json.session_id",
+    "step3-state.json: files.runtime/alpha.json.session_id"
+  ],
+  "observed": "Alpha session identity became null while stopped; resume launched fresh without recorded ID despite PR #174 being present. Beta retains its recorded thread and mode resume.",
+  "source_inference": "coordination/orchestrator/liveness.rs clears session_id on SessionDead (lines 116 and 259); prepare_resume reads the retained field (members.rs:625). Consistent with runtime snapshots; the precise writer invocation was not separately traced.",
+  "not_evaluated": "Remaining step-5 recovery/no-replay assertions and all step-6 operations; no rerun or product fix."
+}

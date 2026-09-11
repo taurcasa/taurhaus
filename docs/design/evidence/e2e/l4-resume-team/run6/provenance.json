@@ -1,0 +1,36 @@
+{
+  "taurhaus_base": "a7e6db7e484290542ac35ead468f9809968bb4f0",
+  "taurhaus_head": "c008cc2ea7cc7ea5dcc58af13d7673fcaa959221",
+  "controller_commit": "c008cc2ea7cc7ea5dcc58af13d7673fcaa959221",
+  "branch": "feat/e2e-l4-resume-team",
+  "mesh_commit": "310144de1f7939e7fbb2d80ab42ebd00580ce15d",
+  "mesh_descriptor": "shipped enabled; unmodified",
+  "protocol": 27,
+  "runtime_model": "gpt-5.6-luna",
+  "effort": "low",
+  "codex_version_required": "0.153.4",
+  "fresh_budget": {
+    "inputs": 16,
+    "usd": 0.25,
+    "runtime_seconds": 900
+  },
+  "budget_basis": "Metered API-equivalent subtotal + $0.05 per prospective input headroom; all-output-rate total also retained. No billed-invoice claim.",
+  "attempt9_reference": {
+    "exit": 128,
+    "reason": "referenced worktree does not exist; run5 sandbox retained as explicitly directed"
+  },
+  "review": "independent Opus lens reserved for invoking orchestrator; no callable Opus/Workflow tool",
+  "executed_files_sha256": {
+    "controller.py": "7198f524433f36fc854ae104c7745a0b775f287e3669538b112c843ba48c49fc",
+    "support.py": "98d765765405f7e368aae0dfb8a2acef995612069cae070dcec0088804217603"
+  },
+  "tdd": {
+    "red_exit": 1,
+    "red_failures": 1,
+    "red_errors": 4,
+    "green_exit": 0,
+    "green_tests": 19,
+    "preflight_exit": 0,
+    "preflight_tests": 6
+  }
+}

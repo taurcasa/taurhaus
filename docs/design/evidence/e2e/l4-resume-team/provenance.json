@@ -1,0 +1,34 @@
+{
+  "taurhaus": {
+    "commit": "6f61f6117a75625ce4ec6d325879730f1800c473",
+    "protocol": 27,
+    "branch": "feat/e2e-l4-resume-team"
+  },
+  "mesh": {
+    "commit": "a6ee29681a44a472c0ce7b33b9630d4865c93012"
+  },
+  "trial_read_only": {
+    "commit": "7ef832ee1fe7b93b490d3051679702bdf905975e"
+  },
+  "hosted_class_source": "src-tauri/src/coordination/hosted.rs:200-204",
+  "hosted_class_identities": {
+    "host": "taurhaus-daemon-owned-thread/1",
+    "configuration": "strict-config/1",
+    "trust": "daemon-owned/1"
+  },
+  "references_read": [
+    "e2e-coverage-audit.md:Shared execution contract and section 4",
+    "messaging-e2e-brief.md",
+    "attempt8-continuation-controller.py",
+    "attempt8-continuation-actions.py",
+    "attempt8-continuation-steps.py",
+    "attempt8_continuation_support.py",
+    "attempt8_continuation_test.py",
+    "attempt8_passive.py",
+    "attempt5_support.py",
+    "attempt6_support.py",
+    "continuation_retention.py",
+    "continuation_retention_test.py"
+  ],
+  "codex_version": "NOT VERIFIED: no real CLI launched after missing-auth preflight"
+}

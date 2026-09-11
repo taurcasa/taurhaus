@@ -1,0 +1,18 @@
+{
+  "lead_health": "healthy",
+  "daemon_pid": {
+    "lead": {
+      "before": null,
+      "after": null
+    },
+    "alpha": {
+      "before": null,
+      "after": null
+    },
+    "beta": {
+      "before": null,
+      "after": null
+    }
+  },
+  "note": "Lead health and daemon_pid values are observations, never step failures."
+}

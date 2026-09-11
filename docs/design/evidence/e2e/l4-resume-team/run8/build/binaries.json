@@ -1,0 +1,10 @@
+{
+  "mesh": {
+    "path": "/home/mstie/projects/mesh-l4/target/debug/mesh",
+    "sha256": "0ffa693db2244d42e3ee7e972a4191db680cfc99563523aa5ba726bea9d435a3"
+  },
+  "daemon": {
+    "path": "/home/mstie/projects/taurhaus-l4-resume-team/src-tauri/target/release/taurhaus-daemon",
+    "sha256": "ca8bb707f58947d6b22a992969bb0daddc2ade70d32f6c88f33501450910518b"
+  }
+}

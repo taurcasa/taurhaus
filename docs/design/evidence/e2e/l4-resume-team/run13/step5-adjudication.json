@@ -1,0 +1,14 @@
+{
+  "step": 5,
+  "outcome": "FAIL",
+  "classification": "harness",
+  "raw_controller_classification": "taurhaus",
+  "raw_outcome_sha256": "a866816dd215df02ed6fb7fa174d81318c65a454c29b3a76470e7974d266b596",
+  "reason": "Inherited recovery-card predicate only inspects role=user content; the resumed alpha card with context [2,0] is in custom_tool_call_output ctco_01a08f50-10ad-7543-93ad-28111ea75440 at 2026-09-11T07:13:04.173Z. Tool-result delivery is explicitly valid under the shared contract. Raw outcome remains unchanged; no rerun; step 6 NOT RUN.",
+  "evidence": [
+    "controller.py:465",
+    "rollouts.json",
+    "step5-alpha-recovery.json",
+    "journal-export.json"
+  ]
+}

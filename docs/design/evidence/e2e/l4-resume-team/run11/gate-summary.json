@@ -1,0 +1,39 @@
+{
+  "after_teardown": true,
+  "runner_exit_code": 0,
+  "commands": [
+    {
+      "command": [
+        "just",
+        "check-quick"
+      ],
+      "cwd": "/home/mstie/projects/taurhaus-l4-resume-team",
+      "exit_code": 0,
+      "seconds": 18.27,
+      "log_lines": 2722
+    },
+    {
+      "command": [
+        "just",
+        "lint"
+      ],
+      "cwd": "/home/mstie/projects/taurhaus-l4-resume-team",
+      "exit_code": 0,
+      "seconds": 5.99,
+      "log_lines": 17
+    },
+    {
+      "command": [
+        "just",
+        "test-contracts"
+      ],
+      "cwd": "/home/mstie/projects/taurhaus-l4-resume-team",
+      "exit_code": 0,
+      "seconds": 5.37,
+      "log_lines": 88
+    }
+  ],
+  "rust_diff": [],
+  "test_rust_unit": "Not required: no src-tauri/ changes in run11.",
+  "cargo_admission": "Each command admitted with fewer than three Cargo processes; CARGO_BUILD_JOBS=1; checkout-local src-tauri/target."
+}
