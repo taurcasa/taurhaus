@@ -89,7 +89,22 @@ This does not retroactively prove run 3's unexported card or later steps.
 [Red](l7-ledger/card-delivery-red.txt),
 [green](l7-ledger/card-delivery-green.txt).
 
-Post-teardown gates for this continuation are pending. The independent Opus
+Post-teardown gates for this continuation all **PASS**: `just check-quick`
+**0** (2,521 frontend tests), `just lint` **0**, `just test-contracts` **0**.
+All **13 offline controller tests** passed separately. No `src-tauri/` diff exists,
+so `just test-rust-unit` is not required. Cargo admission was sampled before each
+gate, with checkout-local targets and one Cargo build job per command.
+[Gate exits and timings](l7-ledger/run3-checks-result.json),
+[Cargo admission](l7-ledger/gate-cargo-polls.jsonl),
+[public evidence check](l7-ledger/run3/public-evidence-check.json).
+
+Remaining deviations: the extra harness delivery check stopped this trial; its
+full native card row was not retained; total cost is unverified and the cumulative
+conservative estimate exceeds the cap; the independent Opus lens is unavailable.
+The requested artifact/snapshot PASS remains unestablished. The older missing
+controller-worktree/design-file and run-2 log-retention limitations are recorded
+below. All owned runtime processes are gone; no product or Mesh source changed.
+ The independent Opus
 evidence lens remains unavailable in this executor. Earlier deviations and
 historical results below remain part of the record; their “no further trial”
 statements describe the end of those earlier turns, before the next explicit

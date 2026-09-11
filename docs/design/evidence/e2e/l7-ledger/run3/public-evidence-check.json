@@ -1,0 +1,13 @@
+{
+  "files_scanned": 63,
+  "private_pattern_issues": [],
+  "pane_lines": {
+    "final-pane-2.txt": 60,
+    "step1-initial-pane-1.txt": 48,
+    "final-pane-1.txt": 48,
+    "step1-initial-pane-2.txt": 59,
+    "final-pane-0.txt": 48,
+    "step1-initial-pane-0.txt": 48
+  },
+  "note": "Pattern scan supports manual evidence shaping; not a general secret detector. Initial scan incorrectly counted pane-identity JSON as a pane text capture; corrected to text captures."
+}
