@@ -8,6 +8,18 @@ const OUTPUT_LIMIT: usize = 64 * 1024;
 const DEADLINE: Duration = Duration::from_secs(2);
 const SECTION: &str = "\n\n## Mesh pending messages (attributed data)\n";
 
+/// No drain descriptor is verified/enabled in the paired Mesh release. Keep
+/// reconciliation dormant until an enabled drain pin is admitted here; this
+/// does not change the protocol's hook registration facts.
+pub fn enabled() -> bool {
+    #[cfg(test)]
+    if crate::coordination::mesh_cli::test_mesh_installed() {
+        return crate::coordination::mesh_cli::mesh_binary_path()
+            .is_some_and(|path| Path::new(&path).with_extension("drain-enabled").is_file());
+    }
+    false
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub(super) struct Descriptor {
     pub id: String,
@@ -575,7 +587,7 @@ pub fn reconcile_home(
     bindings: &[Binding],
     exe: &Path,
 ) -> Result<bool, CoordinationError> {
-    if !matches!(tool, CliTool::Claude | CliTool::Codex) {
+    if !enabled() || !matches!(tool, CliTool::Claude | CliTool::Codex) {
         return Ok(false);
     }
     // Absence of capability evidence never grants teardown authority (notably on Windows).

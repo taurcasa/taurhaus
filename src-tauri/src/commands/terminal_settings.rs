@@ -822,6 +822,9 @@ fn reconcile_delivery_hook_homes(
     cli_commands: &crate::models::CliCommandSettings,
     exe: &std::path::Path,
 ) -> Result<bool, CoordinationError> {
+    if !crate::coordination::compact_hook::drain::enabled() {
+        return Ok(false);
+    }
     let Some(tool) = crate::session_scanner::cli_tool::all()
         .iter()
         .find(|entry| {
@@ -1084,7 +1087,9 @@ fn reconcile_account_switch_hooks_at(
                 context.taurhaus_exe,
             )?,
         };
-        if context.delivery == CompactionDelivery::HookStdout {
+        if context.delivery == CompactionDelivery::HookStdout
+            && crate::coordination::compact_hook::drain::enabled()
+        {
             let mut bindings = Vec::new();
             for team in crate::coordination::stores::TeamConfigStore::list(context.teams_dir)? {
                 let config =
@@ -1134,7 +1139,10 @@ fn reconcile_account_switch_hooks_at(
             previous_home,
             context.accounts,
         )?;
-        if context.delivery == CompactionDelivery::HookStdout && !keep_installed {
+        if context.delivery == CompactionDelivery::HookStdout
+            && !keep_installed
+            && crate::coordination::compact_hook::drain::enabled()
+        {
             changed |= crate::coordination::compact_hook::drain::reconcile_home(
                 previous_home,
                 context.cli_tool,

@@ -856,6 +856,9 @@ pub fn ensure_compact_hook_installed(
     };
 
     let compact_changed = ClaudeCompactionSignalSource.install(claude_dir, taurhaus_exe)?;
+    if !drain::enabled() {
+        return Ok(compact_changed);
+    }
     let bindings = TeamConfigStore::list(teams_dir)?
         .into_iter()
         .filter_map(|team| {
@@ -3680,6 +3683,11 @@ pub(crate) mod tests {
         use crate::coordination::mesh_cli::FakeMesh;
         let fake = FakeMesh::new("exit 99", "exit 99");
         let root = fake.dir.path();
+        fs::write(
+            root.join("mesh.drain-enabled"),
+            "fixture enabled descriptors",
+        )
+        .unwrap();
         let teams = root.join("teams");
         let mut member = sample_member(root);
         member.cli_tool = CliTool::Codex;
@@ -3887,6 +3895,46 @@ else: print(json.dumps({'protocol':protocol,'status':'recorded','text':'','deliv
     }
 
     #[cfg(unix)]
+    #[test]
+    fn disabled_drain_descriptors_skip_installer_and_account_home_probes() {
+        let (fake, _, teams) = hook_drain_fixture();
+        let root = fake.dir.path();
+        fs::remove_file(root.join("mesh.drain-enabled")).unwrap();
+        let mesh = root.join("mesh");
+        fs::write(
+            &mesh,
+            fs::read_to_string(&mesh)
+                .unwrap()
+                .replace("codex", "claude"),
+        )
+        .unwrap();
+        let config = teams.join("drain-team/config.json");
+        fs::write(
+            &config,
+            fs::read_to_string(&config)
+                .unwrap()
+                .replace("codex", "claude"),
+        )
+        .unwrap();
+        for _ in 0..2 {
+            ensure_compact_hook_installed(&teams, &mesh).unwrap();
+            drain::reconcile_home(
+                root,
+                CliTool::Claude,
+                &[(teams.clone(), "drain-team".into(), "architect".into())],
+                &mesh,
+            )
+            .unwrap();
+        }
+        assert!(
+            hook_drain_calls(&fake).is_empty(),
+            "disabled descriptors must never spawn capability probes"
+        );
+        assert!(!fs::read_to_string(root.join("settings.json"))
+            .unwrap()
+            .contains("taurhaus-delivery-drain"));
+    }
+
     #[test]
     fn hook_drain_claude_installer_is_gated_and_idempotent() {
         let (fake, _, teams) = hook_drain_fixture();
