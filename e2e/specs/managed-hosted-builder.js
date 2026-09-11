@@ -305,6 +305,18 @@ describe('canonical builder and hosted conversation (paid)', function () {
     await openMember('beta')
   }))
 
+  it('4. sends one marker in the same thread and clears the draft only after acceptance', () => step(4, async () => {
+    const marker = `L3-A-${process.pid}`
+    await sendPanel(`Reply with exactly ${marker}`, 'first panel marker')
+    await requireReply(marker)
+    const calls = await browser.execute(() => window.__l3.ipc.filter(r => r.command === 'coordination_hosted' && r.args.operation === 'input'))
+    assert.equal(calls.length, 1, 'harness: panel input was not single-shot')
+    assert.equal(calls[0].draftBefore, `Reply with exactly ${marker}`)
+    assert.equal(calls[0].draftAtAcceptance, calls[0].draftBefore, 'taurhaus: draft cleared before acceptance')
+    assert.equal(await $('#hosted-input').getValue(), '', 'taurhaus: accepted draft not cleared')
+    assert.equal(runtime().paneId, baseline.paneId, 'taurhaus: panel input replaced the pane')
+  }))
+
 })
 
 async function prepareBuilder() {
@@ -361,4 +373,42 @@ async function openMember(name) {
 }
 async function hostedTranscript() {
   return await rpc('coordination.hosted_transcript', { team_name: team, member_name: 'beta' })
+}
+
+async function sendPanel(text, reason) {
+  budget(1, reason)
+  const field = await $('#hosted-input')
+  await field.setValue(text)
+  const before = await browser.execute(() => window.__l3.ipc.filter(r => r.command === 'coordination_hosted' && r.args.operation === 'input').length)
+  await $('[aria-label="Hosted conversation"] button[type="submit"]').click()
+  await poll(async () => {
+    const calls = await browser.execute(() => window.__l3.ipc.filter(r => r.command === 'coordination_hosted' && r.args.operation === 'input'))
+    assert(calls.length <= before + 1, 'harness: duplicate panel submission')
+    const call = calls[before]
+    if (call?.error) throw new Error(`taurhaus: panel input not accepted: ${call.error}`)
+    return call?.acceptedAt != null
+  }, 'taurhaus: panel input acceptance unavailable')
+}
+function itemText(item) {
+  return item.text ?? (item.content ?? []).filter(c => c.type === 'text' || c.type === 'input_text' || c.type === 'output_text').map(c => c.text).join('\n')
+}
+async function requireReply(marker) {
+  let transcript
+  await poll(async () => {
+    transcript = await hostedTranscript()
+    return transcript.thread?.status?.type === 'idle' && transcript.thread.turns.flatMap(t => t.items ?? []).some(i => i.type === 'agentMessage' && itemText(i).includes(marker))
+  }, 'taurhaus: native marker reply missing')
+  assert.equal(transcript.thread.id, baseline.threadId, 'taurhaus: reply is in another thread')
+  const items = transcript.thread.turns.flatMap(t => t.items ?? [])
+  for (const type of ['userMessage', 'agentMessage']) assert.equal(items.filter(i => i.type === type && itemText(i).includes(marker)).length, 1, `taurhaus: ${type} marker must occur once`)
+  await poll(async () => (await $('[aria-label="Hosted transcript"]').getText()).includes(marker), 'taurhaus: UI reply missing')
+  const pane = tmux(['capture-pane', '-p', '-J', '-S', '-200', '-t', baseline.paneId])
+  assert(pane.includes(marker), 'taurhaus: attached pane marker missing')
+  save(`marker-${marker}-pane.txt`, pane)
+  save(`marker-${marker}-thread.json`, transcript)
+  const rollouts = rolloutPaths(codexHome).filter(path => rows(path).some(r => r.type === 'session_meta' && r.payload?.id === baseline.threadId))
+  assert(rollouts.length > 0, 'harness: no native rollout for hosted thread')
+  const native = rollouts.flatMap(path => rows(path)).filter(r => r.type === 'response_item' && r.payload?.type === 'message' && itemText(r.payload).includes(marker))
+  for (const role of ['user', 'assistant']) assert.equal(native.filter(r => r.payload.role === role).length, 1, `taurhaus: native ${role} marker must occur once`)
+  save(`marker-${marker}-native.json`, native)
 }
