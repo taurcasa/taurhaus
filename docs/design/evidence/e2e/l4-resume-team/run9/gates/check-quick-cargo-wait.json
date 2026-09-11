@@ -1,0 +1,8 @@
+[
+  {
+    "at": 1789088917.5574927,
+    "exit": 0,
+    "count": 2,
+    "output": "3460449 <operator-path-redacted> build --release --bin taurhaus-daemon\n3498558 <operator-path-redacted> test --manifest-path src-tauri/Cargo.toml --lib self_heal_honours_owner_stopped_marker -- --test-threads=1\n"
+  }
+]

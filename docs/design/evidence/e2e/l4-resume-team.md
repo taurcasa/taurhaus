@@ -1,8 +1,11 @@
-# INCOMPLETE — latest run 9, step 1 passed; remaining steps in progress
+# FAIL — latest run 9, step 5: alpha relaunched fresh
 
-Run9 warmed the private Codex home, initialized both transports, and completed
-one exchange/read per seat. See [Run 9](#run-9); this is a runtime checkpoint,
-not a completed lane verdict.
+Steps 1–4 passed, including the single whole-team resume. Step 5 failed because
+alpha’s launch reports `mode: fresh` without the recorded session’s resume
+argument; step 6 was not run. Reconciled spend is **$0.007689400 metered** across
+seven turns, **12/16 inputs** including all conservative start reservations.
+Teardown found zero survivors; all three required gates exit **0**.
+See [Run 9](#run-9) for the full evidence and remaining review boundary.
 
 ## Historical run 2 — hosted process exited before transport readiness
 
@@ -1143,37 +1146,175 @@ and the unchanged failure event. `git diff --check` passed.
 
 ## Run 9
 
-Step 1 **PASS / runtime**: initialize `init_5c000c2110b945aa8598a860ae5e2463`
-completed; alpha is attributed idle, and both initial markers have one reply,
-a transport receipt and explicit read. Four metered turns total **$0.004748080**;
-seven inputs including conservative start reservations (one warm-up).
+**Runtime verdict: FAIL / Taurhaus, step 5.** The controller ran once, exited
+**1**, and stopped immediately on `alpha launch mode must be resume`.
+The four preceding numbered steps each passed and were committed before the
+next action. The calling orchestrator still owns the independent Opus evidence
+lens; this implementation packet does not claim review approval or full PASS.
 
-The [warm-up](l4-resume-team/run9/warmup.json) saw the composer, exited 0,
-left valid SQLite databases and no Codex survivor. No startup model turn was
-observed; any startup cost is unknown, not reported as free. The first batched
-quit left `/quit` in the composer during MCP startup; one recorded Enter
-completed that same quit without a new TUI or model input.
+| Ordered step | Outcome / classification | Evidence |
+|---|---|---|
+| 1. Initialize, exchange/read one marker per seat | **PASS / runtime** | [Outcome](l4-resume-team/run9/step1-outcome.json), [operation](l4-resume-team/run9/step1-operation.json), [identities](l4-resume-team/run9/original-identities.json), [state/receipts](l4-resume-team/run9/step1-state.json), [attributed idle](l4-resume-team/run9/step1-activity.json). |
+| 2. Stop all seats through supported `stop_session` | **PASS / runtime** | [Outcome](l4-resume-team/run9/step2-outcome.json), [census](l4-resume-team/run9/step2-stop-poll.json), [retained state](l4-resume-team/run9/step2-state.json). All three seat panes, Codex siblings and hosted child stopped; only infrastructure pane `%0` remained. |
+| 3. Accept one obligation per stopped seat | **PASS / runtime** | [Outcome](l4-resume-team/run9/step3-outcome.json), [alpha backlog](l4-resume-team/run9/step3-alpha-backlog.json), [beta backlog](l4-resume-team/run9/step3-beta-backlog.json). Both accepted with projection pending, no transport/read receipt while stopped, and matching member refusal. |
+| 4. One `resume_team`, poll its status | **PASS / runtime** | [Outcome](l4-resume-team/run9/step4-outcome.json), [all status samples/stages](l4-resume-team/run9/step4-operation.json). All three resumed; no failed members or team-daemon warning; team daemon started. |
+| 5. Identity, generations, recovery cards, pending delivery | **FAIL / taurhaus** | [Byte-exact outcome](l4-resume-team/run9/step5-outcome.json), [alpha launch/identity](l4-resume-team/run9/step5-alpha-identity.json), [separate adjudication](l4-resume-team/run9/step5-adjudication.json). Alpha launch is fresh; subsequent identity/recovery-card assertions were not reached. |
+| 6. Explicit read/mark, no replay/member executors, export | **NOT RUN / not evaluated** | [Outcome](l4-resume-team/run9/step6-outcome.json). Binding stop after step 5; failure export/teardown ran separately. No historical skip used as evidence. |
 
-[Controller guards](l4-resume-team/run9/green.txt): 38 pass after observed red;
-[preflight](l4-resume-team/run9/preflight.txt): six pass. Builds exit 0:
-[Mesh](l4-resume-team/run9/build/mesh.json),
-[daemon](l4-resume-team/run9/build/daemon.json).
-[Provenance and hashes](l4-resume-team/run9/provenance.json) pin product
-`106f06c7`, Mesh `1f7447f`, protocol 27, Codex 0.153.4, Luna/low.
+### Runtime and failure evidence
 
-Later step outcomes and post-teardown gates will be appended after execution.
+Product base **`106f06c7998efd5602780b27ddeb4a3244bb4e36`** contains PRs
+#171, #172 and #174. The branch stayed `feat/e2e-l4-resume-team`. Mesh stayed
+detached at **`1f7447fec04d6c7b6407488b7b5069a05b5be891`** in its designated
+worktree. Both were built successfully with one Cargo job per invocation and
+checkout-local targets. Each admission probe saw one existing Cargo process,
+so no wait was required. No descriptor edit or Mesh commit occurred. The
+[capability probe](l4-resume-team/run9/delivery-capabilities.json) confirmed
+the shipped 0.153.4 app-server descriptor enabled before initialize.
 
-Step 2 **PASS / runtime**: supported `stop_session` ended all three seat panes
-and every Codex process (including the native sibling and hosted child). Only
-the private infrastructure pane remains. Retained team/journal state exists;
-beta attachment advanced to 2. No additional spend.
+[Provenance](l4-resume-team/run9/provenance.json) and
+[binary digests](l4-resume-team/run9/build/binaries.json) retain exact inputs.
+The private daemon returned protocol **27**, copied native Codex returned
+**0.153.4**, and both seats used **gpt-5.6-luna / low**. Both native siblings
+were copied. The login-only Claude lead took no model turn. The canonical
+initialize request used the builder’s [policy](l4-resume-team/run9/policy.json)
+and creation-time `alpha=tmux`, `beta=app_server`.
 
-Step 3 **PASS / runtime**: one pending obligation accepted for each stopped
-seat; both have no submitted/consumed/native-enqueued receipt and the matching
-member health refusal. See `step3-alpha-backlog.json` and
-`step3-beta-backlog.json`. No presentation while stopped; no additional spend.
+- Initialize: `init_5c000c2110b945aa8598a860ae5e2463`.
+- Resume: `team-resume_4adb1fcec0784e92844f1f4d869b1bb1` (one request).
+- Daemon logging run: `run_c08b650a85b548b083463cddf0e89ee0`.
+- Team incarnation: `264fe4956f1f7dfd00f7a4632039a4cff265c383aac2fda8bdefd35b4204a619`.
+- Alpha original session: `01a08dff-fd88-7aa2-99b1-7ba3a2dbbdc7`; resumed
+  runtime points at `01a08e01-c73b-7220-bdf1-9e46093b6f59`. Attachment **1 → 2**.
+- Beta recorded thread remains `01a08dff-fd5d-7353-afc7-47007e90b0dc`.
+  Attachment **1 → 2 at stop → 3 at resume**; launch telemetry says `resume`.
 
-Step 4 **PASS / runtime**: the single `resume_team` operation
-`team-resume_4adb1fcec0784e92844f1f4d869b1bb1` completed, resumed all three
-members, and started the team daemon without failed members or a daemon warning.
-Recovery/pending turns are settling; final spend reconciliation follows teardown.
+The complete retained, sanitized [daemon JSONL](l4-resume-team/run9/taurhaus.log.jsonl)
+has **507 rows** (account usage rows excluded as required). Row **282** records
+`hosted.stop_session.host_stopped`, `exit_status: signal: 9 (SIGKILL)`, for beta:
+that is the product’s supported stop operation, not injected controller failure.
+Row **382** records alpha’s second `launch.command.rendered` with `mode: fresh`
+and no `resume` argument. The original alpha session is already **null** in
+both stopped snapshots. Thus the launch fails the binding PR #174 criterion
+even though alpha is again attributed idle and has a new rollout.
+
+Read-only source inspection finds `orchestrator/liveness.rs:116,259` clearing
+`session_id` for a dead session, while `pipelines/members.rs:625` selects that
+field for resume. This is consistent with the snapshots; the exact writer
+invocation was not separately traced. The runtime failure is established
+without claiming a proven code-level root cause or changing product code.
+
+Beta’s launch at row **403** includes `resume` and its recorded thread. A
+literal hosted `thread/resume` wire request was not separately exported; the
+controller stopped before its beta identity/card assertions. There is no
+claim that new rollout identity alone proves alpha resumed, or that full
+recovery-card/step-6 acceptance passed.
+
+[Post-teardown read-only analysis](l4-resume-team/run9/runtime-analysis.json)
+finds each pending marker has one transport receipt and one assistant reply:
+alpha `submitted`, beta `native_enqueued`. Old transport rows are unchanged
+and each old marker has one reply. Alpha read its pending message during its
+turn; beta’s pending message has no explicit read receipt. These are partial
+observations, not retroactive step-5/6 PASS. The corrected stopped-health
+refusals were `pending: runtime session dead` (alpha) and
+`pending: native_host_not_live` (beta).
+
+### Warm-up, offline red/green, and cost
+
+The [warm-up](l4-resume-team/run9/warmup.json) ran one throwaway TUI in the
+same private namespace and scratch Codex home. It saw the composer, exited
+**0**, left valid `state_5.sqlite`, `queue_1.sqlite` and other SQLite databases,
+and left no Codex process before initialize. No startup model turn was observed;
+the startup reservation is **one input** and any unreported startup cost is
+**unknown**, not asserted to be free. All runtime roots and sockets were
+scratch-only; children could not access operator homes. Exactly the authorized
+`auth.json` file was copied, mode 0600; no credential fallback or log output.
+
+The first batched `/quit` plus Enter left `/quit` in the composer during MCP
+startup. A [bounded capture](l4-resume-team/run9/warmup-observer.json) proved
+that state; [one additional Enter](l4-resume-team/run9/warmup-quit-completion.json)
+completed the same quit within the warm-up deadline. No second TUI, model
+prompt, or paid retry was started. Executed controller source stayed unchanged.
+
+The [new offline red](l4-resume-team/run9/red.txt) exited **1** with two failures
+and four missing-method errors. The [historical generation comparison replay](l4-resume-team/run9/generation-red.txt)
+exited **1**, rejecting a numeric progression **9 → 10** encoded as strings.
+The final controller coerces both generations; inherited tests also cover
+numeric card contexts against string runtime context, mismatch/duplicate-card
+rejection, reset metering epochs and null snapshot fields. Specific classifier
+phrases are bounded, with Mesh precedence. Regression comments name the
+introducing commit. No live CLI or credentials are used by these offline tests.
+
+`python3 -B -m unittest discover -s docs/design/evidence/e2e/l4-resume-team/run9 -v`
+passed **38 tests**, exit **0** ([output](l4-resume-team/run9/green.txt)).
+The inherited preflight suite passed **six**, exit **0**
+([output](l4-resume-team/run9/preflight.txt)).
+
+All seven observed turns completed. The immutable controller ledger reports
+**$0.007139920**; [final spend reconciliation](l4-resume-team/run9/final-spend-audit.json)
+uses the retained cumulative rollout counters and reports **$0.007689400**.
+`host-events.json` index 48 repeats resumed usage under beta’s old marker turn
+ID; index 50 reports it under the new ID. The inherited largest-token selection
+overwrites the old turn’s lower-token, higher-cost sample. The separate audit
+retains both values and the exact discrepancy; no runtime ledger/outcome rewrite
+or metering-driven stop occurred. Rates are the established trial’s Luna
+$0.20 input / $0.02 cached / $1.20 output per million, API-equivalent rather
+than an invoice. All tokens priced at the output rate total **$0.133192800**.
+
+| Turn / seat / purpose | Input | Cached input | Output | Reconciled USD |
+|---|---:|---:|---:|---:|
+| `01a08e00-05f9-7f01-b87d-716e7ce27c52` — beta onboarding | 11210 | 6912 | 87 | $0.001102240 |
+| `01a08e00-1251-7ff1-bf9e-76cb0247d30b` — alpha onboarding | 20139 | 15872 | 211 | $0.001424040 |
+| `01a08e00-32cf-76e1-8833-e4204ada1404` — alpha initial marker | 22923 | 19968 | 147 | $0.001166760 |
+| `01a08e00-55e0-7143-9030-46325a6fbae4` — beta initial marker | 11412 | 6912 | 14 | $0.001055040 |
+| `01a08e01-ce73-7863-8c53-9ac34c5f213d` — alpha recovery + pending marker | 20200 | 12800 | 174 | $0.001944800 |
+| `01a08e01-d5db-7323-b683-753c2cbe6ac1` — beta recovery | 12123 | 11008 | 52 | $0.000505560 |
+| `01a08e01-eb37-71b1-8be8-7abc1c95d862` — beta pending marker | 12290 | 11008 | 12 | $0.000490960 |
+
+Steps 1–3 used **$0.004748080**; recovery/pending work in steps 4–5 added
+**$0.002941320**. Step 6, offline tests, and gates added no seat turn.
+Seven turns plus all five conservative start reservations (including warm-up)
+make **12 ≤ 16 inputs**; **$0.007689400 ≤ $0.25 metered**. Runtime including
+warm-up, checkpoints, and teardown was **217.171 seconds ≤ 900**. Runs 1–8
+are history and are excluded from run9’s fresh budget.
+
+### Teardown, gates, deviations, and handoff
+
+[Cleanup](l4-resume-team/run9/cleanup.json) and the independent read-only
+[final audit](l4-resume-team/run9/final-audit.json) found **zero survivors**,
+a closed private port, removed scratch root/credential copy, and unchanged
+Mesh source. The namespace owner was stopped and waited; no unowned process
+was killed. No scratch daemon, app-server, TUI, tmux server or native sibling
+survived. Private PID/start-tick identities and bounded panes are retained.
+
+Required commands ran from the assigned checkout **after teardown**, with
+isolated test homes and its own target directory. Cargo admission respected
+the three-process limit; all child commands finished and gate homes were removed.
+
+| Gate | Exit | Result |
+|---|---:|---|
+| `just check-quick` | **0** | Rust compile check, typecheck, 2,521 frontend tests pass. |
+| `just lint` | **0** | Clippy, frontend/dependency and workflow guards pass. |
+| `just test-contracts` | **0** | Contract tests pass. |
+
+[Gate summary and command exits](l4-resume-team/run9/gate-summary.json).
+No `src-tauri/` diff: `just test-rust-unit` is not required. `just check` was
+not run by this lane. [Outcome integrity](l4-resume-team/run9/outcome-integrity.json)
+retains hashes for all six byte-exact controller outcome files; interpretation
+is confined to separate sidecars. `git diff --check` and privacy audit pass.
+
+Deviations/limits: the specified attempt9 reference checkout is absent (`git
+show` exit **128**), so run8’s existing sandbox layout was reused. Warm-up needed
+the recorded completion Enter. A separate read-only cost reconciliation corrects
+stale hosted usage attribution without modifying executed code or outcome files.
+Step 5 failed on product identity, so remaining assertions and step 6 were not
+run. The required independent Opus evidence lens remains with the calling
+orchestrator. No product/descriptor edit, Mesh commit, release/install, plan-ledger
+row edit, crash/lock injection, stress run, account/root move or operator-process
+kill occurred.
+
+[Product follow-ups](l4-resume-team/run9/product-followups.json): (1) the new
+stopped-session identity loss demonstrated here; (2) separately, run8’s initialize
+reported completed while alpha had exited at startup. The latter remains a
+product completion-reporting follow-up and is **not** a run9 step failure; warming
+the fixture avoids the cold-home race but does not certify that reporting path.

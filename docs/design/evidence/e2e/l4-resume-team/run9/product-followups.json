@@ -1,0 +1,15 @@
+[
+  {
+    "source": "run8 step1; orchestrator run9 ruling",
+    "classification": "taurhaus",
+    "finding": "initialize reported completed while alpha had exited on the fresh-home SQLite race",
+    "run9_step_failure": false,
+    "disposition": "Warm-up avoids fixture cold-home race; truthful initialize completion remains a separate product follow-up. No product edit."
+  },
+  {
+    "source": "run9 step5",
+    "classification": "taurhaus",
+    "finding": "Stopped alpha loses recorded session ID before resume; launch remains mode fresh on the PR #174 base",
+    "disposition": "Route separately with step5-adjudication.json; lane stopped, no product fix."
+  }
+]

@@ -1,0 +1,200 @@
+{
+  "scope": "Read-only analysis after stop; does not execute or retroactively pass later assertions or step 6.",
+  "team_incarnation": "264fe4956f1f7dfd00f7a4632039a4cff265c383aac2fda8bdefd35b4204a619",
+  "identities": {
+    "lead": {
+      "before_session": null,
+      "stopped_session": null,
+      "after_session": null,
+      "attachments": [
+        1,
+        1,
+        2
+      ],
+      "context_generation": 0,
+      "tmux_session_preserved": true,
+      "app_server_thread": null
+    },
+    "alpha": {
+      "before_session": "01a08dff-fd88-7aa2-99b1-7ba3a2dbbdc7",
+      "stopped_session": null,
+      "after_session": "01a08e01-c73b-7220-bdf1-9e46093b6f59",
+      "attachments": [
+        1,
+        1,
+        2
+      ],
+      "context_generation": 0,
+      "tmux_session_preserved": true,
+      "app_server_thread": null
+    },
+    "beta": {
+      "before_session": "01a08dff-fd5d-7353-afc7-47007e90b0dc",
+      "stopped_session": "01a08dff-fd5d-7353-afc7-47007e90b0dc",
+      "after_session": "01a08dff-fd5d-7353-afc7-47007e90b0dc",
+      "attachments": [
+        1,
+        2,
+        3
+      ],
+      "context_generation": 0,
+      "tmux_session_preserved": true,
+      "app_server_thread": "01a08dff-fd5d-7353-afc7-47007e90b0dc"
+    }
+  },
+  "launches": [
+    {
+      "line": 97,
+      "record": {
+        "ts": "2026-09-11T01:05:58.720Z",
+        "level": "INFO",
+        "component": "coordination",
+        "event": "launch.command.rendered",
+        "run_id": "run_c08b650a85b548b083463cddf0e89ee0",
+        "message": "Rendered team member launch command",
+        "command": "CLAUDE_CONFIG_DIR='/tmp/th-l4-run9-9hzri2jl/claude' CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions --model 'claude-haiku-4-5' --team-name 'l4-resume' --agent-name 'lead' --agent-id 'lead@l4-resume' --agent-type 'orchestrator' -n 'lead'",
+        "member": "lead",
+        "mode": "fresh",
+        "model": "claude-haiku-4-5",
+        "reasoning_effort": null,
+        "team": "l4-resume",
+        "tool": "claude"
+      }
+    },
+    {
+      "line": 98,
+      "record": {
+        "ts": "2026-09-11T01:05:58.774Z",
+        "level": "INFO",
+        "component": "coordination",
+        "event": "launch.command.rendered",
+        "run_id": "run_c08b650a85b548b083463cddf0e89ee0",
+        "message": "Rendered team member launch command",
+        "command": "CODEX_HOME='/tmp/th-l4-run9-9hzri2jl/codex' codex --sandbox danger-full-access --ask-for-approval never --dangerously-bypass-hook-trust -c 'notify=[\"/tmp/th-l4-run9-9hzri2jl/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]' -m 'gpt-5.6-luna' -c 'model_reasoning_effort=\"low\"'",
+        "member": "alpha",
+        "mode": "fresh",
+        "model": "gpt-5.6-luna",
+        "reasoning_effort": "low",
+        "team": "l4-resume",
+        "tool": "codex"
+      }
+    },
+    {
+      "line": 99,
+      "record": {
+        "ts": "2026-09-11T01:05:58.831Z",
+        "level": "INFO",
+        "component": "coordination",
+        "event": "launch.command.rendered",
+        "run_id": "run_c08b650a85b548b083463cddf0e89ee0",
+        "message": "Rendered team member launch command",
+        "command": "CODEX_HOME='/tmp/th-l4-run9-9hzri2jl/codex' codex --sandbox danger-full-access --ask-for-approval never -m 'gpt-5.6-luna' -c 'model_reasoning_effort=\"low\"'",
+        "member": "beta",
+        "mode": "fresh",
+        "model": "gpt-5.6-luna",
+        "reasoning_effort": "low",
+        "team": "l4-resume",
+        "tool": "codex"
+      }
+    },
+    {
+      "line": 360,
+      "record": {
+        "ts": "2026-09-11T01:07:54.116Z",
+        "level": "INFO",
+        "component": "coordination",
+        "event": "launch.command.rendered",
+        "run_id": "run_c08b650a85b548b083463cddf0e89ee0",
+        "message": "Rendered team member launch command",
+        "command": "CLAUDE_CONFIG_DIR='/tmp/th-l4-run9-9hzri2jl/claude' CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions --model 'claude-haiku-4-5' --team-name 'l4-resume' --agent-name 'lead' --agent-id 'lead@l4-resume' --agent-type 'orchestrator' -n 'lead'",
+        "member": "lead",
+        "mode": "fresh",
+        "model": "claude-haiku-4-5",
+        "reasoning_effort": null,
+        "team": "l4-resume",
+        "tool": "claude"
+      }
+    },
+    {
+      "line": 382,
+      "record": {
+        "ts": "2026-09-11T01:07:55.638Z",
+        "level": "INFO",
+        "component": "coordination",
+        "event": "launch.command.rendered",
+        "run_id": "run_c08b650a85b548b083463cddf0e89ee0",
+        "message": "Rendered team member launch command",
+        "command": "CODEX_HOME='/tmp/th-l4-run9-9hzri2jl/codex' codex --sandbox danger-full-access --ask-for-approval never -c 'notify=[\"/tmp/th-l4-run9-9hzri2jl/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]' -m 'gpt-5.6-luna' -c 'model_reasoning_effort=\"low\"'",
+        "member": "alpha",
+        "mode": "fresh",
+        "model": "gpt-5.6-luna",
+        "reasoning_effort": "low",
+        "team": "l4-resume",
+        "tool": "codex"
+      }
+    },
+    {
+      "line": 403,
+      "record": {
+        "ts": "2026-09-11T01:07:57.184Z",
+        "level": "INFO",
+        "component": "coordination",
+        "event": "launch.command.rendered",
+        "run_id": "run_c08b650a85b548b083463cddf0e89ee0",
+        "message": "Rendered team member launch command",
+        "command": "CODEX_HOME='/tmp/th-l4-run9-9hzri2jl/codex' codex --sandbox danger-full-access --ask-for-approval never resume '01a08dff-fd5d-7353-afc7-47007e90b0dc' -m 'gpt-5.6-luna' -c 'model_reasoning_effort=\"low\"'",
+        "member": "beta",
+        "mode": "resume",
+        "model": "gpt-5.6-luna",
+        "reasoning_effort": "low",
+        "team": "l4-resume",
+        "tool": "codex"
+      }
+    }
+  ],
+  "markers": {
+    "old/alpha": {
+      "message_id": "d5967877-ddd2-49a6-964e-ce2a6dc029fb",
+      "transport_receipt_count": 1,
+      "transport_stages": [
+        "submitted"
+      ],
+      "reply_count": 1,
+      "read_receipt_observed": true,
+      "old_transport_unchanged": true
+    },
+    "old/beta": {
+      "message_id": "d072eb81-0963-49f7-b33b-ad00f1c8ca20",
+      "transport_receipt_count": 1,
+      "transport_stages": [
+        "native_enqueued"
+      ],
+      "reply_count": 1,
+      "read_receipt_observed": true,
+      "old_transport_unchanged": true
+    },
+    "pending/alpha": {
+      "message_id": "d299667d-f4c2-4824-9f99-fda7a2316b7f",
+      "transport_receipt_count": 1,
+      "transport_stages": [
+        "submitted"
+      ],
+      "reply_count": 1,
+      "read_receipt_observed": true,
+      "old_transport_unchanged": null
+    },
+    "pending/beta": {
+      "message_id": "5dd02026-67e1-4aa2-9e6b-04a1dcf8ec52",
+      "transport_receipt_count": 1,
+      "transport_stages": [
+        "native_enqueued"
+      ],
+      "reply_count": 1,
+      "read_receipt_observed": false,
+      "old_transport_unchanged": null
+    }
+  },
+  "resume_requests": 1,
+  "beta_wire_thread_resume": "Not independently captured as a wire request; mode resume and retained hosted thread observed. Step 5 stopped on alpha before beta identity/recovery assertions.",
+  "recovery_card_assertions": "Not reached after alpha launch-mode assertion; no full generation-bound card claim."
+}

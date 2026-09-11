@@ -1,0 +1,42 @@
+{
+  "outcomes": [
+    {
+      "path": "step1-outcome.json",
+      "sha256": "46c5adb5b62c031ac155ce606cb6240aab0e9e12dded080b13bc1829e847d2ca",
+      "controller_format_verified": true,
+      "outcome": "PASS"
+    },
+    {
+      "path": "step2-outcome.json",
+      "sha256": "873d8678d4b03045c4b0f993a49565c6119ac44f1478cf6a0024ac71198fb177",
+      "controller_format_verified": true,
+      "outcome": "PASS"
+    },
+    {
+      "path": "step3-outcome.json",
+      "sha256": "60e92d599c8feeb223205a584bd4166931522f8857d3dd30af986173b7b2486e",
+      "controller_format_verified": true,
+      "outcome": "PASS"
+    },
+    {
+      "path": "step4-outcome.json",
+      "sha256": "f122acfa660fc1b8592b87e9954a69eea59dd8e85301010c855ac71e12d8c5b8",
+      "controller_format_verified": true,
+      "outcome": "PASS"
+    },
+    {
+      "path": "step5-outcome.json",
+      "sha256": "eef678f9450ebe35d0ad657a723e4cb614d56364d612299b22ef3c8b215b4a0d",
+      "controller_format_verified": true,
+      "outcome": "FAIL"
+    },
+    {
+      "path": "step6-outcome.json",
+      "sha256": "a9233e52005d515a3ede5d533737bf6279c132fe7e6fdcaf065ea4a25a79d8e8",
+      "controller_format_verified": true,
+      "outcome": "NOT RUN"
+    }
+  ],
+  "modified": false,
+  "adjudication": "Separate sidecar; no outcome bytes rewritten"
+}

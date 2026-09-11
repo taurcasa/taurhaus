@@ -1,0 +1,6 @@
+{
+  "step": 5,
+  "outcome": "FAIL",
+  "classification": "taurhaus",
+  "reason": "alpha launch mode must be resume"
+}
