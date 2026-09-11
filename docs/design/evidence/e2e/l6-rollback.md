@@ -1,4 +1,4 @@
-# L6 rollback — run5 INCOMPLETE (rollback completed; repeated reads; Opus unavailable)
+# L6 rollback — run5 FAIL (harness read cardinality); operational rollback completed
 
 ## Run3 result (2026-09-11)
 
@@ -956,7 +956,7 @@ Run5 step 4: PASS (S-runtime); see run5/run/step4-outcome.json.
 
 ## Run5 result (2026-09-11)
 
-**The complete operational escape route ran, but the binding lane is INCOMPLETE.**
+**The complete operational escape route ran, but step (d) FAILS the literal single-read criterion (harness).**
 The raw controller reports PASS for (a)–(e), exits **0** after **65.03 s**,
 and is retained unchanged. The separate [adjudication](l6-rollback/run5/adjudication.json)
 qualifies step (d): B received **one legacy submission and one assistant reply**, but
@@ -979,7 +979,7 @@ Consequently this packet makes **no full workflow PASS or release claim**.
 | (a) Initialize; A; B pending; lead stops owner | PASS | **PASS, S-runtime.** Canonical initialize completed, composer and attributed idle verified, A delivered/read/replied. B accepted while active, no receipt or begun ambiguous transport, scheduler opportunity recorded. Stop exit 0, owner exited, durable lead marker and daemon's named skip retained. |
 | (b) Downgrade with B pending | PASS | **PASS, S-runtime.** Format command exit 0, no refusal/retry. Config commits `messaging_format: 0`, `delivery_owner: members`, verified `delivery_rollback_sha256`; authority `transition: complete`. Both digest reports verified, canonical history retained unchanged, B pending/unread under its original logical id. |
 | (c) Members same-owner handoff | PASS | **PASS, S-runtime.** Exit 0; stop marker present immediately before and absent immediately afterward. Owner and rollback digest unchanged. Epoch 3 remains 3; no new handoff request. |
-| (d) RC executor; B once; fresh C and reply | PASS | **PARTIAL, harness.** No executor attached after (c); controller started one guarded lane RC executor. B and C each have exactly one legacy submission and one reply. B has two seat-read rows before its reply, so the literal one-read criterion is not met. No duplicate executor or transport replay was observed. |
+| (d) RC executor; B once; fresh C and reply | PASS | **FAIL exact read-cardinality criterion, harness.** No executor attached after (c); controller started one guarded lane RC executor. B and C each have exactly one legacy submission and one reply. B has two seat-read rows before its reply, so the literal one-read criterion is not met. No duplicate executor or transport replay was observed. |
 | (e) Explicit read/ack; reconcile; export; teardown | PASS | **PASS operations, S-runtime; overall lane remains incomplete.** A/B/C read and ack status verified, lead inbox reconciled, canonical journal retained, complete daemon JSONL exported, scratch processes and credentials removed. This ran after the missed step-(d) cardinality condition. |
 
 The command results and boundary snapshots are under [run5/run](l6-rollback/run5/run/):
@@ -1116,3 +1116,9 @@ reported above; the controller reached C and (e) before offline adjudication cau
 that omission. Opus review is unavailable. Raw outcome files remain byte-exact;
 all qualification lives in separate analysis/adjudication sidecars. The runtime
 route completion does not erase these limits or overwrite runs 1–4.
+
+The run5 `run/team/` tree contains last-observed snapshots, including files later
+removed at runtime. Its retained `owner-stopped.json` is historical stop evidence;
+`step3-after-ownership.json` explicitly records the marker as absent. Duplicate
+snapshot paths resolve through `run5/export-manifest.json`; raw numbered outcomes
+and the complete streams remain directly retained.

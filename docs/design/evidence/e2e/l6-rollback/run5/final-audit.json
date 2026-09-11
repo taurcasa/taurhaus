@@ -1,6 +1,6 @@
 {
   "evidence_audit": "PASS",
-  "lane_verdict": "INCOMPLETE: operational route completed; literal single-read criterion not met; independent Opus review unavailable",
+  "lane_verdict": "FAIL step (d), harness: literal single-read criterion not met; operational rollback completed; Opus review unavailable",
   "controller_exit": 0,
   "gate_exits": {
     "just check-quick": 0,

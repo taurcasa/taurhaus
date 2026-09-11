@@ -19,7 +19,7 @@ def main():
         assert hashlib.sha256((BASE/'run'/name).read_bytes()).hexdigest()==digest,name
     assert read('controller-exit.json')['exit']==0
     assert [read(f'step{i}-outcome.json')['outcome'] for i in range(1,6)]==['PASS']*5
-    assert j['verdict'].startswith('INCOMPLETE') and j['Opus_review']['status']=='unavailable'
+    assert j['verdict'].startswith('FAIL step (d), harness') and j['Opus_review']['status']=='unavailable'
     assert all(m['total_submissions']==1 and len(m['assistant_replies'])==1 for m in a['messages'].values())
     assert j['messages']['B']['reads']==4 and not j['messages']['B']['single_read']
     assert a['canonical_history_retained'] and not a['observer_errors']

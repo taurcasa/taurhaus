@@ -20,12 +20,12 @@ def main():
     verified=json.loads((BASE/'run/step2-verified-format.json').read_text())
     handoff=analysis['executor_observation']['same_owner_end']
     census=analysis['executor_observation']['first_executor_sample']
-    result={'verdict':'INCOMPLETE: operational route completed; literal single-read criterion not met; independent Opus review unavailable',
+    result={'verdict':'FAIL step (d), harness: literal single-read criterion not met; operational rollback completed; Opus review unavailable',
       'raw_controller_exit':analysis['controller']['exit'],'raw_steps':analysis['steps'],
       'operational_steps':{'a':'PASS: A delivered/read/replied, B pending with scheduler opportunity, owner stopped, marker and named skip',
         'b':'PASS: format 0/members/verified rollback, transition complete, journal retained, B pending/unread under original id',
         'c':'PASS: same-owner exit 0 clears marker with unchanged owner/digest/epoch and no new handoff',
-        'd':'PARTIAL: one B submission and reply, fresh C submission and reply; repeated seat reads violate literal one-read cardinality',
+        'd':'FAIL exact read-cardinality criterion: one B submission and reply, fresh C submission and reply; repeated seat reads violate literal one-read cardinality',
         'e':'PASS operations: explicit reads/acks, identity reconciliation, export and teardown; performed after the unguarded read-cardinality miss'},
       'classification':'harness instructions and missing cardinality guard; no product rollback failure demonstrated',
       'messages':{k:assess_delivery(v) for k,v in analysis['messages'].items()},
