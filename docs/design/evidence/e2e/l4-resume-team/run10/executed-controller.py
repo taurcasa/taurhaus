@@ -361,6 +361,7 @@ class Lane:
             if member=='alpha':
                 stopped_record=self.record('alpha')
                 save('step2-alpha-runtime-record.json',{'before':record,'after':stopped_record,'captured_at':time.time()})
+                require_stopped_identity(record,stopped_record)
         def stopped():
             panes=subprocess.run(['tmux','list-panes','-a','-F','#{pane_id}'],env=self.env,capture_output=True,text=True).stdout.splitlines()
             original_panes=[r['paneId'] for r in self.old.values()]
@@ -368,14 +369,8 @@ class Lane:
             alive=self.identities()
             codex=[p for p in alive if seat_process(p)]
             save('step2-stop-poll.json',{'panes':panes,'codex_processes':codex,'retained_runtime':{m:self.record(m) for m in self.old}})
-            try:
-                require_stopped_identity(self.old['alpha'],self.record('alpha'))
-                retained=True
-            except AssertionError as error:
-                retained=False
-                self.event('stopped_identity_pending',reason=str(error))
-            return not set(panes)&set(original_panes) and not codex and retained
-        self.wait(stopped,'supported stop_session did not settle panes/processes and retained alpha identity',timeout=100)
+            return not set(panes)&set(original_panes) and not codex
+        self.wait(stopped,'supported stop_session left a recorded pane or Codex/app-server process alive',timeout=100)
         assert (self.team/'config.json').exists() and self.journal_rows(), 'stopped team state lost'
 
     def step3(self):

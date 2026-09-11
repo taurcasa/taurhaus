@@ -133,9 +133,7 @@ def stopped_backlog(records, message_id, member, projection, health):
 
 def require_stopped_identity(old, stopped):
     assert old.get('session_id') and stopped.get('session_id')==old['session_id'], 'alpha stopped session identity lost'
-    assert stopped.get('jsonl_path'), 'alpha stopped rollout path missing'
-    if old.get('jsonl_path'):
-        assert stopped['jsonl_path']==old['jsonl_path'], 'alpha stopped rollout path changed'
+    assert old.get('jsonl_path') and stopped.get('jsonl_path')==old['jsonl_path'], 'alpha stopped rollout path lost'
     assert stopped.get('paneId')==old['paneId'], 'alpha stopped pane binding lost'
     assert stopped.get('health')=='session_dead', 'alpha stopped health not session_dead'
     assert all(stopped.get(k) is None for k in ['panePid','paneStartTime','daemon_pid']), 'alpha stopped live handles retained'

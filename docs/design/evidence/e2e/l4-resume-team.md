@@ -1,6 +1,10 @@
-# INCOMPLETE — latest run 10 in progress
+# INCOMPLETE — latest run 10, step 2: harness guard aborted
 
-Step 1 passed; subsequent ordered steps are running. See [Run 10](#run-10).
+Step 1 passed. Step 2 aborted on an invalid controller assertion about an earlier
+null rollout path; steps 3–6 were not run. The controller’s original failure
+classification is preserved, with a separate **harness** adjudication. Metered
+spend is **$0.004654280**, **7/16 inputs** including conservative start reservations.
+Teardown found zero survivors. See [Run 10](#run-10); gates are recorded below.
 
 ## Historical run 2 — hosted process exited before transport readiness
 
@@ -1317,8 +1321,129 @@ the fixture avoids the cold-home race but does not certify that reporting path.
 
 ## Run 10
 
-Run10 uses the daemon rebuilt from `fd5dd9f0` (contains `ac2bc513`, PR #181), Mesh `3015cb0` matching `release/overhaul-rc`, Codex 0.153.4, and two Luna/low seats. No product changes.
+**INCOMPLETE: step 1 PASS / runtime; step 2 FAIL / harness; steps 3–6 NOT RUN.**
+This run does not prove PR #181's full stop/resume contract. No paid rerun or
+product change was made. The six controller-written outcome files remain
+byte-exact; [adjudication](l4-resume-team/run10/step2-adjudication.json) corrects
+the observer's classification without altering its output.
 
 | Step | Outcome / classification | Evidence |
 |---|---|---|
-| 1. Initialize and exchange/read each marker | PASS / runtime | [Outcome](l4-resume-team/run10/step1-outcome.json), [identities](l4-resume-team/run10/original-identities.json), [state and receipts](l4-resume-team/run10/step1-state.json), [warm-up](l4-resume-team/run10/warmup.json). |
+| 1. Initialize and exchange/read each marker | PASS / runtime | [Outcome](l4-resume-team/run10/step1-outcome.json), [identities](l4-resume-team/run10/original-identities.json), [state/receipts](l4-resume-team/run10/step1-state.json), [attributed idle](l4-resume-team/run10/step1-activity.json). |
+| 2. Supported whole-team stop | FAIL / harness | [Raw outcome](l4-resume-team/run10/step2-outcome.json), [immediate alpha record](l4-resume-team/run10/step2-alpha-runtime-record.json), [adjudication](l4-resume-team/run10/step2-adjudication.json). Only alpha's supported stop was invoked; beta/lead ended during teardown. |
+| 3. Backlog accepted while stopped | NOT RUN / not evaluated | [Outcome](l4-resume-team/run10/step3-outcome.json). |
+| 4. One resume_team and status polling | NOT RUN / not evaluated | [Outcome](l4-resume-team/run10/step4-outcome.json). No resume_team call occurred. |
+| 5. Identity, generations, recovery and exactly-once backlog | NOT RUN / not evaluated | [Outcome](l4-resume-team/run10/step5-outcome.json). |
+| 6. Explicit backlog reads and journal/transport reconciliation | NOT RUN / not evaluated | [Outcome](l4-resume-team/run10/step6-outcome.json). Failure export and teardown ran separately. |
+
+### Provenance and runtime
+
+The checkout stayed on `feat/e2e-l4-resume-team`. The daemon was rebuilt from
+`fd5dd9f0`, which contains `ac2bc513` (PR #181); the ancestry probe exited 0.
+Mesh `3015cb0fda5328d1f8c793b528275e6205683208` exactly matched the designated
+worktree's `release/overhaul-rc`. Both builds exited 0, with checkout-local
+Cargo targets and one build job. Cargo admission was polled before each build;
+no Mesh source mutation or commit occurred. [Provenance](l4-resume-team/run10/provenance.json),
+[binary digests](l4-resume-team/run10/build/binaries.json), and
+[descriptor probe](l4-resume-team/run10/delivery-capabilities.json) preserve the
+actual inputs: protocol 27, Codex 0.153.4, enabled app_server descriptor,
+`gpt-5.6-luna` at low for alpha/tmux and beta/app_server. The Claude lead stayed
+login-only with no model turn.
+
+The executed controller and support were committed at `99c59ab8`; byte copies
+are [controller](l4-resume-team/run10/executed-controller.py) and
+[support](l4-resume-team/run10/executed-support.py). The normal controller/support
+files now include the post-run offline fix described below; they were not rerun.
+
+The [warm-up](l4-resume-team/run10/warmup.json) launched one disposable TUI,
+observed its composer, sent `/quit` then a separately paced Enter, observed exit
+0 and five SQLite files, and found no remaining warm-up seat process. It reserved
+one input and sent no model prompt. Both native Codex siblings were copied.
+The auth-only copy was mode 0600 and removed at teardown; private runtime roots,
+PID namespace, tmux and a probed non-default daemon port isolated every seat.
+The canonical [initialize operation](l4-resume-team/run10/step1-operation.json)
+completed using the builder's [messaging policy](l4-resume-team/run10/policy.json).
+
+Step 1 retained one response per marker, alpha `submitted`, beta
+`native_enqueued`, and explicit `consumed_by_read` receipts. Read commands were
+controller-issued as each named member inside the private tmux namespace;
+these are explicit Mesh reads, not claims that either model issued a read tool.
+Both reads reached `done: true` on the first page. Pre-send snapshots show no
+unfinished journal delivery for the target seat. Accepted, presented, read and
+model response remain separate evidence in the packet.
+
+### Step-2 harness failure and offline correction
+
+The exact controller error was `alpha stopped rollout path lost`. Its guard
+required `old.jsonl_path` to be non-null. The recorded step-1 value was null;
+the immediate post-stop value is a real scratch rollout path, with the same
+session ID `01a08ed4-6e53-7d52-adda-133c329a705a`. Therefore that error does not
+establish lost product identity. The same immediate record still reports
+`healthy`, `panePid: 1773`, and `paneStartTime: "32321905"`; no 60-second
+convergence observation ran, so the health/handle contract is unverified.
+
+The assertion occurred immediately after alpha's successful stop RPC, before
+beta/lead stops and before the whole-team stop poll. The binding stop-on-failure
+rule ended execution. All remaining processes were removed in teardown; that
+cleanup is not evidence of supported whole-team stop.
+
+The initial [red run](l4-resume-team/run10/red.txt) exited 1 (2 failures and
+8 subtest/errors) on missing retention capture, missing fallback rejection and
+meter-gated lifecycle behavior. The [pending-delivery red](l4-resume-team/run10/pending-red.txt)
+exited 1 on its missing predicate. Before launch, [44 offline tests](l4-resume-team/run10/green.txt)
+and [6 preflight tests](l4-resume-team/run10/preflight.txt) passed, exit 0.
+
+After the live failure, two exact regression tests first failed
+([fix red](l4-resume-team/run10/fix-red.txt), exit 1). The guard now allows an
+initially absent path to become populated, captures the immediate sidecar without
+asserting convergence, stops all members, then polls the identity/health/handle
+contract within the existing 100-second window. All
+[46 offline tests](l4-resume-team/run10/fix-green.txt) pass, exit 0. Regression
+comments identify `99c59ab8`. This offline correction does not change run10's
+verdict, and the corrected controller was not launched.
+
+### Spend, teardown and gates
+
+Only run10 spend is counted. The [ledger](l4-resume-team/run10/cost-ledger.json)
+and [spend audit](l4-resume-team/run10/final-spend-audit.json) retain every turn:
+
+| Seat / input | Turn ID | API-equivalent USD |
+|---|---|---:|
+| alpha onboarding | `01a08ed4-8bb4-7483-b69c-0901d98d13de` | 0.002138720 |
+| alpha marker | `01a08ed4-ac71-72d2-b64b-0070f65fff08` | 0.001120160 |
+| beta onboarding | `01a08ed4-7684-7530-afbb-ae57a73227ce` | 0.001074040 |
+| beta marker | `01a08ed4-c699-7c31-a5d4-3bc7d8805077` | 0.000321360 |
+| Total metered | Four observed turns | **0.004654280** |
+
+Three conservative startup reservations (warm-up and two seats) make **7/16**
+inputs. Warm-up reports no turn ID; unreported startup cost remains unknown,
+not zero. All four model turns are metered. The inherited trial rate basis is
+$0.20 input / $0.02 cached / $1.20 output per million; this is API-equivalent
+accounting, not an invoice. All-tokens-at-output-rate subtotal is $0.079204800.
+Metering did not stop this run or gate a lifecycle operation.
+
+[Cleanup](l4-resume-team/run10/cleanup.json) and the read-only
+[audit](l4-resume-team/run10/final-audit.json) found zero survivors, a closed
+private port, removed scratch root/auth, unchanged Mesh source and no privacy
+violations. Runtime lasted 51.695 seconds. The complete sanitized persisted
+[daemon JSONL](l4-resume-team/run10/taurhaus.log.jsonl) contains 194 rows;
+account-usage events are excluded as required. No install/release occurred.
+
+Gates run after teardown; final exits are recorded in the gate summary below.
+
+### Deviations and review boundary
+
+- The new run10 guard aborted step 2 on a null-before/populated-after path;
+  corrected offline without retrying the paid lane. Steps 3–6 remain unrun.
+- The immediate post-stop health and process handles were not given the required
+  convergence window. They are an unverified observation, not a product verdict.
+- The absolute attempt9 reference checkout `taurhaus-trial` does not exist
+  (`git show` exit 128). The versioned run9 controller inherited the run4 isolation
+  setup and was reused; no alternate taurhaus checkout was executed or modified.
+- The [raw outcomes](l4-resume-team/run10/outcome-integrity.json) remain byte-exact;
+  the raw step-2 `taurhaus` label is corrected only in separate adjudication.
+- The historical initialize-completed/startup-exit product follow-up is carried
+  in [product follow-ups](l4-resume-team/run10/product-followups.json), not observed
+  again or counted as a run10 step failure.
+- No independent Opus lens ran in this implementer session. That review remains
+  the orchestrator's separate workflow stage; this packet grants no lane PASS.

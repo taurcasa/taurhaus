@@ -59,3 +59,25 @@ class PendingDelivery(unittest.TestCase):
             self.assertEqual(support.pending_deliveries([accepted,receipt],'alpha'),[])
         receipt={'event_type':'receipt','payload':{'message_id':'m','recipient':'alpha','stage':'pending'}}
         self.assertEqual(support.pending_deliveries([accepted,receipt],'alpha'),['m'])
+
+class Run10ObservedGuardRegression(unittest.TestCase):
+    # // Regression: 99c59ab8 required jsonl_path before the scanner populated it and asserted liveness without polling.
+    def test_late_rollout_path_binding_is_not_identity_loss(self):
+        old={'session_id':'recorded','jsonl_path':None,'paneId':'%1'}
+        stopped={**old,'jsonl_path':'/scratch/rollout.jsonl','health':'session_dead',
+                 'panePid':None,'paneStartTime':None,'daemon_pid':None}
+        support.require_stopped_identity(old,stopped)
+    def test_immediate_capture_does_not_abort_before_stopping_other_seats(self):
+        lane=object.__new__(controller.Lane)
+        lane.old={m:{'session_id':m,'jsonl_path':None,'paneId':'%'+str(i)}
+                  for i,m in enumerate(['alpha','beta','lead'],1)}
+        lane.identities=Mock(return_value=[])
+        lane.record=Mock(return_value={**lane.old['alpha'],'jsonl_path':'/scratch/rollout.jsonl',
+                                      'health':'healthy','panePid':7})
+        lane.event=Mock(); calls=[]
+        lane.rpc=lambda method,params:calls.append(params['tmux_pane'])
+        lane.wait=Mock(side_effect=RuntimeError('poll boundary'))
+        with patch.object(controller,'save'):
+            with self.assertRaisesRegex(RuntimeError,'poll boundary'): lane.step2()
+        self.assertEqual(calls,['%1','%2','%3'])
+        self.assertGreaterEqual(lane.wait.call_args.kwargs['timeout'],60)
