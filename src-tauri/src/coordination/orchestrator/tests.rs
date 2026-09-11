@@ -6329,3 +6329,50 @@ fn resume_seats_honours_owner_stop_without_blocking_explicit_owner_start() {
     assert_eq!(spawns(), 2);
     assert!(marker.is_dir());
 }
+
+#[test]
+fn resume_seats_honour_a_pending_rollback_handoff() {
+    // Regression: the owner-stop review, round 5 — resume re-derived only the
+    // owner-stop marker and ignored mesh's durable rollback handoff request.
+    let tmp = TempDir::new().unwrap();
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    let team = "resume-handoff";
+    create_resumable_team(&mut orchestrator, &tmp, team, CliTool::Claude);
+    let mut config = TeamConfigStore::load(tmp.path(), team).unwrap();
+    config.extra.insert("messaging_format".into(), 2.into());
+    config.extra.insert("delivery_owner".into(), "team".into());
+    TeamConfigStore::save(tmp.path(), team, &config).unwrap();
+    let handoff = tmp.path().join(team).join("state/delivery/handoff.json");
+    std::fs::create_dir_all(handoff.parent().unwrap()).unwrap();
+    std::fs::write(&handoff, "{}").unwrap();
+    let report = orchestrator
+        .resume_team_with_cli_commands_and_layout(
+            &ResumeTeamRequest {
+                team_name: team.into(),
+            },
+            &CliCommandSettings::default(),
+            "new_window",
+        )
+        .unwrap();
+    assert_eq!(report.resumed_members.len(), 3);
+    assert!(!report.started_team_daemon);
+    assert!(report
+        .team_daemon_warning
+        .unwrap()
+        .contains("rollback_pending"));
+    mark_member_offline(&tmp, team, "builder");
+    let member = orchestrator.resume_member(team, "builder").unwrap();
+    assert!(member.resumed);
+    assert!(member
+        .warnings
+        .iter()
+        .any(|w| w.contains("rollback_pending")));
+    assert_eq!(
+        runtime
+            .calls()
+            .iter()
+            .filter(|c| matches!(c, RuntimeCall::SpawnTeamDaemon { .. }))
+            .count(),
+        0
+    );
+}

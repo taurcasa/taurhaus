@@ -676,7 +676,11 @@ impl CoordinationOrchestrator {
         }) {
             Ok((_, warning)) => warning,
             Err(err) => {
-                tracing::warn!(error = %err, "failed to resolve team daemon operator after resume");
+                tracing::warn!(
+                    team = %request.team_name,
+                    error = %err,
+                    "failed to resolve team daemon operator after resume"
+                );
                 None
             }
         }
@@ -687,9 +691,13 @@ impl CoordinationOrchestrator {
         request: &ResumeTeamRequest,
     ) -> Result<(bool, Option<String>), CoordinationError> {
         let team = &request.team_name;
-        if TeamConfigStore::delivery_marker_present(&self.teams_dir, team, "owner-stopped.json") {
-            let operator = self.team_daemon_operator_name(team)?;
-            let reason = OWNER_STOPPED_BY_OPERATOR_REASON;
+        let operator = self.team_daemon_operator_name(team)?;
+        // One authority for both durable mesh markers: a resume under an
+        // owner-stop marker or a pending rollback handoff leaves the owner
+        // down (the foreign-pane quarantine only guards an owner start).
+        if let Some(reason @ (OWNER_STOPPED_BY_OPERATOR_REASON | ROLLBACK_PENDING_REASON)) =
+            self.team_daemon_skip_reason(team, &operator)?
+        {
             self.emit_team_daemon_skipped_once(team, &operator, reason);
             return Ok((false, Some(format!("team daemon skipped: {reason}"))));
         }
