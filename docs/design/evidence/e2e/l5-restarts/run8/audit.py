@@ -12,6 +12,14 @@ def read(name,default=None):
  try:return json.loads(text(name))
  except (FileNotFoundError,KeyError):return default
 def seconds(stamp):return datetime.datetime.fromisoformat(stamp).timestamp()
+def runtime_verdict(steps, windows):
+ failed=next((s for s in steps if s['outcome']=='FAIL'),None)
+ if failed:return f"FAIL step {failed['step']} ({failed['classification']}); later steps NOT RUN"
+ if len(steps)!=6 or any(s['outcome']!='PASS' for s in steps):return 'UNPROVED — run 8: incomplete runtime steps'
+ if len(windows)!=4 or any(w['outcome']!='PASS' for w in windows):
+  return 'UNPROVED — run 8: required working-window coverage (harness timing)'
+ return 'PASS — run 8: all six steps'
+
 events=complete_rows(text('events.jsonl'));cleanup=read('cleanup.json');ledger=read('cost-ledger.json')
 assert not cleanup['survivors'] and all(cleanup[k] for k in ['port_closed','root_removed','auth_removed','auth_copy_removed_before_root'])
 steps=[]
@@ -35,7 +43,7 @@ start=next(r['at'] for r in events if r['kind']=='warmup_started')
 end=next(r['at'] for r in events if r['kind']=='cleanup')
 assert end-start<900 and ledger['paid_inputs']<=20 and ledger['api_equivalent_usd']<=.30
 failed=next((s for s in steps if s['outcome']=='FAIL'),None)
-result={'verdict':f"FAIL step {failed['step']} ({failed['classification']}); later steps NOT RUN" if failed else 'Six runtime steps completed; independent review pending',
+result={'verdict':runtime_verdict(steps,read('working-windows.json',[])),
  'step_outcomes':steps,'runtime_seconds':end-start,'started_utc':datetime.datetime.fromtimestamp(start,datetime.timezone.utc).isoformat(),
  'cleanup_utc':datetime.datetime.fromtimestamp(end,datetime.timezone.utc).isoformat(),
  'restart_boundaries':[r for r in events if r['kind'] in ['normal_daemon_stop','post_daemon_stop','post_daemon_restart','normal_mesh_restart_initiated','pending_boundary_sample']],
@@ -49,6 +57,8 @@ result={'verdict':f"FAIL step {failed['step']} ({failed['classification']}); lat
  'gates':{n:json.loads((B/f'gates/gate-{n}.json').read_text()) for n in ['check-quick','lint','test-contracts']},
  'gate_cleanup':json.loads((B/'gates/gate-cleanup.json').read_text()),
  'deviations':['Spec-referenced integration checkout absent (git show exit 128); inspected its retained attempt9 sources here and messaging run2 sources read-only.',
+ 'Beta original Taurhaus-boundary turn has no completed >=30-second interval; paced work after recovery is not substituted. Required timing coverage remains unproved (harness).',
+ 'Warm-up quit needed one recorded Enter confirmation after loading; no model prompt or restart added.',
  'Unknown-cost inputs counted separately; metered estimate is not an invoice or complete billed spend.',
  'Independent Opus evidence lens and implementer/reviewer metering belong to invoking orchestrator; Opus unavailable in this tool surface.',
  ]}

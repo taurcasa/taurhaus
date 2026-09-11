@@ -28,4 +28,20 @@ class Run8(unittest.TestCase):
   source=(B/'audit.py').read_text()
   self.assertNotIn('Step 5 failed the explicit one-attempt-per-id requirement',source)
   self.assertNotIn('1.713-second',source)
+
+class VerdictCoverage(unittest.TestCase):
+ def test_all_runtime_steps_cannot_hide_unproved_working_window(self):
+  # // Regression: 540f23ea's step predicates omitted original-turn duration coverage.
+  tree=ast.parse((B/'audit.py').read_text())
+  fn=next((n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='runtime_verdict'),None)
+  self.assertIsNotNone(fn)
+  namespace={}
+  exec(compile(ast.Module(body=[fn],type_ignores=[]),'audit-verdict','exec'),namespace)
+  verdict=namespace['runtime_verdict']
+  steps=[{'step':n,'outcome':'PASS','classification':'runtime'} for n in range(1,7)]
+  windows=[{'outcome':'PASS'}]*3+[{'outcome':'UNPROVED'}]
+  self.assertIn('UNPROVED',verdict(steps,windows))
+  self.assertEqual(verdict(steps,[{'outcome':'PASS'}]*4),'PASS — run 8: all six steps')
+  self.assertIn('UNPROVED',verdict(steps,[]))
+
 if __name__=='__main__':unittest.main()

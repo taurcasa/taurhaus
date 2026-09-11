@@ -16,5 +16,7 @@
   },
   "review": "Independent Opus evidence lens is owned by invoking orchestrator; not performed by implementer.",
   "run_label": "run8",
-  "controller_parent": "40068c69ab558a12fd22078d02dc9eb8fc77c534"
+  "controller_parent": "40068c69ab558a12fd22078d02dc9eb8fc77c534",
+  "merge_base": "26c0613283118a68c877ec2f47903a3c555179d3",
+  "merge_base_ancestor_exit": 0
 }

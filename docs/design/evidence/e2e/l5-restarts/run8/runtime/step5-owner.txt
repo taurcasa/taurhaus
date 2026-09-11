@@ -1,8 +1,0 @@
-[mesh] team-daemon is running for team l5-restarts (PID 7666)
-[mesh] delivery owner=team epoch=3 live=true
-[mesh] adapter lead: mode=tmux source=default diagnostic=none
-[mesh] adapter alpha: mode=tmux source=default diagnostic=none
-[mesh] adapter beta: mode=app_server source=config diagnostic=none
-[mesh] delivery lead: root=/tmp/th-l5-if2usuzz/claude incarnation=a5b082f1acad2fdb7307178e156fe2369c682dfa93b21554a5c1428c23c4f6ea epoch=3 heartbeat=2026-09-11T02:54:41.660485593+00:00 pending_since=none pending_age_secs=unknown stuck=false failures=0 completed=0 error=none deferred=none stale=false
-[mesh] delivery alpha: root=/tmp/th-l5-if2usuzz/claude incarnation=a5b082f1acad2fdb7307178e156fe2369c682dfa93b21554a5c1428c23c4f6ea epoch=3 heartbeat=2026-09-11T02:54:41.481838220+00:00 pending_since=2026-09-11T02:54:37.798429047+00:00 pending_age_secs=4 stuck=false failures=0 completed=1 error=none deferred=IO error: delivery: pending: activity not freshly idle stale=false
-[mesh] delivery beta: root=/tmp/th-l5-if2usuzz/claude incarnation=a5b082f1acad2fdb7307178e156fe2369c682dfa93b21554a5c1428c23c4f6ea epoch=3 heartbeat=2026-09-11T02:54:41.201144331+00:00 pending_since=none pending_age_secs=unknown stuck=false failures=0 completed=1 error=none deferred=none stale=false

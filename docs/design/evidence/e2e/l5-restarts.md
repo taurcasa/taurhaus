@@ -1,4 +1,4 @@
-# Lane 5 run7 — FAIL step 5 (harness); later steps NOT RUN
+# UNPROVED — run 8: required working-window coverage (harness timing)
 
 Run7: 14 inputs; $0.018016400 metered; 2 unknown-cost inputs; 336.60 seconds. All owned runtime processes and scratch authentication removed. See the [run7 packet](#run7--seventh-attempt-evidence).
 
@@ -1541,3 +1541,107 @@ This review adds **0 Codex inputs / $0 seat spend**; all original measured spend
 - The original beta turn at the Taurhaus boundary was interrupted before python3 began; its >=30-second continuous window is unproved. The resumed task is not substituted as original-turn evidence.
 - The passive owner census saw at most one owner and old-owner departure before delivery, but its 1.713-second maximum gap exceeds the <=1-second requirement; sampling cadence coverage is unproved (harness).
 - No product, Mesh descriptor, installation, release, plan-ledger, or other Taurhaus checkout change. Only the specified Mesh worktree was built; no Mesh commit.
+
+## Run8 — eighth-attempt evidence
+
+Taurhaus `26c06132`, protocol 27; Mesh `310144d`, unchanged enabled Codex 0.153.4 descriptor. Both native siblings copied; alpha tmux, beta app_server, gpt-5.6-luna at low; canonical initialize and login-only Claude lead.
+
+**UNPROVED — run 8: required working-window coverage (harness timing)**. Runtime 199.87 seconds; 15/20 counted inputs (including one unprompted warm-up); $0.016596320/$0.30 metered; 2 unknown-cost turns. Unknown is never treated as free. Independent Opus review remains with the invoking orchestrator.
+
+| Step | Outcome / classification | Evidence |
+|---|---|---|
+| 1 | PASS — runtime | [Outcome](l5-restarts/run8/runtime/step1-outcome.json). Both baselines delivered and explicitly read. |
+| 2 | PASS — runtime | [Outcome](l5-restarts/run8/runtime/step2-outcome.json). Both markers pending at the Taurhaus boundary; beta original >=30-second window UNPROVED (harness timing). |
+| 3 | PASS — runtime | [Outcome](l5-restarts/run8/runtime/step3-outcome.json). Normal Taurhaus restart; new PID/start ticks and protocol 27; supported beta recovery. |
+| 4 | PASS — runtime | [Outcome](l5-restarts/run8/runtime/step4-outcome.json). Both backlog IDs delivered/read once; stable identities; no baseline replay. |
+| 5 | PASS — runtime | [Outcome](l5-restarts/run8/runtime/step5-outcome.json). Mesh owner epoch/PID changed; both fresh IDs exposed once; owner census PASS. |
+| 6 | PASS — runtime | [Outcome](l5-restarts/run8/runtime/step6-outcome.json). Explicit reads followed cursors to done; six accepted targets, six exposures, six read obligations reconciled. |
+
+### Runtime evidence
+
+[Exact controller](l5-restarts/run8/controller.py), [ordered steps](l5-restarts/run8/steps.py), [commands, RPCs and exits](l5-restarts/run8/runtime/events.jsonl), [complete daemon JSONL](l5-restarts/run8/runtime/taurhaus.log.jsonl), [lossless snapshots](l5-restarts/run8/runtime/snapshots.json), [final audit](l5-restarts/run8/final-audit.json). Snapshot filenames map to SHA-256-keyed payloads; `pack.unpack` restores them. Panes contain at most 60 lines.
+
+Daemon JSONL: 624 complete rows, SHA-256 `a819de4765d1f40e8b5bb132aa69bf1236195c71b7576d089b82d3ab35d1645e`. Controller exit 0; 0 transient controller refusals observed; the retry policy allows named busy refusals within 65 seconds.
+
+Count one accepted target and at most one submitted/native_enqueued receipt per delivery ID; pair only the exposing attempt and require its native witness. Pending owner retries are deferral evidence. Step 6 follows every explicit read cursor to done. Transport and read receipts remain separate.
+
+### Every measured spend
+
+Inherited packet rates: $0.20/$0.02/$1.20 per million uncached input/cached input/output tokens; reasoning included in output. API-equivalent estimates, not invoice amounts. Warm-up: one counted TUI start, zero model prompts, $0 metered. Claude lead: zero turns. Builds, observers and gates: zero trial inputs.
+
+| Thread / turn | Generation | Input / cached / output (reasoning) | USD estimate |
+|---|---:|---|---:|
+| `01a08e61-32d2-7540-8d4a-448d710dd682` / `01a08e61-3b0a-71f2-a2f5-5f84e06c72a5` | 1 | 11162 / 6912 / 109 (82) | 0.001119040 |
+| `01a08e61-32be-7e31-9775-e58aaa81cad3` / `01a08e61-4d96-7922-870e-75b37ea8bfdc` | 1 | 9302 / 3840 / 99 (27) | 0.001288000 |
+| `01a08e61-32be-7e31-9775-e58aaa81cad3` / `01a08e61-4d96-7922-870e-75b37ea8bfdc` | 2 | 10808 / 1792 / 88 (79) | 0.001944640 |
+| `notify-only session` / `01a08e61-4f79-7e00-8f1a-5179ef296646` | — | Unreported | **Unknown** |
+| `01a08e61-32be-7e31-9775-e58aaa81cad3` / `01a08e61-776c-76b0-896d-0d286c112f24` | 1 | 10954 / 9984 / 79 (8) | 0.000488480 |
+| `01a08e61-32be-7e31-9775-e58aaa81cad3` / `01a08e61-776c-76b0-896d-0d286c112f24` | 2 | 11835 / 8960 / 124 (108) | 0.000903000 |
+| `01a08e61-32d2-7540-8d4a-448d710dd682` / `01a08e61-9a2e-7b02-b4ed-db168e7019ad` | 1 | 11381 / 11008 / 13 (0) | 0.000310360 |
+| `01a08e61-32be-7e31-9775-e58aaa81cad3` / `01a08e61-b94f-7b23-9b68-8c097cd80f4f` | 1 | 12051 / 11008 / 189 (72) | 0.000655560 |
+| `01a08e61-32be-7e31-9775-e58aaa81cad3` / `01a08e61-b94f-7b23-9b68-8c097cd80f4f` | 2 | 12899 / 11008 / 63 (15) | 0.000673960 |
+| `01a08e61-32be-7e31-9775-e58aaa81cad3` / `01a08e61-b94f-7b23-9b68-8c097cd80f4f` | 3 | 13217 / 12032 / 5 (0) | 0.000483640 |
+| `01a08e61-32d2-7540-8d4a-448d710dd682` / `01a08e61-bd88-7e00-a38a-38a369fca305` | — | Unreported | **Unknown** |
+| `01a08e61-32d2-7540-8d4a-448d710dd682` / `01a08e61-dcd3-7a42-bf96-03dfde194b5a` | 1 | 12193 / 11008 / 117 (21) | 0.000597560 |
+| `01a08e61-32d2-7540-8d4a-448d710dd682` / `01a08e61-dcd3-7a42-bf96-03dfde194b5a` | 2 | 12969 / 12032 / 55 (7) | 0.000494040 |
+| `01a08e61-32d2-7540-8d4a-448d710dd682` / `01a08e61-dcd3-7a42-bf96-03dfde194b5a` | 3 | 13281 / 12032 / 5 (0) | 0.000496440 |
+| `01a08e61-32be-7e31-9775-e58aaa81cad3` / `01a08e62-702d-72d1-8065-d69c368b1689` | 1 | 13283 / 13056 / 79 (8) | 0.000401320 |
+| `01a08e61-32be-7e31-9775-e58aaa81cad3` / `01a08e62-702d-72d1-8065-d69c368b1689` | 2 | 14168 / 13056 / 16 (0) | 0.000502720 |
+| `01a08e61-32d2-7540-8d4a-448d710dd682` / `01a08e62-a00b-74f2-869d-44c4386ba1fb` | 1 | 13400 / 13056 / 16 (0) | 0.000349120 |
+| `01a08e61-32be-7e31-9775-e58aaa81cad3` / `01a08e62-c483-7b30-9b74-0c919540ded5` | 1 | 14276 / 9984 / 124 (7) | 0.001206880 |
+| `01a08e61-32be-7e31-9775-e58aaa81cad3` / `01a08e62-c483-7b30-9b74-0c919540ded5` | 2 | 15060 / 13056 / 54 (6) | 0.000726720 |
+| `01a08e61-32be-7e31-9775-e58aaa81cad3` / `01a08e62-c483-7b30-9b74-0c919540ded5` | 3 | 15369 / 14080 / 5 (0) | 0.000545400 |
+| `01a08e61-32d2-7540-8d4a-448d710dd682` / `01a08e62-c919-71b1-8102-a4f6030d1fc6` | 1 | 13508 / 6912 / 104 (8) | 0.001582240 |
+| `01a08e61-32d2-7540-8d4a-448d710dd682` / `01a08e62-c919-71b1-8102-a4f6030d1fc6` | 2 | 14271 / 13056 / 46 (0) | 0.000559320 |
+| `01a08e61-32d2-7540-8d4a-448d710dd682` / `01a08e62-c919-71b1-8102-a4f6030d1fc6` | 3 | 14574 / 14080 / 5 (0) | 0.000386400 |
+| `01a08e61-32be-7e31-9775-e58aaa81cad3` / `01a08e63-76c1-7512-8509-644b8279ab19` | 1 | 15434 / 15104 / 78 (7) | 0.000461680 |
+| `01a08e61-32d2-7540-8d4a-448d710dd682` / `01a08e63-7d70-7961-9116-6504fcbd45d9` | 1 | 14693 / 14080 / 13 (0) | 0.000419800 |
+
+### Restart and working-window measurements
+
+| Boundary / seat | Original working seconds | Outcome |
+|---|---:|---|
+| taurhaus-backlog / alpha | 45.367 | PASS — runtime |
+| taurhaus-backlog / beta | None | UNPROVED — harness timing |
+| mesh-backlog / alpha | 44.97 | PASS — runtime |
+| mesh-backlog / beta | 44.947 | PASS — runtime |
+
+Beta at the first boundary: the pending sample occurred 3.459 seconds after its original turn started, before a python3 command was retained. That original turn has no completion record; execution after supported recovery cannot prove its original >=30-second window. This required subclaim is UNPROVED — harness timing, despite the six delivery/restart/read predicates passing.
+
+Measured intervals use original turns, never a resumed substitute. Pending samples, daemon PID/start ticks, seat identities, owner epoch and process census are retained in the final audit and lossless snapshots.
+
+| Boundary / seat | Message ID | Attempts / exposures / explicitly read |
+|---|---|---|
+| baseline / alpha | `a845d9b8-e555-4111-92bc-7e445159b138` | 1 / 1 / True |
+| baseline / beta | `92f424be-caa9-498e-95ab-f41441383202` | 1 / 1 / True |
+| taurhaus-backlog / alpha | `e9bf44ce-be2c-4776-85b7-59063b73c24b` | 1 / 1 / True |
+| taurhaus-backlog / beta | `1f0faa16-41a7-4007-b7bc-02909af9f149` | 19 / 1 / True |
+| mesh-backlog / alpha | `d5d56d42-772b-4fe1-9f37-49d7284e8c4c` | 1 / 1 / True |
+| mesh-backlog / beta | `742fab9f-e101-4dc2-b591-1a75a0e0f460` | 16 / 1 / True |
+
+Owner census: PASS; PID 755964 → 779904; 94 samples; maximum owners 1; maximum gap 0.561s. one owner per passive sample across both epochs; bounded evidence only.
+
+[Cost ledger](l5-restarts/run8/runtime/cost-ledger.json). Implementer/reviewer spend is separately owned by the invoking orchestrator.
+
+### Verification and teardown
+
+Four new offline regressions failed first, exit 1; all 48 inherited and new checks then passed, exit 0. A fifth regression then failed on the absent verdict coverage guard; the corrected audit refuses full PASS when a required window is unproved. Checks cover warm-up before initialize, composer/clean exit/SQLite barrier, counted warm-up input, and removal of stale audit claims. Regression comments name the original commits. [Red](l5-restarts/run8/red.txt), [green](l5-restarts/run8/green.txt), [integrity checks](l5-restarts/run8/verification.json).
+
+| Exact gate from checkout root | Exit | Seconds |
+|---|---:|---:|
+| `just check-quick` | 0 | 42.15 |
+| `just lint` | 0 | 45.33 |
+| `just test-contracts` | 0 | 44.37 |
+
+Gate timing and exact outputs are retained under [gate sidecars](l5-restarts/run8/gates/). All gates ran after teardown in credential-free scratch roots with real harness executables blocked. Cargo preflight polls only when at least three Cargo processes exist, at 30-second intervals; one build job and checkout-local target. No Rust diff; `just test-rust-unit` does not apply.
+
+[Cleanup](l5-restarts/run8/runtime/cleanup.json): survivors `[]`; private port closed `True`; auth copy explicitly removed `True`; root removed `True`. No foreign process signaled.
+
+### Deviations and limits
+
+- Spec-referenced integration checkout absent (git show exit 128); inspected its retained attempt9 sources here and messaging run2 sources read-only.
+- Beta original Taurhaus-boundary turn has no completed >=30-second interval; paced work after recovery is not substituted. Required timing coverage remains unproved (harness).
+- Warm-up quit needed one recorded Enter confirmation after loading; no model prompt or restart added.
+- Unknown-cost inputs counted separately; metered estimate is not an invoice or complete billed spend.
+- Independent Opus evidence lens and implementer/reviewer metering belong to invoking orchestrator; Opus unavailable in this tool surface.
+- No product change, Mesh descriptor edit/commit, install, release, plan ledger edit, or mutation in another Taurhaus checkout.
