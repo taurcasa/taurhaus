@@ -1,4 +1,17 @@
-# Lane 5 run6 — FAIL step 1 (harness); steps 2–6 NOT RUN
+# Lane 5 run6 continuation — FAIL step 5 (harness); step 6 NOT RUN
+
+The authorized continuation committed **steps 1–4 PASS**. Both restart boundaries
+were crossed with pending mail on both transports. Step 5 failed because alpha
+stopped at a paginated inbox-read result without fetching its marker. Beta received
+its marker. The passive owner census passed across restart-self. The first-boundary
+beta >=30-second continuous window remains **UNPROVED**: its original turn was
+interrupted, and the paced command ran after resume. No full lane PASS is claimed.
+**14 counted model inputs; $0.01652596 metered; two unknown-cost inputs; 420.08 s.**
+One additional failed startup had no model turn; conservative cap count **15/20**.
+All owned processes were removed, all three gates passed, and evidence is retained
+under [run6/continuation](#run6-continuation--ordered-restart-evidence).
+
+## Historical run6 initial verdict
 
 Run6 stopped after **180.7 seconds** at beta's startup guard. The daemon's
 startup delivery row, the card in host `item/started`, the matching completed
@@ -1258,3 +1271,151 @@ lens is unavailable in this agent's tool surface and remains with the invoking
 orchestrator. No product fix, Mesh change, descriptor edit, plan-ledger edit,
 installation or release was made. There is no green numbered runtime step to
 commit; the red-first controller preparation and final failure packet are committed.
+
+
+## Run6 continuation — ordered restart evidence
+
+The user authorized continuation from the committed tree. The original run6
+packet remains unchanged. This fresh runtime used the same Taurhaus product base
+`a7e6db7e`, protocol 27, and Mesh `310144d` with its enabled descriptor unchanged.
+Both native Codex 0.153.4 siblings, canonical builder policy, alpha tmux, beta
+app-server, private roots/PID namespace/tmux/port, and login-only lead were retained.
+No product change, Mesh commit, installation, release, or plan-ledger edit occurred.
+
+The observer correction accepts a host user-card `item/started` as well as
+`item/completed`, while still requiring completion of the matching startup turn
+and host-sourced idle. Two regression checks failed first against `d8146e39`,
+then all **33 offline checks passed**. The corrected helper also admits the real
+retained run6 startup witness. See [red/green evidence](l5-restarts/run6/continuation/green.json)
+and [retained startup check](l5-restarts/run6/continuation/retained-startup-check.json).
+
+| Step | Outcome | Classification and retained evidence |
+|---|---|---|
+| 1. Initialize, baseline delivery/read, identities | **PASS** | Runtime; committed `71daf570`. Alpha initially exited during native Codex SQLite migration 38 (`external_agent_config_imports already exists`). One supported `resume_member` recovered it before the startup guard expired. Both transport guards and both baselines then passed. |
+| 2. Bounded work and pending mail | **PASS, qualified** | Runtime pending predicates passed on both seats; committed `510f6d7a`. Alpha's paced turn measured 44.747 s. Beta's original turn was interrupted before executing Python; its continuous >=30 s window at this boundary is **UNPROVED, harness timing**. The preserved controller PASS applies to pending state, not that duration subclaim. |
+| 3. Normal Taurhaus restart | **PASS** | Runtime; committed `414a4c90`. SIGINT shutdown, identical startup arguments, PID/start ticks `3828891/31082992` → `3862764/31100113`, protocol 27. Beta host stopped and recovered through `resume_member`; alpha stayed attached. |
+| 4. First backlog delivered, identities/no replay | **PASS** | Runtime; committed `e32a48cf`. Both original pending IDs have one transport receipt and one explicit read. Logical identities and incarnation stayed stable; alpha generation stayed 2, beta advanced 1→3. Baselines did not replay. |
+| 5. Mesh owner restart and fresh backlog | **FAIL** | **Harness/model pagination.** Both messages were pending at restart-self. Alpha notification was submitted once, but its native `mesh read` returned a continuation cursor; the model stopped with “unavailable done” without fetching the marker page. Reply assertion expired after 180.1 s. Beta has one native-enqueued receipt, one host card item and its marker reply. Owner exclusion subclaim **PASS** from passive evidence. |
+| 6. Final read/mark and reconciliation | **NOT RUN** | Blocked by the required stop on step-5 failure. Failure-path export and owned teardown passed. |
+
+The one-off startup recovery is retained in
+[startup_recovery.py](l5-restarts/run6/continuation/startup_recovery.py), with
+its exact RPC requests/results in `startup-alpha-recovery.json` inside the packed
+snapshots. It did not repair or modify the database. The failed startup had no
+model turn. No corrective prompt was sent after alpha's step-5 pagination failure.
+The controller waited for the marker reply before invoking its own explicit-read
+paging, so that bookkeeping did not repair the seat's incomplete read.
+
+### Continuation restart and exposure accounting
+
+The Taurhaus pending samples were at **1789090462.274217 / .274282**;
+SIGINT was initiated at **1789090462.279091**. The Mesh samples were at
+**1789090530.679019 / .679070**; restart-self began at **1789090530.680064**.
+Both samples satisfy accepted-for-recipient, no exposure receipt, and current
+attributed working activity. Neither boundary waited for a delivery receipt.
+
+| Marker | Seat | Message ID | Final witness |
+|---|---|---|---|
+| baseline | alpha | `a6047c43-39e5-4ff9-b6f7-588e9345e402` | One submitted receipt, one seat read |
+| baseline | beta | `7337971c-58be-40eb-8e7b-b0ad6e60bffe` | One native-enqueued receipt, one host card, one explicit read |
+| Taurhaus backlog | alpha | `d2c30179-5f2c-409d-aecd-e06c923fec53` | One submitted receipt, one seat read |
+| Taurhaus backlog | beta | `920fa64b-417b-44f0-a900-a15305669a70` | One native-enqueued receipt, one host card, one explicit read |
+| Mesh backlog | alpha | `6e45caf8-5e75-477b-95da-b43abfa6605c` | One submitted notification; **no marker read/exposure/reply** |
+| Mesh backlog | beta | `8bbb0d39-83b4-405f-813a-b7db9000cf85` | One native-enqueued receipt, one host card and marker reply; final explicit read unrun |
+
+The pending alpha message remains traceable in the journal; complete consumption
+and model action are not established. No blanket exactly-once or no-lost-obligation
+claim is made. `obligation-accounting.json` contains all accepted targets and receipts;
+`step5-alpha-pagination.json` and `step5-alpha-delivery-probe.txt` preserve the
+native read/cursor result and bounded pane capture.
+
+The Mesh owner changed epoch **2→3**, namespace PID **1247→6410**, external PID
+**3831100→3877835**. Across restart-self through both transport receipts,
+**88 passive samples**, maximum gap **0.538419 s**, contained at most one owner.
+Old-owner departure was observed at **1789090531.816083**, before the first delivery
+at **1789090571.556566**. This post-teardown assessment uses the complete retained
+census; the live step-5 worker failed on alpha's reply before reaching its own
+census assertion. Second-boundary working turns measured **43.945 s alpha /
+46.155 s beta**, both explicitly using `python3`. At the first boundary, beta's
+original turn has no completion; the resumed turn lasted **47.353 s**, which does
+not prove a continuous >=30-second window crossing that restart.
+
+### Continuation spend
+
+Runtime: **2026-09-11 01:31:32.446305 UTC → 01:38:32.525363 UTC**, **420.08 s**.
+There were **14 model-input IDs**, plus one failed native startup without a model
+turn (conservative cap count **15**, below 20). The metered total is
+**$0.01652596**, below the fresh $0.30 metered cap. Two inputs are cost-unknown:
+notify-only `01a08e19-80c7-7370-ba52-2d97f5d5f202`, and interrupted beta turn
+`01a08e19-eef1-7720-a00c-4c32a84b21bd`. They count as inputs, not free usage.
+The ledger's conservative estimate for measured generations is **$0.39617160**;
+that estimate is not billed spend or a bound on the unknown inputs. Claude had
+no paid turn. Implementer/reviewer spend is unavailable here and remains with
+the orchestrator. Every metered generation follows; full token counts and
+thread IDs are in [cost-ledger.json](l5-restarts/run6/continuation/runtime/cost-ledger.json).
+
+| Turn ID | Generation within turn | Metered USD |
+|---|---:|---:|
+| `01a08e17-74ca-7783-96a6-eee669e34071` | 1 | 0.00109384 |
+| `01a08e19-c8d0-7ea2-9d93-5310576ff555` | 1 | 0.00060768 |
+| `01a08e1a-0c24-7223-b17e-49bf7af1d8fd` | 1 | 0.00081836 |
+| `01a08e1a-0c24-7223-b17e-49bf7af1d8fd` | 2 | 0.00059544 |
+| `01a08e1a-0c24-7223-b17e-49bf7af1d8fd` | 3 | 0.00042652 |
+| `01a08e1a-cf24-7312-80ed-5449c131b8e3` | 1 | 0.00046332 |
+| `01a08e1a-f861-71f3-b74d-62f857ab3311` | 1 | 0.00067572 |
+| `01a08e1a-f861-71f3-b74d-62f857ab3311` | 2 | 0.00066392 |
+| `01a08e1a-f861-71f3-b74d-62f857ab3311` | 3 | 0.00050600 |
+| `01a08e1b-ae12-7e13-a431-2a35cd995672` | 1 | 0.00054300 |
+| `01a08e19-7f0c-7810-bb1a-7100cdc936e2` | 1 | 0.00072744 |
+| `01a08e19-7f0c-7810-bb1a-7100cdc936e2` | 2 | 0.00182892 |
+| `01a08e19-a585-7c03-a3d9-d1c8f29519f3` | 1 | 0.00043056 |
+| `01a08e19-a585-7c03-a3d9-d1c8f29519f3` | 2 | 0.00057316 |
+| `01a08e19-e9d2-7410-9b22-3d6a265ec1a1` | 1 | 0.00055504 |
+| `01a08e19-e9d2-7410-9b22-3d6a265ec1a1` | 2 | 0.00114160 |
+| `01a08e19-e9d2-7410-9b22-3d6a265ec1a1` | 3 | 0.00040272 |
+| `01a08e1a-9e2b-72c1-bcbe-73a2f471959d` | 1 | 0.00051192 |
+| `01a08e1a-9e2b-72c1-bcbe-73a2f471959d` | 2 | 0.00079724 |
+| `01a08e1a-f350-7842-9dff-52148e9d81fc` | 1 | 0.00056920 |
+| `01a08e1a-f350-7842-9dff-52148e9d81fc` | 2 | 0.00082332 |
+| `01a08e1a-f350-7842-9dff-52148e9d81fc` | 3 | 0.00046688 |
+| `01a08e1b-a4ef-7fd2-87ce-c23744d9fa2f` | 1 | 0.00057108 |
+| `01a08e1b-a4ef-7fd2-87ce-c23744d9fa2f` | 2 | 0.00073308 |
+
+### Continuation gates, retention, and limits
+
+All gates ran after verified runtime teardown in credential-free isolated roots.
+
+| Exact command | Exit |
+|---|---:|
+| `just build-daemon` | 0 |
+| `just check-quick` | 0 |
+| `just lint` | 0 |
+| `just test-contracts` | 0 |
+| `just test-rust-unit` | Not required: no `src-tauri/` diff |
+
+Cargo admission used the required census and 30-second polls; check-quick waited
+through two samples with three foreign Cargo processes, then proceeded at two.
+Own Cargo commands used one job and the checkout-local target. No foreign process
+was stopped. The controller recorded zero transient-refusal retries; beta's Mesh
+journal separately contains busy/pending attempts before its single native-enqueued
+receipt. These are retained rather than counted as duplicate exposure.
+
+Controller exit **1** reflects the step-5 assertion. Owned cleanup passed:
+zero survivors, private port closed, auth removed before root deletion, root absent.
+The complete sanitized daemon JSONL has **1,076 rows**, SHA-256
+`7a55bb12f284efc85ad569cb5cbcc498211c01430c9dcc7ddba148badcd36d85`.
+Snapshot interning retains **168 files / 119 unique payloads**, alongside the
+direct daemon log, host events, owner observations, usage and cost records.
+[Verification](l5-restarts/run6/continuation/verification.json) passed syntax,
+payload hashes, sanitation, pane bounds, cleanup, no product diff and clean Mesh.
+Gate stdout with a trailing blank line is retained losslessly as a JSON string.
+
+Deviations and outstanding limits: the absent integration reference checkout
+required the already-retained adaptation; this continuation added one supported
+alpha startup recovery; first-boundary beta duration is unproved; step 5 stopped
+on model pagination and step 6 stayed unrun. The independent Opus evidence lens
+is unavailable in this tool surface and remains with the invoking orchestrator.
+See [final-audit.json](l5-restarts/run6/continuation/final-audit.json) for all
+classifications and original evidence. The four green numbered steps were each
+committed with the requested trailers; the final packet preserves their scope
+without converting the overall lane verdict to PASS.

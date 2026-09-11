@@ -53,8 +53,16 @@ result={'verdict':f"FAIL step {failed['step']} ({failed['classification']}); rem
  'owner_census':{'samples':len(owners),'max_simultaneous_observed_owners':maximum,
  'max_gap_seconds':max((b['at']-a['at'] for a,b in zip(owners,owners[1:])),default=None),
  'restart_window':'NOT RUN' if failed and failed['step']<5 else 'see step5-owner-census.json'},
- 'working_windows':{'taurhaus_boundary':{'alpha':'NOT RUN','beta':'NOT RUN'},'mesh_boundary':{'alpha':'NOT RUN','beta':'NOT RUN'}} if failed and failed['step']<2 else 'see runtime turn durations and pending boundary samples',
- 'turns':turns,'spend':ledger,'cleanup':cleanup,'controller_exit':code,
+ 'working_windows':{'taurhaus_boundary':{
+     'alpha':{'turn_id':'01a08e19-e9d2-7410-9b22-3d6a265ec1a1','duration_seconds':44.747},
+     'beta':{'turn_id':'01a08e19-eef1-7720-a00c-4c32a84b21bd','outcome':'UNPROVED','classification':'harness timing',
+       'reason':'Turn interrupted at daemon restart before python3 began; resumed task ran 47.353 seconds after the boundary.'}},
+    'mesh_boundary':{'alpha':{'turn_id':'01a08e1a-f350-7842-9dff-52148e9d81fc','duration_seconds':43.945},
+                     'beta':{'turn_id':'01a08e1a-f861-71f3-b74d-62f857ab3311','duration_seconds':46.155}}},
+ 'obligation_accounting':read('obligation-accounting.json'),
+ 'restart_self_owner_assessment':read('step5-owner-census.json'),
+ 'startup_recovery':read('startup-alpha-recovery.json'),
+ 'turns':turns,'spend':ledger,'startup_attempts_without_model_turn':1,'conservative_input_cap_count':ledger['paid_inputs']+1,'cleanup':cleanup,'controller_exit':code,
  'daemon_jsonl':{'rows':len(complete_rows(text('taurhaus.log.jsonl'))),
  'sha256':hashlib.sha256((P/'taurhaus.log.jsonl').read_bytes()).hexdigest()},
  'transient_refusals':[r for r in events if r['kind']=='transient_refusal'],
@@ -64,7 +72,10 @@ result={'verdict':f"FAIL step {failed['step']} ({failed['classification']}); rem
  'deviations':['The referenced integration attempt9 checkout was absent (git show exit 128); reused retained run5/run3 controller and inspected messaging run2 reference read-only.',
  'Unknown-cost inputs are counted; metered estimate is not complete billed spend.',
  'Fresh isolated runtime authorized by user continuation; historical run6 evidence remains unchanged.',
+ 'One extra supported resume_member for alpha during step 1 recovered a native Codex concurrent scratch SQLite migration failure; no database repair or paid turn retry was performed.',
+ 'First-boundary beta minimum continuous working duration is unproved: the original turn was interrupted before python3 began; it ran the paced task on resume.',
+ 'Step 5 stopped when alpha did not follow its mesh read cursor; the controller waited for a reply before its own explicit-read paging. No step 6 or corrective model prompt was run.',
  'Independent Opus evidence review and implementer/reviewer metering remain with the invoking orchestrator; Opus is unavailable in this agent tool surface.'],
- 'product_defect':'None established by the stopped onboarding assertion.' if failed and failed['step']==1 else 'See ordered outcomes.'}
+ 'product_defect':'No Taurhaus or Mesh product defect established. Alpha native startup migration failure and later model pagination failure are retained as setup/harness limitations.'}
 (B/'final-audit.json').write_text(json.dumps(clean(result),indent=2)+'\n')
 print(json.dumps({k:result[k] for k in ['verdict','runtime_seconds','daemon_jsonl']}))
