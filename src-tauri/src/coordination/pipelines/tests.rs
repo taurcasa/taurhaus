@@ -4004,13 +4004,15 @@ fn operator_resume_renders_recorded_session_for_capturing_harnesses() {
     let sink = taurhaus_lib::logging::LogFileState::new(log_path.clone()).unwrap();
     taurhaus_lib::logging::install_global_sink(&sink);
     for tool in [CliTool::Codex, CliTool::Claude, CliTool::Grok, CliTool::Agy] {
-        for (session_id, effort, deleted) in [
-            (Some("  recorded-session  "), None, false),
-            (Some("recorded-session"), None, true),
-            (None, None, false),
-            (Some(""), None, false),
-            (Some(" \t "), None, false),
-            (Some("recorded-session"), Some("high"), false),
+        for (session_id, effort, rollout_state) in [
+            (Some("  recorded-session  "), None, "present"),
+            (Some("recorded-session"), None, "deleted_home"),
+            (None, None, "present"),
+            (Some(""), None, "present"),
+            (Some(" \t "), None, "present"),
+            (Some("recorded-session"), Some("high"), "present"),
+            (Some("recorded-session"), None, "missing_file"),
+            (Some("recorded-session"), None, "compressed"),
         ] {
             let tmp = TempDir::new().unwrap();
             let runtime = Arc::new(RecordingCoordinationRuntime::default());
@@ -4027,10 +4029,16 @@ fn operator_resume_renders_recorded_session_for_capturing_harnesses() {
                 MemberRuntimeStore::load(tmp.path(), "resume-recorded", "seat").unwrap();
             record.session_id = session_id.map(str::to_string);
             // Regression: 106f06c7 resumed missing Codex rollouts without fallback.
-            let rollout = tmp.path().join("rollout.jsonl");
+            // Regression: 06f76b01 discarded ids when Codex compressed or relocated a rollout.
+            let home = tmp.path().join("codex-home");
+            fs::create_dir(&home).unwrap();
+            let rollout = home.join("rollout.jsonl");
             fs::write(&rollout, "").unwrap();
-            if deleted {
-                fs::remove_file(&rollout).unwrap();
+            match rollout_state {
+                "deleted_home" => fs::remove_dir_all(&home).unwrap(),
+                "missing_file" => fs::remove_file(&rollout).unwrap(),
+                "compressed" => fs::rename(&rollout, home.join("rollout.jsonl.zst")).unwrap(),
+                _ => {}
             }
             record.jsonl_path = Some(rollout);
             // Regression: 39eeb33a / e2e lane 4 run 9 (106f06c7): the
@@ -4074,7 +4082,7 @@ fn operator_resume_renders_recorded_session_for_capturing_harnesses() {
             };
             let resumes = expected.is_some()
                 && session_id.is_some_and(|id| !id.trim().is_empty())
-                && !(deleted && tool == CliTool::Codex);
+                && !(rollout_state == "deleted_home" && tool == CliTool::Codex);
             if resumes {
                 assert!(launch.contains(expected.unwrap()), "{tool}: {launch}");
             } else {
@@ -4105,6 +4113,16 @@ fn operator_resume_renders_recorded_session_for_capturing_harnesses() {
                     r.jsonl_path = record.jsonl_path.clone();
                 })
                 .unwrap();
+                // Exercise team resume from the same supported offline stop as member resume.
+                orchestrator
+                    .reconcile_team_liveness("resume-recorded")
+                    .unwrap();
+                assert_eq!(
+                    MemberRuntimeStore::load(tmp.path(), "resume-recorded", "seat")
+                        .unwrap()
+                        .health,
+                    HealthState::SessionDead
+                );
                 let offset = runtime.calls().len();
                 let report = orchestrator
                     .resume_team_with_cli_commands_and_layout(

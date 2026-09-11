@@ -960,10 +960,19 @@ fn is_short_flag(flag: &str) -> bool {
 }
 
 impl CliToolSpec {
-    /// Codex refuses a missing saved rollout instead of starting a conversation.
+    /// Only a missing rollout directory proves the saved home was removed.
+    /// Codex owns compressed/relocated rollout resolution within an existing home.
     pub fn missing_resume_rollout(&self, path: Option<&std::path::Path>) -> bool {
         self.resume_requires_rollout
-            && path.is_some_and(|path| matches!(path.try_exists(), Ok(false)))
+            && path.is_some_and(|path| {
+                let mut compressed = path.as_os_str().to_os_string();
+                compressed.push(".zst");
+                matches!(path.try_exists(), Ok(false))
+                    && matches!(std::path::Path::new(&compressed).try_exists(), Ok(false))
+                    && path
+                        .parent()
+                        .is_some_and(|parent| matches!(parent.try_exists(), Ok(false)))
+            })
     }
 
     /// Account provider for this tool. Provider rollout follows selector
