@@ -486,12 +486,12 @@ impl CoordinationOrchestrator {
             self.emit_team_daemon_skipped_once(team_name, &operator_name, reason);
             return (false, Some(reason));
         }
-        self.clear_team_daemon_skip_state(team_name, &operator_name);
         match self
             .runtime
             .spawn_team_daemon_at_root(team_name, &operator_name, &self.teams_dir)
         {
             Ok(pid) => {
+                self.clear_team_daemon_skip_state(team_name, &operator_name);
                 tracing::info!(
                     team = %team_name,
                     operator = %operator_name,
@@ -554,12 +554,12 @@ impl CoordinationOrchestrator {
             };
             return Ok((false, Some(format!("team daemon skipped: {detail}"))));
         }
-        self.clear_team_daemon_skip_state(team_name, &operator_name);
         match self
             .runtime
             .spawn_team_daemon_at_root(team_name, &operator_name, &self.teams_dir)
         {
             Ok(pid) => {
+                self.clear_team_daemon_skip_state(team_name, &operator_name);
                 tracing::info!(
                     team = %team_name,
                     operator = %operator_name,
@@ -859,6 +859,11 @@ impl CoordinationOrchestrator {
     }
 
     fn clear_team_daemon_skip_state(&self, team_name: &str, operator_name: &str) {
+        if let Some(emitted) = OWNER_SKIP_EVENTS.get() {
+            if let Ok(mut teams) = emitted.lock() {
+                teams.retain(|(path, _)| path != &self.teams_dir.join(team_name));
+            }
+        }
         let credential_path = self.team_daemon_credential_path(team_name, operator_name);
         if let Some(emitted) = TEAM_DAEMON_SKIP_EVENTS.get() {
             if let Ok(mut paths) = emitted.lock() {

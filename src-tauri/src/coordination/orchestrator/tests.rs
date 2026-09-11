@@ -6030,6 +6030,8 @@ fn team_owned_inbox_append_does_not_wake_member_executor() {
 }
 
 // Regression: e19ffad0 (e2e lane 6 run 2): self-heal restarted an operator-stopped owner.
+// Regression: b6b0064e never reset owner skip events after successful recovery,
+// so a second rollback in the same daemon run was silent.
 fn assert_owner_skip(marker: Option<&str>, format: u64, owner: Option<&str>, reason: &str) {
     let _guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
     let tmp = TempDir::new().unwrap();
@@ -6084,8 +6086,10 @@ fn assert_owner_skip(marker: Option<&str>, format: u64, owner: Option<&str>, rea
     }
     wire["delivery_owner"] = owner.map(serde_json::Value::from).unwrap_or_default();
     std::fs::write(&config_path, wire.to_string()).unwrap();
-    let skipped = orchestrator.trigger_team_self_heal(team).unwrap();
-    assert!(!skipped.team_daemon_ensured);
+    for _ in 0..2 {
+        let skipped = orchestrator.trigger_team_self_heal(team).unwrap();
+        assert!(!skipped.team_daemon_ensured);
+    }
     sink.flush_for_test().unwrap();
     let events: Vec<serde_json::Value> = std::fs::read_to_string(&log_path)
         .unwrap()
@@ -6099,7 +6103,8 @@ fn assert_owner_skip(marker: Option<&str>, format: u64, owner: Option<&str>, rea
                 && e["team_name"] == team
                 && e["reason"] == reason)
             .count(),
-        1
+        2,
+        "each skip episode must emit once"
     );
 }
 
