@@ -407,6 +407,8 @@ function normalizeMeshInstallStatus(raw) {
   const normalized = {
     ...status,
     canonical_messaging_supported: status.canonical_messaging_supported ?? status.canonicalMessagingSupported ?? false,
+    ...(status.hostedDeliveryReason !== undefined
+      ? { hosted_delivery_reason: status.hostedDeliveryReason } : {}),
     ...(status.hostedDeliverySupported != null
       ? { hosted_delivery_supported: status.hostedDeliverySupported === true } : {}),
     installed: Boolean(status.installed),
@@ -442,6 +444,7 @@ function normalizeMeshInstallStatus(raw) {
       status.environment_available ?? status.environmentAvailable ?? true,
     error: status.error ?? null,
   }
+  delete normalized.hostedDeliveryReason
   delete normalized.hostedDeliverySupported
   delete normalized.canonicalMessagingSupported
   delete normalized.bundledVersion

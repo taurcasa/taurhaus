@@ -727,6 +727,8 @@ import MeshNodeDetail from './MeshNodeDetail.svelte'
 
         <MemberDeliverySelect tool={addAgentDraft?.tool ?? 'codex'} delivery={memberDelivery(addAgentDraft, meshStatus, canonicalMessaging)}
           {dark} disabled={Boolean(addAgentDraft?.submitting)}
+          hostedSupported={meshStatus?.hosted_delivery_supported === true}
+          hostedReason={meshStatus?.hosted_delivery_reason}
           onchange={(next) => onUpdateAddAgentField('delivery', next.delivery)} />
 
         <div class="space-y-1.5">

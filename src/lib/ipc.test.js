@@ -1646,9 +1646,10 @@ describe('ipc module', () => {
     // Regression: 6398bfa3 had no hosted-admissibility field in the app status.
     it.each([true, false])('normalizes hosted capability %s', async (supported) => {
       window.__TAURI_INTERNALS__ = {}
-      tauriCore.invoke.mockResolvedValue({ hostedDeliverySupported: supported })
+      tauriCore.invoke.mockResolvedValue({ hostedDeliverySupported: supported, hostedDeliveryReason: supported ? null : "build mismatch" })
       const result = await ipc.checkMeshInstallStatus()
       expect(result.hosted_delivery_supported).toBe(supported)
+      expect(result.hosted_delivery_reason).toBe(supported ? null : "build mismatch")
       expect(result).not.toHaveProperty('hostedDeliverySupported')
       delete window.__TAURI_INTERNALS__
     })

@@ -21,6 +21,7 @@ it('preserves hosted authority through the runtime detail projection', async () 
 })
 
 it('offers delivery on add-agent only for a backend-hostable Codex seat', async () => {
+  // Regression: c36b1900 omitted the hosted gate and its explanation from add-agent.
   configureToolRegistry(FALLBACK_TOOLS.map(tool => ({ ...tool, hostingSupported: tool.id === 'codex' })))
   vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} })
   const onUpdateAddAgentField = vi.fn()
@@ -29,6 +30,12 @@ it('offers delivery on add-agent only for a backend-hostable Codex seat', async 
   try {
     const select = screen.getByRole('combobox', { name: 'Delivery' })
     expect(select).toHaveValue('tmux')
+    const reason = 'Native delivery requires Mesh 0.3.0 or newer'
+    await view.rerender({ meshStatus: { hosted_delivery_supported: false, hosted_delivery_reason: reason } })
+    expect(screen.getByRole('option', { name: /native \(app-server/ })).toBeDisabled()
+    expect(screen.getByText(reason)).toBeVisible()
+    await view.rerender({ meshStatus: { hosted_delivery_supported: true } })
+    expect(screen.getByRole('option', { name: /native \(app-server/ })).toBeEnabled()
     await fireEvent.change(select, { target: { value: 'app_server' } })
     expect(onUpdateAddAgentField).toHaveBeenCalledWith('delivery', 'app_server')
     await view.rerender({ addAgentDraft: { tool: 'claude' } })

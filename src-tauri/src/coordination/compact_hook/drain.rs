@@ -8,6 +8,18 @@ const OUTPUT_LIMIT: usize = 64 * 1024;
 const DEADLINE: Duration = Duration::from_secs(2);
 const SECTION: &str = "\n\n## Mesh pending messages (attributed data)\n";
 
+/// No drain descriptor is verified/enabled in the paired Mesh release. Keep
+/// reconciliation dormant until an enabled drain pin is admitted here; this
+/// does not change the protocol's hook registration facts.
+pub fn enabled() -> bool {
+    #[cfg(test)]
+    if crate::coordination::mesh_cli::test_mesh_installed() {
+        return crate::coordination::mesh_cli::mesh_binary_path()
+            .is_some_and(|path| Path::new(&path).with_extension("drain-enabled").is_file());
+    }
+    false
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub(super) struct Descriptor {
     pub id: String,
@@ -575,13 +587,9 @@ pub fn reconcile_home(
     bindings: &[Binding],
     exe: &Path,
 ) -> Result<bool, CoordinationError> {
-    if !matches!(tool, CliTool::Claude | CliTool::Codex) {
+    if cfg!(windows) || !matches!(tool, CliTool::Claude | CliTool::Codex) {
         return Ok(false);
     }
-    // Absence of capability evidence never grants teardown authority (notably on Windows).
-    let Some(mesh) = executable() else {
-        return Ok(false);
-    };
     let filename = if tool == CliTool::Claude {
         CLAUDE_SETTINGS_FILENAME
     } else {
@@ -592,9 +600,15 @@ pub fn reconcile_home(
     let original = settings.clone();
     let runtime = detect_hook_runtime(home);
     let mut desired = std::collections::BTreeMap::new();
-    if settings["disableAllHooks"] != true
+    if enabled()
+        && settings["disableAllHooks"] != true
         && hook_executable_exists(home, &runtime_path_string(exe, runtime)?)
     {
+        // Enabled discovery failures preserve existing registrations; a disabled
+        // release needs no subprocess evidence to remove its own stale hooks.
+        let Some(mesh) = executable() else {
+            return Ok(false);
+        };
         for (teams, team, member) in bindings {
             let Some(config) = read_json(&teams.join(team).join("config.json"), 1024 * 1024) else {
                 continue;

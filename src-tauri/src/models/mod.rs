@@ -1290,6 +1290,8 @@ pub struct MeshInstallStatus {
     /// App-local admission hint; Mesh still validates the live attachment.
     #[serde(default)]
     pub hosted_delivery_supported: bool,
+    #[serde(default)]
+    pub hosted_delivery_reason: Option<String>,
     /// Mesh 0.3.0 is the first lock shipping canonical creation and delivery ownership.
     /// Derived from the installed contract when present, otherwise the bundled one.
     #[serde(default)]

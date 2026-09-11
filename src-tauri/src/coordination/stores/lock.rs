@@ -350,8 +350,12 @@ fn resolve_terminal_member_with_runtime(
         let records = match super::runtime::MemberRuntimeStore::load_all(&root, &team) {
             Ok(records) => records,
             Err(_) => {
-                uncertain = true;
-                continue;
+                super::runtime::log_runtime_record_skipped(
+                    &team,
+                    "<inventory>",
+                    "runtime_unreadable",
+                );
+                Vec::new()
             }
         };
         for (member, record) in &records {
@@ -376,18 +380,50 @@ fn resolve_terminal_member_with_runtime(
                 return Ok(Some((root, team, member.clone())));
             }
         }
-        // A missing/corrupt member makes a negative lookup inconclusive; it
-        // must not turn a temporarily displaced managed pane into an unmanaged one.
-        uncertain |= super::runtime::MemberRuntimeStore::list(&root, &team)
-            .map(|names| names.len() != records.len())
-            .unwrap_or(true);
-        uncertain |= match super::config::TeamConfigStore::load(&root, &team) {
-            Ok(config) => config
-                .members
+        // Config's derived pane binding survives a missing/stale runtime record.
+        // Read the wire field: TeamConfig deliberately drops tmuxPaneId.
+        let config_path = root.join(&team).join("config.json");
+        let raw = read_to_string_with_retry(&config_path).or_else(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                read_to_string_with_retry(&displaced_path(&config_path))
+            } else {
+                Err(e)
+            }
+        });
+        let config_absent = matches!(&raw, Err(e) if e.kind() == std::io::ErrorKind::NotFound);
+        let config = raw
+            .ok()
+            .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok());
+        if let Some(members) = config.as_ref().and_then(|c| c["members"].as_array()) {
+            // The config mirror is a save-time projection of the runtime record.
+            // It counts only for a member whose record could not be read: a
+            // readable record that did not claim the pane above is the pane
+            // authority, so a stale mirror must not block that pane. A member
+            // with neither a readable record nor a mirrored pane is not inferred
+            // to own this pane — an old team whose runtime state is gone would
+            // otherwise block every stop under the root.
+            uncertain |= members.iter().any(|m| {
+                m["tmuxPaneId"].as_str() == Some(pane)
+                    && !records
+                        .iter()
+                        .any(|(n, _)| Some(n.as_str()) == m["name"].as_str())
+            });
+        } else if let Ok(names) = super::runtime::MemberRuntimeStore::list(&root, &team) {
+            super::runtime::log_runtime_record_skipped(
+                &team,
+                "<inventory>",
+                if config_absent {
+                    "config_absent"
+                } else {
+                    "config_unreadable"
+                },
+            );
+            // Without config, an unreadable named member can still own this pane.
+            // A half-deleted directory with no member evidence cannot block all stops.
+            uncertain |= names
                 .iter()
-                .any(|member| !records.iter().any(|(name, _)| name == &member.name)),
-            Err(_) => true,
-        };
+                .any(|name| !records.iter().any(|(n, _)| n == name));
+        }
     }
     if uncertain {
         return Err("terminal write deferred: attachment inventory incomplete".into());
@@ -1273,6 +1309,100 @@ mod tests {
         });
         let result: Result<(), String> = result;
         assert!(result.unwrap_err().contains("terminal write deferred"));
+    }
+
+    #[test]
+    fn pane_stop_reports_unrelated_unreadable_teams_once_and_defers_own_runtime() {
+        // Regression: 1127823e made corrupt inventories global; 8ac90621 only added logging.
+        use super::super::runtime::{MemberRuntimeRecord, MemberRuntimeStore};
+        let _guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+        let tmp = TempDir::new().unwrap();
+        let log_path = tmp.path().join("events.jsonl");
+        let sink = taurhaus_lib::logging::LogFileState::new(log_path.clone()).unwrap();
+        taurhaus_lib::logging::install_global_sink(&sink);
+        for broken in ["a-config", "b-runtime"] {
+            fs::create_dir_all(tmp.path().join(broken)).unwrap();
+            fs::write(tmp.path().join(broken).join("config.json"), "{").unwrap();
+        }
+        fs::write(tmp.path().join("b-runtime/runtime"), "not a directory").unwrap();
+        MemberRuntimeStore::save(
+            tmp.path(),
+            "target",
+            "seat",
+            &MemberRuntimeRecord {
+                health: crate::coordination::domain::HealthState::Healthy,
+                pane_id: Some("%1".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        fs::write(
+            tmp.path().join("target/config.json"),
+            serde_json::json!({
+                "members": [{"name": "seat", "tmuxPaneId": "%1"}]
+            })
+            .to_string(),
+        )
+        .unwrap();
+        for _ in 0..2 {
+            terminal_write_for_pane_at_root(tmp.path(), "%99", "stop", || {
+                assert!(!taurhaus_lib::platform::terminal_io::active());
+                Ok(())
+            })
+            .unwrap();
+            terminal_write_for_pane_at_root(tmp.path(), "%1", "stop", || {
+                assert!(taurhaus_lib::platform::terminal_io::active());
+                Ok(())
+            })
+            .unwrap();
+        }
+        sink.flush_for_test().unwrap();
+        let events: Vec<serde_json::Value> = fs::read_to_string(log_path)
+            .unwrap()
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
+        for (team, reason) in [
+            ("a-config", "config_unreadable"),
+            ("b-runtime", "runtime_unreadable"),
+        ] {
+            assert_eq!(
+                events
+                    .iter()
+                    .filter(|e| e["event"] == "coordination.runtime.record_skipped"
+                        && e["level"] == "WARN"
+                        && e["team"] == team
+                        && e["reason"] == reason)
+                    .count(),
+                1
+            );
+        }
+        // A stale config mirror is not the pane authority: the readable record
+        // now binds %7, so stopping %1 proceeds unlocked.
+        MemberRuntimeStore::save(
+            tmp.path(),
+            "target",
+            "seat",
+            &MemberRuntimeRecord {
+                health: crate::coordination::domain::HealthState::Healthy,
+                pane_id: Some("%7".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        terminal_write_for_pane_at_root(tmp.path(), "%1", "stop", || {
+            assert!(!taurhaus_lib::platform::terminal_io::active());
+            Ok(())
+        })
+        .unwrap();
+        fs::write(tmp.path().join("target/runtime/seat.json"), "{").unwrap();
+        let result: Result<(), String> =
+            terminal_write_for_pane_at_root(tmp.path(), "%1", "stop", || {
+                panic!("own unreadable runtime must defer")
+            });
+        assert!(result
+            .unwrap_err()
+            .contains("attachment inventory incomplete"));
     }
 
     #[cfg(unix)]

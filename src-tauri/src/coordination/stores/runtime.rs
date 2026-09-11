@@ -1498,7 +1498,7 @@ fn log_runtime_store_error(
     );
 }
 
-fn log_runtime_record_skipped(team_name: &str, member_name: &str, reason: &str) {
+pub(super) fn log_runtime_record_skipped(team_name: &str, member_name: &str, reason: &str) {
     let skip_reasons = RUNTIME_RECORD_SKIP_REASONS.get_or_init(|| Mutex::new(HashMap::new()));
     let mut skip_reasons = skip_reasons
         .lock()
