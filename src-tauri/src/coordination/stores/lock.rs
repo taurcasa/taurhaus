@@ -350,6 +350,11 @@ fn resolve_terminal_member_with_runtime(
         let records = match super::runtime::MemberRuntimeStore::load_all(&root, &team) {
             Ok(records) => records,
             Err(_) => {
+                super::runtime::log_runtime_record_skipped(
+                    &team,
+                    "<inventory>",
+                    "runtime_unreadable",
+                );
                 uncertain = true;
                 continue;
             }
@@ -386,7 +391,14 @@ fn resolve_terminal_member_with_runtime(
                 .members
                 .iter()
                 .any(|member| !records.iter().any(|(name, _)| name == &member.name)),
-            Err(_) => true,
+            Err(_) => {
+                super::runtime::log_runtime_record_skipped(
+                    &team,
+                    "<inventory>",
+                    "config_unreadable",
+                );
+                true
+            }
         };
     }
     if uncertain {
@@ -1273,6 +1285,69 @@ mod tests {
         });
         let result: Result<(), String> = result;
         assert!(result.unwrap_err().contains("terminal write deferred"));
+    }
+
+    #[test]
+    fn pane_stop_reports_unrelated_unreadable_teams_once_and_defers_own_runtime() {
+        // Regression: 1127823e made corrupt inventories global; unrelated skipped teams were silent.
+        use super::super::runtime::{MemberRuntimeRecord, MemberRuntimeStore};
+        let _guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+        let tmp = TempDir::new().unwrap();
+        let log_path = tmp.path().join("events.jsonl");
+        let sink = taurhaus_lib::logging::LogFileState::new(log_path.clone()).unwrap();
+        taurhaus_lib::logging::install_global_sink(&sink);
+        for broken in ["a-config", "b-runtime"] {
+            fs::create_dir_all(tmp.path().join(broken)).unwrap();
+            fs::write(tmp.path().join(broken).join("config.json"), "{").unwrap();
+        }
+        fs::write(tmp.path().join("b-runtime/runtime"), "not a directory").unwrap();
+        MemberRuntimeStore::save(
+            tmp.path(),
+            "target",
+            "seat",
+            &MemberRuntimeRecord {
+                health: crate::coordination::domain::HealthState::Healthy,
+                pane_id: Some("%1".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        for _ in 0..2 {
+            terminal_write_for_pane_at_root(tmp.path(), "%1", "stop", || {
+                assert!(taurhaus_lib::platform::terminal_io::active());
+                Ok(())
+            })
+            .unwrap();
+        }
+        sink.flush_for_test().unwrap();
+        let events: Vec<serde_json::Value> = fs::read_to_string(log_path)
+            .unwrap()
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
+        for (team, reason) in [
+            ("a-config", "config_unreadable"),
+            ("b-runtime", "runtime_unreadable"),
+        ] {
+            assert_eq!(
+                events
+                    .iter()
+                    .filter(|e| e["event"] == "coordination.runtime.record_skipped"
+                        && e["level"] == "WARN"
+                        && e["team"] == team
+                        && e["reason"] == reason)
+                    .count(),
+                1
+            );
+        }
+        fs::write(tmp.path().join("target/runtime/seat.json"), "{").unwrap();
+        let result: Result<(), String> =
+            terminal_write_for_pane_at_root(tmp.path(), "%1", "stop", || {
+                panic!("own unreadable runtime must defer")
+            });
+        assert!(result
+            .unwrap_err()
+            .contains("attachment inventory incomplete"));
     }
 
     #[cfg(unix)]
