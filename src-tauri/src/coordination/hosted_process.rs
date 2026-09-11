@@ -1483,7 +1483,13 @@ def client(connection):
                         boundary_event('turn/started', turn={'id':turn_id,'status':'inProgress','items':[]})
                         boundary_event('item/started', turnId=turn_id, item=item)
                         boundary_event('thread/tokenUsage/updated', turnId=turn_id, tokenUsage={'last':{'totalTokens':6344}})
-                        boundary_event('item/completed', turnId=turn_id, item=item, completedAtMs=compact.get("completedAtMs", int(time.time()*1000)-1000))
+                        completed_ms = compact.get("completedAtMs", int(time.time()*1000)-1000)
+                        # The real host persists the boundary consumed by the native hook.
+                        import datetime
+                        timestamp = datetime.datetime.fromtimestamp(completed_ms/1000, datetime.timezone.utc).isoformat()
+                        with open(os.path.join(root, 'rollout-'+tid+'.jsonl'), 'a') as rollout:
+                            rollout.write(json.dumps({'type':'compacted','timestamp':timestamp,'payload':{}})+'\n')
+                        boundary_event('item/completed', turnId=turn_id, item=item, completedAtMs=completed_ms)
                         if not compact.get('busy'):
                             boundary_event('thread/status/changed', status={'type':'idle'})
                             boundary_event('turn/completed', turn={'id':turn_id,'status':'completed','items':[]})

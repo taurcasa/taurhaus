@@ -2369,7 +2369,10 @@ if mode == 'twice' or not previous:
         assert!(MemberCompactionStore::load(root, "team", "seat")
             .unwrap()
             .is_none());
-        let boundary = r#"{"expectCard":true,"backlog":65}"#;
+        // Regression: 06031992 used a missing rollout's wall clock for the hook,
+        // leaving only one second of the two-second observer correlation window.
+        // Replay an old boundary so scheduler speed cannot make this test pass.
+        let boundary = r#"{"expectCard":true,"backlog":65,"completedAtMs":1767225600000}"#;
         std::fs::write(root.join("compact.json"), boundary).unwrap();
         hosts.reconcile(&reg, "team", "seat").unwrap();
         let record = saved(root);
@@ -2439,7 +2442,9 @@ if mode == 'twice' or not previous:
         let mut output = Vec::new();
         run_compact_hook_cli(payload.to_string().as_bytes(), &mut output, root).unwrap();
         assert!(String::from_utf8(output).unwrap().contains("recovery_card"));
-        std::fs::write(root.join("compact.json"), "{}").unwrap();
+        // Both observers describe this same persisted event, regardless of scheduling.
+        let boundary = json!({"completedAtMs":compaction(root).last_compaction_timestamp.timestamp_millis()});
+        std::fs::write(root.join("compact.json"), boundary.to_string()).unwrap();
         hosts.reconcile(&reg, "team", "seat").unwrap();
         assert_eq!(saved(root).context_generation, 1);
         assert_eq!(starts(root), 1);
