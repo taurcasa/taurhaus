@@ -647,5 +647,408 @@
         "status": "completed"
       }
     }
+  },
+  {
+    "emittedAtMs": 1789104774727,
+    "method": "remoteControl/status/changed",
+    "params": {
+      "environmentId": null,
+      "serverName": "whocares",
+      "status": "disabled"
+    }
+  },
+  {
+    "emittedAtMs": 1789104774824,
+    "method": "deprecationNotice",
+    "params": {
+      "details": null,
+      "summary": "Full-history hydration is deprecated for paginated threads; use `excludeTurns: true`, then page with `thread/turns/list` and `thread/items/list`."
+    }
+  },
+  {
+    "emittedAtMs": 1789104777128,
+    "method": "mcpServer/startupStatus/updated",
+    "params": {
+      "error": null,
+      "failureReason": null,
+      "name": "codex_apps",
+      "status": "starting",
+      "threadId": "01a08ef2-b52c-7ce0-8eff-423deeff1523"
+    }
+  },
+  {
+    "emittedAtMs": 1789104777225,
+    "method": "thread/status/changed",
+    "params": {
+      "status": {
+        "type": "idle"
+      },
+      "threadId": "01a08ef2-b52c-7ce0-8eff-423deeff1523"
+    }
+  },
+  {
+    "emittedAtMs": 1789104777325,
+    "method": "thread/goal/cleared",
+    "params": {
+      "threadId": "01a08ef2-b52c-7ce0-8eff-423deeff1523"
+    }
+  },
+  {
+    "emittedAtMs": 1789104777334,
+    "method": "mcpServer/startupStatus/updated",
+    "params": {
+      "error": null,
+      "failureReason": null,
+      "name": "codex_apps",
+      "status": "ready",
+      "threadId": "01a08ef2-b52c-7ce0-8eff-423deeff1523"
+    }
+  },
+  {
+    "emittedAtMs": 1789104777726,
+    "method": "thread/status/changed",
+    "params": {
+      "status": {
+        "activeFlags": [],
+        "type": "active"
+      },
+      "threadId": "01a08ef2-b52c-7ce0-8eff-423deeff1523"
+    }
+  },
+  {
+    "emittedAtMs": 1789104777726,
+    "method": "turn/started",
+    "params": {
+      "threadId": "01a08ef2-b52c-7ce0-8eff-423deeff1523",
+      "turn": {
+        "completedAt": null,
+        "durationMs": null,
+        "error": null,
+        "id": "01a08ef4-6937-77f1-9d76-e3dfbc9d36be",
+        "items": [],
+        "itemsView": "notLoaded",
+        "startedAt": 1789104777,
+        "status": "inProgress"
+      }
+    }
+  },
+  {
+    "emittedAtMs": 1789104778531,
+    "method": "thread/goal/cleared",
+    "params": {
+      "threadId": "01a08ef2-b52c-7ce0-8eff-423deeff1523"
+    }
+  },
+  {
+    "emittedAtMs": 1789104779930,
+    "method": "item/started",
+    "params": {
+      "item": {
+        "clientId": null,
+        "content": [
+          {
+            "text": "[taurhaus] recovery_card\nIdentity: beta on l4-resume; key={\"card_schema\":1,\"recipient\":[\"2b0c9c9ed4861297bb05c88b41ceff36ebe0724306849fe5ce5514728dd64fe0\",\"e01d36a0-22cd-4f46-959a-89dba8bebc2d\"],\"context\":[3,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-l4-run12-8h8oubj9/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-l4-run12-8h8oubj9/claude\",\"harness_account_root\":\"/tmp/th-l4-run12-8h8oubj9/codex\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-l4-run12-8h8oubj9/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"66cbae1331c74e3410154db1011b7b55d2ac62b7a5876c76e15a2fe75e7d8824\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: df9220c784672df7b25eb075794d348961cdc74283f80043b2448309d3806e1b; source=682540e4a3f9cfbca660a5add5db7fa379ff474f5fe7c2f18798f74d7e72c755; audience=unavailable\nProject cwd: /tmp/th-l4-run12-8h8oubj9/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: low; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-11 05:32:57.333487020 UTC\nCurrent task: # \u2014 \nExecution mode: ; Validation expectation: ; Response expectation: ; Adjacent fix policy: ; Override allowed: false; Override reason: none\nFocal files: unavailable\nRole: unavailable\nPurpose: This is an isolated messaging trial. Reply briefly (at most 40 words). When a message assigns you a task, run exactly the mesh lifecycle commands it names. Never touch files. Do not send unsolicited messages.\n\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.",
+            "text_elements": [],
+            "type": "text"
+          }
+        ],
+        "id": "01a08ef4-7299-7383-a59a-8a57d1490869",
+        "type": "userMessage"
+      },
+      "startedAtMs": 1789104779929,
+      "threadId": "01a08ef2-b52c-7ce0-8eff-423deeff1523",
+      "turnId": "01a08ef4-6937-77f1-9d76-e3dfbc9d36be"
+    }
+  },
+  {
+    "emittedAtMs": 1789104780330,
+    "method": "item/completed",
+    "params": {
+      "completedAtMs": 1789104779929,
+      "item": {
+        "clientId": null,
+        "content": [
+          {
+            "text": "[taurhaus] recovery_card\nIdentity: beta on l4-resume; key={\"card_schema\":1,\"recipient\":[\"2b0c9c9ed4861297bb05c88b41ceff36ebe0724306849fe5ce5514728dd64fe0\",\"e01d36a0-22cd-4f46-959a-89dba8bebc2d\"],\"context\":[3,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-l4-run12-8h8oubj9/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-l4-run12-8h8oubj9/claude\",\"harness_account_root\":\"/tmp/th-l4-run12-8h8oubj9/codex\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-l4-run12-8h8oubj9/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"66cbae1331c74e3410154db1011b7b55d2ac62b7a5876c76e15a2fe75e7d8824\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: df9220c784672df7b25eb075794d348961cdc74283f80043b2448309d3806e1b; source=682540e4a3f9cfbca660a5add5db7fa379ff474f5fe7c2f18798f74d7e72c755; audience=unavailable\nProject cwd: /tmp/th-l4-run12-8h8oubj9/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: low; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-11 05:32:57.333487020 UTC\nCurrent task: # \u2014 \nExecution mode: ; Validation expectation: ; Response expectation: ; Adjacent fix policy: ; Override allowed: false; Override reason: none\nFocal files: unavailable\nRole: unavailable\nPurpose: This is an isolated messaging trial. Reply briefly (at most 40 words). When a message assigns you a task, run exactly the mesh lifecycle commands it names. Never touch files. Do not send unsolicited messages.\n\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.",
+            "text_elements": [],
+            "type": "text"
+          }
+        ],
+        "id": "01a08ef4-7299-7383-a59a-8a57d1490869",
+        "type": "userMessage"
+      },
+      "threadId": "01a08ef2-b52c-7ce0-8eff-423deeff1523",
+      "turnId": "01a08ef4-6937-77f1-9d76-e3dfbc9d36be"
+    }
+  },
+  {
+    "emittedAtMs": 1789104783695,
+    "method": "item/started",
+    "params": {
+      "item": {
+        "delivery": null,
+        "id": "msg_0bec1a95c4dbf796016aa39289f08487d29c31c9111db04094",
+        "memoryCitation": null,
+        "phase": "final_answer",
+        "questions": null,
+        "text": "",
+        "type": "agentMessage"
+      },
+      "startedAtMs": 1789104783695,
+      "threadId": "01a08ef2-b52c-7ce0-8eff-423deeff1523",
+      "turnId": "01a08ef4-6937-77f1-9d76-e3dfbc9d36be"
+    }
+  },
+  {
+    "emittedAtMs": 1789104784344,
+    "method": "item/completed",
+    "params": {
+      "completedAtMs": 1789104784342,
+      "item": {
+        "delivery": null,
+        "id": "msg_0bec1a95c4dbf796016aa39289f08487d29c31c9111db04094",
+        "memoryCitation": null,
+        "phase": "final_answer",
+        "questions": null,
+        "text": "Team lead, I remain unassigned. Please provide the assignment identity, GO/release signal, objective, first action, completion signal, and review route.",
+        "type": "agentMessage"
+      },
+      "threadId": "01a08ef2-b52c-7ce0-8eff-423deeff1523",
+      "turnId": "01a08ef4-6937-77f1-9d76-e3dfbc9d36be"
+    }
+  },
+  {
+    "emittedAtMs": 1789104784540,
+    "method": "thread/tokenUsage/updated",
+    "params": {
+      "threadId": "01a08ef2-b52c-7ce0-8eff-423deeff1523",
+      "tokenUsage": {
+        "last": {
+          "cacheWriteInputTokens": 0,
+          "cachedInputTokens": 6912,
+          "inputTokens": 12103,
+          "outputTokens": 35,
+          "reasoningOutputTokens": 0,
+          "totalTokens": 12138
+        },
+        "modelContextWindow": 31129,
+        "total": {
+          "cacheWriteInputTokens": 0,
+          "cachedInputTokens": 6912,
+          "inputTokens": 12103,
+          "outputTokens": 35,
+          "reasoningOutputTokens": 0,
+          "totalTokens": 12138
+        }
+      },
+      "turnId": "01a08ef4-6937-77f1-9d76-e3dfbc9d36be"
+    }
+  },
+  {
+    "emittedAtMs": 1789104784735,
+    "method": "thread/status/changed",
+    "params": {
+      "status": {
+        "type": "idle"
+      },
+      "threadId": "01a08ef2-b52c-7ce0-8eff-423deeff1523"
+    }
+  },
+  {
+    "emittedAtMs": 1789104784735,
+    "method": "turn/completed",
+    "params": {
+      "threadId": "01a08ef2-b52c-7ce0-8eff-423deeff1523",
+      "turn": {
+        "completedAt": 1789104784,
+        "durationMs": 7105,
+        "error": null,
+        "id": "01a08ef4-6937-77f1-9d76-e3dfbc9d36be",
+        "items": [
+          {
+            "delivery": null,
+            "id": "msg_0bec1a95c4dbf796016aa39289f08487d29c31c9111db04094",
+            "memoryCitation": null,
+            "phase": "final_answer",
+            "questions": null,
+            "text": "Team lead, I remain unassigned. Please provide the assignment identity, GO/release signal, objective, first action, completion signal, and review route.",
+            "type": "agentMessage"
+          }
+        ],
+        "itemsView": "summary",
+        "startedAt": 1789104777,
+        "status": "completed"
+      }
+    }
+  },
+  {
+    "emittedAtMs": 1789104785638,
+    "method": "thread/status/changed",
+    "params": {
+      "status": {
+        "activeFlags": [],
+        "type": "active"
+      },
+      "threadId": "01a08ef2-b52c-7ce0-8eff-423deeff1523"
+    }
+  },
+  {
+    "emittedAtMs": 1789104785638,
+    "method": "turn/started",
+    "params": {
+      "threadId": "01a08ef2-b52c-7ce0-8eff-423deeff1523",
+      "turn": {
+        "completedAt": null,
+        "durationMs": null,
+        "error": null,
+        "id": "01a08ef4-8893-74e1-85f2-151fb62e68ec",
+        "items": [],
+        "itemsView": "notLoaded",
+        "startedAt": 1789104785,
+        "status": "inProgress"
+      }
+    }
+  },
+  {
+    "emittedAtMs": 1789104786038,
+    "method": "item/started",
+    "params": {
+      "item": {
+        "clientId": null,
+        "content": [
+          {
+            "text": "[mesh message data] {\"assignment\":null,\"author\":\"lead\",\"body\":\"ACTION REQUIRED: Reply exactly L4_pending_beta_f2f791. No tools are needed for this marker.\",\"delivery_id\":\"be154c32-c17d-472e-abd4-e6090d2ffec2\",\"expectation\":null,\"message_id\":\"e8e336a6-1a2a-4c86-a03d-cc98f1e3b372\",\"metadata\":{},\"task\":null}\n",
+            "text_elements": [],
+            "type": "text"
+          }
+        ],
+        "id": "01a08ef4-8a76-7be3-a58e-b07344a5280c",
+        "type": "userMessage"
+      },
+      "startedAtMs": 1789104786038,
+      "threadId": "01a08ef2-b52c-7ce0-8eff-423deeff1523",
+      "turnId": "01a08ef4-8893-74e1-85f2-151fb62e68ec"
+    }
+  },
+  {
+    "emittedAtMs": 1789104786137,
+    "method": "item/completed",
+    "params": {
+      "completedAtMs": 1789104786038,
+      "item": {
+        "clientId": null,
+        "content": [
+          {
+            "text": "[mesh message data] {\"assignment\":null,\"author\":\"lead\",\"body\":\"ACTION REQUIRED: Reply exactly L4_pending_beta_f2f791. No tools are needed for this marker.\",\"delivery_id\":\"be154c32-c17d-472e-abd4-e6090d2ffec2\",\"expectation\":null,\"message_id\":\"e8e336a6-1a2a-4c86-a03d-cc98f1e3b372\",\"metadata\":{},\"task\":null}\n",
+            "text_elements": [],
+            "type": "text"
+          }
+        ],
+        "id": "01a08ef4-8a76-7be3-a58e-b07344a5280c",
+        "type": "userMessage"
+      },
+      "threadId": "01a08ef2-b52c-7ce0-8eff-423deeff1523",
+      "turnId": "01a08ef4-8893-74e1-85f2-151fb62e68ec"
+    }
+  },
+  {
+    "emittedAtMs": 1789104789099,
+    "method": "item/started",
+    "params": {
+      "item": {
+        "delivery": null,
+        "id": "msg_0bec1a95c4dbf796016aa3928f583c87d2804d37074fb9b500",
+        "memoryCitation": null,
+        "phase": "final_answer",
+        "questions": null,
+        "text": "",
+        "type": "agentMessage"
+      },
+      "startedAtMs": 1789104789099,
+      "threadId": "01a08ef2-b52c-7ce0-8eff-423deeff1523",
+      "turnId": "01a08ef4-8893-74e1-85f2-151fb62e68ec"
+    }
+  },
+  {
+    "emittedAtMs": 1789104789341,
+    "method": "item/completed",
+    "params": {
+      "completedAtMs": 1789104789321,
+      "item": {
+        "delivery": null,
+        "id": "msg_0bec1a95c4dbf796016aa3928f583c87d2804d37074fb9b500",
+        "memoryCitation": null,
+        "phase": "final_answer",
+        "questions": null,
+        "text": "L4_pending_beta_f2f791",
+        "type": "agentMessage"
+      },
+      "threadId": "01a08ef2-b52c-7ce0-8eff-423deeff1523",
+      "turnId": "01a08ef4-8893-74e1-85f2-151fb62e68ec"
+    }
+  },
+  {
+    "emittedAtMs": 1789104789444,
+    "method": "thread/tokenUsage/updated",
+    "params": {
+      "threadId": "01a08ef2-b52c-7ce0-8eff-423deeff1523",
+      "tokenUsage": {
+        "last": {
+          "cacheWriteInputTokens": 0,
+          "cachedInputTokens": 6912,
+          "inputTokens": 12251,
+          "outputTokens": 12,
+          "reasoningOutputTokens": 0,
+          "totalTokens": 12263
+        },
+        "modelContextWindow": 31129,
+        "total": {
+          "cacheWriteInputTokens": 0,
+          "cachedInputTokens": 13824,
+          "inputTokens": 24354,
+          "outputTokens": 47,
+          "reasoningOutputTokens": 0,
+          "totalTokens": 24401
+        }
+      },
+      "turnId": "01a08ef4-8893-74e1-85f2-151fb62e68ec"
+    }
+  },
+  {
+    "emittedAtMs": 1789104789740,
+    "method": "thread/status/changed",
+    "params": {
+      "status": {
+        "type": "idle"
+      },
+      "threadId": "01a08ef2-b52c-7ce0-8eff-423deeff1523"
+    }
+  },
+  {
+    "emittedAtMs": 1789104789740,
+    "method": "turn/completed",
+    "params": {
+      "threadId": "01a08ef2-b52c-7ce0-8eff-423deeff1523",
+      "turn": {
+        "completedAt": 1789104789,
+        "durationMs": 3985,
+        "error": null,
+        "id": "01a08ef4-8893-74e1-85f2-151fb62e68ec",
+        "items": [
+          {
+            "delivery": null,
+            "id": "msg_0bec1a95c4dbf796016aa3928f583c87d2804d37074fb9b500",
+            "memoryCitation": null,
+            "phase": "final_answer",
+            "questions": null,
+            "text": "L4_pending_beta_f2f791",
+            "type": "agentMessage"
+          }
+        ],
+        "itemsView": "summary",
+        "startedAt": 1789104785,
+        "status": "completed"
+      }
+    }
   }
 ]

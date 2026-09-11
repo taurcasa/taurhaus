@@ -1612,3 +1612,7 @@ the observer to `session_dead`. No product code changed.
   `runtime session dead` and beta for `native_host_not_live`.
   [Alpha](l4-resume-team/run12/step3-alpha-backlog.json),
   [beta](l4-resume-team/run12/step3-beta-backlog.json).
+
+- Step 4 **PASS (runtime)**: the single `coordination.resume_team` completed with
+  lead, alpha and beta resumed; no failed member or team-daemon refusal.
+  [Operation and status samples](l4-resume-team/run12/step4-operation.json).
