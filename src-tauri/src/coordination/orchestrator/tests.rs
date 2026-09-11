@@ -6137,7 +6137,7 @@ fn self_heal_honours_member_owned_delivery() {
 
 #[test]
 fn self_heal_preserves_drifted_owner_when_delivery_ensure_is_refused() {
-    // Regression: b7fcd133/e724a0fb refused canonical owner recovery after the
+    // Regression: 2feb5ade refused canonical owner recovery after the
     // existing binary-drift path had already stopped the running owner.
     for (owner, reason) in [
         (None, "delivery_owner_unset"),
@@ -6166,10 +6166,13 @@ fn self_heal_preserves_drifted_owner_when_delivery_ensure_is_refused() {
         let result = orchestrator.trigger_team_self_heal(team).unwrap();
         assert_eq!(result.team_daemon_skip_reason, Some(reason));
         assert!(!result.team_daemon_ensured);
-        assert!(!runtime.calls().iter().any(|call| matches!(
-            call,
-            RuntimeCall::StopTeamDaemon { .. } | RuntimeCall::SpawnTeamDaemon { .. }
-        )), "a refused ensure must leave the drifted owner running");
+        assert!(
+            !runtime.calls().iter().any(|call| matches!(
+                call,
+                RuntimeCall::StopTeamDaemon { .. } | RuntimeCall::SpawnTeamDaemon { .. }
+            )),
+            "a refused ensure must leave the drifted owner running"
+        );
     }
 }
 
@@ -6260,12 +6263,16 @@ fn wrapper_ensure_respects_delivery_ownership_and_legacy_configs() {
         assert!(resumed.resumed);
         if !expected {
             assert!(warning.unwrap().contains("delivery_owned_by_members"));
-            assert!(resumed.warnings.iter().any(|warning|
-                warning.contains("delivery_owned_by_members")));
+            assert!(resumed
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("delivery_owned_by_members")));
         } else {
             assert!(warning.is_none());
-            assert!(!resumed.warnings.iter().any(|warning|
-                warning.contains("team daemon skipped")));
+            assert!(!resumed
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("team daemon skipped")));
         }
     }
 }
