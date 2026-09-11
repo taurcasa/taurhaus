@@ -1,6 +1,6 @@
 <script>
   import { focusFirstInteractiveElement, handleModalKeydown, registerModalLayer } from '../a11y.js'
-  import { activitySignal } from '../activitySignal.js'
+  import { activitySignal, isTuiDetached } from '../activitySignal.js'
   import { accountState } from '../accounts.svelte.js'
   import MarkdownRenderer from '../MarkdownRenderer.svelte'
   import HostedThread from './HostedThread.svelte'
@@ -714,7 +714,7 @@
                     <span class="inline-block h-2 w-2 rounded-full {statusDotTone}" aria-hidden="true"></span>
                   <span>{statusLabel}</span>
                 </span>
-                {#if node?.hosted === true && node?.source === 'host' && !paneId}
+      {#if isTuiDetached(node)}
                   <span>TUI detached, host running</span>
                 {/if}
                 {#if subjectLabel}

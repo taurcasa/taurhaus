@@ -1,6 +1,6 @@
 <script>
   import { accountState, opaqueBaseNotice } from '../accounts.svelte.js'
-  import { activityLevel, hostActivityExplanation } from '../activitySignal.js'
+  import { activityLevel, hostActivityExplanation, isTuiDetached } from '../activitySignal.js'
   import { getToolIcon } from '../toolLogos.js'
   import { normalizeTool } from '../toolRegistry.js'
   import { hasAccountLine, memberNodeHeight } from './meshLayout.js'
@@ -110,7 +110,7 @@
 
   const icon = $derived.by(() => getToolIcon(safeTool))
 
-  const tuiDetached = $derived(hosted && source === 'host' && !paneId)
+  const tuiDetached = $derived(isTuiDetached({ hosted, source, paneId }))
 
   const activityTitle = $derived(hostActivityExplanation({ status, source }))
 

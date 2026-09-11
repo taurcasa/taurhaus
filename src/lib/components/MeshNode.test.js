@@ -3,8 +3,17 @@ import { render, screen } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
 import { readFileSync } from 'node:fs'
 import MeshNode from './MeshNode.svelte'
+import { memberNodeHeight } from './meshLayout.js'
 
 describe('MeshNode', () => {
+  it('reserves and renders the detached line for a blank pane identity', () => {
+    // Regression: c189c55ab derived detachment differently in the node and detail.
+    const member = { name: 'seat', hosted: true, source: 'host', paneId: '  ' }
+    render(MeshNode, member)
+    expect(screen.getByText('TUI detached, host running')).toBeInTheDocument()
+    expect(memberNodeHeight(member)).toBe(82)
+    expect(screen.getByTestId('mesh-node-agent')).toHaveAttribute('data-node-height', '82')
+  })
   // Regression: cadd533eb, member-stop lane finding 3: a headless host looked like an attached session.
   it('shows TUI detachment only with live host evidence and no snapshot pane', async () => {
     const view = render(MeshNode, { name: 'seat', hosted: true, source: 'host', paneId: null })

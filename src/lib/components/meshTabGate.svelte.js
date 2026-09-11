@@ -96,6 +96,7 @@ export function createMeshTabGate({ state, refs, deps }) {
           sessionStatus: member?.sessionStatus ?? 'offline',
           state: member?.state,
           source: member?.source,
+          hosted: member?.hosted === true,
           paneId: member?.paneId ?? null,
         }))
       : []
@@ -300,6 +301,7 @@ export function createMeshTabGate({ state, refs, deps }) {
             sessionStatus: nextConfig.lead.status,
             state: nextConfig.lead.state,
             source: nextConfig.lead.source,
+            hosted: nextConfig.lead.hosted === true,
             paneId: nextConfig.lead.paneId,
           }
         : null,
@@ -318,6 +320,7 @@ export function createMeshTabGate({ state, refs, deps }) {
         sessionStatus: member.status,
         state: member.state,
         source: member.source,
+        hosted: member.hosted === true,
         paneId: member.paneId,
       })),
     ].filter(Boolean)

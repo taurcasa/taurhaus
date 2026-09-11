@@ -54,6 +54,29 @@ const {
 
 import MeshTab from './MeshTab.svelte'
 import { resetMeshCache } from '../meshCache.svelte.js'
+import { createMeshTabGate } from './meshTabGate.svelte.js'
+import { buildTeamConfigFromRuntimeStatus } from './meshTabUtils.js'
+
+it('preserves hosted identity through direct and mirrored snapshot caches', async () => {
+  // Regression: c189c55ab added detached presentation but omitted hosted from both cache shapes.
+  const members = ['lead', 'seat'].map((name, index) => ({
+    name, role: index ? 'member' : 'lead', cliTool: 'codex',
+    hosted: true, source: 'host', state: 'working', paneId: null,
+  }))
+  let cached
+  const gate = createMeshTabGate({ state: {}, refs: { discoverySequence: 1 }, deps: {
+    getProjectPath: () => '/fixture', normalizeProjectMeshSnapshot: value => value,
+    setMeshCache: (_, value) => { cached = value },
+    refreshRuntimeTeamConfigWorkflow: async ({ onTeamConfig }) => {
+      onTeamConfig(buildTeamConfigFromRuntimeStatus({ members }, '/fixture'))
+    },
+  } })
+  const snapshot = { teamName: 'team', warnings: [] }
+  const direct = gate.buildCachedSnapshotFromLiveStatus(snapshot, { members })
+  expect(direct.teamStatus.members.map(member => member.hosted)).toEqual([true, true])
+  await gate.queueRuntimeTeamRefresh('team', 1, snapshot)
+  expect(cached.teamStatus.members.map(member => member.hosted)).toEqual([true, true])
+})
 
 function deferred() {
   let resolve
