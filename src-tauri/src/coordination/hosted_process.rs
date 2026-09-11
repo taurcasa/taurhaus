@@ -251,7 +251,11 @@ impl HostProcess {
             return Err("host socket must be a new short absolute private path".into());
         }
         let timeout_seconds = guard.remaining().map_err(|e| e.to_string())?.as_secs_f64();
-        let child = Command::new(&launch.program)
+        #[cfg(test)]
+        let mut command = tests::fixture_command(launch);
+        #[cfg(not(test))]
+        let mut command = Command::new(&launch.program);
+        let child = command
             .args(&launch.arguments)
             .args(["--listen", &format!("unix://{}", socket.display())])
             .envs(&launch.environment)
@@ -1610,6 +1614,24 @@ with socket.socket(socket.AF_UNIX) as listener:
         taurhaus_lib::session_scanner::launch::HostedLaunch::from_rendered(&command, root, None)
             .unwrap()
     }
+    // Execute generated scripts through their interpreter: parallel forks can
+    // temporarily inherit a writing fd even after the fixture writer closes it.
+    pub(super) fn fixture_command(launch: &HostedLaunch) -> Command {
+        let script = std::fs::read_to_string(&launch.program).unwrap_or_default();
+        let interpreter = match script.lines().next() {
+            Some("#!/usr/bin/python3") => Some("/usr/bin/python3"),
+            Some("#!/bin/sh") => Some("/bin/sh"),
+            _ => None,
+        };
+        if let Some(interpreter) = interpreter {
+            let mut command = Command::new(interpreter);
+            command.arg(&launch.program);
+            command
+        } else {
+            Command::new(&launch.program)
+        }
+    }
+
     fn spawn(
         launch: &HostedLaunch,
         root: &Path,
@@ -1623,6 +1645,21 @@ with socket.socket(socket.AF_UNIX) as listener:
                 error.to_string()
             },
         )
+    }
+
+    #[test]
+    fn hosted_fixture_launch_tolerates_an_inherited_script_writer() {
+        // Regression: cadd533e exec'd freshly written scripts; another test's
+        // fork can retain a writable descriptor until exec, producing ETXTBSY.
+        let tmp = tempfile::tempdir().unwrap();
+        let launch = fixture(tmp.path());
+        let _writer = std::fs::OpenOptions::new()
+            .write(true)
+            .open(&launch.program)
+            .unwrap();
+        let guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
+        let mut host = spawn(&launch, tmp.path(), None, &guard).unwrap();
+        assert!(host.alive());
     }
 
     #[test]
