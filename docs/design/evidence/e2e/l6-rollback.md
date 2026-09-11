@@ -1,6 +1,7 @@
-# L6 rollback — run2 FAIL at step 3 (Taurhaus activity readiness)
+# L6 rollback — run2 FAIL at step 2 (Mesh lifetime owner-lock refusal)
 
-Run2 executed steps 1–2, then stopped at the step-3 activity-readiness poll.
+Review correction: step 1 passes; step 2 fails on a non-quiescence refusal.
+The original controller continued and stopped at the step-3 readiness poll.
 All three inputs finished and were metered; teardown and all required gates pass.
 
 Run2 follows the **2026-09-11 amendment** in `docs/design/e2e-coverage-audit.md`,
@@ -283,14 +284,25 @@ coverage and leaves the original unknown spend explicitly unresolved.
 
 ## Run2 — amended format-first trial, 2026-09-11
 
-**FAIL at step 3; no completed rollback.** Steps 1–2 pass, with step 2 using
-its one permitted temporary refusal. The ordinary Codex turn **did complete**;
-Taurhaus never supplied the controller's required attributed, freshly idle
-production activity during the **90.240-second** settle poll. The error text
-`ordinary work did not settle` describes that failed readiness predicate, not
-an unfinished model response. The format retry was **not issued**. There is
-no evidence of a second/permanent format-command refusal, an ownership
-handoff, or legacy delivery. The deeper activity-classification cause is unproved.
+**FAIL at step 2; no completed rollback.** Only step 1 passes. Mesh returned
+`team owner already holds lifetime lock`, an `Owner::acquire` refusal at
+`src/delivery/store.rs:351`, after `members_quiescent` had already passed at
+`src/journal/transition.rs:55–56`. This is neither of Mesh's named quiescence
+refusals (`quiescent_required; exclude all producers and native consumers` or
+`quiescent required; member executor ...`). It does not qualify for the ruling's
+one temporary-quiescence exception. The lifetime lock is independent of seat
+activity: owner PID **217**, process start **30526237**, was still heartbeating at
+**00:00:47.144924578 UTC**, after the format command and settle window.
+
+The original controller incorrectly marked step 2 PASS and continued. The
+ordinary Codex turn completed, but the subsequent **90.240-second** readiness
+poll never established attributed fresh idle. The permitted format retry was
+**never issued**, so temporariness was never demonstrated; no second command
+result is claimed. Step 2 is a failed operational rollback under the audit's
+permanent-refusal rule, not a proved temporary refusal. The later step-3
+Taurhaus readiness observation remains valid; its deeper cause is unproved.
+[Owner epoch](l6-rollback/run2/run/team/state/delivery/epoch.json),
+[owner heartbeat](l6-rollback/run2/run/team/state/delivery/health-alpha.json).
 
 This run follows the **2026-09-11 amendment** in section 6 of
 `/home/mstie/projects/taurhaus/docs/design/e2e-coverage-audit.md`, read at the
@@ -300,10 +312,10 @@ as the historical ownership-first contract observation, with its own budget.
 | Amended ordered step | Outcome | Classification / S-runtime evidence |
 | --- | --- | --- |
 | 1. Initialize; deliver/read A; observe B pending during ordinary work | **PASS** | S-runtime: production canonical initialization; one A terminal receipt, explicit read and assistant reply; B accepted without receipt while working, with owner heartbeat **after** acceptance. |
-| 2. Lead requests `team format --legacy --quiescent` with B pending | **PASS — permitted temporary refusal** | Mesh: exit **1**, `team owner already holds lifetime lock`. B intact, no begun/submitted receipt; format **2**, owner **team**, epoch **2** unchanged. No legacy projection or reconciliation report was produced. |
+| 2. Lead requests `team format --legacy --quiescent` with B pending | **FAIL — non-quiescence refusal** | Mesh: exit **1**, `team owner already holds lifetime lock`. B intact, no begun/submitted receipt; format **2**, owner **team**, epoch **2** unchanged. No legacy projection or reconciliation report was produced. |
 | 3. Settle; retry once if refused; verify committed format boundary | **FAIL** | Taurhaus activity readiness: 90.240 seconds / 348 runtime samples did not establish attributed fresh idle. Native turn completed and was metered; delivery sidecar remained working, then uncertain. Retry and format-boundary assertion were not reached. |
-| 4. Lead requests ownership `members`; durable handoff, report, epoch boundary | **NOT RUN** | Blocked by step 3. No ownership command, durable rollback request, report, or members boundary. |
-| 5. Guarded RC member executor; B accounting and fresh C reply | **NOT RUN** | Blocked by step 3. No member executor start; C never created. |
+| 4. Lead requests ownership `members`; durable handoff, report, epoch boundary | **NOT RUN** | Blocked by the failed rollback (step 2 refusal, then step 3 readiness stop). No ownership command, durable rollback request, report, or members boundary. |
+| 5. Guarded RC member executor; B accounting and fresh C reply | **NOT RUN** | Blocked by the failed rollback (step 2 refusal, then step 3 readiness stop). No member executor start; C never created. |
 | 6. Explicit read/ack; cross-boundary A/B/C reconciliation; export/teardown | **NOT RUN** | Read/ack and rollback reconciliation not reached. Mandatory failure export/teardown independently **PASS**. |
 
 [Outcome](l6-rollback/run2/run/controller-exit.json),
@@ -353,7 +365,12 @@ changed to force readiness. [Final runtime snapshot](l6-rollback/run2/run/final-
 [final pane](l6-rollback/run2/run/final-pane-2.txt).
 Source context: Mesh `src/journal/transition.rs` acquires the owner lifetime lock
 before downgrade; `src/delivery/store.rs` emits the observed refusal. That
-explains step 2, but does not replace the unexecuted retry with a failure claim.
+explains why ordinary seat settling cannot release that lifetime lock. The
+unexecuted retry is not evidence of temporariness. As a contrast for the
+Taurhaus readiness classification, [step-1 readiness](l6-rollback/run2/run/step1-ready.json)
+records the same `attributed()` predicate succeeding: matching alpha session/pane,
+notify-derived fresh idle and attributed runtime. Both readiness waits now use
+`taurhaus`; this labels the observed product state, not a proved root cause.
 
 ### Run2 candidate, spend, and isolation
 
@@ -391,9 +408,16 @@ orchestrator's separate accounting and is not exposed to this seat ledger.
 
 The reused controller provisions scratch-only roots and a private PID namespace,
 hides operator homes, removes inherited TMUX, pins binaries, blocks unrelated
-CLIs, and starts a private tmux server. Only the standing-authorized single auth
-file is copied (0600) into initially empty CODEX_HOME; no credential contents
-are exported. Production initialize uses the builder's canonical messaging
+CLIs, and starts a private tmux server. One auth file was copied (0600) into
+initially empty CODEX_HOME; no credential contents were exported. **Authorization
+deviation:** the historical pin targeted the primary `.codex` home, while the
+binding spec authorizes `.codex-account-b/auth.json`. The summary explicitly
+said the file governs, so it does not override that source. The retained
+`auth_copy` event lacks source identity/digest; the billed account cannot be
+independently established from this packet. No retrospective credential access
+or invented digest was used. The corrected pin follows the spec, an explicit
+caller allowlist supports operator-named disposable homes, and future run2
+copies record only the parent/basename label and SHA-256 of the copied bytes. Production initialize uses the builder's canonical messaging
 policy, one real tmux alpha and one login-only Claude lead (zero model turns).
 No fault injection or stress run occurred.
 
@@ -414,8 +438,11 @@ accepted `stage: pending` (one assertion failure), and four new requirements had
 no implementation (four import errors). The run2 predicates then passed all
 **5**, while the **26 inherited tests** also passed. Coverage checks working plus
 scheduler opportunity, heartbeat timestamp parsing, message-specific pending
-obligations, exclusion of begun/receipt state, exact format-1 committed history,
-and assistant reply versus tool echo. The regression comment names **82e2655b**.
+obligations, receipt exclusion, exact format-1 committed history,
+and assistant reply versus tool echo. The original begun-state test incorrectly
+used `receipt/attempt_started`; it did not cover the real
+`delivery_attempt/attempt_started` shape. The review fix below adds that coverage.
+The original regression comment names **82e2655b**.
 Tests use synthetic values only, without CLIs or credential reads.
 [Red](l6-rollback/run2/red.txt), [green](l6-rollback/run2/green.txt),
 [tests](l6-rollback/run2/run2_test.py), [rules](l6-rollback/run2/run2_rules.py).
@@ -439,8 +466,10 @@ Raw gate logs were written under ignored `src-tauri/target/l6-run2-gates` to
 avoid the historical self-scanning log collision, then copied/sanitized here.
 No tracked `src-tauri/` diff; conditional `just test-rust-unit` did not apply.
 
-Exact live controller: [run2controller.py](l6-rollback/run2/run2controller.py),
-reusing the parent support/preflight/rollback modules. Reproduction from this
+Corrected controller: [run2controller.py](l6-rollback/run2/run2controller.py),
+reusing the parent support/preflight/rollback modules. The exact controller that
+produced the retained runtime is available at commit **d012ab5d**; the current
+file contains the review fixes and has not been run live. Reproduction from this
 checkout, with a new output directory and a separately authorized fresh budget:
 
 ```sh
@@ -465,8 +494,73 @@ Deviations / limits:
   contract, the separate stage-2b implementation packet, stage-3 packet, and
   rollback source were read before execution.
 - Step 3 stopped on production activity readiness before the allowed retry.
-  Native ordinary work completed; no second format result, permanent format
-  refusal, ownership boundary, fresh C or cross-boundary read/ack is claimed.
+  Native ordinary work completed; no second format result, ownership boundary,
+  fresh C or cross-boundary read/ack is claimed. Review identifies step 2 as the
+  earlier failed rollback; continuing after it was a controller deviation.
 - No independent Opus lens ran inside this implementer lane; it remains the
   enclosing workflow's review obligation. This packet is a failed trial, not
   full workflow PASS or release approval.
+
+
+### Review correction, 2026-09-11
+
+The supplied Opus review was checked against Mesh RC **310144d** and the
+retained artifacts. No product files, descriptors, plan-ledger rows, real
+credentials or live seats were touched. This is an offline correction, not a
+new run: additional seat inputs **0**, additional metered seat spend **$0**.
+Original spend remains onboarding **$0.00400256**, A **$0.00454684**, ordinary
+work **$0.00255172**, total **$0.01110112** (estimated API equivalent).
+
+Red-first validation: run2's 10-test suite exited **1** with **13 assertion
+failures (including subtests) and 2 errors**: real begun rows were accepted,
+owner-lock refusal advanced into step 3, the credential pin/identity was wrong
+or absent, and the event writer held no lock. The inherited suite exited **1**
+with **1 failure** because the retired pending entry point still returned data.
+After correction, **10 run2 + 25 inherited tests pass (both exit 0)**.
+Regression comments identify **955df28f** and **82e2655b**. All inputs are
+synthetic or mocked; tests invoke no real CLI and read no real credentials.
+
+Pending now rejects `attempt_started`, `outcome_unknown`, `submitted`,
+`native_enqueued` and `consumed` for B regardless of event type, including the
+canonical `delivery_attempt/attempt_started` shape, and still rejects all
+B receipt rows. Other message IDs remain independent. The old support pending
+entry points raise with a pointer to `run2_rules.pending`; their obsolete green
+assertions were removed. A reentrant lock serializes event writes and shared
+observation/identity mutations, with an offline lock assertion rather than a
+stress run. No evidence indicates stream corruption in the original run.
+
+Historical `events.jsonl`, `controller-exit.json` and the unfortunately named
+`step2-temporary-refusal.json` are unaltered records of the original controller.
+Their PASS/temporary labels are superseded by this correction and the annotated
+`step2-outcome.json`; original runtime timestamps remain unchanged. The original
+export audit is historical, not a validation of these later interpretation edits.
+
+The named build/gate transcripts are trimmed to their final 24 lines; structured
+JSON gate records remain intact, and full historical scrollback is recoverable
+from **d012ab5d**. This reduces tracked build noise without trimming the complete
+daemon or runtime JSONL evidence required by the spec.
+
+The original manifest is retained unchanged within the requested file scope.
+A read-only digest comparison found exactly one changed runtime artifact:
+`step2-outcome.json`, the annotated review correction above. Its SHA-256 changed
+from `d5b5d14d9ef2c40829a2659255ff44dd7a324d596fb5565c4d1dbc43dedd5f3e`
+to `0cca2c77fde3ce327aba5333101b4b8ea68aa42cd6a74f44b82fb1da60ba38c1`.
+All other retained artifact digests still match the original manifest; all
+**996 controller events** and **355 daemon rows** parse as complete JSON.
+
+Review gates ran after the recorded teardown; the original scratch root is
+absent. No trial process was started in this fix round. Gate subprocesses
+finished and were reaped. Full new transcripts and JSON results are local-only
+under `src-tauri/target/l6-review-gates/`; historical gate sidecars above retain
+their original results.
+
+| Review gate from checkout root | Exit | Seconds | Result |
+| --- | --- | --- | --- |
+| `just check-quick` | **0** | 18.65 | Rust test compile, typecheck, 150 files / 2,519 frontend tests pass |
+| `just lint` | **0** | 6.743 | Rust, frontend, workflow and recipe lint pass |
+| `just test-contracts` | **0** | 5.197 | 68 contracts pass (15 renderers, 20 harness, 33 boundaries) |
+
+Each gate's exact `pgrep -af '(^|/)cargo( |$)'` admission probe returned **1**
+(no matches), count **0**; no 30-second waits were needed. Gates used
+`CARGO_BUILD_JOBS=1` and this checkout's `src-tauri/target`. No `src-tauri/`
+source diff exists, so conditional `just test-rust-unit` does not apply.
