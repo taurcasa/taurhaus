@@ -1,10 +1,8 @@
-# INCOMPLETE — latest run 7, steps 1–3 passed; step 4 harness snapshot failure
+# IN PROGRESS — latest run 8, offline observer regressions passed
 
-Run 7's single `resume_team` RPC completed, but JSON redaction failed while
-exporting the step-4 runtime snapshot. Steps 5–6 were not run. Cleanup's resumed
-counter reset was observed without aborting; all six observed turns are metered
-at **$0.00671068**, with zero owned-process survivors. Alpha again launched fresh.
-See [Run 7](#run-7) for outcomes, spend, gates and deviations.
+Run 8 reuses run 7’s isolated controller with the run-8 resume/rebind criterion.
+Both inherited observer faults were reproduced offline and their fixes verified
+before any paid launch. See [Run 8](#run-8).
 
 ## Historical run 2 — hosted process exited before transport readiness
 
@@ -950,3 +948,13 @@ independent Opus review of run7 remains with the orchestrator (no callable Opus
 runner here). Each passing runtime step was committed before the next release.
 No product change, install/release, plan-ledger edit, descriptor mutation, Mesh
 commit, account/root move, fault/stress injection or operator-process kill.
+
+
+## Run 8
+
+Offline preparation: **30 tests PASS**, plus **6 preflight tests PASS**.
+The historical reset-counter assertion and null-field redaction exception both
+reproduced before restoring run 7’s fixes. [Red](l4-resume-team/run8/red.txt),
+[green](l4-resume-team/run8/green.txt), [provenance](l4-resume-team/run8/provenance.json).
+
+Runtime steps and post-teardown gates pending.
