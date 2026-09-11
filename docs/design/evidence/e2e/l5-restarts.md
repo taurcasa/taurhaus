@@ -1,4 +1,8 @@
-# Lane 5 run6 continuation — FAIL step 5 (harness); step 6 NOT RUN
+# Lane 5 run7 — FAIL step 5 (product (mesh)); later steps NOT RUN
+
+Run7: 14 inputs; $0.018016400 metered; 2 unknown-cost inputs; 336.60 seconds. All owned runtime processes and scratch authentication removed. See the [run7 packet](#run7--seventh-attempt-evidence).
+
+## Historical run6 continuation verdict
 
 The authorized continuation committed **steps 1–4 PASS**. Both restart boundaries
 were crossed with pending mail on both transports. Step 5 failed because alpha
@@ -1419,3 +1423,111 @@ See [final-audit.json](l5-restarts/run6/continuation/final-audit.json) for all
 classifications and original evidence. The four green numbered steps were each
 committed with the requested trailers; the final packet preserves their scope
 without converting the overall lane verdict to PASS.
+
+## Run7 — seventh-attempt evidence
+
+Taurhaus `a7e6db7e`, protocol **27**; Mesh `310144d`, unchanged enabled Codex **0.153.4** descriptor. Both native siblings copied to the scratch bin. Alpha used tmux, beta app_server; both `gpt-5.6-luna`, effort `low`. Production initialize used the builder canonical policy and a login-only Claude lead.
+
+**FAIL step 5 (product (mesh)); later steps NOT RUN**. Runtime **336.60 s**, **14/20 counted inputs**, **$0.018016400/$0.30 metered estimate**, **2 unknown-cost inputs**. Unknown costs are counted, never treated as free; full billed spend is unverified. No total-lane PASS or release approval is claimed without the independent evidence review.
+
+| Step | Outcome / classification | Evidence |
+|---|---|---|
+| 1 | **PASS — runtime** | [Outcome](l5-restarts/run7/runtime/step1-outcome.json).  |
+| 2 | **PASS — runtime** | [Outcome](l5-restarts/run7/runtime/step2-outcome.json).  |
+| 3 | **PASS — runtime** | [Outcome](l5-restarts/run7/runtime/step3-outcome.json).  |
+| 4 | **PASS — runtime** | [Outcome](l5-restarts/run7/runtime/step4-outcome.json).  |
+| 5 | **FAIL — product (mesh)** | [Outcome](l5-restarts/run7/runtime/step5-outcome.json). Step-5 one-attempt-per-id criterion failed: beta has 17 attempt_started rows and 1 transport receipts |
+| 6 | **NOT RUN — blocked by earlier failure** | [Outcome](l5-restarts/run7/runtime/step6-outcome.json).  |
+
+### Identities and accepted targets
+
+Team incarnation: `9cf87ad7e054dc65dfa8a5245964bfc77d4f0de0348cfcecf64af96752265e2e`. Taurhaus PID/start ticks **62158 / 31291682 → 85236 / 31296604**. Alpha session `01a08e37-4697-7993-926b-4a9cc9b91380`, pane `%2`, generation **1 → 1**. Beta thread `01a08e37-4943-7e72-9ad2-fd1def65ef93`, pane **%3 → %15**, generation **1 → 3** through supported stop/recovery.
+
+| Boundary / seat | Message ID | Delivery ID | Attempts / exposures / read |
+|---|---|---|---|
+| baseline / alpha | `8a9e78f5-5e5b-4c89-8206-cbffa97f1d8e` | `b2b49290-7868-4751-8f87-e06ab9eb86c7` | 1 / 1 / True |
+| baseline / beta | `4bf62ce7-bdc5-47d0-9f47-e0be370bca73` | `4931df6f-9260-40a3-8a15-a8790340cb76` | 1 / 1 / True |
+| taurhaus-backlog / alpha | `5fbc9d08-5af1-4bb7-b79d-c50ecd7aaaa7` | `8fa6edf3-a096-4823-b268-1f64d387d433` | 1 / 1 / True |
+| taurhaus-backlog / beta | `f225eae3-daa6-4107-8d17-6e5cb966c516` | `021c603b-1b02-4f2e-948d-36a478bddad9` | 19 / 1 / True |
+| mesh-backlog / alpha | `a966024b-4b5d-42fd-8b85-99e11eeb6a38` | `fa963dba-4197-4f5c-88da-54d9ce6fc278` | 1 / 1 / True |
+| mesh-backlog / beta | `7dc3dce9-4ba1-4df2-8f3f-21060b399e53` | `866255fc-ed56-4177-bc5d-e3acc942b349` | 17 / 1 / False |
+
+### What this attempt establishes
+
+Steps 1–4 passed their runtime predicates. Both baseline IDs were read; both first-boundary markers were accepted and unexposed in the same attributed-working sample, immediately followed by normal daemon SIGINT/restart with identical arguments and new PID/start ticks. Beta required supported `resume_member`; logical identities and team incarnation stayed stable, generations did not regress, and both markers were delivered/read once without baseline replay.
+
+Step 5 **FAIL — product (mesh), strict attempt-count criterion**: alpha has one durable attempt and one submitted notification; beta has **17 distinct attempts**, with **16 pending `pre_input_failure: IO error: delivery: thread_active` receipts** followed by **one native_enqueued** receipt and its card in host events. These are Mesh-owned retries, not controller resends. The raw observer timeout says receipt/witness missing, but both witnesses exist: the failed conjunct is exactly-one-attempt accounting. No duplicate exposure or lost obligation is established. Beta also had 19 attempts / one exposure at the first boundary; step 4 only requires delivery once.
+
+Step 6 **NOT RUN** under stop-on-failure. Read-only post-teardown accounting finds one transport exposure for each of the six marker IDs; alpha’s final marker has a read receipt, beta’s final marker does not. This offline accounting does not substitute for the required explicit final reads. The cursor-following step-6 implementation is offline-tested, not runtime-certified here.
+
+Working-window measurements: alpha **46.254 s** at the Taurhaus boundary and **44.376 s** at the Mesh boundary; beta **46.251 s** at the Mesh boundary. Beta’s original Taurhaus-boundary turn has no completed >=30-second window: the daemon restart interrupted it before python3 began, and the paced task ran after supported resume. That subclaim is **UNPROVED — harness timing**.
+
+Owner epoch **2 → 3**, PID **71538 → 103340**; the old owner was gone before first delivery. Across **435** restart-window samples, maximum observed owners was **1**. However, maximum gap **1.713 s** violates the ≤1-second cadence. Required owner exclusion is **UNPROVED — harness cadence**, despite no observed overlap.
+
+### Runtime evidence
+
+[Exact controller](l5-restarts/run7/controller.py), [ordered assertions](l5-restarts/run7/steps.py), [commands/RPCs and exits](l5-restarts/run7/runtime/events.jsonl), [complete daemon JSONL](l5-restarts/run7/runtime/taurhaus.log.jsonl), [host events](l5-restarts/run7/runtime/host-events.jsonl), [owner census](l5-restarts/run7/runtime/owner-observations.jsonl), [lossless snapshots](l5-restarts/run7/runtime/snapshots.json), [final audit](l5-restarts/run7/final-audit.json). Snapshot filenames map to SHA-256-keyed exact payloads; `pack.unpack` restores them. Pane captures contain at most 60 lines. Acceptance, transport delivery, explicit read and model action remain separate.
+
+Daemon JSONL: **898 complete rows**, SHA-256 `e84a0850f6004a5316288fb4ac6496320cff4dcda0c3f55d982ff91105eb3aa3`. Controller exit **1**. Controller transient busy refusal episodes: **0**; the controller retries only named `host member busy` / `lock busy` refusals within a 65-second deadline.
+
+The step-5 implementation checks transport receipts and native witnesses plus owner exclusion; the seat’s own read is observational. The step-6 implementation (not run this attempt) executes `mesh read --name <seat> --unread --mark-read --json` with explicit root/team and unchanged filters, following `--since <cursor>` until `done: true`, then pages the journal and reconciles both boundaries. Scratch AGENTS.md also requires seats to follow empty or nonempty `done: false` pages.
+
+### Every measured spend
+
+Rates: inherited packet API-equivalent estimates, $0.20/$0.02/$1.20 per million uncached input/cached input/output tokens. Reasoning is included in output. These are not invoice amounts. All generations are listed; a turn without metering is explicitly unknown.
+
+| Thread / turn | Generation | Input / cached / output (reasoning) | USD estimate |
+|---|---:|---|---:|
+| `01a08e37-4943-7e72-9ad2-fd1def65ef93` / `01a08e37-4f22-75f3-be42-b4989b30c6c8` | 1 | 11025 / 6912 / 68 (57) | 0.001042440 |
+| `01a08e37-4697-7993-926b-4a9cc9b91380` / `01a08e37-6048-7662-97e0-52c775ea4776` | 1 | 9307 / 3840 / 98 (26) | 0.001287800 |
+| `01a08e37-4697-7993-926b-4a9cc9b91380` / `01a08e37-6048-7662-97e0-52c775ea4776` | 2 | 10818 / 8960 / 63 (54) | 0.000626400 |
+| `notify-only session` / `01a08e37-6269-7e20-be53-6071fd290912` | — | Unreported | **Unknown** |
+| `01a08e37-4697-7993-926b-4a9cc9b91380` / `01a08e37-850d-7e83-b1bd-91e5c7d84c11` | 1 | 10939 / 9984 / 81 (9) | 0.000487880 |
+| `01a08e37-4697-7993-926b-4a9cc9b91380` / `01a08e37-850d-7e83-b1bd-91e5c7d84c11` | 2 | 11816 / 9984 / 50 (34) | 0.000626080 |
+| `01a08e37-4943-7e72-9ad2-fd1def65ef93` / `01a08e37-ab06-7051-8381-f41cdd58b046` | 1 | 11921 / 9984 / 13 (0) | 0.000602680 |
+| `01a08e37-4697-7993-926b-4a9cc9b91380` / `01a08e37-e590-7a11-9b4f-656371ea6a98` | 1 | 11958 / 11008 / 180 (74) | 0.000626160 |
+| `01a08e37-4697-7993-926b-4a9cc9b91380` / `01a08e37-e590-7a11-9b4f-656371ea6a98` | 2 | 12796 / 11008 / 66 (19) | 0.000656960 |
+| `01a08e37-4697-7993-926b-4a9cc9b91380` / `01a08e37-e590-7a11-9b4f-656371ea6a98` | 3 | 13118 / 12032 / 5 (0) | 0.000463840 |
+| `01a08e37-4943-7e72-9ad2-fd1def65ef93` / `01a08e37-ec78-7a33-af00-efcc983ba1ef` | — | Unreported | **Unknown** |
+| `01a08e37-4943-7e72-9ad2-fd1def65ef93` / `01a08e38-0827-71c1-9039-b01b61975ca6` | 1 | 12732 / 11008 / 153 (13) | 0.000748560 |
+| `01a08e37-4943-7e72-9ad2-fd1def65ef93` / `01a08e38-0827-71c1-9039-b01b61975ca6` | 2 | 13517 / 12032 / 71 (8) | 0.000622840 |
+| `01a08e37-4943-7e72-9ad2-fd1def65ef93` / `01a08e38-0827-71c1-9039-b01b61975ca6` | 3 | 13811 / 6912 / 5 (0) | 0.001524040 |
+| `01a08e37-4697-7993-926b-4a9cc9b91380` / `01a08e38-9dce-7ed1-842a-798910a383a2` | 1 | 13184 / 12032 / 88 (16) | 0.000576640 |
+| `01a08e37-4697-7993-926b-4a9cc9b91380` / `01a08e38-9dce-7ed1-842a-798910a383a2` | 2 | 14072 / 13056 / 17 (0) | 0.000484720 |
+| `01a08e37-4943-7e72-9ad2-fd1def65ef93` / `01a08e38-bf2a-7881-81bf-8fcb13d68065` | 1 | 13934 / 13056 / 28 (7) | 0.000470320 |
+| `01a08e37-4697-7993-926b-4a9cc9b91380` / `01a08e38-e550-7b72-b1d7-54e8e0ec4482` | 1 | 14181 / 13056 / 124 (26) | 0.000634920 |
+| `01a08e37-4697-7993-926b-4a9cc9b91380` / `01a08e38-e550-7b72-b1d7-54e8e0ec4482` | 2 | 14963 / 13056 / 45 (0) | 0.000696520 |
+| `01a08e37-4697-7993-926b-4a9cc9b91380` / `01a08e38-e550-7b72-b1d7-54e8e0ec4482` | 3 | 15267 / 14080 / 5 (0) | 0.000525000 |
+| `01a08e37-4943-7e72-9ad2-fd1def65ef93` / `01a08e38-e9c2-7b83-ae4d-475af9db3796` | 1 | 14054 / 13056 / 145 (7) | 0.000634720 |
+| `01a08e37-4943-7e72-9ad2-fd1def65ef93` / `01a08e38-e9c2-7b83-ae4d-475af9db3796` | 2 | 14831 / 13056 / 70 (7) | 0.000700120 |
+| `01a08e37-4943-7e72-9ad2-fd1def65ef93` / `01a08e38-e9c2-7b83-ae4d-475af9db3796` | 3 | 15124 / 13056 / 5 (0) | 0.000680720 |
+| `01a08e37-4697-7993-926b-4a9cc9b91380` / `01a08e39-9812-7141-a3da-be74a7c16174` | 1 | 15332 / 15104 / 78 (6) | 0.000441280 |
+| `01a08e37-4697-7993-926b-4a9cc9b91380` / `01a08e39-9812-7141-a3da-be74a7c16174` | 2 | 16238 / 15104 / 833 (18) | 0.001528480 |
+| `01a08e37-4697-7993-926b-4a9cc9b91380` / `01a08e39-9812-7141-a3da-be74a7c16174` | 3 | 17105 / 15104 / 80 (63) | 0.000798280 |
+| `01a08e37-4943-7e72-9ad2-fd1def65ef93` / `01a08e39-a5c6-7621-83e9-e171970bb1d2` | 1 | 15239 / 14080 / 13 (0) | 0.000529000 |
+
+[Cost ledger](l5-restarts/run7/runtime/cost-ledger.json) and [native usage rows](l5-restarts/run7/runtime/usage-events.json). Build, read-only observers, export and gates add zero trial inputs. Implementer/reviewer spend is separately owned by the invoking orchestrator.
+
+### Red → green, gates and teardown
+
+Four new offline acceptance checks: initial run exited **1** (two assertion failures and one missing-helper error); cursor-following behavior passed already. After the step-5 transport correction and scratch pagination instructions, all **37** offline checks passed, exit **0**. Regression comments name `e6fa7d0e`. [Red](l5-restarts/run7/red.txt), [green](l5-restarts/run7/green.txt).
+
+| Exact command, checkout root | Exit |
+|---|---:|
+| `just check-quick` | **0** |
+| `just lint` | **0** |
+| `just test-contracts` | **0** |
+
+All gates ran **after teardown**, with credential-free scratch roots and real harness executables blocked. Cargo used one build job and this checkout’s own target directory; preflight waited in 30-second polls only when at least three Cargo processes already existed. No `src-tauri/` diff, so `just test-rust-unit` was not required.
+
+[Cleanup](l5-restarts/run7/runtime/cleanup.json): survivors `[]`, private port closed `True`, auth copy explicitly removed `True`, root removed `True`. [Gate cleanup](l5-restarts/run7/gates/gate-cleanup.json) records reaped commands and removed scratch roots. No foreign process was signaled.
+
+### Deviations and limits
+
+- Spec-referenced integration checkout absent (git show exit 128); inspected its retained attempt9 sources here and messaging run2 sources read-only.
+- Unknown-cost inputs counted separately; metered estimate is not an invoice or complete billed spend.
+- Independent Opus evidence lens and implementer/reviewer metering belong to invoking orchestrator; Opus unavailable in this tool surface.
+- Step 5 failed the explicit one-attempt-per-id requirement: beta has 17 durable attempt_started rows (16 pending thread_active refusals, one native_enqueued). Both transports nevertheless exposed their markers once. Step 6 was not run.
+- The original beta turn at the Taurhaus boundary was interrupted before python3 began; its >=30-second continuous window is unproved. The resumed task is not substituted as original-turn evidence.
+- The passive owner census saw at most one owner and old-owner departure before delivery, but its 1.713-second maximum gap exceeds the <=1-second requirement; sampling cadence coverage is unproved (harness).
+- No product, Mesh descriptor, installation, release, plan-ledger, or other Taurhaus checkout change. Only the specified Mesh worktree was built; no Mesh commit.

@@ -1,0 +1,9 @@
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/run7/steps.py", line 197, in <module>
+    for seat in ['alpha','beta']:transport_settle('mesh-backlog',seat)
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/run7/steps.py", line 129, in transport_settle
+    wait(observed,'transport receipt and native witness missing '+label+' '+seat,180)
+  File "/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/run7/steps.py", line 38, in wait
+    raise AssertionError(why+f'; polled {time.time()-begin:.1f}s')
+AssertionError: transport receipt and native witness missing mesh-backlog beta; polled 180.7s

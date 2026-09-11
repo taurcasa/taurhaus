@@ -1,0 +1,9 @@
+{
+  "step": 5,
+  "outcome": "FAIL",
+  "classification": "product (mesh)",
+  "reason": "Step-5 one-attempt-per-id criterion failed: beta has 17 attempt_started rows and 1 transport receipts",
+  "at": 1789092715.6944115,
+  "observer_reason": "transport receipt and native witness missing mesh-backlog beta; polled 180.7s",
+  "limitation": "Pending pre-input thread_active refusals were retried by Mesh. One eventual native exposure is observed; this is not duplicate model delivery or lost mail."
+}
