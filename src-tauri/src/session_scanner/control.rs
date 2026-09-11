@@ -1165,15 +1165,21 @@ mod tests {
         MemberRuntimeStore::update(&root, "team", "seat", |record| {
             record.pane_id = Some(pane.clone());
             record.pane_pid = pane_process_id(&pane);
-            record.pane_start_time = record.pane_pid.and_then(crate::platform::process_start_ticks);
+            record.pane_start_time = record
+                .pane_pid
+                .and_then(crate::platform::process_start_ticks);
             record.terminal_contract = 1;
             record.session_id = Some("saved-session".into());
-        }).unwrap();
+        })
+        .unwrap();
         let roster = std::fs::read(root.join("team/config.json")).unwrap();
         let started = Instant::now();
-        let response = crate::daemon::handlers::handle_stop_member("stop",
+        let response = crate::daemon::handlers::handle_stop_member(
+            "stop",
             &serde_json::json!({"team_name":"team", "member_name":"seat"}),
-            &HostedMembers::default(), &registry);
+            &HostedMembers::default(),
+            &registry,
+        );
         let elapsed = started.elapsed();
         // Wait for our background teardown before the scratch server is dropped.
         let deadline = Instant::now() + Duration::from_secs(8);
@@ -1182,10 +1188,19 @@ mod tests {
             std::thread::sleep(Duration::from_millis(20));
         }
         assert!(response.error.is_none(), "{:?}", response.error);
-        assert!(elapsed < Duration::from_secs(2), "stop held the connection for {elapsed:?}");
-        assert_eq!(saved(&root).health, crate::coordination::domain::HealthState::SessionDead);
+        assert!(
+            elapsed < Duration::from_secs(2),
+            "stop held the connection for {elapsed:?}"
+        );
+        assert_eq!(
+            saved(&root).health,
+            crate::coordination::domain::HealthState::SessionDead
+        );
         assert_eq!(saved(&root).session_id.as_deref(), Some("saved-session"));
-        assert_eq!(std::fs::read(root.join("team/config.json")).unwrap(), roster);
+        assert_eq!(
+            std::fs::read(root.join("team/config.json")).unwrap(),
+            roster
+        );
     }
 
     #[cfg(all(target_os = "linux", feature = "mesh-bridged-backend"))]

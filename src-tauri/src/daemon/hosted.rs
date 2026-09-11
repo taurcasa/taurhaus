@@ -49,7 +49,9 @@ pub(crate) fn handle(
     let record = record.map_err(|e| e.to_string())?;
     if operation == "reconcile" {
         if params["abandonUnknown"] == true {
-            let generation = params["generation"].as_u64().ok_or("missing attachment generation")?;
+            let generation = params["generation"]
+                .as_u64()
+                .ok_or("missing attachment generation")?;
             return hosts.abandon_unknown(registry, team, member, generation);
         }
         hosts.reconcile(registry, team, member)?;
@@ -201,17 +203,36 @@ mod tests {
         MemberRuntimeStore::update(tmp.path(), "team", "seat", |r| {
             r.app_server = None;
             r.health = crate::coordination::domain::HealthState::Healthy;
-        }).unwrap();
-        handle(&hosts, &registry, operation,
-            &json!({"team_name":"team", "member_name":"seat"})).unwrap();
-        assert_eq!(saved(tmp.path()).health, crate::coordination::domain::HealthState::SessionDead);
+        })
+        .unwrap();
+        handle(
+            &hosts,
+            &registry,
+            operation,
+            &json!({"team_name":"team", "member_name":"seat"}),
+        )
+        .unwrap();
+        assert_eq!(
+            saved(tmp.path()).health,
+            crate::coordination::domain::HealthState::SessionDead
+        );
         assert_eq!(saved(tmp.path()).session_id, before.session_id);
-        hosts.launch(&registry, "team", "seat", &fixture(tmp.path())).unwrap();
+        hosts
+            .launch(&registry, "team", "seat", &fixture(tmp.path()))
+            .unwrap();
         let resumed = saved(tmp.path());
-        assert_ne!(resumed.app_server.as_ref().unwrap().process_id,
-            before.app_server.as_ref().unwrap().process_id);
-        assert_eq!(resumed.app_server.unwrap().thread_id, before.app_server.unwrap().thread_id);
-        assert_eq!(std::fs::read(tmp.path().join("team/config.json")).unwrap(), roster);
+        assert_ne!(
+            resumed.app_server.as_ref().unwrap().process_id,
+            before.app_server.as_ref().unwrap().process_id
+        );
+        assert_eq!(
+            resumed.app_server.unwrap().thread_id,
+            before.app_server.unwrap().thread_id
+        );
+        assert_eq!(
+            std::fs::read(tmp.path().join("team/config.json")).unwrap(),
+            roster
+        );
         hosts.stop(&registry, "team", "seat").unwrap();
     }
 
@@ -221,10 +242,23 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let registry = seat(tmp.path());
         std::fs::remove_file(tmp.path().join("team/runtime/seat.json")).unwrap();
-        assert_eq!(handle(&HostedMembers::default(), &registry, "stop",
-            &json!({"team_name":"team", "member_name":"seat"})).unwrap(), json!({"ok":true}));
-        assert!(handle(&HostedMembers::default(), &registry, "stop",
-            &json!({"team_name":"team", "member_name":"unknown"})).is_err());
+        assert_eq!(
+            handle(
+                &HostedMembers::default(),
+                &registry,
+                "stop",
+                &json!({"team_name":"team", "member_name":"seat"})
+            )
+            .unwrap(),
+            json!({"ok":true})
+        );
+        assert!(handle(
+            &HostedMembers::default(),
+            &registry,
+            "stop",
+            &json!({"team_name":"team", "member_name":"unknown"})
+        )
+        .is_err());
     }
 
     #[test]

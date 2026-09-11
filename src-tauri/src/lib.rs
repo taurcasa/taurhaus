@@ -818,12 +818,18 @@ mod tests {
     fn coordination_handlers_are_individually_feature_gated() {
         // Regression: d612491fd moved remove_member's cfg onto stop_member.
         let source = include_str!("lib.rs");
-        let handlers = source.split(".invoke_handler(tauri::generate_handler![").nth(1).unwrap();
+        let handlers = source
+            .split(".invoke_handler(tauri::generate_handler![")
+            .nth(1)
+            .unwrap();
         let handlers = handlers.split("])").next().unwrap();
         let mut previous = "";
         for line in handlers.lines().map(str::trim) {
             if line.starts_with("commands::coordination::") {
-                assert_eq!(previous, "#[cfg(feature = \"mesh-bridged-backend\")]", "{line}");
+                assert_eq!(
+                    previous, "#[cfg(feature = \"mesh-bridged-backend\")]",
+                    "{line}"
+                );
             }
             previous = line;
         }
