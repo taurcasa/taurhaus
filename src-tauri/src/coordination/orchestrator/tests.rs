@@ -6082,6 +6082,32 @@ fn assert_owner_self_heal_skip(
         .calls()
         .iter()
         .any(|c| matches!(c, RuntimeCall::SpawnTeamDaemon { .. })));
+    if marker.is_some() {
+        std::fs::remove_file(&path).unwrap();
+    }
+    // Simulate Mesh's owner transition; the store preserves Mesh-authored fields.
+    let config_path = tmp.path().join(team).join("config.json");
+    let mut wire: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&config_path).unwrap()).unwrap();
+    wire["delivery_owner"] = "team".into();
+    std::fs::write(&config_path, wire.to_string()).unwrap();
+    assert!(
+        orchestrator
+            .trigger_team_self_heal(team)
+            .unwrap()
+            .team_daemon_ensured
+    );
+    if marker.is_some() {
+        std::fs::write(&path, "broken").unwrap();
+    }
+    wire["delivery_owner"] = owner.map(serde_json::Value::from).unwrap_or_default();
+    std::fs::write(&config_path, wire.to_string()).unwrap();
+    assert!(
+        !orchestrator
+            .trigger_team_self_heal(team)
+            .unwrap()
+            .team_daemon_ensured
+    );
     sink.flush_for_test().unwrap();
     let events: Vec<serde_json::Value> = std::fs::read_to_string(&log_path)
         .unwrap()
@@ -6096,21 +6122,6 @@ fn assert_owner_self_heal_skip(
                 && e["reason"] == reason)
             .count(),
         1
-    );
-    if marker.is_some() {
-        std::fs::remove_file(path).unwrap();
-    }
-    // Simulate Mesh's owner transition; the store preserves Mesh-authored fields.
-    let config_path = tmp.path().join(team).join("config.json");
-    let mut wire: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(&config_path).unwrap()).unwrap();
-    wire["delivery_owner"] = "team".into();
-    std::fs::write(config_path, wire.to_string()).unwrap();
-    assert!(
-        orchestrator
-            .trigger_team_self_heal(team)
-            .unwrap()
-            .team_daemon_ensured
     );
 }
 

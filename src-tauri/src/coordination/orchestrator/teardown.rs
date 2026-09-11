@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
@@ -17,6 +17,7 @@ use crate::coordination::stores::{MemberRuntimeRecord, MemberRuntimeStore, TeamC
 
 use super::{CoordinationOrchestrator, RemoveMemberStepResult};
 
+static OWNER_SKIP_EVENTS: OnceLock<Mutex<HashSet<(PathBuf, &'static str)>>> = OnceLock::new();
 static TEAM_DAEMON_SKIP_EVENTS: OnceLock<Mutex<HashMap<PathBuf, String>>> = OnceLock::new();
 const DELIVERY_OWNED_BY_MEMBERS_REASON: &str = "delivery_owned_by_members";
 const ROLLBACK_PENDING_REASON: &str = "rollback_pending";
@@ -772,6 +773,19 @@ impl CoordinationOrchestrator {
         reason: &'static str,
     ) {
         let credential_path = self.team_daemon_credential_path(team_name, operator_name);
+        if matches!(
+            reason,
+            OWNER_STOPPED_BY_OPERATOR_REASON
+                | ROLLBACK_PENDING_REASON
+                | DELIVERY_OWNED_BY_MEMBERS_REASON
+        ) && !OWNER_SKIP_EVENTS
+            .get_or_init(|| Mutex::new(HashSet::new()))
+            .lock()
+            .map(|mut seen| seen.insert((credential_path.clone(), reason)))
+            .unwrap_or(true)
+        {
+            return;
+        }
         let emitted = TEAM_DAEMON_SKIP_EVENTS.get_or_init(|| Mutex::new(HashMap::new()));
         let should_emit = emitted
             .lock()
@@ -796,7 +810,7 @@ impl CoordinationOrchestrator {
             operator = %operator_name,
             reason,
             credential_path = %credential_path.display(),
-            "team daemon skipped because lead authentication is unavailable"
+            "team daemon startup skipped"
         );
         let mut fields = Map::new();
         fields.insert("team_name".into(), Value::String(team_name.to_string()));
@@ -813,7 +827,7 @@ impl CoordinationOrchestrator {
             "info",
             "coordination",
             "coordination.team_daemon.skipped",
-            Some("Team daemon skipped because lead authentication is unavailable".to_string()),
+            Some("Team daemon startup skipped".to_string()),
             fields,
         );
     }
