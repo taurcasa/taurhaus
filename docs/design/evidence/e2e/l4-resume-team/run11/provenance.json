@@ -1,0 +1,25 @@
+{
+  "checkout": "/home/mstie/projects/taurhaus-l4-resume-team",
+  "branch": "feat/e2e-l4-resume-team",
+  "taurhaus_commit": "0ce370d447ff54b4f22f58747c18a6f5822827a9",
+  "required_base": "ac2bc513",
+  "ancestor_exit": 0,
+  "mesh_commit": "3015cb0fda5328d1f8c793b528275e6205683208",
+  "mesh_rc": "3015cb0fda5328d1f8c793b528275e6205683208",
+  "protocol": 27,
+  "model": "gpt-5.6-luna",
+  "effort": "low",
+  "binaries": {
+    "mesh": {
+      "path": "/home/mstie/projects/mesh-l4/target/debug/mesh",
+      "sha256": "cb828619827fd8d27c1bdf0d132099a57529056cf2095dd9543a1fe4eed550e5"
+    },
+    "daemon": {
+      "path": "/home/mstie/projects/taurhaus-l4-resume-team/src-tauri/target/release/taurhaus-daemon",
+      "sha256": "9112bca2d0048a2a2e20cea44d9aaac1d32e3ff958bf75342cff5ee1ca7da7a3"
+    }
+  },
+  "build": "Reused checkout-local binaries: digests equal run10 build; no product source changes since that build. No build or mutation in Mesh.",
+  "controller_commit": "pending",
+  "reference": "Versioned run10 controller descends from required run4/attempt9 layout; no historical controller executed."
+}
