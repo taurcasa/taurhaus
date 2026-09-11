@@ -269,6 +269,22 @@ pub(crate) fn terminal_write_for_pane_at_root<T>(
     op: &str,
     write: impl FnOnce() -> Result<T, String>,
 ) -> Result<T, String> {
+    terminal_write_for_pane_with_runtime(
+        teams_dir,
+        pane,
+        op,
+        &crate::coordination::runtime::SystemCoordinationRuntime,
+        write,
+    )
+}
+
+fn terminal_write_for_pane_with_runtime<T>(
+    teams_dir: &Path,
+    pane: &str,
+    op: &str,
+    _runtime: &dyn crate::coordination::runtime::CoordinationRuntime,
+    write: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
     let registry = super::team_roots::TeamRootRegistry::new(teams_dir.to_path_buf());
     if let Some((root, team, member)) = resolve_terminal_member(&registry, pane)? {
         // Windows app fallback must not create lock/holder state on the UNC volume.
@@ -279,6 +295,25 @@ pub(crate) fn terminal_write_for_pane_at_root<T>(
         }
         #[cfg(not(target_os = "windows"))]
         return terminal_write(&root, &team, &member, op, || {
+            // Liveness can change health while we wait for exclusion. Resolve
+            // ownership from the current binding under the terminal lock.
+            let record = super::runtime::MemberRuntimeStore::load(&root, &team, &member)?;
+            if record.pane_id.as_deref() != Some(pane) {
+                return Err(CoordinationError::Conflict(
+                    "terminal write deferred: pane binding changed".into(),
+                ));
+            }
+            if record.health == crate::coordination::domain::HealthState::SessionDead {
+                use crate::coordination::runtime::{pane_belongs_to_member, PaneOwnership};
+                let owned = _runtime.live_pane(pane)?.is_some_and(|live| {
+                    !live.is_dead && pane_belongs_to_member(&record, &live) == PaneOwnership::Owned
+                });
+                if !owned {
+                    return Err(CoordinationError::Conflict(
+                        "terminal write deferred: dead record no longer owns pane".into(),
+                    ));
+                }
+            }
             write().map_err(CoordinationError::Backend)
         })
         .map_err(|e| e.to_string());
@@ -302,9 +337,7 @@ pub(crate) fn resolve_terminal_member(
             }
         };
         for (member, record) in &records {
-            if record.health != crate::coordination::domain::HealthState::SessionDead
-                && record.pane_id.as_deref() == Some(pane)
-            {
+            if record.pane_id.as_deref() == Some(pane) {
                 return Ok(Some((root, team, member.clone())));
             }
         }
@@ -927,7 +960,6 @@ mod tests {
             "seat",
             &MemberRuntimeRecord {
                 health: crate::coordination::domain::HealthState::SessionDead,
-                pane_id: Some("%1".into()),
                 session_id: Some("retained".into()),
                 ..Default::default()
             },
@@ -935,6 +967,51 @@ mod tests {
         .unwrap();
         let registry = super::super::team_roots::TeamRootRegistry::new(tmp.path().into());
         assert!(resolve_terminal_member(&registry, "%1").unwrap().is_none());
+    }
+
+    #[test]
+    fn pane_addressed_stop_locks_dead_but_live_owned_pane() {
+        // Regression: 8f99dd9a excluded dead health before locking, although
+        // offline liveness can mark a still-live owned pane dead.
+        use super::super::{MemberRuntimeRecord, MemberRuntimeStore};
+        use crate::coordination::runtime::RecordingCoordinationRuntime;
+        let tmp = TempDir::new().unwrap();
+        super::super::TeamConfigStore::save(tmp.path(), "team", &serde_json::from_value(
+            serde_json::json!({"schema_version": 3, "name": "team", "created_at": chrono::Utc::now(), "members": []})
+        ).unwrap()).unwrap();
+        let runtime = RecordingCoordinationRuntime::default();
+        runtime.set_pane_exists("%1", true);
+        runtime.set_pane_identity("%1", Some(901), Some(42));
+        MemberRuntimeStore::save(
+            tmp.path(),
+            "team",
+            "seat",
+            &MemberRuntimeRecord {
+                health: crate::coordination::domain::HealthState::SessionDead,
+                pane_id: Some("%1".into()),
+                pane_pid: Some(901),
+                pane_start_time: Some(42),
+                terminal_contract: 1,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        terminal_write_for_pane_with_runtime(tmp.path(), "%1", "stop", &runtime, || {
+            assert!(
+                taurhaus_lib::platform::terminal_io::active(),
+                "owned stop must hold terminal lock"
+            );
+            Ok(())
+        })
+        .unwrap();
+        for (pid, start) in [(902, 42), (901, 43)] {
+            runtime.set_pane_identity("%1", Some(pid), Some(start));
+            let result: Result<(), String> =
+                terminal_write_for_pane_with_runtime(tmp.path(), "%1", "stop", &runtime, || {
+                    panic!("foreign pane must not be written")
+                });
+            assert!(result.unwrap_err().contains("terminal write deferred"));
+        }
     }
 
     #[test]
