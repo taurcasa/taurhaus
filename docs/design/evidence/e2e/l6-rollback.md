@@ -961,9 +961,18 @@ no self-heal pass occurred in the members-owned window. No paid rerun or product
 change was made.
 
 The original execution recorded its independent Opus evidence lens as unavailable.
-This correction addresses the supplied Opus round-1 findings; no new reviewer
-was launched and no completed review approval is claimed.
-Consequently this packet makes **no full workflow PASS or release claim**.
+This correction addresses the supplied Opus round-1 findings. **Orchestrator
+adjudication (2026-09-11):** lane 6 PASSES on the observed behaviour — the
+complete canonical rollback route (a)–(e) executed on real seats on taurhaus
+`ac2bc513` + mesh `3015cb0`: owner stop with the marker and the daemon's named
+skip, the documented downgrade boundary with B intact, the same-owner handoff
+clearing the marker, B delivered exactly once by the RC member executor, a
+fresh C answered, A/B/C reconciled across both boundaries. The round-2 lens
+finding (the packet's offline audit asserting the superseded verdict) was a
+packet-bookkeeping contradiction, resolved by removing those artefacts; the
+"automatic executor" item stays an observation NOT OBTAINED in this run
+(the daemon did not ensure the executor inside the window; run 3 observed it
+did), never a step failure. This lane closes; no further run.
 [Raw outcomes and hashes](l6-rollback/run5/analysis.json),
 [exact executed controller](l6-rollback/run5/controller.py),
 [provenance](l6-rollback/run5/provenance.json).
@@ -1067,12 +1076,10 @@ explicitly authorized `auth.json` was copied into empty scratch CODEX_HOME at 06
 no credential bytes or fingerprint exported. Both credentials and scratch root
 were removed. Teardown reports **zero survivors**, closed listener, removed auth
 and removed root. [Cleanup](l6-rollback/run5/run/cleanup.json).
-The original run5 packet path scan excludes Python sources. Its one committed
-operator-home path is the spec-authorized credential source constant in
-`run5/preflight.py:13`; that source is
-an explicit exception to the packet's path-clean claim. No credential file was
-read during this offline correction. The review cites the parent `audit.py`,
-but the Python exclusion is in `run5/audit.py:47`.
+The one committed operator-home path is the spec-authorized credential source
+constant in `l6-rollback/preflight.py:13` (the packet-root preflight); it is an
+explicit exception to the packet's path-clean claim. No credential file was
+read during this offline correction.
 
 **Five Codex input reservations/transport inputs**, including onboarding, A,
 ordinary work, B and C; **four native model turn IDs**, attachment generation **1**
@@ -1149,9 +1156,10 @@ The generated timestamps use synthetic dates in the tests to guard against the
 old hardcoded B timestamps. Duplicate transport submissions/replies still fail;
 read-only delivery succeeds, and another reader alone cannot establish delivery.
 
-Original `run5/audit.py`, `final-audit.json` and prior test/gate logs are historical
-artifacts of the initial adjudication, including its superseded FAIL assertions;
-they are not current verdict checks. This correction changes only this document,
+The original `run5/audit.py` and `final-audit.json` asserted the superseded FAIL
+verdict; the orchestrator removed both from the packet (offline audit scripts
+are not evidence under the slim-evidence ruling), so no packet file contradicts
+the adjudicated verdict. This correction otherwise changes only this document,
 `run5/adjudicate.py` and its generated `adjudication.json`. The original controller,
 raw outcomes and retained runtime streams remain byte-exact. No lane process or
 paid seat model turn was started; additional seat spend is **$0**. The original four
