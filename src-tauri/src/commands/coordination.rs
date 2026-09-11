@@ -993,8 +993,13 @@ fn call_coordination_daemon(
         method,
         params,
     );
+    let timeout = if method == crate::daemon::protocol::method::STOP_MEMBER {
+        std::time::Duration::from_secs(45)
+    } else {
+        COORDINATION_DAEMON_REQUEST_TIMEOUT
+    };
     let response = daemon
-        .send_status_request_within(&request, COORDINATION_DAEMON_REQUEST_TIMEOUT)
+        .send_status_request_within(&request, timeout)
         .map_err(|error| CoordinationDaemonCallError::Transport(error.to_string()))?;
     if let Some(error) = response.error {
         return Err(CoordinationDaemonCallError::Remote(error.message));
@@ -1412,6 +1417,35 @@ pub async fn coordination_add_member(
     if result.is_ok() {
         reconcile_global_harness_hooks(&app);
     }
+    span.finish_result(&result);
+    result
+}
+
+#[tauri::command]
+pub async fn coordination_stop_member(
+    app: AppHandle,
+    team_name: String,
+    member_name: String,
+) -> IpcResult<Value> {
+    let span = IpcCommandSpan::start("coordination_stop_member");
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        validate_non_empty("team_name", &team_name)?;
+        validate_non_empty("member_name", &member_name)?;
+        let provider = app.state::<ProviderState>();
+        let daemon = provider
+            .daemon
+            .as_ref()
+            .ok_or_else(|| IpcError::internal("Stopping a member requires the daemon"))?;
+        call_coordination_daemon(
+            &app,
+            daemon,
+            crate::daemon::protocol::method::STOP_MEMBER,
+            serde_json::json!({"team_name":team_name, "member_name":member_name}),
+        )
+        .map_err(|error| IpcError::internal(error.into_message()))
+    })
+    .await
+    .unwrap_or_else(|_| Err(IpcError::internal("Member stop worker stopped")));
     span.finish_result(&result);
     result
 }

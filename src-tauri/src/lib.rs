@@ -268,6 +268,7 @@ fn build_app() -> tauri::Builder<tauri::Wry> {
             #[cfg(feature = "mesh-bridged-backend")]
             commands::coordination::coordination_add_member,
             #[cfg(feature = "mesh-bridged-backend")]
+            commands::coordination::coordination_stop_member,
             commands::coordination::coordination_remove_member,
             #[cfg(feature = "mesh-bridged-backend")]
             commands::coordination::coordination_list_teams,

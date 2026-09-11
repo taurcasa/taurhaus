@@ -89,6 +89,18 @@ pub(crate) fn dispatch(
                 coordination_state.team_root_registry(),
             ),
         ),
+        #[cfg(all(feature = "mesh-bridged-backend", target_os = "linux"))]
+        protocol::method::STOP_MEMBER => {
+            match crate::daemon::hosted::handle(
+                &coordination_state.hosted,
+                coordination_state.team_root_registry(),
+                "stop",
+                &request.params,
+            ) {
+                Ok(result) => DaemonResponse::ok(&request.id, result),
+                Err(error) => DaemonResponse::err(&request.id, "STOP_ERROR", error),
+            }
+        }
         protocol::method::NAVIGATE_TO_SESSION => {
             handle_navigate_to_session(&request.id, &request.params)
         }

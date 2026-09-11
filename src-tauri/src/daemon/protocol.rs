@@ -170,6 +170,7 @@ pub mod method {
     pub const GET_RUNTIME_SESSION_SNAPSHOT: &str = "get_runtime_session_snapshot";
     pub const WAIT_SESSION_UPDATES: &str = "wait_session_updates";
     pub const LAUNCH_SESSION: &str = "launch_session";
+    pub const STOP_MEMBER: &str = "stop_member";
     pub const STOP_SESSION: &str = "stop_session";
     pub const NAVIGATE_TO_SESSION: &str = "navigate_to_session";
 

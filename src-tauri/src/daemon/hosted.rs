@@ -15,6 +15,30 @@ pub(crate) fn handle(
         .ok_or("missing member_name")?;
     let root = registry.resolve(team).map_err(|e| e.to_string())?;
     let record = MemberRuntimeStore::load(&root, team, member).map_err(|e| e.to_string())?;
+    if operation == "stop" {
+        let config = crate::coordination::stores::TeamConfigStore::load(&root, team)
+            .map_err(|e| e.to_string())?;
+        let configured = config
+            .members
+            .iter()
+            .find(|m| m.name == member)
+            .ok_or("member is not on the team")?;
+        if let Some(pane) = record.pane_id.as_deref() {
+            if !crate::session_scanner::control::pane_matches_record(pane, &record)? {
+                return Err("stop deferred: pane belongs to another session".into());
+            }
+        }
+        stop_record(
+            hosts,
+            registry,
+            team,
+            member,
+            &record,
+            record.pane_id.as_deref(),
+            configured.cli_tool,
+        )?;
+        return Ok(serde_json::json!({"ok":true}));
+    }
     let attachment = record.app_server.as_ref().ok_or("NOT_HOSTED")?;
     let generation = if operation == "transcript" {
         record.attachment_generation
@@ -90,13 +114,49 @@ pub(super) fn stop_session(
     let Some((team, member, record)) = matches.first().copied() else {
         return Ok(false);
     };
-    let host = record
-        .app_server
-        .as_ref()
-        .expect("matched hosted candidate has an app-server attachment");
-    let exit_status = hosts.stop_with_tui(registry, team, member, || {
-        crate::session_scanner::control::stop_hosted_tui(&params.tmux_pane, params.cli_tool)
-    })?;
+    stop_record(
+        hosts,
+        registry,
+        team,
+        member,
+        record,
+        Some(&params.tmux_pane),
+        params.cli_tool,
+    )?;
+    Ok(true)
+}
+
+fn stop_record(
+    hosts: &HostedMembers,
+    registry: &TeamRootRegistry,
+    team: &str,
+    member: &str,
+    record: &crate::coordination::stores::MemberRuntimeRecord,
+    pane: Option<&str>,
+    tool: crate::session_scanner::cli_tool::CliTool,
+) -> Result<(), String> {
+    let stop_tui = || {
+        if let Some(pane) = pane {
+            crate::session_scanner::control::stop_hosted_tui(pane, tool)?;
+        }
+        Ok(())
+    };
+    let Some(host) = record.app_server.as_ref() else {
+        stop_tui()?;
+        let root = registry.resolve(team).map_err(|e| e.to_string())?;
+        MemberRuntimeStore::update(&root, team, member, |current| {
+            if current.pane_id == record.pane_id
+                && current.session_id == record.session_id
+                && current.pane_pid == record.pane_pid
+                && current.pane_start_time == record.pane_start_time
+            {
+                current.health = crate::coordination::domain::HealthState::SessionDead;
+            }
+        })
+        .map_err(|e| e.to_string())?;
+        return Ok(());
+    };
+    let exit_status = hosts.stop_with_tui(registry, team, member, stop_tui)?;
     let fields = serde_json::json!({"team":team, "member":member,
         "thread_id":host.thread_id, "exit_status":exit_status});
     tracing::info!(event = "hosted.stop_session.host_stopped", fields = %fields, "Hosted session stopped");
@@ -107,7 +167,7 @@ pub(super) fn stop_session(
         Some("Hosted session stopped".into()),
         fields.as_object().unwrap().clone(),
     );
-    Ok(true)
+    Ok(())
 }
 
 #[cfg(test)]
@@ -116,6 +176,37 @@ mod tests {
     use crate::coordination::hosted::tests::{input, running, saved, seat};
     use crate::coordination::hosted_process::tests::fixture;
     use serde_json::json;
+    #[test]
+    fn member_stop_keeps_roster_and_session_identity() {
+        // Regression: 64df9ffd4, member-stop lane finding 2: Stop only exposed roster removal.
+        let tmp = tempfile::tempdir().unwrap();
+        let (registry, hosts) = running(tmp.path());
+        let before = saved(tmp.path());
+        let config_path = tmp.path().join("team/config.json");
+        let roster = std::fs::read(&config_path).unwrap();
+        let result = handle(
+            &hosts,
+            &registry,
+            "stop",
+            &json!({
+                "team_name":"team", "member_name":"seat"
+            }),
+        );
+        assert_eq!(result.unwrap(), json!({"ok":true}));
+        let after = saved(tmp.path());
+        assert_eq!(
+            after.health,
+            crate::coordination::domain::HealthState::SessionDead
+        );
+        assert_eq!(after.session_id, before.session_id);
+        assert_eq!(after.app_server.as_ref().unwrap().thread_id, "owned-thread");
+        assert_eq!(std::fs::read(config_path).unwrap(), roster);
+        assert!(
+            !std::path::Path::new(&format!("/proc/{}", before.app_server.unwrap().process_id))
+                .exists()
+        );
+    }
+
     #[test]
     fn daemon_host_input_and_transcript_use_owned_member_and_generation() {
         let tmp = tempfile::tempdir().unwrap();
