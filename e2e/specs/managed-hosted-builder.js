@@ -317,6 +317,32 @@ describe('canonical builder and hosted conversation (paid)', function () {
     assert.equal(runtime().paneId, baseline.paneId, 'taurhaus: panel input replaced the pane')
   }))
 
+  it('5. interrupts one active ordinary turn and accepts a fresh marker', () => step(5, async () => {
+    await sendPanel('Write 60 short numbered lines about sorting a desk, at most 600 words. No tools.', 'bounded ordinary turn')
+    let activeTurn
+    await poll(async () => {
+      const transcript = await hostedTranscript()
+      activeTurn = transcript.thread?.turns.findLast(t => t.status === 'inProgress')
+      return Boolean(activeTurn) && await sampleActivity('active')
+    }, 'harness: active turn and host-sourced working window not observed')
+    await browser.saveScreenshot(join(evidence, 'step-5-working.png'))
+    await $('[aria-label="Hosted conversation"] button=Stop turn').click()
+    await poll(async () => {
+      const transcript = await hostedTranscript()
+      return transcript.thread?.turns.some(t => t.id === activeTurn.id && t.status === 'interrupted')
+    }, 'taurhaus: interruption not observed')
+    const interrupts = await browser.execute(() => window.__l3.ipc.filter(r => r.command === 'coordination_hosted' && r.args.operation === 'interrupt'))
+    assert.equal(interrupts.length, 1, 'harness: Stop turn must be clicked once')
+    assert(interrupts[0].acceptedAt && !interrupts[0].error, 'taurhaus: interrupt not accepted')
+    await poll(async () => await $('#hosted-input').isEnabled(), 'taurhaus: controls remained unresponsive')
+    assert.equal((await hostedTranscript()).requests.length, 0, 'taurhaus: unexpected approval under approval-never')
+    const marker = `L3-B-${process.pid}`
+    await sendPanel(`Reply with exactly ${marker}`, 'post-interruption marker')
+    await requireReply(marker)
+    await poll(() => sampleActivity('idle'), 'taurhaus: host-sourced idle not observed')
+    assert.equal(await $('button=Allow').isExisting(), false, 'taurhaus: unexpected approval controls')
+  }))
+
 })
 
 async function prepareBuilder() {
@@ -411,4 +437,14 @@ async function requireReply(marker) {
   const native = rollouts.flatMap(path => rows(path)).filter(r => r.type === 'response_item' && r.payload?.type === 'message' && itemText(r.payload).includes(marker))
   for (const role of ['user', 'assistant']) assert.equal(native.filter(r => r.payload.role === role).length, 1, `taurhaus: native ${role} marker must occur once`)
   save(`marker-${marker}-native.json`, native)
+}
+
+async function sampleActivity(state) {
+  const snapshot = await rpc('get_runtime_session_snapshot')
+  const session = snapshot.sessions?.find(s => s.session_id === baseline.threadId)
+  const node = await $(`button[data-node-id="beta"]`)
+  const title = await node.isExisting() ? await node.getAttribute('title') : null
+  activity.push({ at: Date.now(), session, title })
+  save('activity.json', activity)
+  return session?.source === 'host' && session.state === state && Boolean(title?.includes('Codex'))
 }
