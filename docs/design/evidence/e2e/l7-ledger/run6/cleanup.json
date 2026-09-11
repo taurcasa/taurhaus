@@ -1,0 +1,189 @@
+{
+  "before": [
+    {
+      "pid": 1066848,
+      "start_ticks": "31696792",
+      "argv": [
+        "bwrap",
+        "--die-with-parent",
+        "--unshare-pid",
+        "--ro-bind",
+        "/",
+        "/",
+        "--tmpfs",
+        "/home",
+        "--tmpfs",
+        "/tmp",
+        "--tmpfs",
+        "/run",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+        "--bind",
+        "/tmp/th-l7-3migwapg",
+        "/tmp/th-l7-3migwapg",
+        "--chdir",
+        "/tmp/th-l7-3migwapg/project",
+        "/bin/bash",
+        "/tmp/th-l7-3migwapg/boot.sh",
+        ""
+      ]
+    },
+    {
+      "pid": 1066849,
+      "start_ticks": "31696792",
+      "argv": [
+        "bwrap",
+        "--die-with-parent",
+        "--unshare-pid",
+        "--ro-bind",
+        "/",
+        "/",
+        "--tmpfs",
+        "/home",
+        "--tmpfs",
+        "/tmp",
+        "--tmpfs",
+        "/run",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+        "--bind",
+        "/tmp/th-l7-3migwapg",
+        "/tmp/th-l7-3migwapg",
+        "--chdir",
+        "/tmp/th-l7-3migwapg/project",
+        "/bin/bash",
+        "/tmp/th-l7-3migwapg/boot.sh",
+        ""
+      ]
+    },
+    {
+      "pid": 1066850,
+      "start_ticks": "31696792",
+      "argv": [
+        "/bin/bash",
+        "/tmp/th-l7-3migwapg/boot.sh",
+        ""
+      ]
+    },
+    {
+      "pid": 1066851,
+      "start_ticks": "31696793",
+      "argv": [
+        "tmux",
+        "-D",
+        "-f",
+        "/dev/null",
+        ""
+      ]
+    },
+    {
+      "pid": 1066918,
+      "start_ticks": "31696804",
+      "argv": [
+        "/bin/bash",
+        ""
+      ]
+    },
+    {
+      "pid": 1066920,
+      "start_ticks": "31696805",
+      "argv": [
+        "/tmp/th-l7-3migwapg/home/.local/bin/taurhaus-daemon",
+        "--port",
+        "46727",
+        "--data-dir",
+        "/tmp/th-l7-3migwapg/data",
+        ""
+      ]
+    },
+    {
+      "pid": 1067224,
+      "start_ticks": "31696957",
+      "argv": [
+        "/bin/bash",
+        "-ic",
+        "cd '/tmp/th-l7-3migwapg/project' && CLAUDE_DIR='/tmp/th-l7-3migwapg/claude' CLAUDE_CONFIG_DIR='/tmp/th-l7-3migwapg/claude' CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions --model 'claude-haiku-4-5' --team-name 'l7-ledger' --agent-name 'lead' --agent-id 'lead@l7-ledger' --agent-type 'orchestrator' -n 'lead'; exec \"$SHELL\"",
+        ""
+      ]
+    },
+    {
+      "pid": 1067227,
+      "start_ticks": "31696957",
+      "argv": [
+        "claude",
+        "--dangerously-skip-permissions",
+        "--model",
+        "claude-haiku-4-5",
+        "--team-name",
+        "l7-ledger",
+        "--agent-name",
+        "lead",
+        "--agent-id",
+        "lead@l7-ledger",
+        "--agent-type",
+        "orchestrator",
+        "-n",
+        "lead",
+        ""
+      ]
+    },
+    {
+      "pid": 1067252,
+      "start_ticks": "31696964",
+      "argv": [
+        "/bin/bash",
+        "-ic",
+        "cd '/tmp/th-l7-3migwapg/project' && CLAUDE_DIR='/tmp/th-l7-3migwapg/claude' CODEX_HOME='/tmp/th-l7-3migwapg/codex' codex --yolo --dangerously-bypass-hook-trust -c 'notify=[\"/tmp/th-l7-3migwapg/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]' -m 'gpt-5.6-luna' -c 'model_reasoning_effort=\"low\"'; exec \"$SHELL\"",
+        ""
+      ]
+    },
+    {
+      "pid": 1067263,
+      "start_ticks": "31696965",
+      "argv": [
+        "codex",
+        "--yolo",
+        "--dangerously-bypass-hook-trust",
+        "-c",
+        "notify=[\"/tmp/th-l7-3migwapg/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]",
+        "-m",
+        "gpt-5.6-luna",
+        "-c",
+        "model_reasoning_effort=\"low\"",
+        ""
+      ]
+    },
+    {
+      "pid": 1067396,
+      "start_ticks": "31696982",
+      "argv": [
+        "/tmp/th-l7-3migwapg/home/.local/bin/mesh",
+        "team-daemon",
+        "start",
+        "--team",
+        "l7-ledger",
+        "--name",
+        "lead",
+        "--claude-dir",
+        "/tmp/th-l7-3migwapg/claude",
+        ""
+      ]
+    },
+    {
+      "pid": 1071793,
+      "start_ticks": "31697703",
+      "argv": [
+        "/tmp/th-l7-3migwapg/home/.local/bin/codex-code-mode-host",
+        ""
+      ]
+    }
+  ],
+  "survivors": [],
+  "port_closed": true,
+  "auth_removed": true,
+  "root_removed": true
+}

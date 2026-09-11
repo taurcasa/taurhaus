@@ -1,0 +1,14 @@
+{
+  "command": "L7_RUN_NAME=run6 python3 -B docs/design/evidence/e2e/l7-ledger/controller.py --auth-source <explicit-authorized-source>",
+  "driver": "run6_driver.py --auth-source <explicit-authorized-source>",
+  "controller_exit": 1,
+  "passive_capture": "run5_capture.capture(out=run6), every 0.5 seconds; identities/digests only",
+  "capture_error_classes": [],
+  "tests": {
+    "capture_red_exit": 1,
+    "capture_green_exit": 0,
+    "capture_tests": 8,
+    "controller_exit": 0,
+    "controller_tests": 14
+  }
+}

@@ -1,13 +1,13 @@
 [
   {
     "obligation": {
-      "message_id": "c8848e74-b2d2-48c0-9492-7c68a1146f44",
-      "delivery_id": "6b04b3c2-65e3-46eb-b134-a2033b83a52d",
+      "message_id": "e0ef6999-91f1-40fa-9ba0-117cc16ab4cb",
+      "delivery_id": "ab323111-ddab-4f24-bf2b-bd0c8bdc778e",
       "recipient": "alpha",
       "source_generation": "c1aa8857-257e-4997-ab69-ebd798c9df1b",
-      "source_position": 2,
+      "source_position": 11,
       "body": "<message-body-redacted>"
     },
-    "since": "2026-09-11T03:13:54.196044377+00:00"
+    "since": "2026-09-11T03:14:10.189094452+00:00"
   }
 ]

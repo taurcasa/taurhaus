@@ -1,0 +1,28 @@
+{
+  "files_checked": 75,
+  "jsonl_rows_checked": 317,
+  "privacy_violations": [],
+  "unchanged_controller_runtime_support": true,
+  "tail_matches_teardown_inventory": true,
+  "cleanup_passed": true,
+  "gates": [
+    {
+      "command": "just check-quick",
+      "exit": 0,
+      "elapsed_s": 39.367
+    },
+    {
+      "command": "just lint",
+      "exit": 0,
+      "elapsed_s": 46.731
+    },
+    {
+      "command": "just test-contracts",
+      "exit": 0,
+      "elapsed_s": 35.722
+    }
+  ],
+  "rust_diff": false,
+  "rust_unit_gate": "Not required; no src-tauri changes.",
+  "path_check": "Absolute operator-home paths only; scratch /tmp/.../home paths and regex source patterns excluded."
+}

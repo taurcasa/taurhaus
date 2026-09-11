@@ -1,4 +1,130 @@
-# Lane 7 run5 — FAIL at step 2: assignment uptake unproven; workflow incomplete
+# FAIL — Run6: step 2 assignment uptake failed on the verified #178 daemon
+
+Run6 used the unchanged committed six-step controller on a fresh scratch root.
+**Step 1 passed; step 2 failed; steps 3–6 were NOT RUN under the stop-on-failure
+rule. Classification: Mesh product delivery boundary; deeper cause unproved.**
+The assignment has a terminal `submitted` receipt, but no alpha
+`consumed_by_read`, matching tool-result exposure, or post-assignment native
+turn. Task 1 remains pending. The controller waited **120 seconds** before
+failing, without sending the note instruction or replaying any lifecycle call.
+[Outcomes and classification](l7-ledger/run6/adjudication.json),
+[receipt table](l7-ledger/run6/receipt-table.json),
+[live read diagnostic](l7-ledger/run6/assignment-delivery-diagnostic.json).
+
+The #178 prerequisite **was verified by content before building and again after
+building**: `grep -c COMPLETION_FLUSH_TOLERANCE
+src-tauri/src/session_scanner/idle/codex.rs` returned **2**, exit **0**. HEAD and
+the working file both match reviewed fixed blob
+`3fb33d79d672b8121accccd0598b666361a367e9`; `37f0254d` is an ancestor.
+The daemon built from this checkout has SHA-256
+`2c8352a027863b31df2850ff3c52447998a2df351ccfff5227afe278ee944425`, different
+from **all five** historical builds (`177c4f33…144fd6`). Mesh stayed detached
+at `1f7447f` in its designated worktree, with no descriptor/source edit or Mesh
+commit. Both build commands exited **0**, with checkout-local targets and one
+Cargo job after admission polling.
+[Preflight and all five digest comparisons](l7-ledger/run6/preflight.json),
+[build commands/exits](l7-ledger/run6/builds.json).
+
+**The ruled Taurhaus `source: none` failure did not recur.** The real onboarding
+turn reached high-confidence notify-sourced idle at
+`2026-09-11T03:14:09.273Z`, and that source persisted through the final snapshot.
+No post-assignment turn was observed, so a post-assignment idle edge was **not
+exercised**. Submission alone is insufficient evidence of delivery. The new
+binary resolves the false fixed-base premise of run5; this trial does not prove
+all later-turn idle behavior or ledger artifact intake.
+[Complete daemon JSONL](l7-ledger/run6/taurhaus.log.jsonl),
+[final activity](l7-ledger/run6/final-activity.json),
+[notify identities](l7-ledger/run6/notify-records.jsonl),
+[native rollout tail](l7-ledger/run6/rollout-tail.json).
+
+| Ordered step | Outcome | Classification / retained evidence |
+| --- | --- | --- |
+| 1. Task/assignment and ledger init | **PASS** | S-runtime: five-line task contract, immutable assignment `15209bbb-06da-4b27-b874-1cb61ae74fe0`, approved packet, ledger manifest and init receipt. Committed immediately as `8bc2ef20`. |
+| 2. Seat standalone note and live render | **FAIL** | Mesh delivery boundary: assignment message `e0ef6999-91f1-40fa-9ba0-117cc16ab4cb` submitted but no seat read/tool-result exposure; no note instruction sent or artifact authored. |
+| 3. RESULT completion and separate receipts | **NOT RUN** | Blocked by step 2. No task-completion source commitment or ledger intake exists. |
+| 4. Single ledger-only retry | **NOT RUN** | Blocked by step 2; no retry or duplicate completion. |
+| 5. Freeze, snapshot and offline render | **NOT RUN** | Blocked by step 2; no boundary bundle or offline-read claim. |
+| 6. Audit receipt table and teardown | **NOT RUN** | Ordered workflow blocked. Mandatory failure receipt table and teardown were nevertheless retained; cleanup passed. |
+
+[Step 1 packet](l7-ledger/run6/step1-packet.json),
+[immutable assignment](l7-ledger/run6/step1-immutable-assignment.json),
+[manifest](l7-ledger/run6/step1-manifest.json),
+[init receipt](l7-ledger/run6/step1-init-receipt.json),
+[final task](l7-ledger/run6/tasks/1.json).
+
+| Run6 spend identity | API-equivalent USD | Conservative USD |
+| --- | --- | --- |
+| `01a08e75-1b4a-7ad2-8c8c-41b91003634e`, completed native turn | **0.00488072** | **0.05407080** |
+| `01a08e75-1e5b-7d72-8a65-00829cb9753c`, notify-only identity | **Unavailable** | **Unavailable** |
+| Claude lead, login-only, zero paid inputs | **0** | **0** |
+
+There were **2 input reservations**, **2 metered/notify identities**, and one
+attachment generation. Runtime was **142.542 seconds**. The fresh 12-input and
+12-minute limits were met; total spend and the USD 0.20 cap remain **unverified**
+because the notify-only identity lacks counters. Values above use inherited
+packet rates and are estimates, not invoices. Prior trials were history, and
+no budget, authorization or metering question gated an operation.
+[Every turn and reservation](l7-ledger/run6/cost-ledger.json),
+[runtime exit 1](l7-ledger/run6/controller-exit.json).
+
+The production initialize request used the builder's canonical messaging policy,
+alpha=`gpt-5.6-luna`/low/tmux, and a login-only Claude lead. The isolated runtime
+validated Codex **0.153.4**, copied both native siblings, and copied only the
+explicitly authorized authentication file into its initially empty scratch home.
+A probed private port, private PID namespace/tmux server, cleared inherited
+TMUX, and scratch-only harness roots hid the operator homes from children.
+[Exact sanitized commands and RPC results](l7-ledger/run6/events.jsonl),
+[startup preflight](l7-ledger/run6/startup-ready.json),
+[terminal identity](l7-ledger/run6/step1-pane-identity.json),
+[passive lock evidence](l7-ledger/run6/terminal-locks.jsonl).
+
+Teardown completed **before gates**: zero owned survivors, private port closed,
+credential copy deleted, scratch root removed. All **187 physical daemon lines**
+are retained as 187 sanitized JSONL records, with zero account-usage events.
+The final event is `session_scanner.scan.completed`; no shutdown row was emitted
+in the captured file. The final native tail's raw-source SHA-256 and byte count
+match the teardown rollout inventory. No private message bodies, control tokens,
+credential-source paths or account usage rows are published.
+[Cleanup](l7-ledger/run6/cleanup.json),
+[daemon log manifest](l7-ledger/run6/daemon-log-manifest.json),
+[rollout inventory](l7-ledger/run6/rollout-inventory.json).
+
+Reproduction: from this checkout, run
+`python3 -B docs/design/evidence/e2e/l7-ledger/run6_driver.py --auth-source <explicit-authorized-source>`.
+The retained driver verifies/builds candidates, invokes the unchanged controller
+once with `L7_RUN_NAME=run6`, and runs only passive capture alongside it.
+Use a fresh run label/output directory for any separately authorized future trial;
+this driver refuses an existing run6 directory.
+[Exact driver](l7-ledger/run6_driver.py),
+[controller at execution](l7-ledger/run6/controller-at-execution.py),
+[runtime at execution](l7-ledger/run6/runtime-at-execution.py),
+[execution record](l7-ledger/run6/execution.json).
+
+The only supporting logic change allows the existing passive collector to target
+run6 while leaving historical run5 output untouched. Its new tempdir-only test
+failed first with `TypeError: capture() got an unexpected keyword argument 'out'`,
+then all **8 collector tests** and **14 controller tests** passed. No unit test
+read credentials or launched a harness CLI. No product source changed.
+[Red](l7-ledger/run6/capture-red.txt), [green](l7-ledger/run6/capture-green.txt),
+[controller tests](l7-ledger/run6/controller-tests.txt).
+
+After teardown, **`just check-quick`: 0; `just lint`: 0; `just test-contracts`: 0**.
+No `src-tauri/` diff, so `just test-rust-unit` was not required.
+[Exact gate commands, exits and log tails](l7-ledger/run6/checks-result.json),
+[public evidence audit](l7-ledger/run6/public-evidence-check.json).
+
+Deviations/limits: the old lane-2 checkout is absent, so its committed run3
+controller was read from this checkout; the pinned Mesh revision has no
+`docs/design/ledger-*.md`, so its `USAGE.md` ledger contracts were used. An
+independent Opus lens is unavailable in this executor and remains an orchestrator
+review requirement. Incomplete metering and that missing lens independently
+prevent an overall workflow PASS. The stop-on-failure rule blocked steps 3–6;
+there was no product repair, paid retry, descriptor edit, release, installation,
+plan-ledger edit or Mesh commit.
+
+---
+
+## Historical run5 — Lane 7 run5 — FAIL at step 2: assignment uptake unproven; workflow incomplete
 
 Run5 executed the committed four-trial controller on rebuilt **26c06132**,
 whose product tree lacks the PR #176 fix. **#176 retest: NOT RUN.**
