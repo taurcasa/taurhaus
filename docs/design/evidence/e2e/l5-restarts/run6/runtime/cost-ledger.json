@@ -1,0 +1,49 @@
+{
+  "model": "gpt-5.6-luna",
+  "effort": "low",
+  "turn_ids": [
+    "01a08e0a-1dfb-7e30-80e9-62335f782801",
+    "01a08e0a-2fa0-7a31-a173-f660a54ee800",
+    "01a08e0a-316e-7453-9ab9-b27c3c7c2766"
+  ],
+  "paid_inputs": 3,
+  "generations": [
+    {
+      "thread_id": "01a08e0a-17b8-77a3-b506-cc440a9ffdd8",
+      "turn_id": "01a08e0a-1dfb-7e30-80e9-62335f782801",
+      "input": 10796,
+      "cached_input": 6912,
+      "output": 83,
+      "reasoning_output": 75,
+      "api_equivalent_usd": 0.00101464,
+      "conservative_usd": 0.0130548
+    },
+    {
+      "thread_id": "01a08e0a-13b0-7751-973d-2a03810c8b97",
+      "turn_id": "01a08e0a-2fa0-7a31-a173-f660a54ee800",
+      "input": 9277,
+      "cached_input": 0,
+      "output": 95,
+      "reasoning_output": 22,
+      "api_equivalent_usd": 0.0019694,
+      "conservative_usd": 0.0112464
+    },
+    {
+      "thread_id": "01a08e0a-13b0-7751-973d-2a03810c8b97",
+      "turn_id": "01a08e0a-2fa0-7a31-a173-f660a54ee800",
+      "input": 10787,
+      "cached_input": 8960,
+      "output": 37,
+      "reasoning_output": 28,
+      "api_equivalent_usd": 0.000589,
+      "conservative_usd": 0.0129888
+    }
+  ],
+  "api_equivalent_usd": 0.00357304,
+  "conservative_usd": 0.03729,
+  "metering_complete": false,
+  "unmetered_turn_ids": [
+    "01a08e0a-316e-7453-9ab9-b27c3c7c2766"
+  ],
+  "basis": "Host tokenUsage.last via daemon hosted_transcript; packet rates $0.20/$0.02/$1.20 per million input/cached/output. Estimate, not invoice."
+}

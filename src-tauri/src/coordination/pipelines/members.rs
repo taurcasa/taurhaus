@@ -489,8 +489,10 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
         };
 
         if self.resume_team_daemon_ownership() == ResumeTeamDaemonOwnership::Wrapper {
-            self.orchestrator
-                .ensure_team_daemon_after_resume_member(request);
+            self.warnings.extend(
+                self.orchestrator
+                    .ensure_team_daemon_after_resume_member(request),
+            );
         }
 
         Ok(ResumeAgentReport {

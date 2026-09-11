@@ -1,0 +1,285 @@
+{
+  "attempt": "run2",
+  "verdict": "UNAVAILABLE",
+  "model_used": "gpt-5.6-luna",
+  "effort": "low",
+  "taurhaus_commit": "a7e6db7e",
+  "mesh_commit": "310144d",
+  "protocol": 27,
+  "codex_version": "0.153.4",
+  "descriptor": "shipped enabled; untouched",
+  "steps": [
+    {
+      "step": 1,
+      "outcome": "PASS",
+      "classification": "S-runtime"
+    },
+    {
+      "step": 2,
+      "outcome": "FAIL",
+      "classification": "harness",
+      "reason": "pending observer required a journal stage=pending row; none was observed before the accepted marker submitted. No retained deferral-health history proves a backlog at a restart boundary."
+    },
+    {
+      "step": 3,
+      "outcome": "NOT RUN",
+      "classification": "harness prerequisite unproved",
+      "reason": "Stopped at step 2; no restart permitted without retained pending backlog evidence."
+    },
+    {
+      "step": 4,
+      "outcome": "NOT RUN",
+      "classification": "harness prerequisite unproved",
+      "reason": "Stopped at step 2; no restart permitted without retained pending backlog evidence."
+    },
+    {
+      "step": 5,
+      "outcome": "NOT RUN",
+      "classification": "harness prerequisite unproved",
+      "reason": "Stopped at step 2; no restart permitted without retained pending backlog evidence."
+    },
+    {
+      "step": 6,
+      "outcome": "NOT RUN",
+      "classification": "harness prerequisite unproved",
+      "reason": "Stopped at step 2; no restart permitted without retained pending backlog evidence."
+    }
+  ],
+  "runtime_seconds_including_setup_and_teardown": 168.12853693962097,
+  "runtime_started_utc": "2026-09-10T23:15:33.710343+00:00",
+  "runtime_ended_utc": "2026-09-10T23:18:21.838880+00:00",
+  "caps": {
+    "inputs": 20,
+    "metered_usd": 0.3,
+    "runtime_seconds": 900
+  },
+  "cost_ledger": {
+    "model": "gpt-5.6-luna",
+    "effort": "low",
+    "turn_ids": [
+      "01a08d9a-fd69-7430-adb1-6f26e7994c8b",
+      "01a08d9b-0a02-7890-a86f-98362abb84c1",
+      "01a08d9b-0bdd-7fc1-aa99-c0d66e27275d",
+      "01a08d9b-2f93-7f12-9334-e484f7824ac6",
+      "01a08d9b-76ec-7f90-a239-b740b8b68abb",
+      "01a08d9b-929f-7a10-99bd-bb2370ca15fe",
+      "01a08d9b-c07d-7621-911f-0851c5dd4d3a"
+    ],
+    "paid_inputs": 7,
+    "generations": [
+      {
+        "thread_id": "01a08d9a-f727-79a2-b71a-ec21a4a953db",
+        "turn_id": "01a08d9a-fd69-7430-adb1-6f26e7994c8b",
+        "input": 10978,
+        "cached_input": 6912,
+        "output": 105,
+        "reasoning_output": 77,
+        "api_equivalent_usd": 0.00107744,
+        "conservative_usd": 0.0132996
+      },
+      {
+        "thread_id": "01a08d9a-f727-79a2-b71a-ec21a4a953db",
+        "turn_id": "01a08d9b-76ec-7f90-a239-b740b8b68abb",
+        "input": 11912,
+        "cached_input": 6912,
+        "output": 12,
+        "reasoning_output": 0,
+        "api_equivalent_usd": 0.00115264,
+        "conservative_usd": 0.0143088
+      },
+      {
+        "thread_id": "01a08d9a-f2c5-79e3-a789-507db57d72b4",
+        "turn_id": "01a08d9b-0a02-7890-a86f-98362abb84c1",
+        "input": 9272,
+        "cached_input": 2816,
+        "output": 93,
+        "reasoning_output": 21,
+        "api_equivalent_usd": 0.00145912,
+        "conservative_usd": 0.011238
+      },
+      {
+        "thread_id": "01a08d9a-f2c5-79e3-a789-507db57d72b4",
+        "turn_id": "01a08d9b-0a02-7890-a86f-98362abb84c1",
+        "input": 10771,
+        "cached_input": 8960,
+        "output": 43,
+        "reasoning_output": 34,
+        "api_equivalent_usd": 0.000593,
+        "conservative_usd": 0.0129768
+      },
+      {
+        "thread_id": "01a08d9a-f2c5-79e3-a789-507db57d72b4",
+        "turn_id": "01a08d9b-2f93-7f12-9334-e484f7824ac6",
+        "input": 10872,
+        "cached_input": 9984,
+        "output": 88,
+        "reasoning_output": 16,
+        "api_equivalent_usd": 0.00048288,
+        "conservative_usd": 0.013152
+      },
+      {
+        "thread_id": "01a08d9a-f2c5-79e3-a789-507db57d72b4",
+        "turn_id": "01a08d9b-2f93-7f12-9334-e484f7824ac6",
+        "input": 11757,
+        "cached_input": 9984,
+        "output": 188,
+        "reasoning_output": 172,
+        "api_equivalent_usd": 0.00077988,
+        "conservative_usd": 0.014334
+      },
+      {
+        "thread_id": "01a08d9a-f2c5-79e3-a789-507db57d72b4",
+        "turn_id": "01a08d9b-929f-7a10-99bd-bb2370ca15fe",
+        "input": 11981,
+        "cached_input": 11008,
+        "output": 509,
+        "reasoning_output": 24,
+        "api_equivalent_usd": 0.00102556,
+        "conservative_usd": 0.014988
+      },
+      {
+        "thread_id": "01a08d9a-f2c5-79e3-a789-507db57d72b4",
+        "turn_id": "01a08d9b-c07d-7621-911f-0851c5dd4d3a",
+        "input": 12551,
+        "cached_input": 11008,
+        "output": 86,
+        "reasoning_output": 14,
+        "api_equivalent_usd": 0.00063196,
+        "conservative_usd": 0.0151644
+      },
+      {
+        "thread_id": "01a08d9a-f2c5-79e3-a789-507db57d72b4",
+        "turn_id": "01a08d9b-c07d-7621-911f-0851c5dd4d3a",
+        "input": 13439,
+        "cached_input": 12032,
+        "output": 16,
+        "reasoning_output": 0,
+        "api_equivalent_usd": 0.00054124,
+        "conservative_usd": 0.016146
+      }
+    ],
+    "api_equivalent_usd": 0.00774372,
+    "conservative_usd": 0.1256076,
+    "metering_complete": false,
+    "unmetered_turn_ids": [
+      "01a08d9b-0bdd-7fc1-aa99-c0d66e27275d"
+    ],
+    "basis": "Host tokenUsage.last via daemon hosted_transcript; packet rates $0.20/$0.02/$1.20 per million input/cached/output. Estimate, not invoice."
+  },
+  "controller_exit": {
+    "exit": 1
+  },
+  "cleanup": {
+    "survivors": [],
+    "port_closed": true,
+    "root": "/tmp/th-l5-tsfb_6pi",
+    "auth_copy_removed_before_root": true,
+    "root_removed": true,
+    "auth_removed": true
+  },
+  "transient_refusals": [
+    {
+      "at": 1789082148.1866853,
+      "kind": "transient_refusal",
+      "method": "coordination.hosted_transcript",
+      "attempt": 1,
+      "error": {
+        "code": "HOST_OPERATION_FAILED",
+        "message": "host member busy"
+      }
+    }
+  ],
+  "binaries": [
+    {
+      "at": 1789082133.7103431,
+      "kind": "binary",
+      "name": "codex",
+      "sha256": "56ef98ab4032d317ab26e9b5e5a175650717351edb16ed9cde0cb6d1734d62da"
+    },
+    {
+      "at": 1789082133.9739015,
+      "kind": "binary",
+      "name": "codex-code-mode-host",
+      "sha256": "3e85d67471825f73d02ff5f7e047ca1f6ca8caa3f59e4c6e8d9ca6ca7302cb45"
+    },
+    {
+      "at": 1789082134.0642264,
+      "kind": "binary",
+      "name": "mesh",
+      "sha256": "2eac5cf4194a2b4d83edf1f543d76ecea06602007d38f831e85c06a974408203"
+    },
+    {
+      "at": 1789082134.6565132,
+      "kind": "binary",
+      "name": "claude",
+      "sha256": "0399c793ff571d5946ef923d80b4f330d05ac4b6842a6b0775468f5d389403c0"
+    },
+    {
+      "at": 1789082134.6856794,
+      "kind": "binary",
+      "name": "taurhaus-daemon",
+      "sha256": "4304d1d0350768021c2af8a47ac88e95993cdc1e32c0a1942ee9f73cb1eea906"
+    }
+  ],
+  "daemon_jsonl": {
+    "path": "runtime/taurhaus.log.jsonl",
+    "rows": 428,
+    "sha256": "21bf4ec07e96db43dbb3d7426f08f5043dfaa8b15fa6a946415a7cb688610f61"
+  },
+  "deviations": [
+    "Run2 could not prove the pending-backlog prerequisite; beta step-2 probe and steps 3\u20136 were not run under stop-on-first-failure.",
+    "The referenced taurhaus-trial checkout is absent; reused the committed repaired lane controller and inspected messaging run2 sources.",
+    "Independent Opus evidence review unavailable in this session; orchestrator review remains required."
+  ],
+  "product_changes": false,
+  "mesh_changes": false,
+  "gate": {
+    "check-quick": {
+      "command": [
+        "just",
+        "check-quick"
+      ],
+      "exit": 0,
+      "seconds": 30.7788667390123,
+      "cargo_preflight": [
+        {
+          "exit": 1,
+          "output": ""
+        }
+      ]
+    },
+    "lint": {
+      "command": [
+        "just",
+        "lint"
+      ],
+      "exit": 0,
+      "seconds": 35.5119092889945,
+      "cargo_preflight": [
+        {
+          "exit": 1,
+          "output": ""
+        }
+      ]
+    },
+    "test-contracts": {
+      "command": [
+        "just",
+        "test-contracts"
+      ],
+      "exit": 0,
+      "seconds": 18.815566057979595,
+      "cargo_preflight": [
+        {
+          "exit": 1,
+          "output": ""
+        }
+      ]
+    }
+  },
+  "gate_cleanup": {
+    "children_waited": true,
+    "root_removed": true
+  },
+  "rust_unit_gate": "NOT RUN: no src-tauri diff"
+}

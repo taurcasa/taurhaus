@@ -1,0 +1,3043 @@
+{
+  "verdict": "INCOMPLETE: first-boundary duration and step 5 owner exclusion unproved (harness)",
+  "step_outcomes": [
+    {
+      "step": 1,
+      "outcome": "PASS",
+      "classification": "runtime",
+      "at": 1789084278.078003
+    },
+    {
+      "step": 2,
+      "outcome": "PASS",
+      "classification": "runtime",
+      "at": 1789084288.5888526
+    },
+    {
+      "step": 3,
+      "outcome": "PASS",
+      "classification": "runtime",
+      "at": 1789084290.1755593
+    },
+    {
+      "step": 4,
+      "outcome": "PASS",
+      "classification": "runtime",
+      "at": 1789084302.6059954
+    },
+    {
+      "step": 5,
+      "outcome": "UNPROVED",
+      "classification": "harness",
+      "at": 1789084361.8943632,
+      "owner_evidence": {
+        "outcome": "UNPROVED",
+        "classification": "harness",
+        "reason": "owner-process filter matched nothing; zero owners sampled",
+        "samples": 3,
+        "max_simultaneous_observed_owners": 0
+      }
+    },
+    {
+      "step": 6,
+      "outcome": "PASS",
+      "classification": "runtime",
+      "at": 1789084366.0980473
+    }
+  ],
+  "recorded_step_outcomes": [
+    {
+      "step": 1,
+      "outcome": "PASS",
+      "classification": "runtime",
+      "at": 1789084278.078003
+    },
+    {
+      "step": 2,
+      "outcome": "PASS",
+      "classification": "runtime",
+      "at": 1789084288.5888526
+    },
+    {
+      "step": 3,
+      "outcome": "PASS",
+      "classification": "runtime",
+      "at": 1789084290.1755593
+    },
+    {
+      "step": 4,
+      "outcome": "PASS",
+      "classification": "runtime",
+      "at": 1789084302.6059954
+    },
+    {
+      "step": 5,
+      "outcome": "PASS",
+      "classification": "runtime",
+      "at": 1789084361.8943632
+    },
+    {
+      "step": 6,
+      "outcome": "PASS",
+      "classification": "runtime",
+      "at": 1789084366.0980473
+    }
+  ],
+  "started_utc": "2026-09-10T23:50:50.526157+00:00",
+  "cleanup_utc": "2026-09-10T23:52:46.424558+00:00",
+  "runtime_seconds": 115.89840054512024,
+  "markers": [
+    {
+      "label": "baseline",
+      "seat": "alpha",
+      "message_id": "06b13aa1-b7f4-4f95-927e-4aaf6ce516dc",
+      "delivery_id": "9066e6ab-33c9-4329-abc1-38bd0747d059",
+      "marker": "L5_baseline_alpha_8d8586",
+      "accepted_at": "2026-09-10T23:51:04.336502925+00:00",
+      "receipt": {
+        "at": "2026-09-10T23:51:05.334451554+00:00",
+        "stage": "submitted",
+        "owner_epoch": 2
+      },
+      "explicit_reads": 1
+    },
+    {
+      "label": "baseline",
+      "seat": "beta",
+      "message_id": "bfb931e1-0acf-413d-8786-4363fb460918",
+      "delivery_id": "e2d406f6-5b50-4307-a256-5def08f00fae",
+      "marker": "L5_baseline_beta_53f9c8",
+      "accepted_at": "2026-09-10T23:51:11.905682507+00:00",
+      "receipt": {
+        "at": "2026-09-10T23:51:12.234474299+00:00",
+        "stage": "native_enqueued",
+        "owner_epoch": 2
+      },
+      "explicit_reads": 1
+    },
+    {
+      "label": "taurhaus-backlog",
+      "seat": "alpha",
+      "message_id": "bef27735-df81-482f-8d69-0f702caa0049",
+      "delivery_id": "b4c2d404-1b80-4000-bfb3-82d319fdfa93",
+      "marker": "L5_taurhaus-backlog_alpha_4cd421",
+      "accepted_at": "2026-09-10T23:51:21.080597451+00:00",
+      "receipt": {
+        "at": "2026-09-10T23:51:27.800297415+00:00",
+        "stage": "submitted",
+        "owner_epoch": 2
+      },
+      "explicit_reads": 1,
+      "pending_sample": {
+        "message_id": "bef27735-df81-482f-8d69-0f702caa0049",
+        "activity": {
+          "activity_attribution": "attributed",
+          "activity_confidence": "high",
+          "args": "codex --yolo --dangerously-bypass-hook-trust -c notify=[\"/tmp/th-l5-yxf46ajk/home/.local/bin/taurhaus-daemon\",\"codex-notify\"] -m gpt-5.6-luna -c model_reasoning_effort=\"low\"",
+          "cli_tool": "codex",
+          "group_id": "l5-restarts",
+          "group_kind": "mesh_team",
+          "group_label": "l5-restarts",
+          "jsonl_path": "/tmp/th-l5-yxf46ajk/codex/sessions/2026/09/11/rollout-2026-09-11T01-50-51-01a08dbb-35e1-7e53-a54d-e74c5d569e50.jsonl",
+          "last_output_age_secs": 2,
+          "member_name": "alpha",
+          "pid": 139,
+          "project_path": "/tmp/th-l5-yxf46ajk/project",
+          "project_unattributed_active": false,
+          "recent_io": false,
+          "session_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+          "state": "active",
+          "tmux_pane": "%2",
+          "tmux_session": "taurhaus",
+          "tmux_window": "2",
+          "tmux_window_name": "project",
+          "tty": "/dev/pts/2"
+        },
+        "journal": [
+          {
+            "checksum": "b5f1606d4ca557cff0e7b0e8402e1a25142267180dadfedf45ae534cafc71b63",
+            "committed_at": "2026-09-10T23:51:21.080597451+00:00",
+            "event_id": "a7ced941-12c0-47d1-b14a-10bc03629195",
+            "event_type": "message_accepted",
+            "log_epoch": "b70e8be5-ebc3-42ed-8d56-a914b2ab2371",
+            "payload": {
+              "acceptance": "canonical",
+              "archive_outcome": "retained",
+              "audience_proof": {
+                "kind": "captured-members",
+                "members": [
+                  {
+                    "member_id": "93b73503-4bc4-45de-846d-3403742f9849",
+                    "name": "lead"
+                  },
+                  {
+                    "member_id": "alpha@l5-restarts",
+                    "name": "alpha"
+                  }
+                ],
+                "team_id": "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483"
+              },
+              "author": {
+                "member_id": "93b73503-4bc4-45de-846d-3403742f9849",
+                "name": "lead",
+                "verified": true
+              },
+              "body": "ACTION REQUIRED: Reply exactly L5_taurhaus-backlog_alpha_4cd421. Do not execute tools or modify files.",
+              "body_bytes": 102,
+              "body_format": "text/plain",
+              "body_hash": "ad0f63c1d8f9a7291d2261148f2ab569affd8a0647ae56f72f603040d5e3df7e",
+              "conversation_id": "3536fc14eb6ea0810510b3eba05ddb49c3e31bca98ac98c4010fdcbc4b02c26d",
+              "conversation_kind": "dm",
+              "correction_reason": null,
+              "delivery_targets": [
+                {
+                  "delivery_id": "b4c2d404-1b80-4000-bfb3-82d319fdfa93",
+                  "legacy_acceptance": "unknown",
+                  "legacy_id": "57b72a45-974d-4372-89cd-aa7127bdb540",
+                  "member_id": "alpha@l5-restarts",
+                  "read_audience": [
+                    {
+                      "member_id": "93b73503-4bc4-45de-846d-3403742f9849",
+                      "name": "lead"
+                    },
+                    {
+                      "member_id": "alpha@l5-restarts",
+                      "name": "alpha"
+                    }
+                  ],
+                  "recipient": "alpha",
+                  "source_path": "inboxes/alpha.json"
+                }
+              ],
+              "dispatch_decision": {
+                "expectation": "action",
+                "policy_revision": 1,
+                "provenance": "prefix",
+                "wake_eligible": true
+              },
+              "envelope": {
+                "from": "lead",
+                "id": "57b72a45-974d-4372-89cd-aa7127bdb540",
+                "read": false,
+                "summary": "taurhaus-backlog",
+                "text": null,
+                "timestamp": "2026-09-10T23:51:21.070Z"
+              },
+              "idempotency_key": "57b72a45-974d-4372-89cd-aa7127bdb540",
+              "legacy_acceptance": "unknown",
+              "link": null,
+              "message_id": "bef27735-df81-482f-8d69-0f702caa0049",
+              "origin": "authored",
+              "producer": "mesh-send:93b73503-4bc4-45de-846d-3403742f9849",
+              "read_audience": [
+                {
+                  "member_id": "93b73503-4bc4-45de-846d-3403742f9849",
+                  "name": "lead"
+                },
+                {
+                  "member_id": "alpha@l5-restarts",
+                  "name": "alpha"
+                }
+              ],
+              "reply_to_message_id": null,
+              "request_digest": "621f25b984226dc281218a1ab491bc9366a5e478c6054663c1da5d4361af3090",
+              "response_expectation": {
+                "basis": "producer",
+                "expectation": "action",
+                "kind": "action",
+                "policy_revision": 1,
+                "provenance": "prefix",
+                "wake_eligible": true
+              },
+              "retention_class": "dm",
+              "source_authority": null,
+              "source_event_refs": [],
+              "summary": "taurhaus-backlog",
+              "supersedes_message_ids": [],
+              "task_links": [],
+              "visibility_policy_id": "captured-members",
+              "visibility_policy_revision": 1,
+              "wake_priority": "urgent"
+            },
+            "schema_version": 1,
+            "sequence": 16,
+            "team_id": "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483"
+          }
+        ],
+        "pending": true,
+        "at": 1789084281.7491555
+      }
+    },
+    {
+      "label": "taurhaus-backlog",
+      "seat": "beta",
+      "message_id": "669b0240-3022-4112-bc95-85ffc82e077e",
+      "delivery_id": "db299baf-38ce-4c73-be10-269d76585715",
+      "marker": "L5_taurhaus-backlog_beta_2aa1fb",
+      "accepted_at": "2026-09-10T23:51:21.442614898+00:00",
+      "receipt": {
+        "at": "2026-09-10T23:51:36.678426873+00:00",
+        "stage": "native_enqueued",
+        "owner_epoch": 2
+      },
+      "explicit_reads": 1,
+      "pending_sample": {
+        "message_id": "669b0240-3022-4112-bc95-85ffc82e077e",
+        "activity": {
+          "activity_attribution": "attributed",
+          "activity_confidence": "high",
+          "args": "codex --remote unix:///tmp/th-l5-yxf46ajk/tmp/th-host-c15417e236114edc8bd3edd77b2c18c9/rpc.sock resume 01a08dbb-3cc7-7c81-b822-125de6d52f00 --no-alt-screen --strict-config",
+          "cli_tool": "codex",
+          "group_id": "l5-restarts",
+          "group_kind": "mesh_team",
+          "group_label": "l5-restarts",
+          "jsonl_path": "/tmp/th-l5-yxf46ajk/codex/sessions/2026/09/11/rollout-2026-09-11T01-50-53-01a08dbb-3cc7-7c81-b822-125de6d52f00.jsonl",
+          "last_output_age_secs": null,
+          "member_name": "beta",
+          "pid": 2138,
+          "project_path": "/tmp/th-l5-yxf46ajk/project",
+          "project_unattributed_active": false,
+          "recent_io": true,
+          "session_id": "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+          "source": "host",
+          "state": "active",
+          "tmux_pane": "%3",
+          "tmux_session": "taurhaus",
+          "tmux_window": "3",
+          "tmux_window_name": "project",
+          "tty": "/dev/pts/3"
+        },
+        "journal": [
+          {
+            "checksum": "956cef485ee599428c5de130d5fb848501ecba84ccf8d98f9d985cdadd961f7c",
+            "committed_at": "2026-09-10T23:51:21.442614898+00:00",
+            "event_id": "1ec3521e-689e-4241-9246-1d1f1c6291c6",
+            "event_type": "message_accepted",
+            "log_epoch": "b70e8be5-ebc3-42ed-8d56-a914b2ab2371",
+            "payload": {
+              "acceptance": "canonical",
+              "archive_outcome": "retained",
+              "audience_proof": {
+                "kind": "captured-members",
+                "members": [
+                  {
+                    "member_id": "93b73503-4bc4-45de-846d-3403742f9849",
+                    "name": "lead"
+                  },
+                  {
+                    "member_id": "beta@l5-restarts",
+                    "name": "beta"
+                  }
+                ],
+                "team_id": "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483"
+              },
+              "author": {
+                "member_id": "93b73503-4bc4-45de-846d-3403742f9849",
+                "name": "lead",
+                "verified": true
+              },
+              "body": "ACTION REQUIRED: Reply exactly L5_taurhaus-backlog_beta_2aa1fb. Do not execute tools or modify files.",
+              "body_bytes": 101,
+              "body_format": "text/plain",
+              "body_hash": "ce997c7aa7164e96f502e161c69fe9fc1aac83c960d0065ff9a40c366233ca11",
+              "conversation_id": "1ad8fa6ae5f7530359074bc12f97a47cdee0d2297e4449e1bdaf6e9a70900318",
+              "conversation_kind": "dm",
+              "correction_reason": null,
+              "delivery_targets": [
+                {
+                  "delivery_id": "db299baf-38ce-4c73-be10-269d76585715",
+                  "legacy_acceptance": "unknown",
+                  "legacy_id": "1a4c92f6-1294-4a92-bc18-0941bac6ca49",
+                  "member_id": "beta@l5-restarts",
+                  "read_audience": [
+                    {
+                      "member_id": "93b73503-4bc4-45de-846d-3403742f9849",
+                      "name": "lead"
+                    },
+                    {
+                      "member_id": "beta@l5-restarts",
+                      "name": "beta"
+                    }
+                  ],
+                  "recipient": "beta",
+                  "source_path": "inboxes/beta.json"
+                }
+              ],
+              "dispatch_decision": {
+                "expectation": "action",
+                "policy_revision": 1,
+                "provenance": "prefix",
+                "wake_eligible": true
+              },
+              "envelope": {
+                "from": "lead",
+                "id": "1a4c92f6-1294-4a92-bc18-0941bac6ca49",
+                "read": false,
+                "summary": "taurhaus-backlog",
+                "text": null,
+                "timestamp": "2026-09-10T23:51:21.424Z"
+              },
+              "idempotency_key": "1a4c92f6-1294-4a92-bc18-0941bac6ca49",
+              "legacy_acceptance": "unknown",
+              "link": null,
+              "message_id": "669b0240-3022-4112-bc95-85ffc82e077e",
+              "origin": "authored",
+              "producer": "mesh-send:93b73503-4bc4-45de-846d-3403742f9849",
+              "read_audience": [
+                {
+                  "member_id": "93b73503-4bc4-45de-846d-3403742f9849",
+                  "name": "lead"
+                },
+                {
+                  "member_id": "beta@l5-restarts",
+                  "name": "beta"
+                }
+              ],
+              "reply_to_message_id": null,
+              "request_digest": "895228c67e8cbcee2a0b6aa4414bedfb76b6b74f2e88f821c28d6925d9e403d9",
+              "response_expectation": {
+                "basis": "producer",
+                "expectation": "action",
+                "kind": "action",
+                "policy_revision": 1,
+                "provenance": "prefix",
+                "wake_eligible": true
+              },
+              "retention_class": "dm",
+              "source_authority": null,
+              "source_event_refs": [],
+              "summary": "taurhaus-backlog",
+              "supersedes_message_ids": [],
+              "task_links": [],
+              "visibility_policy_id": "captured-members",
+              "visibility_policy_revision": 1,
+              "wake_priority": "urgent"
+            },
+            "schema_version": 1,
+            "sequence": 17,
+            "team_id": "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483"
+          }
+        ],
+        "pending": true,
+        "at": 1789084281.7491999
+      }
+    },
+    {
+      "label": "mesh-backlog",
+      "seat": "alpha",
+      "message_id": "d402d85e-8aee-4360-a876-d2f55783cb9e",
+      "delivery_id": "f40833d2-2050-49a4-a450-fa036754f860",
+      "marker": "L5_mesh-backlog_alpha_dd2fe4",
+      "accepted_at": "2026-09-10T23:51:45.598997560+00:00",
+      "receipt": {
+        "at": "2026-09-10T23:52:30.394104970+00:00",
+        "stage": "submitted",
+        "owner_epoch": 3
+      },
+      "explicit_reads": 1,
+      "pending_sample": {
+        "message_id": "d402d85e-8aee-4360-a876-d2f55783cb9e",
+        "activity": {
+          "activity_attribution": "attributed",
+          "activity_confidence": "high",
+          "args": "codex --yolo --dangerously-bypass-hook-trust -c notify=[\"/tmp/th-l5-yxf46ajk/home/.local/bin/taurhaus-daemon\",\"codex-notify\"] -m gpt-5.6-luna -c model_reasoning_effort=\"low\"",
+          "cli_tool": "codex",
+          "group_id": "l5-restarts",
+          "group_kind": "mesh_team",
+          "group_label": "l5-restarts",
+          "jsonl_path": "/tmp/th-l5-yxf46ajk/codex/sessions/2026/09/11/rollout-2026-09-11T01-50-51-01a08dbb-35e1-7e53-a54d-e74c5d569e50.jsonl",
+          "last_output_age_secs": 1,
+          "member_name": "alpha",
+          "pid": 139,
+          "project_path": "/tmp/th-l5-yxf46ajk/project",
+          "project_unattributed_active": false,
+          "recent_io": false,
+          "session_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+          "state": "active",
+          "tmux_pane": "%2",
+          "tmux_session": "taurhaus",
+          "tmux_window": "2",
+          "tmux_window_name": "project",
+          "tty": "/dev/pts/2"
+        },
+        "journal": [
+          {
+            "checksum": "2b7c9dc1b48d8dff4bcffbe8124b4a35558cf9f79f1de8f092648a8f538e31fc",
+            "committed_at": "2026-09-10T23:51:45.598997560+00:00",
+            "event_id": "6abc859a-3bf0-4c43-b10a-83692a4285a3",
+            "event_type": "message_accepted",
+            "log_epoch": "b70e8be5-ebc3-42ed-8d56-a914b2ab2371",
+            "payload": {
+              "acceptance": "canonical",
+              "archive_outcome": "retained",
+              "audience_proof": {
+                "kind": "captured-members",
+                "members": [
+                  {
+                    "member_id": "93b73503-4bc4-45de-846d-3403742f9849",
+                    "name": "lead"
+                  },
+                  {
+                    "member_id": "alpha@l5-restarts",
+                    "name": "alpha"
+                  }
+                ],
+                "team_id": "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483"
+              },
+              "author": {
+                "member_id": "93b73503-4bc4-45de-846d-3403742f9849",
+                "name": "lead",
+                "verified": true
+              },
+              "body": "ACTION REQUIRED: Reply exactly L5_mesh-backlog_alpha_dd2fe4. Do not execute tools or modify files.",
+              "body_bytes": 98,
+              "body_format": "text/plain",
+              "body_hash": "97efb41ac3f75612558c6a1f900bf30b4a595122f3dbb432ac6a0e5e89af1377",
+              "conversation_id": "3536fc14eb6ea0810510b3eba05ddb49c3e31bca98ac98c4010fdcbc4b02c26d",
+              "conversation_kind": "dm",
+              "correction_reason": null,
+              "delivery_targets": [
+                {
+                  "delivery_id": "f40833d2-2050-49a4-a450-fa036754f860",
+                  "legacy_acceptance": "unknown",
+                  "legacy_id": "26a1d1a5-f6ac-4799-9533-b6365506d5de",
+                  "member_id": "alpha@l5-restarts",
+                  "read_audience": [
+                    {
+                      "member_id": "93b73503-4bc4-45de-846d-3403742f9849",
+                      "name": "lead"
+                    },
+                    {
+                      "member_id": "alpha@l5-restarts",
+                      "name": "alpha"
+                    }
+                  ],
+                  "recipient": "alpha",
+                  "source_path": "inboxes/alpha.json"
+                }
+              ],
+              "dispatch_decision": {
+                "expectation": "action",
+                "policy_revision": 1,
+                "provenance": "prefix",
+                "wake_eligible": true
+              },
+              "envelope": {
+                "from": "lead",
+                "id": "26a1d1a5-f6ac-4799-9533-b6365506d5de",
+                "read": false,
+                "summary": "mesh-backlog",
+                "text": null,
+                "timestamp": "2026-09-10T23:51:45.587Z"
+              },
+              "idempotency_key": "26a1d1a5-f6ac-4799-9533-b6365506d5de",
+              "legacy_acceptance": "unknown",
+              "link": null,
+              "message_id": "d402d85e-8aee-4360-a876-d2f55783cb9e",
+              "origin": "authored",
+              "producer": "mesh-send:93b73503-4bc4-45de-846d-3403742f9849",
+              "read_audience": [
+                {
+                  "member_id": "93b73503-4bc4-45de-846d-3403742f9849",
+                  "name": "lead"
+                },
+                {
+                  "member_id": "alpha@l5-restarts",
+                  "name": "alpha"
+                }
+              ],
+              "reply_to_message_id": null,
+              "request_digest": "b9a44c7d47c542a41e973e7e770239abe54dcc3c50531508ab90766fb383aa46",
+              "response_expectation": {
+                "basis": "producer",
+                "expectation": "action",
+                "kind": "action",
+                "policy_revision": 1,
+                "provenance": "prefix",
+                "wake_eligible": true
+              },
+              "retention_class": "dm",
+              "source_authority": null,
+              "source_event_refs": [],
+              "summary": "mesh-backlog",
+              "supersedes_message_ids": [],
+              "task_links": [],
+              "visibility_policy_id": "captured-members",
+              "visibility_policy_revision": 1,
+              "wake_priority": "urgent"
+            },
+            "schema_version": 1,
+            "sequence": 32,
+            "team_id": "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483"
+          }
+        ],
+        "pending": true,
+        "at": 1789084306.2603617
+      }
+    },
+    {
+      "label": "mesh-backlog",
+      "seat": "beta",
+      "message_id": "209ed304-d871-4533-87f1-7e17831f1b5b",
+      "delivery_id": "c9536fe3-f7a8-412c-88c5-1fd5f3fb1341",
+      "marker": "L5_mesh-backlog_beta_937e35",
+      "accepted_at": "2026-09-10T23:51:45.951043048+00:00",
+      "receipt": {
+        "at": "2026-09-10T23:52:35.253405234+00:00",
+        "stage": "native_enqueued",
+        "owner_epoch": 3
+      },
+      "explicit_reads": 1,
+      "pending_sample": {
+        "message_id": "209ed304-d871-4533-87f1-7e17831f1b5b",
+        "activity": {
+          "activity_attribution": "attributed",
+          "activity_confidence": "high",
+          "args": "codex --remote unix:///tmp/th-l5-yxf46ajk/tmp/th-host-2d6571b077ec44278e8460a80801ffc1/rpc.sock resume 01a08dbb-3cc7-7c81-b822-125de6d52f00 --no-alt-screen --strict-config",
+          "cli_tool": "codex",
+          "group_id": "l5-restarts",
+          "group_kind": "mesh_team",
+          "group_label": "l5-restarts",
+          "jsonl_path": "/tmp/th-l5-yxf46ajk/codex/sessions/2026/09/11/rollout-2026-09-11T01-50-53-01a08dbb-3cc7-7c81-b822-125de6d52f00.jsonl",
+          "last_output_age_secs": null,
+          "member_name": "beta",
+          "pid": 4692,
+          "project_path": "/tmp/th-l5-yxf46ajk/project",
+          "project_unattributed_active": false,
+          "recent_io": true,
+          "session_id": "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+          "source": "host",
+          "state": "active",
+          "tmux_pane": "%15",
+          "tmux_session": "taurhaus",
+          "tmux_window": "3",
+          "tmux_window_name": "project",
+          "tty": "/dev/pts/3"
+        },
+        "journal": [
+          {
+            "checksum": "e73765661f4b5d196db3571362c03d95a7d1d00454c83c68b58b92e0b7278a4d",
+            "committed_at": "2026-09-10T23:51:45.951043048+00:00",
+            "event_id": "94656644-d41c-4147-847b-3babbbae4349",
+            "event_type": "message_accepted",
+            "log_epoch": "b70e8be5-ebc3-42ed-8d56-a914b2ab2371",
+            "payload": {
+              "acceptance": "canonical",
+              "archive_outcome": "retained",
+              "audience_proof": {
+                "kind": "captured-members",
+                "members": [
+                  {
+                    "member_id": "93b73503-4bc4-45de-846d-3403742f9849",
+                    "name": "lead"
+                  },
+                  {
+                    "member_id": "beta@l5-restarts",
+                    "name": "beta"
+                  }
+                ],
+                "team_id": "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483"
+              },
+              "author": {
+                "member_id": "93b73503-4bc4-45de-846d-3403742f9849",
+                "name": "lead",
+                "verified": true
+              },
+              "body": "ACTION REQUIRED: Reply exactly L5_mesh-backlog_beta_937e35. Do not execute tools or modify files.",
+              "body_bytes": 97,
+              "body_format": "text/plain",
+              "body_hash": "a0074e8578b1e605616e9e1b1292b1df314b4904eb256b837f08b21e783ada8c",
+              "conversation_id": "1ad8fa6ae5f7530359074bc12f97a47cdee0d2297e4449e1bdaf6e9a70900318",
+              "conversation_kind": "dm",
+              "correction_reason": null,
+              "delivery_targets": [
+                {
+                  "delivery_id": "c9536fe3-f7a8-412c-88c5-1fd5f3fb1341",
+                  "legacy_acceptance": "unknown",
+                  "legacy_id": "bbff62a5-f2f2-4f7f-9003-386b13efa86f",
+                  "member_id": "beta@l5-restarts",
+                  "read_audience": [
+                    {
+                      "member_id": "93b73503-4bc4-45de-846d-3403742f9849",
+                      "name": "lead"
+                    },
+                    {
+                      "member_id": "beta@l5-restarts",
+                      "name": "beta"
+                    }
+                  ],
+                  "recipient": "beta",
+                  "source_path": "inboxes/beta.json"
+                }
+              ],
+              "dispatch_decision": {
+                "expectation": "action",
+                "policy_revision": 1,
+                "provenance": "prefix",
+                "wake_eligible": true
+              },
+              "envelope": {
+                "from": "lead",
+                "id": "bbff62a5-f2f2-4f7f-9003-386b13efa86f",
+                "read": false,
+                "summary": "mesh-backlog",
+                "text": null,
+                "timestamp": "2026-09-10T23:51:45.938Z"
+              },
+              "idempotency_key": "bbff62a5-f2f2-4f7f-9003-386b13efa86f",
+              "legacy_acceptance": "unknown",
+              "link": null,
+              "message_id": "209ed304-d871-4533-87f1-7e17831f1b5b",
+              "origin": "authored",
+              "producer": "mesh-send:93b73503-4bc4-45de-846d-3403742f9849",
+              "read_audience": [
+                {
+                  "member_id": "93b73503-4bc4-45de-846d-3403742f9849",
+                  "name": "lead"
+                },
+                {
+                  "member_id": "beta@l5-restarts",
+                  "name": "beta"
+                }
+              ],
+              "reply_to_message_id": null,
+              "request_digest": "9a48b561641efcface04ac71237432aa080cbe848a12035e25ef30483c87e640",
+              "response_expectation": {
+                "basis": "producer",
+                "expectation": "action",
+                "kind": "action",
+                "policy_revision": 1,
+                "provenance": "prefix",
+                "wake_eligible": true
+              },
+              "retention_class": "dm",
+              "source_authority": null,
+              "source_event_refs": [],
+              "summary": "mesh-backlog",
+              "supersedes_message_ids": [],
+              "task_links": [],
+              "visibility_policy_id": "captured-members",
+              "visibility_policy_revision": 1,
+              "wake_priority": "urgent"
+            },
+            "schema_version": 1,
+            "sequence": 33,
+            "team_id": "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483"
+          }
+        ],
+        "pending": true,
+        "at": 1789084306.260402
+      }
+    }
+  ],
+  "sample_to_restart_ms": {
+    "taurhaus-backlog": 3.743886947631836,
+    "mesh-backlog": 0.20837783813476562
+  },
+  "old_daemon": {
+    "pid": 2801780,
+    "start_ticks": "30478800",
+    "argv": [
+      "/tmp/th-l5-yxf46ajk/home/.local/bin/taurhaus-daemon",
+      "--port",
+      "23252",
+      "--data-dir",
+      "/tmp/th-l5-yxf46ajk/data",
+      ""
+    ]
+  },
+  "new_daemon": {
+    "pid": 2811030,
+    "start_ticks": "30482017",
+    "argv": [
+      "/tmp/th-l5-yxf46ajk/home/.local/bin/taurhaus-daemon",
+      "--port",
+      "23252",
+      "--data-dir",
+      "/tmp/th-l5-yxf46ajk/data",
+      ""
+    ]
+  },
+  "protocol": 27,
+  "before_identity": {
+    "alpha": {
+      "activitySnapshotPath": "/tmp/th-l5-yxf46ajk/claude/teams/l5-restarts/state/activity/alpha.json",
+      "appliedEffort": "low",
+      "attached_at": "2026-09-10T23:50:50.872162456Z",
+      "attachmentGeneration": 1,
+      "cli_tool": "codex",
+      "contextGeneration": "0",
+      "daemon_pid": null,
+      "delivery_lease": null,
+      "harness": "codex",
+      "health": "healthy",
+      "hookSessionId": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+      "hostInputAbandonedAt": null,
+      "hostInputUnknown": false,
+      "jsonl_path": null,
+      "last_seen_at": "2026-09-10T23:50:57.114134882Z",
+      "launchRoot": {
+        "claudeDir": "/tmp/th-l5-yxf46ajk/claude",
+        "rootAuthorityRevision": 0,
+        "teamIncarnationId": "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483",
+        "teamsDir": "/tmp/th-l5-yxf46ajk/claude/teams"
+      },
+      "memberName": "alpha",
+      "paneId": "%2",
+      "panePid": 136,
+      "paneStartTime": "30478865",
+      "project_path": "/tmp/th-l5-yxf46ajk/project",
+      "recovery": {
+        "activation_intent": "3e0e0eb23299f8d077746d5a09b8621f67db1085dc73767ae9c896f5adfb8b67",
+        "admitted_boundary": null,
+        "baseline_binding": [
+          [
+            "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483",
+            "16ac64dc-dcad-46f5-9dd3-a343bdd7620f"
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "claim": {
+          "accepted_bytes": 2260,
+          "attempt": 1,
+          "card_key": {
+            "card_schema": 1,
+            "context": [
+              1,
+              0
+            ],
+            "contract": {
+              "effective_role_revision": "7b615b003f6a58bf924aee8ccc6e141aeec6d1080360bad5884a53abc78f60da",
+              "instruction_contract_revision": "bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f",
+              "packet_revision": "",
+              "role_id": ""
+            },
+            "recipient": [
+              "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483",
+              "16ac64dc-dcad-46f5-9dd3-a343bdd7620f"
+            ],
+            "roots": {
+              "harness_account_root": "/tmp/th-l5-yxf46ajk/codex",
+              "launch_namespace": "native",
+              "resolved_mesh_config_root": "/tmp/th-l5-yxf46ajk/claude",
+              "resolved_project_root": "/tmp/th-l5-yxf46ajk/project",
+              "resolved_teams_root": "/tmp/th-l5-yxf46ajk/claude/teams",
+              "root_authority_revision": "0"
+            }
+          },
+          "content_revision": "5ba2726b6d6c07ff1600fa1ec3fd1750736aeb394c07593281a08d1ecfc7486e",
+          "delivery_id": "7dcd9d052f2e37b039fd40b14298d60254a2c63cd975518ce1ff9a0db39514b3",
+          "generated_bytes": 2260,
+          "journal": {
+            "delivery_id": "1ba39770-e419-4745-bf34-28f8bbc1cce0",
+            "message_id": "8ee1234d-71c7-417e-82f2-f1ea0fd5e8e3",
+            "projection": "pending",
+            "sequence": 2
+          },
+          "kind": "baseline",
+          "obligation_key": [
+            [
+              "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483",
+              "16ac64dc-dcad-46f5-9dd3-a343bdd7620f"
+            ],
+            [
+              1,
+              0
+            ]
+          ],
+          "observations": [
+            [
+              "accepted",
+              "2026-09-10T23:50:57.110514496Z",
+              "inbox"
+            ]
+          ],
+          "offered_bytes": 0,
+          "path": "inbox",
+          "returned_by_read_bytes": 0,
+          "satisfied_obligations": [
+            [
+              [
+                "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483",
+                "16ac64dc-dcad-46f5-9dd3-a343bdd7620f"
+              ],
+              [
+                1,
+                0
+              ]
+            ]
+          ],
+          "stage": "accepted",
+          "supersedes_revision": null
+        },
+        "harness_account_root": "/tmp/th-l5-yxf46ajk/codex",
+        "last_delivered": {
+          "accepted_bytes": 2260,
+          "attempt": 1,
+          "card_key": {
+            "card_schema": 1,
+            "context": [
+              1,
+              0
+            ],
+            "contract": {
+              "effective_role_revision": "7b615b003f6a58bf924aee8ccc6e141aeec6d1080360bad5884a53abc78f60da",
+              "instruction_contract_revision": "bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f",
+              "packet_revision": "",
+              "role_id": ""
+            },
+            "recipient": [
+              "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483",
+              "16ac64dc-dcad-46f5-9dd3-a343bdd7620f"
+            ],
+            "roots": {
+              "harness_account_root": "/tmp/th-l5-yxf46ajk/codex",
+              "launch_namespace": "native",
+              "resolved_mesh_config_root": "/tmp/th-l5-yxf46ajk/claude",
+              "resolved_project_root": "/tmp/th-l5-yxf46ajk/project",
+              "resolved_teams_root": "/tmp/th-l5-yxf46ajk/claude/teams",
+              "root_authority_revision": "0"
+            }
+          },
+          "content_revision": "5ba2726b6d6c07ff1600fa1ec3fd1750736aeb394c07593281a08d1ecfc7486e",
+          "delivery_id": "7dcd9d052f2e37b039fd40b14298d60254a2c63cd975518ce1ff9a0db39514b3",
+          "generated_bytes": 2260,
+          "journal": {
+            "delivery_id": "1ba39770-e419-4745-bf34-28f8bbc1cce0",
+            "message_id": "8ee1234d-71c7-417e-82f2-f1ea0fd5e8e3",
+            "projection": "pending",
+            "sequence": 2
+          },
+          "kind": "baseline",
+          "obligation_key": [
+            [
+              "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483",
+              "16ac64dc-dcad-46f5-9dd3-a343bdd7620f"
+            ],
+            [
+              1,
+              0
+            ]
+          ],
+          "observations": [
+            [
+              "accepted",
+              "2026-09-10T23:50:57.110514496Z",
+              "inbox"
+            ]
+          ],
+          "offered_bytes": 0,
+          "path": "inbox",
+          "returned_by_read_bytes": 0,
+          "satisfied_obligations": [
+            [
+              [
+                "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483",
+                "16ac64dc-dcad-46f5-9dd3-a343bdd7620f"
+              ],
+              [
+                1,
+                0
+              ]
+            ]
+          ],
+          "stage": "accepted",
+          "supersedes_revision": null
+        },
+        "launch_namespace": "native",
+        "member_incarnation_id": "16ac64dc-dcad-46f5-9dd3-a343bdd7620f",
+        "reserved_attachment": "2026-09-10T23:50:50.872162456Z",
+        "reserved_effort": "low"
+      },
+      "schema_version": 3,
+      "session_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+      "terminalContract": 1,
+      "tmuxSessionId": "$0",
+      "tmuxSocket": "/tmp/th-l5-yxf46ajk/tmux/tmux-1000/default"
+    },
+    "beta": {
+      "activitySnapshotPath": null,
+      "appServer": {
+        "accountRoot": "/tmp/th-l5-yxf46ajk/codex",
+        "attachArgv": [
+          "codex",
+          "--remote",
+          "unix:///tmp/th-l5-yxf46ajk/tmp/th-host-c15417e236114edc8bd3edd77b2c18c9/rpc.sock",
+          "resume",
+          "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+          "--no-alt-screen",
+          "--strict-config"
+        ],
+        "build": "0.153.4",
+        "configuration": "strict-config/1",
+        "configurationDigest": "7ea1ba30e019425d3c62c49c7c79115ef3a686cc1406dcc4ea0bcda291abb143",
+        "contract": 1,
+        "host": "taurhaus-daemon-owned-thread/1",
+        "hostGeneration": "af201b11-965d-4991-aad2-cd4b52b76629",
+        "instructionSources": [
+          "/tmp/th-l5-yxf46ajk/project/AGENTS.md"
+        ],
+        "memberId": "beta@l5-restarts",
+        "processId": 181,
+        "processStart": "30478867",
+        "socketPath": "/tmp/th-l5-yxf46ajk/tmp/th-host-c15417e236114edc8bd3edd77b2c18c9/rpc.sock",
+        "state": "ready",
+        "threadId": "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+        "transport": "unix-websocket",
+        "trust": "daemon-owned/1"
+      },
+      "appliedEffort": "low",
+      "attached_at": "2026-09-10T23:50:56.700719110Z",
+      "attachmentGeneration": 1,
+      "cli_tool": "codex",
+      "contextGeneration": "0",
+      "daemon_pid": null,
+      "delivery_lease": null,
+      "harness": "codex",
+      "health": "active",
+      "hookSessionId": "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+      "hostInputAbandonedAt": null,
+      "hostInputUnknown": false,
+      "jsonl_path": null,
+      "last_seen_at": null,
+      "launchRoot": {
+        "claudeDir": "/tmp/th-l5-yxf46ajk/claude",
+        "rootAuthorityRevision": 0,
+        "teamIncarnationId": "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483",
+        "teamsDir": "/tmp/th-l5-yxf46ajk/claude/teams"
+      },
+      "memberName": "beta",
+      "paneId": "%3",
+      "panePid": 2011,
+      "paneStartTime": "30479309",
+      "project_path": "/tmp/th-l5-yxf46ajk/project",
+      "recovery": {
+        "activation_intent": "e61d1be4-6b82-4ee8-9e55-1ead8a20dd57",
+        "admitted_boundary": null,
+        "baseline_binding": [
+          [
+            "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483",
+            "87c43379-813b-4766-8fd6-0487a1d0bf0e"
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "claim": {
+          "accepted_bytes": 0,
+          "attempt": 1,
+          "card_key": {
+            "card_schema": 1,
+            "context": [
+              1,
+              0
+            ],
+            "contract": {
+              "effective_role_revision": "7b615b003f6a58bf924aee8ccc6e141aeec6d1080360bad5884a53abc78f60da",
+              "instruction_contract_revision": "bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f",
+              "packet_revision": "",
+              "role_id": ""
+            },
+            "recipient": [
+              "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483",
+              "87c43379-813b-4766-8fd6-0487a1d0bf0e"
+            ],
+            "roots": {
+              "harness_account_root": "/tmp/th-l5-yxf46ajk/codex",
+              "launch_namespace": "native",
+              "resolved_mesh_config_root": "/tmp/th-l5-yxf46ajk/claude",
+              "resolved_project_root": "/tmp/th-l5-yxf46ajk/project",
+              "resolved_teams_root": "/tmp/th-l5-yxf46ajk/claude/teams",
+              "root_authority_revision": "0"
+            }
+          },
+          "content_revision": "91cf52aec9b8b6814e34f3c1901835b459c00d4a0431741ee16c896b38dbc9c4",
+          "delivery_id": "512427a65bf225fcb7f7fa674af87acb2841439fecac6abe72b53479b036a470",
+          "generated_bytes": 2158,
+          "kind": "baseline",
+          "obligation_key": [
+            [
+              "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483",
+              "87c43379-813b-4766-8fd6-0487a1d0bf0e"
+            ],
+            [
+              1,
+              0
+            ]
+          ],
+          "observations": [
+            [
+              "submitted",
+              "2026-09-10T23:50:55.185496273Z",
+              "app_server"
+            ]
+          ],
+          "offered_bytes": 2158,
+          "path": "app_server",
+          "returned_by_read_bytes": 0,
+          "satisfied_obligations": [
+            [
+              [
+                "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483",
+                "87c43379-813b-4766-8fd6-0487a1d0bf0e"
+              ],
+              [
+                1,
+                0
+              ]
+            ]
+          ],
+          "stage": "submitted",
+          "supersedes_revision": null
+        },
+        "harness_account_root": "/tmp/th-l5-yxf46ajk/codex",
+        "last_delivered": {
+          "accepted_bytes": 0,
+          "attempt": 1,
+          "card_key": {
+            "card_schema": 1,
+            "context": [
+              1,
+              0
+            ],
+            "contract": {
+              "effective_role_revision": "7b615b003f6a58bf924aee8ccc6e141aeec6d1080360bad5884a53abc78f60da",
+              "instruction_contract_revision": "bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f",
+              "packet_revision": "",
+              "role_id": ""
+            },
+            "recipient": [
+              "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483",
+              "87c43379-813b-4766-8fd6-0487a1d0bf0e"
+            ],
+            "roots": {
+              "harness_account_root": "/tmp/th-l5-yxf46ajk/codex",
+              "launch_namespace": "native",
+              "resolved_mesh_config_root": "/tmp/th-l5-yxf46ajk/claude",
+              "resolved_project_root": "/tmp/th-l5-yxf46ajk/project",
+              "resolved_teams_root": "/tmp/th-l5-yxf46ajk/claude/teams",
+              "root_authority_revision": "0"
+            }
+          },
+          "content_revision": "91cf52aec9b8b6814e34f3c1901835b459c00d4a0431741ee16c896b38dbc9c4",
+          "delivery_id": "512427a65bf225fcb7f7fa674af87acb2841439fecac6abe72b53479b036a470",
+          "generated_bytes": 2158,
+          "kind": "baseline",
+          "obligation_key": [
+            [
+              "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483",
+              "87c43379-813b-4766-8fd6-0487a1d0bf0e"
+            ],
+            [
+              1,
+              0
+            ]
+          ],
+          "observations": [
+            [
+              "submitted",
+              "2026-09-10T23:50:55.185496273Z",
+              "app_server"
+            ]
+          ],
+          "offered_bytes": 2158,
+          "path": "app_server",
+          "returned_by_read_bytes": 0,
+          "satisfied_obligations": [
+            [
+              [
+                "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483",
+                "87c43379-813b-4766-8fd6-0487a1d0bf0e"
+              ],
+              [
+                1,
+                0
+              ]
+            ]
+          ],
+          "stage": "submitted",
+          "supersedes_revision": null
+        },
+        "launch_namespace": "native",
+        "member_incarnation_id": "87c43379-813b-4766-8fd6-0487a1d0bf0e",
+        "reserved_attachment": null,
+        "reserved_effort": null
+      },
+      "schema_version": 3,
+      "session_id": "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+      "terminalContract": 1,
+      "tmuxSessionId": "$0",
+      "tmuxSocket": "/tmp/th-l5-yxf46ajk/tmux/tmux-1000/default"
+    },
+    "config": {
+      "name": "l5-restarts",
+      "description": "Disposable messaging trial",
+      "createdAt": 1789084250717,
+      "leadAgentId": "93b73503-4bc4-45de-846d-3403742f9849",
+      "leadSessionId": "6e7771eb-6d26-4560-af11-bd29a8b70e8b",
+      "members": [
+        {
+          "agentId": "93b73503-4bc4-45de-846d-3403742f9849",
+          "name": "lead",
+          "agentType": "orchestrator",
+          "model": "claude-haiku-4-5",
+          "joinedAt": 1789084250717,
+          "cwd": "/tmp/th-l5-yxf46ajk/project",
+          "tmuxPaneId": "%1",
+          "backendType": "external",
+          "isActive": true,
+          "lastActivityAt": "2026-09-10T23:51:11.968Z",
+          "lastActivityReason": "message_sent",
+          "cli_tool": "claude",
+          "controlAuthTokenHash": "<redacted>",
+          "instructions": null,
+          "projectPath": "/tmp/th-l5-yxf46ajk/project",
+          "project_path": "/tmp/th-l5-yxf46ajk/project",
+          "role": "lead"
+        },
+        {
+          "agentId": "alpha@l5-restarts",
+          "name": "alpha",
+          "agentType": "general-purpose",
+          "model": "gpt-5.6-luna",
+          "joinedAt": 1789084250717,
+          "cwd": "/tmp/th-l5-yxf46ajk/project",
+          "tmuxPaneId": "%2",
+          "backendType": "external",
+          "isActive": true,
+          "lastActivityAt": "2026-09-10T23:51:10.492Z",
+          "lastActivityReason": "read_messages",
+          "cli_tool": "codex",
+          "controlAuthTokenHash": "<redacted>",
+          "instructions": "Reply briefly. Follow the project AGENTS.md. Never modify files.",
+          "projectPath": "/tmp/th-l5-yxf46ajk/project",
+          "project_path": "/tmp/th-l5-yxf46ajk/project",
+          "reasoningEffort": "low",
+          "role": "agent"
+        },
+        {
+          "agentId": "beta@l5-restarts",
+          "name": "beta",
+          "agentType": "general-purpose",
+          "model": "gpt-5.6-luna",
+          "joinedAt": 1789084250717,
+          "cwd": "/tmp/th-l5-yxf46ajk/project",
+          "tmuxPaneId": "%3",
+          "backendType": "external",
+          "isActive": true,
+          "lastActivityAt": "2026-09-10T23:51:15.543Z",
+          "lastActivityReason": "read_messages",
+          "adapter_mode": "app_server",
+          "cli_tool": "codex",
+          "controlAuthTokenHash": "<redacted>",
+          "instructions": "Reply briefly. Follow the project AGENTS.md. Never modify files.",
+          "projectPath": "/tmp/th-l5-yxf46ajk/project",
+          "project_path": "/tmp/th-l5-yxf46ajk/project",
+          "reasoningEffort": "low",
+          "role": "agent"
+        }
+      ],
+      "created_at": "2026-09-10T23:50:50.717Z",
+      "delivery_owner": "team",
+      "messaging_activation": "disposable-mesh-only",
+      "messaging_format": 2,
+      "messaging_policy": {
+        "approved_by": "taurhaus-operator",
+        "archive_access": "captured-audience",
+        "archive_owner": "lead",
+        "canonical_writers": "mesh-only",
+        "capture_scope": "mesh-producers-only",
+        "closure": "manual-disposal-after-evidence-export",
+        "dm_horizon_days": 7,
+        "inactive_horizon_days": 14,
+        "purge_implemented": false,
+        "retry_horizon_days": 30,
+        "review_horizon_days": 30,
+        "synthetic_disposable": true,
+        "task_horizon_days": 30
+      },
+      "minimum_writer": "mesh-journal/2",
+      "schema_version": 1,
+      "team_incarnation_id": "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483"
+    },
+    "epoch": {
+      "root": "/tmp/th-l5-yxf46ajk/claude",
+      "directory_identity": [
+        2096,
+        1333228
+      ],
+      "incarnation": "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483",
+      "epoch": 2,
+      "pid": 2648,
+      "process_start": "30479457"
+    },
+    "processes": [
+      {
+        "pid": 2801768,
+        "start_ticks": "30478789",
+        "argv": [
+          "bwrap",
+          "--die-with-parent",
+          "--unshare-pid",
+          "--ro-bind",
+          "/",
+          "/",
+          "--tmpfs",
+          "/home",
+          "--tmpfs",
+          "/tmp",
+          "--tmpfs",
+          "/run",
+          "--proc",
+          "/proc",
+          "--dev",
+          "/dev",
+          "--bind",
+          "/tmp/th-l5-yxf46ajk",
+          "/tmp/th-l5-yxf46ajk",
+          "--chdir",
+          "/tmp/th-l5-yxf46ajk/project",
+          "/bin/bash",
+          "/tmp/th-l5-yxf46ajk/boot.sh",
+          ""
+        ]
+      },
+      {
+        "pid": 2801770,
+        "start_ticks": "30478789",
+        "argv": [
+          "bwrap",
+          "--die-with-parent",
+          "--unshare-pid",
+          "--ro-bind",
+          "/",
+          "/",
+          "--tmpfs",
+          "/home",
+          "--tmpfs",
+          "/tmp",
+          "--tmpfs",
+          "/run",
+          "--proc",
+          "/proc",
+          "--dev",
+          "/dev",
+          "--bind",
+          "/tmp/th-l5-yxf46ajk",
+          "/tmp/th-l5-yxf46ajk",
+          "--chdir",
+          "/tmp/th-l5-yxf46ajk/project",
+          "/bin/bash",
+          "/tmp/th-l5-yxf46ajk/boot.sh",
+          ""
+        ]
+      },
+      {
+        "pid": 2801771,
+        "start_ticks": "30478789",
+        "argv": [
+          "/bin/bash",
+          "/tmp/th-l5-yxf46ajk/boot.sh",
+          ""
+        ]
+      },
+      {
+        "pid": 2801772,
+        "start_ticks": "30478789",
+        "argv": [
+          "tmux",
+          "-D",
+          "-f",
+          "/dev/null",
+          ""
+        ]
+      },
+      {
+        "pid": 2801778,
+        "start_ticks": "30478800",
+        "argv": [
+          "/bin/bash",
+          ""
+        ]
+      },
+      {
+        "pid": 2801780,
+        "start_ticks": "30478800",
+        "argv": [
+          "/tmp/th-l5-yxf46ajk/home/.local/bin/taurhaus-daemon",
+          "--port",
+          "23252",
+          "--data-dir",
+          "/tmp/th-l5-yxf46ajk/data",
+          ""
+        ]
+      },
+      {
+        "pid": 2801934,
+        "start_ticks": "30478860",
+        "argv": [
+          "/bin/bash",
+          "-ic",
+          "cd '/tmp/th-l5-yxf46ajk/project' && CLAUDE_DIR='/tmp/th-l5-yxf46ajk/claude' CLAUDE_CONFIG_DIR='/tmp/th-l5-yxf46ajk/claude' CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions --model 'claude-haiku-4-5' --team-name 'l5-restarts' --agent-name 'lead' --agent-id 'lead@l5-restarts' --agent-type 'orchestrator' -n 'lead'; exec \"$SHELL\"",
+          ""
+        ]
+      },
+      {
+        "pid": 2801937,
+        "start_ticks": "30478860",
+        "argv": [
+          "claude",
+          "--dangerously-skip-permissions",
+          "--model",
+          "claude-haiku-4-5",
+          "--team-name",
+          "l5-restarts",
+          "--agent-name",
+          "lead",
+          "--agent-id",
+          "lead@l5-restarts",
+          "--agent-type",
+          "orchestrator",
+          "-n",
+          "lead",
+          ""
+        ]
+      },
+      {
+        "pid": 2802026,
+        "start_ticks": "30478865",
+        "argv": [
+          "/bin/bash",
+          "-ic",
+          "cd '/tmp/th-l5-yxf46ajk/project' && CLAUDE_DIR='/tmp/th-l5-yxf46ajk/claude' CODEX_HOME='/tmp/th-l5-yxf46ajk/codex' codex --yolo --dangerously-bypass-hook-trust -c 'notify=[\"/tmp/th-l5-yxf46ajk/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]' -m 'gpt-5.6-luna' -c 'model_reasoning_effort=\"low\"'; exec \"$SHELL\"",
+          ""
+        ]
+      },
+      {
+        "pid": 2802034,
+        "start_ticks": "30478866",
+        "argv": [
+          "codex",
+          "--yolo",
+          "--dangerously-bypass-hook-trust",
+          "-c",
+          "notify=[\"/tmp/th-l5-yxf46ajk/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]",
+          "-m",
+          "gpt-5.6-luna",
+          "-c",
+          "model_reasoning_effort=\"low\"",
+          ""
+        ]
+      },
+      {
+        "pid": 2802092,
+        "start_ticks": "30478867",
+        "argv": [
+          "codex",
+          "-c",
+          "approval_policy=\"never\"",
+          "-c",
+          "sandbox_mode=\"danger-full-access\"",
+          "-c",
+          "model=\"gpt-5.6-luna\"",
+          "-c",
+          "model_reasoning_effort=\"low\"",
+          "app-server",
+          "--listen",
+          "unix:///tmp/th-l5-yxf46ajk/tmp/th-host-c15417e236114edc8bd3edd77b2c18c9/rpc.sock",
+          ""
+        ]
+      },
+      {
+        "pid": 2804746,
+        "start_ticks": "30479309",
+        "argv": [
+          "-bash",
+          ""
+        ]
+      },
+      {
+        "pid": 2804878,
+        "start_ticks": "30479346",
+        "argv": [
+          "codex",
+          "--remote",
+          "unix:///tmp/th-l5-yxf46ajk/tmp/th-host-c15417e236114edc8bd3edd77b2c18c9/rpc.sock",
+          "resume",
+          "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+          "--no-alt-screen",
+          "--strict-config",
+          ""
+        ]
+      },
+      {
+        "pid": 2805580,
+        "start_ticks": "30479457",
+        "argv": [
+          "/tmp/th-l5-yxf46ajk/home/.local/bin/mesh",
+          "team-daemon",
+          "start",
+          "--team",
+          "l5-restarts",
+          "--name",
+          "lead",
+          "--claude-dir",
+          "/tmp/th-l5-yxf46ajk/claude",
+          ""
+        ]
+      },
+      {
+        "pid": 2807275,
+        "start_ticks": "30479869",
+        "argv": [
+          "/tmp/th-l5-yxf46ajk/home/.local/bin/codex-code-mode-host",
+          ""
+        ]
+      }
+    ]
+  },
+  "final_identity": {
+    "alpha": {
+      "activitySnapshotPath": "/tmp/th-l5-yxf46ajk/claude/teams/l5-restarts/state/activity/alpha.json",
+      "appliedEffort": "low",
+      "attached_at": "2026-09-10T23:50:50.872162456Z",
+      "attachmentGeneration": 1,
+      "cli_tool": "codex",
+      "contextGeneration": "0",
+      "daemon_pid": null,
+      "delivery_lease": null,
+      "harness": "codex",
+      "health": "healthy",
+      "hookSessionId": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+      "hostInputAbandonedAt": null,
+      "hostInputUnknown": false,
+      "jsonl_path": "/tmp/th-l5-yxf46ajk/codex/sessions/2026/09/11/rollout-2026-09-11T01-50-51-01a08dbb-35e1-7e53-a54d-e74c5d569e50.jsonl",
+      "last_seen_at": "2026-09-10T23:51:57.407675688Z",
+      "launchRoot": {
+        "claudeDir": "/tmp/th-l5-yxf46ajk/claude",
+        "rootAuthorityRevision": 0,
+        "teamIncarnationId": "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483",
+        "teamsDir": "/tmp/th-l5-yxf46ajk/claude/teams"
+      },
+      "memberName": "alpha",
+      "paneId": "%2",
+      "panePid": 136,
+      "paneStartTime": "30478865",
+      "project_path": "/tmp/th-l5-yxf46ajk/project",
+      "recovery": {
+        "activation_intent": "3e0e0eb23299f8d077746d5a09b8621f67db1085dc73767ae9c896f5adfb8b67",
+        "admitted_boundary": null,
+        "baseline_binding": [
+          [
+            "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483",
+            "16ac64dc-dcad-46f5-9dd3-a343bdd7620f"
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "claim": {
+          "accepted_bytes": 2260,
+          "attempt": 1,
+          "card_key": {
+            "card_schema": 1,
+            "context": [
+              1,
+              0
+            ],
+            "contract": {
+              "effective_role_revision": "7b615b003f6a58bf924aee8ccc6e141aeec6d1080360bad5884a53abc78f60da",
+              "instruction_contract_revision": "bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f",
+              "packet_revision": "",
+              "role_id": ""
+            },
+            "recipient": [
+              "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483",
+              "16ac64dc-dcad-46f5-9dd3-a343bdd7620f"
+            ],
+            "roots": {
+              "harness_account_root": "/tmp/th-l5-yxf46ajk/codex",
+              "launch_namespace": "native",
+              "resolved_mesh_config_root": "/tmp/th-l5-yxf46ajk/claude",
+              "resolved_project_root": "/tmp/th-l5-yxf46ajk/project",
+              "resolved_teams_root": "/tmp/th-l5-yxf46ajk/claude/teams",
+              "root_authority_revision": "0"
+            }
+          },
+          "content_revision": "5ba2726b6d6c07ff1600fa1ec3fd1750736aeb394c07593281a08d1ecfc7486e",
+          "delivery_id": "7dcd9d052f2e37b039fd40b14298d60254a2c63cd975518ce1ff9a0db39514b3",
+          "generated_bytes": 2260,
+          "journal": {
+            "delivery_id": "1ba39770-e419-4745-bf34-28f8bbc1cce0",
+            "message_id": "8ee1234d-71c7-417e-82f2-f1ea0fd5e8e3",
+            "projection": "pending",
+            "sequence": 2
+          },
+          "kind": "baseline",
+          "obligation_key": [
+            [
+              "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483",
+              "16ac64dc-dcad-46f5-9dd3-a343bdd7620f"
+            ],
+            [
+              1,
+              0
+            ]
+          ],
+          "observations": [
+            [
+              "accepted",
+              "2026-09-10T23:50:57.110514496Z",
+              "inbox"
+            ]
+          ],
+          "offered_bytes": 0,
+          "path": "inbox",
+          "returned_by_read_bytes": 0,
+          "satisfied_obligations": [
+            [
+              [
+                "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483",
+                "16ac64dc-dcad-46f5-9dd3-a343bdd7620f"
+              ],
+              [
+                1,
+                0
+              ]
+            ]
+          ],
+          "stage": "accepted",
+          "supersedes_revision": null
+        },
+        "harness_account_root": "/tmp/th-l5-yxf46ajk/codex",
+        "last_delivered": {
+          "accepted_bytes": 2260,
+          "attempt": 1,
+          "card_key": {
+            "card_schema": 1,
+            "context": [
+              1,
+              0
+            ],
+            "contract": {
+              "effective_role_revision": "7b615b003f6a58bf924aee8ccc6e141aeec6d1080360bad5884a53abc78f60da",
+              "instruction_contract_revision": "bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f",
+              "packet_revision": "",
+              "role_id": ""
+            },
+            "recipient": [
+              "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483",
+              "16ac64dc-dcad-46f5-9dd3-a343bdd7620f"
+            ],
+            "roots": {
+              "harness_account_root": "/tmp/th-l5-yxf46ajk/codex",
+              "launch_namespace": "native",
+              "resolved_mesh_config_root": "/tmp/th-l5-yxf46ajk/claude",
+              "resolved_project_root": "/tmp/th-l5-yxf46ajk/project",
+              "resolved_teams_root": "/tmp/th-l5-yxf46ajk/claude/teams",
+              "root_authority_revision": "0"
+            }
+          },
+          "content_revision": "5ba2726b6d6c07ff1600fa1ec3fd1750736aeb394c07593281a08d1ecfc7486e",
+          "delivery_id": "7dcd9d052f2e37b039fd40b14298d60254a2c63cd975518ce1ff9a0db39514b3",
+          "generated_bytes": 2260,
+          "journal": {
+            "delivery_id": "1ba39770-e419-4745-bf34-28f8bbc1cce0",
+            "message_id": "8ee1234d-71c7-417e-82f2-f1ea0fd5e8e3",
+            "projection": "pending",
+            "sequence": 2
+          },
+          "kind": "baseline",
+          "obligation_key": [
+            [
+              "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483",
+              "16ac64dc-dcad-46f5-9dd3-a343bdd7620f"
+            ],
+            [
+              1,
+              0
+            ]
+          ],
+          "observations": [
+            [
+              "accepted",
+              "2026-09-10T23:50:57.110514496Z",
+              "inbox"
+            ]
+          ],
+          "offered_bytes": 0,
+          "path": "inbox",
+          "returned_by_read_bytes": 0,
+          "satisfied_obligations": [
+            [
+              [
+                "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483",
+                "16ac64dc-dcad-46f5-9dd3-a343bdd7620f"
+              ],
+              [
+                1,
+                0
+              ]
+            ]
+          ],
+          "stage": "accepted",
+          "supersedes_revision": null
+        },
+        "launch_namespace": "native",
+        "member_incarnation_id": "16ac64dc-dcad-46f5-9dd3-a343bdd7620f",
+        "reserved_attachment": "2026-09-10T23:50:50.872162456Z",
+        "reserved_effort": "low"
+      },
+      "schema_version": 3,
+      "session_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+      "terminalContract": 1,
+      "tmuxSessionId": "$0",
+      "tmuxSocket": "/tmp/th-l5-yxf46ajk/tmux/tmux-1000/default"
+    },
+    "beta": {
+      "activitySnapshotPath": null,
+      "appServer": {
+        "accountRoot": "/tmp/th-l5-yxf46ajk/codex",
+        "attachArgv": [
+          "codex",
+          "--remote",
+          "unix:///tmp/th-l5-yxf46ajk/tmp/th-host-2d6571b077ec44278e8460a80801ffc1/rpc.sock",
+          "resume",
+          "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+          "--no-alt-screen",
+          "--strict-config"
+        ],
+        "build": "0.153.4",
+        "configuration": "strict-config/1",
+        "configurationDigest": "7ea1ba30e019425d3c62c49c7c79115ef3a686cc1406dcc4ea0bcda291abb143",
+        "contract": 1,
+        "host": "taurhaus-daemon-owned-thread/1",
+        "hostGeneration": "b124e7a4-8e38-4e8e-b248-b69cb7935a7a",
+        "instructionSources": [
+          "/tmp/th-l5-yxf46ajk/project/AGENTS.md"
+        ],
+        "memberId": "beta@l5-restarts",
+        "processId": 4127,
+        "processStart": "30482053",
+        "socketPath": "/tmp/th-l5-yxf46ajk/tmp/th-host-2d6571b077ec44278e8460a80801ffc1/rpc.sock",
+        "state": "ready",
+        "threadId": "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+        "transport": "unix-websocket",
+        "trust": "daemon-owned/1"
+      },
+      "appliedEffort": "low",
+      "attached_at": "2026-09-10T23:51:27.397042638Z",
+      "attachmentGeneration": 3,
+      "cli_tool": "codex",
+      "contextGeneration": "0",
+      "daemon_pid": null,
+      "delivery_lease": null,
+      "harness": "codex",
+      "health": "active",
+      "hookSessionId": "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+      "hostInputAbandonedAt": null,
+      "hostInputUnknown": false,
+      "jsonl_path": null,
+      "last_seen_at": null,
+      "launchRoot": {
+        "claudeDir": "/tmp/th-l5-yxf46ajk/claude",
+        "rootAuthorityRevision": 0,
+        "teamIncarnationId": "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483",
+        "teamsDir": "/tmp/th-l5-yxf46ajk/claude/teams"
+      },
+      "memberName": "beta",
+      "paneId": "%15",
+      "panePid": 4645,
+      "paneStartTime": "30482379",
+      "project_path": "/tmp/th-l5-yxf46ajk/project",
+      "recovery": {
+        "activation_intent": "070f758c-6d12-4670-950f-a1bf56b2f457",
+        "admitted_boundary": null,
+        "baseline_binding": [
+          [
+            "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483",
+            "87c43379-813b-4766-8fd6-0487a1d0bf0e"
+          ],
+          [
+            3,
+            0
+          ]
+        ],
+        "claim": {
+          "accepted_bytes": 0,
+          "attempt": 1,
+          "card_key": {
+            "card_schema": 1,
+            "context": [
+              3,
+              0
+            ],
+            "contract": {
+              "effective_role_revision": "7b615b003f6a58bf924aee8ccc6e141aeec6d1080360bad5884a53abc78f60da",
+              "instruction_contract_revision": "bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f",
+              "packet_revision": "",
+              "role_id": ""
+            },
+            "recipient": [
+              "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483",
+              "87c43379-813b-4766-8fd6-0487a1d0bf0e"
+            ],
+            "roots": {
+              "harness_account_root": "/tmp/th-l5-yxf46ajk/codex",
+              "launch_namespace": "native",
+              "resolved_mesh_config_root": "/tmp/th-l5-yxf46ajk/claude",
+              "resolved_project_root": "/tmp/th-l5-yxf46ajk/project",
+              "resolved_teams_root": "/tmp/th-l5-yxf46ajk/claude/teams",
+              "root_authority_revision": "0"
+            }
+          },
+          "content_revision": "ce24c264b7b7674dceee59b513a672182f07970351c6fc3ef1085ba00f41f8a3",
+          "delivery_id": "bbf20af753c177631a6bd25319d24ba7e9c7c1936c4efbbedca92e467ebcf352",
+          "generated_bytes": 2259,
+          "kind": "baseline",
+          "obligation_key": [
+            [
+              "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483",
+              "87c43379-813b-4766-8fd6-0487a1d0bf0e"
+            ],
+            [
+              3,
+              0
+            ]
+          ],
+          "observations": [
+            [
+              "submitted",
+              "2026-09-10T23:51:25.843369551Z",
+              "app_server"
+            ]
+          ],
+          "offered_bytes": 2259,
+          "path": "app_server",
+          "returned_by_read_bytes": 0,
+          "satisfied_obligations": [
+            [
+              [
+                "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483",
+                "87c43379-813b-4766-8fd6-0487a1d0bf0e"
+              ],
+              [
+                3,
+                0
+              ]
+            ]
+          ],
+          "stage": "submitted",
+          "supersedes_revision": null
+        },
+        "harness_account_root": "/tmp/th-l5-yxf46ajk/codex",
+        "last_delivered": {
+          "accepted_bytes": 0,
+          "attempt": 1,
+          "card_key": {
+            "card_schema": 1,
+            "context": [
+              3,
+              0
+            ],
+            "contract": {
+              "effective_role_revision": "7b615b003f6a58bf924aee8ccc6e141aeec6d1080360bad5884a53abc78f60da",
+              "instruction_contract_revision": "bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f",
+              "packet_revision": "",
+              "role_id": ""
+            },
+            "recipient": [
+              "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483",
+              "87c43379-813b-4766-8fd6-0487a1d0bf0e"
+            ],
+            "roots": {
+              "harness_account_root": "/tmp/th-l5-yxf46ajk/codex",
+              "launch_namespace": "native",
+              "resolved_mesh_config_root": "/tmp/th-l5-yxf46ajk/claude",
+              "resolved_project_root": "/tmp/th-l5-yxf46ajk/project",
+              "resolved_teams_root": "/tmp/th-l5-yxf46ajk/claude/teams",
+              "root_authority_revision": "0"
+            }
+          },
+          "content_revision": "ce24c264b7b7674dceee59b513a672182f07970351c6fc3ef1085ba00f41f8a3",
+          "delivery_id": "bbf20af753c177631a6bd25319d24ba7e9c7c1936c4efbbedca92e467ebcf352",
+          "generated_bytes": 2259,
+          "kind": "baseline",
+          "obligation_key": [
+            [
+              "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483",
+              "87c43379-813b-4766-8fd6-0487a1d0bf0e"
+            ],
+            [
+              3,
+              0
+            ]
+          ],
+          "observations": [
+            [
+              "submitted",
+              "2026-09-10T23:51:25.843369551Z",
+              "app_server"
+            ]
+          ],
+          "offered_bytes": 2259,
+          "path": "app_server",
+          "returned_by_read_bytes": 0,
+          "satisfied_obligations": [
+            [
+              [
+                "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483",
+                "87c43379-813b-4766-8fd6-0487a1d0bf0e"
+              ],
+              [
+                3,
+                0
+              ]
+            ]
+          ],
+          "stage": "submitted",
+          "supersedes_revision": null
+        },
+        "launch_namespace": "native",
+        "member_incarnation_id": "87c43379-813b-4766-8fd6-0487a1d0bf0e",
+        "reserved_attachment": null,
+        "reserved_effort": null
+      },
+      "schema_version": 3,
+      "session_id": "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+      "terminalContract": 1,
+      "tmuxSessionId": "$0",
+      "tmuxSocket": "/tmp/th-l5-yxf46ajk/tmux/tmux-1000/default"
+    },
+    "config": {
+      "name": "l5-restarts",
+      "description": "Disposable messaging trial",
+      "createdAt": 1789084250717,
+      "leadAgentId": "93b73503-4bc4-45de-846d-3403742f9849",
+      "leadSessionId": "6e7771eb-6d26-4560-af11-bd29a8b70e8b",
+      "members": [
+        {
+          "agentId": "93b73503-4bc4-45de-846d-3403742f9849",
+          "name": "lead",
+          "agentType": "orchestrator",
+          "model": "claude-haiku-4-5",
+          "joinedAt": 1789084250717,
+          "cwd": "/tmp/th-l5-yxf46ajk/project",
+          "tmuxPaneId": "%1",
+          "backendType": "external",
+          "isActive": true,
+          "lastActivityAt": "2026-09-10T23:51:46.008Z",
+          "lastActivityReason": "message_sent",
+          "cli_tool": "claude",
+          "controlAuthTokenHash": "<redacted>",
+          "instructions": null,
+          "projectPath": "/tmp/th-l5-yxf46ajk/project",
+          "project_path": "/tmp/th-l5-yxf46ajk/project",
+          "role": "lead"
+        },
+        {
+          "agentId": "alpha@l5-restarts",
+          "name": "alpha",
+          "agentType": "general-purpose",
+          "model": "gpt-5.6-luna",
+          "joinedAt": 1789084250717,
+          "cwd": "/tmp/th-l5-yxf46ajk/project",
+          "tmuxPaneId": "%2",
+          "backendType": "external",
+          "isActive": true,
+          "lastActivityAt": "2026-09-10T23:52:42.394Z",
+          "lastActivityReason": "read_messages",
+          "cli_tool": "codex",
+          "controlAuthTokenHash": "<redacted>",
+          "instructions": "Reply briefly. Follow the project AGENTS.md. Never modify files.",
+          "projectPath": "/tmp/th-l5-yxf46ajk/project",
+          "project_path": "/tmp/th-l5-yxf46ajk/project",
+          "reasoningEffort": "low",
+          "role": "agent"
+        },
+        {
+          "agentId": "beta@l5-restarts",
+          "name": "beta",
+          "agentType": "general-purpose",
+          "model": "gpt-5.6-luna",
+          "joinedAt": 1789084250717,
+          "cwd": "/tmp/th-l5-yxf46ajk/project",
+          "tmuxPaneId": "%3",
+          "backendType": "external",
+          "isActive": true,
+          "lastActivityAt": "2026-09-10T23:52:44.026Z",
+          "lastActivityReason": "read_messages",
+          "adapter_mode": "app_server",
+          "cli_tool": "codex",
+          "controlAuthTokenHash": "<redacted>",
+          "instructions": "Reply briefly. Follow the project AGENTS.md. Never modify files.",
+          "projectPath": "/tmp/th-l5-yxf46ajk/project",
+          "project_path": "/tmp/th-l5-yxf46ajk/project",
+          "reasoningEffort": "low",
+          "role": "agent"
+        }
+      ],
+      "created_at": "2026-09-10T23:50:50.717Z",
+      "delivery_owner": "team",
+      "messaging_activation": "disposable-mesh-only",
+      "messaging_format": 2,
+      "messaging_policy": {
+        "approved_by": "taurhaus-operator",
+        "archive_access": "captured-audience",
+        "archive_owner": "lead",
+        "canonical_writers": "mesh-only",
+        "capture_scope": "mesh-producers-only",
+        "closure": "manual-disposal-after-evidence-export",
+        "dm_horizon_days": 7,
+        "inactive_horizon_days": 14,
+        "purge_implemented": false,
+        "retry_horizon_days": 30,
+        "review_horizon_days": 30,
+        "synthetic_disposable": true,
+        "task_horizon_days": 30
+      },
+      "minimum_writer": "mesh-journal/2",
+      "schema_version": 1,
+      "team_incarnation_id": "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483"
+    },
+    "epoch": {
+      "root": "/tmp/th-l5-yxf46ajk/claude",
+      "directory_identity": [
+        2096,
+        1333228
+      ],
+      "incarnation": "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483",
+      "epoch": 3,
+      "pid": 5802,
+      "process_start": "30484467"
+    },
+    "processes": [
+      {
+        "pid": 2801768,
+        "start_ticks": "30478789",
+        "argv": [
+          "bwrap",
+          "--die-with-parent",
+          "--unshare-pid",
+          "--ro-bind",
+          "/",
+          "/",
+          "--tmpfs",
+          "/home",
+          "--tmpfs",
+          "/tmp",
+          "--tmpfs",
+          "/run",
+          "--proc",
+          "/proc",
+          "--dev",
+          "/dev",
+          "--bind",
+          "/tmp/th-l5-yxf46ajk",
+          "/tmp/th-l5-yxf46ajk",
+          "--chdir",
+          "/tmp/th-l5-yxf46ajk/project",
+          "/bin/bash",
+          "/tmp/th-l5-yxf46ajk/boot.sh",
+          ""
+        ]
+      },
+      {
+        "pid": 2801770,
+        "start_ticks": "30478789",
+        "argv": [
+          "bwrap",
+          "--die-with-parent",
+          "--unshare-pid",
+          "--ro-bind",
+          "/",
+          "/",
+          "--tmpfs",
+          "/home",
+          "--tmpfs",
+          "/tmp",
+          "--tmpfs",
+          "/run",
+          "--proc",
+          "/proc",
+          "--dev",
+          "/dev",
+          "--bind",
+          "/tmp/th-l5-yxf46ajk",
+          "/tmp/th-l5-yxf46ajk",
+          "--chdir",
+          "/tmp/th-l5-yxf46ajk/project",
+          "/bin/bash",
+          "/tmp/th-l5-yxf46ajk/boot.sh",
+          ""
+        ]
+      },
+      {
+        "pid": 2801771,
+        "start_ticks": "30478789",
+        "argv": [
+          "/bin/bash",
+          "/tmp/th-l5-yxf46ajk/boot.sh",
+          ""
+        ]
+      },
+      {
+        "pid": 2801772,
+        "start_ticks": "30478789",
+        "argv": [
+          "tmux",
+          "-D",
+          "-f",
+          "/dev/null",
+          ""
+        ]
+      },
+      {
+        "pid": 2801778,
+        "start_ticks": "30478800",
+        "argv": [
+          "/bin/bash",
+          ""
+        ]
+      },
+      {
+        "pid": 2801934,
+        "start_ticks": "30478860",
+        "argv": [
+          "/bin/bash",
+          "-ic",
+          "cd '/tmp/th-l5-yxf46ajk/project' && CLAUDE_DIR='/tmp/th-l5-yxf46ajk/claude' CLAUDE_CONFIG_DIR='/tmp/th-l5-yxf46ajk/claude' CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions --model 'claude-haiku-4-5' --team-name 'l5-restarts' --agent-name 'lead' --agent-id 'lead@l5-restarts' --agent-type 'orchestrator' -n 'lead'; exec \"$SHELL\"",
+          ""
+        ]
+      },
+      {
+        "pid": 2801937,
+        "start_ticks": "30478860",
+        "argv": [
+          "claude",
+          "--dangerously-skip-permissions",
+          "--model",
+          "claude-haiku-4-5",
+          "--team-name",
+          "l5-restarts",
+          "--agent-name",
+          "lead",
+          "--agent-id",
+          "lead@l5-restarts",
+          "--agent-type",
+          "orchestrator",
+          "-n",
+          "lead",
+          ""
+        ]
+      },
+      {
+        "pid": 2802026,
+        "start_ticks": "30478865",
+        "argv": [
+          "/bin/bash",
+          "-ic",
+          "cd '/tmp/th-l5-yxf46ajk/project' && CLAUDE_DIR='/tmp/th-l5-yxf46ajk/claude' CODEX_HOME='/tmp/th-l5-yxf46ajk/codex' codex --yolo --dangerously-bypass-hook-trust -c 'notify=[\"/tmp/th-l5-yxf46ajk/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]' -m 'gpt-5.6-luna' -c 'model_reasoning_effort=\"low\"'; exec \"$SHELL\"",
+          ""
+        ]
+      },
+      {
+        "pid": 2802034,
+        "start_ticks": "30478866",
+        "argv": [
+          "codex",
+          "--yolo",
+          "--dangerously-bypass-hook-trust",
+          "-c",
+          "notify=[\"/tmp/th-l5-yxf46ajk/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]",
+          "-m",
+          "gpt-5.6-luna",
+          "-c",
+          "model_reasoning_effort=\"low\"",
+          ""
+        ]
+      },
+      {
+        "pid": 2807275,
+        "start_ticks": "30479869",
+        "argv": [
+          "/tmp/th-l5-yxf46ajk/home/.local/bin/codex-code-mode-host",
+          ""
+        ]
+      },
+      {
+        "pid": 2811028,
+        "start_ticks": "30482017",
+        "argv": [
+          "/bin/bash",
+          "-c",
+          "/tmp/th-l5-yxf46ajk/home/.local/bin/taurhaus-daemon --port 23252 --data-dir /tmp/th-l5-yxf46ajk/data >>/tmp/th-l5-yxf46ajk/daemon-restart.log 2>&1",
+          ""
+        ]
+      },
+      {
+        "pid": 2811030,
+        "start_ticks": "30482017",
+        "argv": [
+          "/tmp/th-l5-yxf46ajk/home/.local/bin/taurhaus-daemon",
+          "--port",
+          "23252",
+          "--data-dir",
+          "/tmp/th-l5-yxf46ajk/data",
+          ""
+        ]
+      },
+      {
+        "pid": 2811150,
+        "start_ticks": "30482053",
+        "argv": [
+          "codex",
+          "-c",
+          "approval_policy=\"never\"",
+          "-c",
+          "sandbox_mode=\"danger-full-access\"",
+          "-c",
+          "model=\"gpt-5.6-luna\"",
+          "-c",
+          "model_reasoning_effort=\"low\"",
+          "app-server",
+          "--listen",
+          "unix:///tmp/th-l5-yxf46ajk/tmp/th-host-2d6571b077ec44278e8460a80801ffc1/rpc.sock",
+          ""
+        ]
+      },
+      {
+        "pid": 2812374,
+        "start_ticks": "30482379",
+        "argv": [
+          "-bash",
+          ""
+        ]
+      },
+      {
+        "pid": 2812542,
+        "start_ticks": "30482416",
+        "argv": [
+          "codex",
+          "--remote",
+          "unix:///tmp/th-l5-yxf46ajk/tmp/th-host-2d6571b077ec44278e8460a80801ffc1/rpc.sock",
+          "resume",
+          "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+          "--no-alt-screen",
+          "--strict-config",
+          ""
+        ]
+      },
+      {
+        "pid": 2813955,
+        "start_ticks": "30482910",
+        "argv": [
+          "/tmp/th-l5-yxf46ajk/home/.local/bin/codex-code-mode-host",
+          ""
+        ]
+      },
+      {
+        "pid": 2816059,
+        "start_ticks": "30484467",
+        "argv": [
+          "/tmp/th-l5-yxf46ajk/home/.local/bin/mesh",
+          "team-daemon",
+          "start",
+          "--team",
+          "l5-restarts",
+          "--name",
+          "lead",
+          "--claude-dir",
+          "/tmp/th-l5-yxf46ajk/claude",
+          ""
+        ]
+      },
+      {
+        "pid": 2826714,
+        "start_ticks": "30490321",
+        "argv": [
+          "sleep",
+          "1",
+          ""
+        ]
+      }
+    ]
+  },
+  "owner_samples": 3,
+  "max_simultaneous_observed_owners": 0,
+  "owner_evidence": {
+    "outcome": "UNPROVED",
+    "classification": "harness",
+    "reason": "owner-process filter matched nothing; zero owners sampled",
+    "samples": 3,
+    "max_simultaneous_observed_owners": 0
+  },
+  "turns": [
+    {
+      "turn_id": "01a08dbb-4242-72c0-80f0-a9e2458df810",
+      "thread_id": "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+      "started": "2026-09-10T23:50:55.188Z",
+      "completed": "2026-09-10T23:51:01.197Z",
+      "duration_seconds": 6.009,
+      "generations": [
+        {
+          "thread_id": "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+          "turn_id": "01a08dbb-4242-72c0-80f0-a9e2458df810",
+          "input": 10983,
+          "cached_input": 6912,
+          "output": 79,
+          "reasoning_output": 59,
+          "api_equivalent_usd": 0.00104724,
+          "conservative_usd": 0.0132744
+        }
+      ],
+      "metered_usd": 0.00104724
+    },
+    {
+      "turn_id": "01a08dbb-4ee8-71d2-8879-f23b71640de3",
+      "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+      "started": "2026-09-10T23:50:58.046Z",
+      "completed": "2026-09-10T23:51:02.821Z",
+      "duration_seconds": 4.775,
+      "generations": [
+        {
+          "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+          "turn_id": "01a08dbb-4ee8-71d2-8879-f23b71640de3",
+          "input": 9272,
+          "cached_input": 0,
+          "output": 94,
+          "reasoning_output": 22,
+          "api_equivalent_usd": 0.0019672,
+          "conservative_usd": 0.0112392
+        },
+        {
+          "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+          "turn_id": "01a08dbb-4ee8-71d2-8879-f23b71640de3",
+          "input": 10776,
+          "cached_input": 8960,
+          "output": 40,
+          "reasoning_output": 28,
+          "api_equivalent_usd": 0.0005904,
+          "conservative_usd": 0.0129792
+        }
+      ],
+      "metered_usd": 0.0025576
+    },
+    {
+      "turn_id": "01a08dbb-50be-7712-92a3-7be76fd35c7d",
+      "thread_id": "notify-only session",
+      "started": null,
+      "completed": null,
+      "duration_seconds": null,
+      "generations": [],
+      "metered_usd": null
+    },
+    {
+      "turn_id": "01a08dbb-6b61-70e1-9cfc-a2be754aea88",
+      "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+      "started": "2026-09-10T23:51:05.318Z",
+      "completed": "2026-09-10T23:51:09.706Z",
+      "duration_seconds": 4.388,
+      "generations": [
+        {
+          "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+          "turn_id": "01a08dbb-6b61-70e1-9cfc-a2be754aea88",
+          "input": 10874,
+          "cached_input": 9984,
+          "output": 82,
+          "reasoning_output": 10,
+          "api_equivalent_usd": 0.00047608,
+          "conservative_usd": 0.0131472
+        },
+        {
+          "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+          "turn_id": "01a08dbb-6b61-70e1-9cfc-a2be754aea88",
+          "input": 11753,
+          "cached_input": 9984,
+          "output": 50,
+          "reasoning_output": 34,
+          "api_equivalent_usd": 0.00061348,
+          "conservative_usd": 0.0141636
+        }
+      ],
+      "metered_usd": 0.00108956
+    },
+    {
+      "turn_id": "01a08dbb-860b-7192-ac52-75df81ea4ee3",
+      "thread_id": "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+      "started": "2026-09-10T23:51:12.210Z",
+      "completed": "2026-09-10T23:51:14.914Z",
+      "duration_seconds": 2.704,
+      "generations": [
+        {
+          "thread_id": "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+          "turn_id": "01a08dbb-860b-7192-ac52-75df81ea4ee3",
+          "input": 11890,
+          "cached_input": 9984,
+          "output": 15,
+          "reasoning_output": 0,
+          "api_equivalent_usd": 0.00059888,
+          "conservative_usd": 0.014286
+        }
+      ],
+      "metered_usd": 0.00059888
+    },
+    {
+      "turn_id": "01a08dbb-a381-7473-a868-71d190c54d8b",
+      "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+      "started": "2026-09-10T23:51:19.686Z",
+      "completed": "2026-09-10T23:51:27.279Z",
+      "duration_seconds": 7.593,
+      "generations": [
+        {
+          "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+          "turn_id": "01a08dbb-a381-7473-a868-71d190c54d8b",
+          "input": 11885,
+          "cached_input": 0,
+          "output": 224,
+          "reasoning_output": 110,
+          "api_equivalent_usd": 0.0026458,
+          "conservative_usd": 0.0145308
+        },
+        {
+          "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+          "turn_id": "01a08dbb-a381-7473-a868-71d190c54d8b",
+          "input": 12175,
+          "cached_input": 11008,
+          "output": 114,
+          "reasoning_output": 97,
+          "api_equivalent_usd": 0.00059036,
+          "conservative_usd": 0.0147468
+        }
+      ],
+      "metered_usd": 0.00323616
+    },
+    {
+      "turn_id": "01a08dbb-a48f-7020-b929-ae5b831461d7",
+      "thread_id": "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+      "started": "2026-09-10T23:51:20.017Z",
+      "completed": null,
+      "duration_seconds": null,
+      "generations": [],
+      "metered_usd": null
+    },
+    {
+      "turn_id": "01a08dbb-bb32-7800-a439-148df3c7aadc",
+      "thread_id": "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+      "started": "2026-09-10T23:51:25.842Z",
+      "completed": "2026-09-10T23:51:34.353Z",
+      "duration_seconds": 8.511,
+      "generations": [
+        {
+          "thread_id": "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+          "turn_id": "01a08dbb-bb32-7800-a439-148df3c7aadc",
+          "input": 12635,
+          "cached_input": 11008,
+          "output": 191,
+          "reasoning_output": 77,
+          "api_equivalent_usd": 0.00077476,
+          "conservative_usd": 0.0153912
+        },
+        {
+          "thread_id": "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+          "turn_id": "01a08dbb-bb32-7800-a439-148df3c7aadc",
+          "input": 12892,
+          "cached_input": 12032,
+          "output": 90,
+          "reasoning_output": 73,
+          "api_equivalent_usd": 0.00052064,
+          "conservative_usd": 0.0155784
+        }
+      ],
+      "metered_usd": 0.0012954
+    },
+    {
+      "turn_id": "01a08dbb-c321-7880-bfb4-f7097dea9334",
+      "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+      "started": "2026-09-10T23:51:27.782Z",
+      "completed": "2026-09-10T23:51:31.255Z",
+      "duration_seconds": 3.473,
+      "generations": [
+        {
+          "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+          "turn_id": "01a08dbb-c321-7880-bfb4-f7097dea9334",
+          "input": 12350,
+          "cached_input": 11008,
+          "output": 82,
+          "reasoning_output": 10,
+          "api_equivalent_usd": 0.00058696,
+          "conservative_usd": 0.0149184
+        },
+        {
+          "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+          "turn_id": "01a08dbb-c321-7880-bfb4-f7097dea9334",
+          "input": 13229,
+          "cached_input": 12032,
+          "output": 17,
+          "reasoning_output": 0,
+          "api_equivalent_usd": 0.00050044,
+          "conservative_usd": 0.0158952
+        }
+      ],
+      "metered_usd": 0.0010874
+    },
+    {
+      "turn_id": "01a08dbb-e5c4-7662-9d90-d7363cef470f",
+      "thread_id": "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+      "started": "2026-09-10T23:51:36.655Z",
+      "completed": "2026-09-10T23:51:38.861Z",
+      "duration_seconds": 2.206,
+      "generations": [
+        {
+          "thread_id": "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+          "turn_id": "01a08dbb-e5c4-7662-9d90-d7363cef470f",
+          "input": 13091,
+          "cached_input": 12032,
+          "output": 27,
+          "reasoning_output": 8,
+          "api_equivalent_usd": 0.00048484,
+          "conservative_usd": 0.0157416
+        }
+      ],
+      "metered_usd": 0.00048484
+    },
+    {
+      "turn_id": "01a08dbc-03ae-77b2-a188-1451c98da694",
+      "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+      "started": "2026-09-10T23:51:44.307Z",
+      "completed": "2026-09-10T23:52:29.262Z",
+      "duration_seconds": 44.955,
+      "generations": [
+        {
+          "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+          "turn_id": "01a08dbc-03ae-77b2-a188-1451c98da694",
+          "input": 13328,
+          "cached_input": 13056,
+          "output": 182,
+          "reasoning_output": 64,
+          "api_equivalent_usd": 0.00053392,
+          "conservative_usd": 0.016212
+        },
+        {
+          "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+          "turn_id": "01a08dbc-03ae-77b2-a188-1451c98da694",
+          "input": 14169,
+          "cached_input": 13056,
+          "output": 44,
+          "reasoning_output": 11,
+          "api_equivalent_usd": 0.00053652,
+          "conservative_usd": 0.0170556
+        },
+        {
+          "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+          "turn_id": "01a08dbc-03ae-77b2-a188-1451c98da694",
+          "input": 14246,
+          "cached_input": 12032,
+          "output": 67,
+          "reasoning_output": 20,
+          "api_equivalent_usd": 0.00076384,
+          "conservative_usd": 0.0171756
+        },
+        {
+          "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+          "turn_id": "01a08dbc-03ae-77b2-a188-1451c98da694",
+          "input": 14570,
+          "cached_input": 14080,
+          "output": 5,
+          "reasoning_output": 0,
+          "api_equivalent_usd": 0.0003856,
+          "conservative_usd": 0.01749
+        }
+      ],
+      "metered_usd": 0.00221988
+    },
+    {
+      "turn_id": "01a08dbc-04b2-7163-b6e5-7c672ee51c52",
+      "thread_id": "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+      "started": "2026-09-10T23:51:44.565Z",
+      "completed": "2026-09-10T23:52:30.214Z",
+      "duration_seconds": 45.649,
+      "generations": [
+        {
+          "thread_id": "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+          "turn_id": "01a08dbc-04b2-7163-b6e5-7c672ee51c52",
+          "input": 13200,
+          "cached_input": 12032,
+          "output": 156,
+          "reasoning_output": 40,
+          "api_equivalent_usd": 0.00066144,
+          "conservative_usd": 0.0160272
+        },
+        {
+          "thread_id": "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+          "turn_id": "01a08dbc-04b2-7163-b6e5-7c672ee51c52",
+          "input": 14015,
+          "cached_input": 6912,
+          "output": 63,
+          "reasoning_output": 15,
+          "api_equivalent_usd": 0.00163444,
+          "conservative_usd": 0.0168936
+        },
+        {
+          "thread_id": "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+          "turn_id": "01a08dbc-04b2-7163-b6e5-7c672ee51c52",
+          "input": 14336,
+          "cached_input": 13056,
+          "output": 5,
+          "reasoning_output": 0,
+          "api_equivalent_usd": 0.00052312,
+          "conservative_usd": 0.0172092
+        }
+      ],
+      "metered_usd": 0.002819
+    },
+    {
+      "turn_id": "01a08dbc-b799-7850-8557-398c88861d69",
+      "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+      "started": "2026-09-10T23:52:30.366Z",
+      "completed": "2026-09-10T23:52:33.695Z",
+      "duration_seconds": 3.329,
+      "generations": [
+        {
+          "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+          "turn_id": "01a08dbc-b799-7850-8557-398c88861d69",
+          "input": 14635,
+          "cached_input": 14080,
+          "output": 79,
+          "reasoning_output": 7,
+          "api_equivalent_usd": 0.0004874,
+          "conservative_usd": 0.0176568
+        },
+        {
+          "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+          "turn_id": "01a08dbc-b799-7850-8557-398c88861d69",
+          "input": 15539,
+          "cached_input": 13056,
+          "output": 15,
+          "reasoning_output": 0,
+          "api_equivalent_usd": 0.00077572,
+          "conservative_usd": 0.0186648
+        }
+      ],
+      "metered_usd": 0.00126312
+    },
+    {
+      "turn_id": "01a08dbc-ca7f-7413-af48-9e94ea42fe3a",
+      "thread_id": "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+      "started": "2026-09-10T23:52:35.220Z",
+      "completed": "2026-09-10T23:52:37.224Z",
+      "duration_seconds": 2.004,
+      "generations": [
+        {
+          "thread_id": "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+          "turn_id": "01a08dbc-ca7f-7413-af48-9e94ea42fe3a",
+          "input": 14455,
+          "cached_input": 14080,
+          "output": 14,
+          "reasoning_output": 0,
+          "api_equivalent_usd": 0.0003734,
+          "conservative_usd": 0.0173628
+        }
+      ],
+      "metered_usd": 0.0003734
+    }
+  ],
+  "spend": {
+    "model": "gpt-5.6-luna",
+    "effort": "low",
+    "turn_ids": [
+      "01a08dbb-4242-72c0-80f0-a9e2458df810",
+      "01a08dbb-4ee8-71d2-8879-f23b71640de3",
+      "01a08dbb-50be-7712-92a3-7be76fd35c7d",
+      "01a08dbb-6b61-70e1-9cfc-a2be754aea88",
+      "01a08dbb-860b-7192-ac52-75df81ea4ee3",
+      "01a08dbb-a381-7473-a868-71d190c54d8b",
+      "01a08dbb-a48f-7020-b929-ae5b831461d7",
+      "01a08dbb-bb32-7800-a439-148df3c7aadc",
+      "01a08dbb-c321-7880-bfb4-f7097dea9334",
+      "01a08dbb-e5c4-7662-9d90-d7363cef470f",
+      "01a08dbc-03ae-77b2-a188-1451c98da694",
+      "01a08dbc-04b2-7163-b6e5-7c672ee51c52",
+      "01a08dbc-b799-7850-8557-398c88861d69",
+      "01a08dbc-ca7f-7413-af48-9e94ea42fe3a"
+    ],
+    "paid_inputs": 14,
+    "generations": [
+      {
+        "thread_id": "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+        "turn_id": "01a08dbb-4242-72c0-80f0-a9e2458df810",
+        "input": 10983,
+        "cached_input": 6912,
+        "output": 79,
+        "reasoning_output": 59,
+        "api_equivalent_usd": 0.00104724,
+        "conservative_usd": 0.0132744
+      },
+      {
+        "thread_id": "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+        "turn_id": "01a08dbb-860b-7192-ac52-75df81ea4ee3",
+        "input": 11890,
+        "cached_input": 9984,
+        "output": 15,
+        "reasoning_output": 0,
+        "api_equivalent_usd": 0.00059888,
+        "conservative_usd": 0.014286
+      },
+      {
+        "thread_id": "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+        "turn_id": "01a08dbb-bb32-7800-a439-148df3c7aadc",
+        "input": 12635,
+        "cached_input": 11008,
+        "output": 191,
+        "reasoning_output": 77,
+        "api_equivalent_usd": 0.00077476,
+        "conservative_usd": 0.0153912
+      },
+      {
+        "thread_id": "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+        "turn_id": "01a08dbb-bb32-7800-a439-148df3c7aadc",
+        "input": 12892,
+        "cached_input": 12032,
+        "output": 90,
+        "reasoning_output": 73,
+        "api_equivalent_usd": 0.00052064,
+        "conservative_usd": 0.0155784
+      },
+      {
+        "thread_id": "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+        "turn_id": "01a08dbb-e5c4-7662-9d90-d7363cef470f",
+        "input": 13091,
+        "cached_input": 12032,
+        "output": 27,
+        "reasoning_output": 8,
+        "api_equivalent_usd": 0.00048484,
+        "conservative_usd": 0.0157416
+      },
+      {
+        "thread_id": "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+        "turn_id": "01a08dbc-04b2-7163-b6e5-7c672ee51c52",
+        "input": 13200,
+        "cached_input": 12032,
+        "output": 156,
+        "reasoning_output": 40,
+        "api_equivalent_usd": 0.00066144,
+        "conservative_usd": 0.0160272
+      },
+      {
+        "thread_id": "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+        "turn_id": "01a08dbc-04b2-7163-b6e5-7c672ee51c52",
+        "input": 14015,
+        "cached_input": 6912,
+        "output": 63,
+        "reasoning_output": 15,
+        "api_equivalent_usd": 0.00163444,
+        "conservative_usd": 0.0168936
+      },
+      {
+        "thread_id": "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+        "turn_id": "01a08dbc-04b2-7163-b6e5-7c672ee51c52",
+        "input": 14336,
+        "cached_input": 13056,
+        "output": 5,
+        "reasoning_output": 0,
+        "api_equivalent_usd": 0.00052312,
+        "conservative_usd": 0.0172092
+      },
+      {
+        "thread_id": "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+        "turn_id": "01a08dbc-ca7f-7413-af48-9e94ea42fe3a",
+        "input": 14455,
+        "cached_input": 14080,
+        "output": 14,
+        "reasoning_output": 0,
+        "api_equivalent_usd": 0.0003734,
+        "conservative_usd": 0.0173628
+      },
+      {
+        "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+        "turn_id": "01a08dbb-4ee8-71d2-8879-f23b71640de3",
+        "input": 9272,
+        "cached_input": 0,
+        "output": 94,
+        "reasoning_output": 22,
+        "api_equivalent_usd": 0.0019672,
+        "conservative_usd": 0.0112392
+      },
+      {
+        "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+        "turn_id": "01a08dbb-4ee8-71d2-8879-f23b71640de3",
+        "input": 10776,
+        "cached_input": 8960,
+        "output": 40,
+        "reasoning_output": 28,
+        "api_equivalent_usd": 0.0005904,
+        "conservative_usd": 0.0129792
+      },
+      {
+        "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+        "turn_id": "01a08dbb-6b61-70e1-9cfc-a2be754aea88",
+        "input": 10874,
+        "cached_input": 9984,
+        "output": 82,
+        "reasoning_output": 10,
+        "api_equivalent_usd": 0.00047608,
+        "conservative_usd": 0.0131472
+      },
+      {
+        "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+        "turn_id": "01a08dbb-6b61-70e1-9cfc-a2be754aea88",
+        "input": 11753,
+        "cached_input": 9984,
+        "output": 50,
+        "reasoning_output": 34,
+        "api_equivalent_usd": 0.00061348,
+        "conservative_usd": 0.0141636
+      },
+      {
+        "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+        "turn_id": "01a08dbb-a381-7473-a868-71d190c54d8b",
+        "input": 11885,
+        "cached_input": 0,
+        "output": 224,
+        "reasoning_output": 110,
+        "api_equivalent_usd": 0.0026458,
+        "conservative_usd": 0.0145308
+      },
+      {
+        "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+        "turn_id": "01a08dbb-a381-7473-a868-71d190c54d8b",
+        "input": 12175,
+        "cached_input": 11008,
+        "output": 114,
+        "reasoning_output": 97,
+        "api_equivalent_usd": 0.00059036,
+        "conservative_usd": 0.0147468
+      },
+      {
+        "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+        "turn_id": "01a08dbb-c321-7880-bfb4-f7097dea9334",
+        "input": 12350,
+        "cached_input": 11008,
+        "output": 82,
+        "reasoning_output": 10,
+        "api_equivalent_usd": 0.00058696,
+        "conservative_usd": 0.0149184
+      },
+      {
+        "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+        "turn_id": "01a08dbb-c321-7880-bfb4-f7097dea9334",
+        "input": 13229,
+        "cached_input": 12032,
+        "output": 17,
+        "reasoning_output": 0,
+        "api_equivalent_usd": 0.00050044,
+        "conservative_usd": 0.0158952
+      },
+      {
+        "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+        "turn_id": "01a08dbc-03ae-77b2-a188-1451c98da694",
+        "input": 13328,
+        "cached_input": 13056,
+        "output": 182,
+        "reasoning_output": 64,
+        "api_equivalent_usd": 0.00053392,
+        "conservative_usd": 0.016212
+      },
+      {
+        "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+        "turn_id": "01a08dbc-03ae-77b2-a188-1451c98da694",
+        "input": 14169,
+        "cached_input": 13056,
+        "output": 44,
+        "reasoning_output": 11,
+        "api_equivalent_usd": 0.00053652,
+        "conservative_usd": 0.0170556
+      },
+      {
+        "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+        "turn_id": "01a08dbc-03ae-77b2-a188-1451c98da694",
+        "input": 14246,
+        "cached_input": 12032,
+        "output": 67,
+        "reasoning_output": 20,
+        "api_equivalent_usd": 0.00076384,
+        "conservative_usd": 0.0171756
+      },
+      {
+        "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+        "turn_id": "01a08dbc-03ae-77b2-a188-1451c98da694",
+        "input": 14570,
+        "cached_input": 14080,
+        "output": 5,
+        "reasoning_output": 0,
+        "api_equivalent_usd": 0.0003856,
+        "conservative_usd": 0.01749
+      },
+      {
+        "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+        "turn_id": "01a08dbc-b799-7850-8557-398c88861d69",
+        "input": 14635,
+        "cached_input": 14080,
+        "output": 79,
+        "reasoning_output": 7,
+        "api_equivalent_usd": 0.0004874,
+        "conservative_usd": 0.0176568
+      },
+      {
+        "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+        "turn_id": "01a08dbc-b799-7850-8557-398c88861d69",
+        "input": 15539,
+        "cached_input": 13056,
+        "output": 15,
+        "reasoning_output": 0,
+        "api_equivalent_usd": 0.00077572,
+        "conservative_usd": 0.0186648
+      }
+    ],
+    "api_equivalent_usd": 0.01807248,
+    "conservative_usd": 0.3576396,
+    "metering_complete": false,
+    "unmetered_turn_ids": [
+      "01a08dbb-50be-7712-92a3-7be76fd35c7d",
+      "01a08dbb-a48f-7020-b929-ae5b831461d7"
+    ],
+    "basis": "Host tokenUsage.last via daemon hosted_transcript; packet rates $0.20/$0.02/$1.20 per million input/cached/output. Estimate, not invoice."
+  },
+  "cleanup": {
+    "survivors": [],
+    "port_closed": true,
+    "root": "/tmp/th-l5-yxf46ajk",
+    "auth_copy_removed_before_root": true,
+    "root_removed": true,
+    "auth_removed": true
+  },
+  "controller_exit": 0,
+  "daemon_jsonl": {
+    "rows": 440,
+    "sha256": "471a7cc833b2a72d33d9c03c60b369698268008f504478c9c99b28833f0c0f5f"
+  },
+  "resume_operations": [
+    {
+      "at": 1789084282.604639,
+      "kind": "daemon_request",
+      "request": {
+        "id": "8c65ffbfae2ddaa6",
+        "method": "coordination.resume_member",
+        "params": {
+          "request": {
+            "team_name": "l5-restarts",
+            "member_name": "beta"
+          },
+          "cli_commands": {
+            "codex": {
+              "fresh": "codex --yolo",
+              "continue_cmd": "codex --yolo",
+              "resume": "codex --yolo resume"
+            }
+          },
+          "tmux_layout": "new_window"
+        }
+      }
+    }
+  ],
+  "transient_refusals": [],
+  "candidate": {
+    "product_commit": "a7e6db7e",
+    "mesh_commit": "310144d",
+    "descriptor": "enabled, unchanged",
+    "codex": "0.153.4",
+    "model": "gpt-5.6-luna",
+    "effort": "low",
+    "binaries": [
+      {
+        "at": 1789084249.6819773,
+        "kind": "binary",
+        "name": "codex",
+        "sha256": "56ef98ab4032d317ab26e9b5e5a175650717351edb16ed9cde0cb6d1734d62da"
+      },
+      {
+        "at": 1789084249.7516077,
+        "kind": "binary",
+        "name": "codex-code-mode-host",
+        "sha256": "3e85d67471825f73d02ff5f7e047ca1f6ca8caa3f59e4c6e8d9ca6ca7302cb45"
+      },
+      {
+        "at": 1789084249.8357236,
+        "kind": "binary",
+        "name": "mesh",
+        "sha256": "ec8f15c976e664a983be67ad5c0cef952e8d099b67a05c25f0033a7a845c6e92"
+      },
+      {
+        "at": 1789084250.0359066,
+        "kind": "binary",
+        "name": "claude",
+        "sha256": "0399c793ff571d5946ef923d80b4f330d05ac4b6842a6b0775468f5d389403c0"
+      },
+      {
+        "at": 1789084250.063095,
+        "kind": "binary",
+        "name": "taurhaus-daemon",
+        "sha256": "4304d1d0350768021c2af8a47ac88e95993cdc1e32c0a1942ee9f73cb1eea906"
+      }
+    ]
+  },
+  "gates": {
+    "check-quick": {
+      "command": [
+        "just",
+        "check-quick"
+      ],
+      "exit": 0,
+      "seconds": 30.944206473010127,
+      "cargo_preflight": [
+        {
+          "exit": 0,
+          "output": "2831413 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --test delivery_handoff --test delivery_adapter --test journal_stage3\n"
+        }
+      ]
+    },
+    "lint": {
+      "command": [
+        "just",
+        "lint"
+      ],
+      "exit": 0,
+      "seconds": 37.29293005599175,
+      "cargo_preflight": [
+        {
+          "exit": 0,
+          "output": "2831413 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --test delivery_handoff --test delivery_adapter --test journal_stage3\n"
+        }
+      ]
+    },
+    "test-contracts": {
+      "command": [
+        "just",
+        "test-contracts"
+      ],
+      "exit": 0,
+      "seconds": 21.570365510997362,
+      "cargo_preflight": [
+        {
+          "exit": 0,
+          "output": "2843797 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test\n"
+        }
+      ]
+    }
+  },
+  "gate_cleanup": {
+    "children_waited": true,
+    "root_removed": true
+  },
+  "limitations": [
+    "First paced task selected unavailable python; minimum 30 seconds at first boundary unproved. Second tasks used python3 and completed after 44.955/45.649 seconds.",
+    "Pacing used an ordinary Python task, rather than free-form model streaming.",
+    "Two unknown-cost inputs; metered cap verified only.",
+    "Opus round 1 found the owner-process filter inert: zero owners sampled; no-overlapping-owners sub-claim UNPROVED (harness). Only restart-self stop/start output supplies sequencing evidence."
+  ]
+}

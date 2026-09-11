@@ -1,0 +1,142 @@
+[
+  {
+    "thread_id": "01a08e0a-13b0-7751-973d-2a03810c8b97",
+    "timestamp": "2026-09-11T01:17:07.386Z",
+    "ordinal": 1,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_started",
+      "turn_id": "01a08e0a-2fa0-7a31-a173-f660a54ee800",
+      "started_at": 1789089427,
+      "model_context_window": 31129,
+      "collaboration_mode_kind": "default"
+    }
+  },
+  {
+    "thread_id": "01a08e0a-13b0-7751-973d-2a03810c8b97",
+    "timestamp": "2026-09-11T01:17:10.945Z",
+    "ordinal": 14,
+    "type": "event_msg",
+    "payload": {
+      "type": "token_count",
+      "info": {
+        "total_token_usage": {
+          "input_tokens": 9277,
+          "cached_input_tokens": 0,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 95,
+          "reasoning_output_tokens": 22,
+          "total_tokens": 9372
+        },
+        "last_token_usage": {
+          "input_tokens": 9277,
+          "cached_input_tokens": 0,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 95,
+          "reasoning_output_tokens": 22,
+          "total_tokens": 9372
+        },
+        "model_context_window": 31129
+      }
+    }
+  },
+  {
+    "thread_id": "01a08e0a-13b0-7751-973d-2a03810c8b97",
+    "timestamp": "2026-09-11T01:17:12.298Z",
+    "ordinal": 20,
+    "type": "event_msg",
+    "payload": {
+      "type": "token_count",
+      "info": {
+        "total_token_usage": {
+          "input_tokens": 20064,
+          "cached_input_tokens": 8960,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 132,
+          "reasoning_output_tokens": 50,
+          "total_tokens": 20196
+        },
+        "last_token_usage": {
+          "input_tokens": 10787,
+          "cached_input_tokens": 8960,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 37,
+          "reasoning_output_tokens": 28,
+          "total_tokens": 10824
+        },
+        "model_context_window": 31129
+      }
+    }
+  },
+  {
+    "thread_id": "01a08e0a-13b0-7751-973d-2a03810c8b97",
+    "timestamp": "2026-09-11T01:17:12.304Z",
+    "ordinal": 21,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_complete",
+      "turn_id": "01a08e0a-2fa0-7a31-a173-f660a54ee800",
+      "last_agent_message": "unavailable done",
+      "started_at": 1789089427,
+      "completed_at": 1789089432,
+      "duration_ms": 4938,
+      "time_to_first_token_ms": 2223
+    }
+  },
+  {
+    "thread_id": "01a08e0a-17b8-77a3-b506-cc440a9ffdd8",
+    "timestamp": "2026-09-11T01:17:02.947Z",
+    "ordinal": 1,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_started",
+      "turn_id": "01a08e0a-1dfb-7e30-80e9-62335f782801",
+      "started_at": 1789089422,
+      "model_context_window": 31129,
+      "collaboration_mode_kind": "default"
+    }
+  },
+  {
+    "thread_id": "01a08e0a-17b8-77a3-b506-cc440a9ffdd8",
+    "timestamp": "2026-09-11T01:17:12.760Z",
+    "ordinal": 13,
+    "type": "event_msg",
+    "payload": {
+      "type": "token_count",
+      "info": {
+        "total_token_usage": {
+          "input_tokens": 10796,
+          "cached_input_tokens": 6912,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 83,
+          "reasoning_output_tokens": 75,
+          "total_tokens": 10879
+        },
+        "last_token_usage": {
+          "input_tokens": 10796,
+          "cached_input_tokens": 6912,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 83,
+          "reasoning_output_tokens": 75,
+          "total_tokens": 10879
+        },
+        "model_context_window": 31129
+      }
+    }
+  },
+  {
+    "thread_id": "01a08e0a-17b8-77a3-b506-cc440a9ffdd8",
+    "timestamp": "2026-09-11T01:17:13.458Z",
+    "ordinal": 14,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_complete",
+      "turn_id": "01a08e0a-1dfb-7e30-80e9-62335f782801",
+      "last_agent_message": "\u2014 done",
+      "started_at": 1789089422,
+      "completed_at": 1789089433,
+      "duration_ms": 10614,
+      "time_to_first_token_ms": 9414
+    }
+  }
+]

@@ -1,0 +1,24 @@
+......EF..
+======================================================================
+ERROR: test_busy_uses_daemon_attribution_without_sidecar (support_test.Run2Ruling.test_busy_uses_daemon_attribution_without_sidecar)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/run2/support_test.py", line 72, in test_busy_uses_daemon_attribution_without_sidecar
+    from support import busy
+ImportError: cannot import name 'busy' from 'support' (/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/run2/support.py)
+
+======================================================================
+FAIL: test_fresh_twenty_input_thirty_cent_cap (support_test.Run2Ruling.test_fresh_twenty_input_thirty_cent_cap)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/run2/support_test.py", line 67, in test_fresh_twenty_input_thirty_cent_cap
+    enforce_budget(20,.30)
+  File "/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/run2/support.py", line 59, in enforce_budget
+    assert turns <= 12, 'turn budget reached'
+           ^^^^^^^^^^^
+AssertionError: turn budget reached
+
+----------------------------------------------------------------------
+Ran 10 tests in 0.005s
+
+FAILED (failures=1, errors=1)

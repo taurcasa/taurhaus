@@ -1,0 +1,13 @@
+....F
+======================================================================
+FAIL: test_all_runtime_steps_cannot_hide_unproved_working_window (run8_test.VerdictCoverage.test_all_runtime_steps_cannot_hide_unproved_working_window)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/run8/run8_test.py", line 38, in test_all_runtime_steps_cannot_hide_unproved_working_window
+    self.assertIsNotNone(fn)
+AssertionError: unexpectedly None
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.007s
+
+FAILED (failures=1)

@@ -1,0 +1,13 @@
+{
+  "command": [
+    "python3",
+    "-m",
+    "unittest",
+    "discover",
+    "-s",
+    "docs/design/evidence/e2e/l5-restarts",
+    "-p",
+    "*test.py"
+  ],
+  "exit": 0
+}

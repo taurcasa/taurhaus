@@ -1,0 +1,7 @@
+{
+  "step": 1,
+  "outcome": "FAIL",
+  "classification": "harness",
+  "reason": "transport-specific onboarding completion and fresh idle missing beta; polled 180.7s; startup card is present in host item/started and its turn completed, but the observer unnecessarily required item/completed for that user card",
+  "at": 1789089613.8685613
+}

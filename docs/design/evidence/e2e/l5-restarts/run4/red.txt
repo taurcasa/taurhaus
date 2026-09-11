@@ -1,0 +1,29 @@
+...............FFF...
+======================================================================
+FAIL: test_both_boundaries_request_explicit_python3_pacing (support_test.Run4Regression.test_both_boundaries_request_explicit_python3_pacing)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/run4/support_test.py", line 191, in test_both_boundaries_request_explicit_python3_pacing
+    self.assertIn('python3',text)
+AssertionError: 'python3' not found in 'For this bounded timing probe, execute one Python command: import time; for each integer from 1 through 400 print that number on its own line with flush=True and sleep 0.1 seconds, then print done. Wait for the command to finish, then reply done. This ordinary task must take at least 40 seconds. Do not modify files or run other commands.'
+
+======================================================================
+FAIL: test_owner_observer_retains_every_sample (support_test.Run4Regression.test_owner_observer_retains_every_sample)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/run4/support_test.py", line 200, in test_owner_observer_retains_every_sample
+    self.assertNotIn('previous',ast.unparse(observer))
+AssertionError: 'previous' unexpectedly found in "def observe_owners():\n    previous = None\n    with (OUT / 'owner-observations.jsonl').open('w', buffering=1) as stream:\n        while not owner_stop.is_set():\n            try:\n                owners = [i for i in identities() if 'team-daemon' in i['argv'] and 'run' in i['argv']]\n                path = ROOT / 'claude/teams' / TEAM / 'state/delivery/epoch.json'\n                epoch = json.loads(path.read_text()) if path.exists() else None\n                value = {'owners': owners, 'epoch': epoch}\n                if value != previous:\n                    stream.write(json.dumps(clean({'at': time.time(), **value})) + '\\n')\n                    previous = value\n            except (OSError, ValueError) as error:\n                stream.write(json.dumps({'at': time.time(), 'error': type(error).__name__}) + '\\n')\n            owner_stop.wait(0.5)"
+
+======================================================================
+FAIL: test_retained_run3_identities_match_exactly_one_live_owner (support_test.Run4Regression.test_retained_run3_identities_match_exactly_one_live_owner)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/run4/support_test.py", line 180, in test_retained_run3_identities_match_exactly_one_live_owner
+    self.assertEqual(len(matches),1)
+AssertionError: 0 != 1
+
+----------------------------------------------------------------------
+Ran 21 tests in 0.042s
+
+FAILED (failures=3)

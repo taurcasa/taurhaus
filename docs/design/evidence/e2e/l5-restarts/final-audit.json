@@ -1,0 +1,207 @@
+{
+  "runtime_verdict": "unavailable",
+  "controller_exit": 1,
+  "steps": {
+    "1": {
+      "step": 1,
+      "outcome": "PASS",
+      "classification": "runtime",
+      "at": 1789080166.9861488
+    },
+    "2": {
+      "step": 2,
+      "outcome": "FAIL",
+      "classification": "harness",
+      "reason": "submitted input did not yield attributed working alpha; polled 120.7s",
+      "at": 1789080305.1597571,
+      "diagnosis": "Observer rejected contemporaneous attributed active daemon snapshots; mixed activity-sidecar/daemon predicate. No backlog marker submitted; no restart."
+    },
+    "3": {
+      "step": 3,
+      "outcome": "NOT RUN",
+      "classification": "blocked by harness failure in step 2",
+      "paid_inputs": 0,
+      "metered_usd": 0,
+      "restart_issued": false
+    },
+    "4": {
+      "step": 4,
+      "outcome": "NOT RUN",
+      "classification": "blocked by harness failure in step 2",
+      "paid_inputs": 0,
+      "metered_usd": 0,
+      "restart_issued": false
+    },
+    "5": {
+      "step": 5,
+      "outcome": "NOT RUN",
+      "classification": "blocked by harness failure in step 2",
+      "paid_inputs": 0,
+      "metered_usd": 0,
+      "restart_issued": false
+    },
+    "6": {
+      "step": 6,
+      "outcome": "NOT RUN",
+      "classification": "blocked by harness failure in step 2",
+      "paid_inputs": 0,
+      "metered_usd": 0,
+      "restart_issued": false
+    }
+  },
+  "gates": {
+    "check-quick": {
+      "command": [
+        "just",
+        "check-quick"
+      ],
+      "exit": 0,
+      "seconds": 340.2508387439884,
+      "cargo_preflight": [
+        {
+          "exit": 1,
+          "output": ""
+        }
+      ]
+    },
+    "lint": {
+      "command": [
+        "just",
+        "lint"
+      ],
+      "exit": 0,
+      "seconds": 75.7225666870363,
+      "cargo_preflight": [
+        {
+          "exit": 0,
+          "output": "2288442 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo build --release --bin taurhaus-daemon\n2307559 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --manifest-path src-tauri/Cargo.toml --lib operator_resume_renders_recorded_session_for_codex_and_claude --no-run\n"
+        }
+      ]
+    },
+    "test-contracts": {
+      "command": [
+        "just",
+        "test-contracts"
+      ],
+      "exit": 0,
+      "seconds": 252.37559677299578,
+      "cargo_preflight": [
+        {
+          "exit": 0,
+          "output": "2288442 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo build --release --bin taurhaus-daemon\n2307559 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --manifest-path src-tauri/Cargo.toml --lib operator_resume_renders_recorded_session_for_codex_and_claude --no-run\n"
+        }
+      ]
+    }
+  },
+  "gate_cleanup": {
+    "children_waited": true,
+    "root_removed": true
+  },
+  "cleanup": {
+    "survivors": [],
+    "port_closed": true,
+    "root": "/tmp/th-l5-jg_gyq7i",
+    "auth_copy_removed_before_root": true,
+    "root_removed": true,
+    "auth_removed": true
+  },
+  "post_gate_surviving_owned_pid_start_identities": [],
+  "daemon_jsonl": {
+    "rows": 550,
+    "sha256": "9b30d2e4f45871ef1de6d2c2a580d01222134e7434135ab7e0f881cf0a438475"
+  },
+  "cost": {
+    "model": "gpt-5.6-luna",
+    "effort": "low",
+    "turn_ids": [
+      "01a08d7b-94ff-7832-9815-a6c090885bc4",
+      "01a08d7b-a152-7083-b5dc-39ce153ccbce",
+      "01a08d7b-a33f-7ab2-aff4-a220c99a86fd",
+      "01a08d7c-a71b-7361-875e-aee6cc62c65d",
+      "01a08d7c-ce36-7553-b18c-45f7d2389f4a",
+      "01a08d7d-2628-7d90-be18-fce8550131dc"
+    ],
+    "paid_inputs": 6,
+    "generations": [
+      {
+        "thread_id": "01a08d7b-8f23-7310-8a8c-bccfbbe625f7",
+        "turn_id": "01a08d7b-94ff-7832-9815-a6c090885bc4",
+        "input": 11145,
+        "cached_input": 6912,
+        "output": 94,
+        "reasoning_output": 85,
+        "api_equivalent_usd": 0.00109764,
+        "conservative_usd": 0.0134868
+      },
+      {
+        "thread_id": "01a08d7b-8f23-7310-8a8c-bccfbbe625f7",
+        "turn_id": "01a08d7c-ce36-7553-b18c-45f7d2389f4a",
+        "input": 11353,
+        "cached_input": 11008,
+        "output": 13,
+        "reasoning_output": 0,
+        "api_equivalent_usd": 0.00030476,
+        "conservative_usd": 0.0136392
+      },
+      {
+        "thread_id": "01a08d7b-8878-7071-9fb8-caa350aef74f",
+        "turn_id": "01a08d7b-a152-7083-b5dc-39ce153ccbce",
+        "input": 9282,
+        "cached_input": 6912,
+        "output": 96,
+        "reasoning_output": 22,
+        "api_equivalent_usd": 0.00072744,
+        "conservative_usd": 0.0112536
+      },
+      {
+        "thread_id": "01a08d7b-8878-7071-9fb8-caa350aef74f",
+        "turn_id": "01a08d7b-a152-7083-b5dc-39ce153ccbce",
+        "input": 10793,
+        "cached_input": 8960,
+        "output": 42,
+        "reasoning_output": 33,
+        "api_equivalent_usd": 0.0005962,
+        "conservative_usd": 0.013002
+      },
+      {
+        "thread_id": "01a08d7b-8878-7071-9fb8-caa350aef74f",
+        "turn_id": "01a08d7c-a71b-7361-875e-aee6cc62c65d",
+        "input": 10893,
+        "cached_input": 9984,
+        "output": 82,
+        "reasoning_output": 8,
+        "api_equivalent_usd": 0.00047988,
+        "conservative_usd": 0.01317
+      },
+      {
+        "thread_id": "01a08d7b-8878-7071-9fb8-caa350aef74f",
+        "turn_id": "01a08d7c-a71b-7361-875e-aee6cc62c65d",
+        "input": 11773,
+        "cached_input": 9984,
+        "output": 182,
+        "reasoning_output": 168,
+        "api_equivalent_usd": 0.00077588,
+        "conservative_usd": 0.014346
+      },
+      {
+        "thread_id": "01a08d7b-8878-7071-9fb8-caa350aef74f",
+        "turn_id": "01a08d7d-2628-7d90-be18-fce8550131dc",
+        "input": 11991,
+        "cached_input": 11008,
+        "output": 508,
+        "reasoning_output": 23,
+        "api_equivalent_usd": 0.00102636,
+        "conservative_usd": 0.0149988
+      }
+    ],
+    "api_equivalent_usd": 0.00500816,
+    "conservative_usd": 0.0938964,
+    "metering_complete": false,
+    "unmetered_turn_ids": [
+      "01a08d7b-a33f-7ab2-aff4-a220c99a86fd"
+    ],
+    "basis": "Host tokenUsage.last via daemon hosted_transcript; packet rates $0.20/$0.02/$1.20 per million input/cached/output. Estimate, not invoice."
+  },
+  "opus_review": "pending invoking orchestrator; not claimed",
+  "rust_diff": false
+}

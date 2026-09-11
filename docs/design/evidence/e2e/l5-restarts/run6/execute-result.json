@@ -1,0 +1,8 @@
+{
+  "command": "L5_CREDENTIAL_SOURCE=<authorized-source> python3 docs/design/evidence/e2e/l5-restarts/run6/execute.py",
+  "exit": 1,
+  "last_log_lines": [
+    "STEP 1 EXIT 1",
+    "CONTROLLER EXIT 1"
+  ]
+}

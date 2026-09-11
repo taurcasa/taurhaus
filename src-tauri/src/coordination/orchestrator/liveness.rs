@@ -15,6 +15,7 @@ use crate::coordination::validation::validate_team_name;
 use crate::session_scanner::cli_tool::spec;
 
 use super::helpers::{team_is_self_heal_candidate, team_should_ensure_daemon};
+use super::teardown::{OWNER_STOPPED_BY_OPERATOR_REASON, ROLLBACK_PENDING_REASON};
 use super::{CoordinationOrchestrator, TeamSelfHealResult};
 
 impl CoordinationOrchestrator {
@@ -630,30 +631,44 @@ impl CoordinationOrchestrator {
                 runtime_candidate_found: false,
                 member_liveness_reconciled: false,
                 team_daemon_ensured: false,
+                team_daemon_skip_reason: None,
             });
         }
 
         self.reconcile_team_liveness(team_name)?;
 
         if team_daemon_binary_drifted {
-            tracing::info!(
-                team = %team_name,
-                "detected running team daemon binary drift during self-heal"
-            );
-            self.stop_team_daemon_best_effort(team_name);
+            let operator = self.team_daemon_operator_name(team_name)?;
+            let skip_reason = self.team_daemon_skip_reason(team_name, &operator)?;
+            // Stop only when recovery is allowed or Mesh explicitly wants the
+            // owner down. A refused ensure must not strand a live stale owner.
+            if matches!(
+                skip_reason,
+                None | Some(OWNER_STOPPED_BY_OPERATOR_REASON | ROLLBACK_PENDING_REASON)
+            ) {
+                tracing::info!(
+                    team = %team_name,
+                    "detected running team daemon binary drift during self-heal"
+                );
+                self.stop_team_daemon_best_effort(team_name);
+            }
         }
 
         let refreshed_status = self.get_team_status_fast(team_name)?;
         let should_ensure_team_daemon = team_daemon_binary_drifted
             || team_should_ensure_daemon(&refreshed_status.members_runtime);
-        let team_daemon_ensured =
-            should_ensure_team_daemon && self.ensure_team_daemon_running_best_effort(team_name);
+        let (team_daemon_ensured, team_daemon_skip_reason) = if should_ensure_team_daemon {
+            self.ensure_team_daemon_running_best_effort(team_name)
+        } else {
+            (false, None)
+        };
 
         Ok(TeamSelfHealResult {
             team_name: team_name.to_string(),
             runtime_candidate_found,
             member_liveness_reconciled: true,
             team_daemon_ensured,
+            team_daemon_skip_reason,
         })
     }
 

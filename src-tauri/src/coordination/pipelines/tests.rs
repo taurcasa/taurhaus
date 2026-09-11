@@ -5138,6 +5138,7 @@ fn resume_pipeline_codex_accepts_scanner_rebound_identity() {
 
 #[test]
 fn resume_report_carries_onboarding_wake_failure() {
+    // Owner authentication warnings (7f8f13ad) may accompany the wake warning.
     // Regression: 7fdad577 surfaced warnings from a mocked frontend payload
     // without proving the member pipeline carried the real wake disposition.
     let tmp = TempDir::new().expect("tempdir");
@@ -5203,7 +5204,8 @@ fn resume_report_carries_onboarding_wake_failure() {
         report.warnings,
         vec![
             "onboarding wake failed: daemon spawn failed: Backend error: forced onboarding wake spawn failure"
-                .to_string()
+                .to_string(),
+            "team daemon skipped: lead control credential is missing for 'team-lead'".to_string(),
         ]
     );
     assert_eq!(

@@ -1,0 +1,116 @@
+STEP 1 EXIT 0
+[feat/e2e-l5-restarts 41ff0efb] test(e2e): run8 lane 5 step 1 runtime checkpoint
+ 14 files changed, 2597 insertions(+)
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step1-cost.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step1-identities.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step1-identity.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step1-journal.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step1-locks.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step1-outcome.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step1-owner.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step1-owner.txt.exit.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step1-pane-0.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step1-pane-2.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step1-pane-3.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step1-pane-4.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step1-runtime.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step1-session-snapshot.json
+STEP 2 EXIT 0
+[feat/e2e-l5-restarts 7edf9a79] test(e2e): run8 lane 5 step 2 runtime checkpoint
+ 12 files changed, 2166 insertions(+)
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step2-cost.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step2-identity.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step2-journal.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step2-locks.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step2-outcome.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step2-owner.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step2-owner.txt.exit.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step2-pane-0.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step2-pane-2.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step2-pane-3.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step2-pane-4.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step2-session-snapshot.json
+STEP 3 EXIT 0
+[feat/e2e-l5-restarts 8f9342d6] test(e2e): run8 lane 5 step 3 runtime checkpoint
+ 16 files changed, 3057 insertions(+)
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step3-cost.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step3-identities.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step3-identity.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step3-journal.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step3-locks.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step3-outcome.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step3-owner.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step3-owner.txt.exit.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step3-pane-0.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step3-pane-15.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step3-pane-16.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step3-pane-2.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step3-pane-3.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step3-ping.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step3-resume-result.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step3-session-snapshot.json
+STEP 4 EXIT 0
+[feat/e2e-l5-restarts d55ac2a5] test(e2e): run8 lane 5 step 4 runtime checkpoint
+ 13 files changed, 5077 insertions(+)
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step4-cost.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step4-identity.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step4-journal.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step4-locks.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step4-outcome.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step4-owner.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step4-owner.txt.exit.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step4-pane-0.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step4-pane-15.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step4-pane-16.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step4-pane-2.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step4-pane-3.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step4-session-snapshot.json
+STEP 5 EXIT 0
+[feat/e2e-l5-restarts be195405] test(e2e): run8 lane 5 step 5 runtime checkpoint
+ 28 files changed, 12590 insertions(+)
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step5-before-cost.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step5-before-identity.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step5-before-journal.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step5-before-locks.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step5-before-owner.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step5-before-owner.txt.exit.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step5-before-pane-0.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step5-before-pane-15.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step5-before-pane-16.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step5-before-pane-2.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step5-before-pane-3.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step5-before-session-snapshot.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step5-cost.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step5-identity.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step5-journal.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step5-locks.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step5-outcome.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step5-owner-census.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step5-owner.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step5-owner.txt.exit.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step5-pane-0.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step5-pane-15.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step5-pane-16.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step5-pane-2.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step5-pane-3.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step5-restart.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step5-restart.txt.exit.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step5-session-snapshot.json
+STEP 6 EXIT 0
+[feat/e2e-l5-restarts ce5e430f] test(e2e): run8 lane 5 step 6 runtime checkpoint
+ 13 files changed, 7547 insertions(+)
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step6-cost.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step6-identity.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step6-journal.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step6-locks.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step6-outcome.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step6-owner.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step6-owner.txt.exit.json
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step6-pane-0.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step6-pane-15.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step6-pane-16.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step6-pane-2.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step6-pane-3.txt
+ create mode 100644 docs/design/evidence/e2e/l5-restarts/run8/runtime/step6-session-snapshot.json
+{"survivors": [], "port_closed": true, "root": "/tmp/th-l5-if2usuzz", "auth_copy_removed_before_root": true, "root_removed": true, "auth_removed": true}
+CONTROLLER EXIT 0

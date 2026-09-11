@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
@@ -17,7 +17,12 @@ use crate::coordination::stores::{MemberRuntimeRecord, MemberRuntimeStore, TeamC
 
 use super::{CoordinationOrchestrator, RemoveMemberStepResult};
 
+static OWNER_SKIP_EVENTS: OnceLock<Mutex<HashSet<(PathBuf, &'static str)>>> = OnceLock::new();
 static TEAM_DAEMON_SKIP_EVENTS: OnceLock<Mutex<HashMap<PathBuf, String>>> = OnceLock::new();
+const DELIVERY_OWNER_UNSET_REASON: &str = "delivery_owner_unset";
+const DELIVERY_OWNED_BY_MEMBERS_REASON: &str = "delivery_owned_by_members";
+pub(super) const ROLLBACK_PENDING_REASON: &str = "rollback_pending";
+pub(super) const OWNER_STOPPED_BY_OPERATOR_REASON: &str = "owner_stopped_by_operator";
 const MISSING_LEAD_CREDENTIAL_REASON: &str = "missing_lead_control_credential";
 const MISSING_LEAD_CONFIG_HASH_REASON: &str = "missing_lead_control_auth_token_hash";
 const INACTIVE_LEAD_REASON: &str = "inactive_lead_control_identity";
@@ -432,7 +437,10 @@ impl CoordinationOrchestrator {
         diagnostics
     }
 
-    pub(crate) fn ensure_team_daemon_running_best_effort(&self, team_name: &str) -> bool {
+    pub(crate) fn ensure_team_daemon_running_best_effort(
+        &self,
+        team_name: &str,
+    ) -> (bool, Option<&'static str>) {
         match self.quarantine_foreign_pane_before_team_daemon(team_name) {
             Ok(Some(reason)) => {
                 tracing::warn!(
@@ -440,7 +448,7 @@ impl CoordinationOrchestrator {
                     reason,
                     "skipping team daemon restart because a member pane is foreign"
                 );
-                return false;
+                return (false, None);
             }
             Ok(None) => {}
             Err(err) => {
@@ -449,7 +457,7 @@ impl CoordinationOrchestrator {
                     error = %err,
                     "failed to verify pane ownership before team daemon restart"
                 );
-                return false;
+                return (false, None);
             }
         }
         let operator_name = match self.team_daemon_operator_name(team_name) {
@@ -460,7 +468,7 @@ impl CoordinationOrchestrator {
                     error = %err,
                     "failed to resolve lead identity for team daemon startup"
                 );
-                return false;
+                return (false, None);
             }
         };
         let skip_reason = match self.team_daemon_skip_reason(team_name, &operator_name) {
@@ -472,26 +480,26 @@ impl CoordinationOrchestrator {
                     error = %err,
                     "failed to verify team daemon authentication state"
                 );
-                return false;
+                return (false, None);
             }
         };
         if let Some(reason) = skip_reason {
             self.emit_team_daemon_skipped_once(team_name, &operator_name, reason);
-            return false;
+            return (false, Some(reason));
         }
-        self.clear_team_daemon_skip_state(team_name, &operator_name);
         match self
             .runtime
             .spawn_team_daemon_at_root(team_name, &operator_name, &self.teams_dir)
         {
             Ok(pid) => {
+                self.clear_team_daemon_skip_state(team_name, &operator_name);
                 tracing::info!(
                     team = %team_name,
                     operator = %operator_name,
                     pid = pid,
                     "team daemon ensured running"
                 );
-                true
+                (true, None)
             }
             Err(err) => {
                 tracing::warn!(
@@ -500,7 +508,7 @@ impl CoordinationOrchestrator {
                     error = %err,
                     "failed to ensure team daemon is running"
                 );
-                false
+                (false, None)
             }
         }
     }
@@ -531,9 +539,12 @@ impl CoordinationOrchestrator {
             ));
         }
         let operator_name = self.team_daemon_operator_name(team_name)?;
-        if let Some(reason) = self.team_daemon_skip_reason(team_name, &operator_name)? {
+        if let Some(reason) = self.team_daemon_control_skip_reason(team_name, &operator_name)? {
             self.emit_team_daemon_skipped_once(team_name, &operator_name, reason);
             let detail = match reason {
+                DELIVERY_OWNED_BY_MEMBERS_REASON | DELIVERY_OWNER_UNSET_REASON => {
+                    reason.to_string()
+                }
                 MISSING_LEAD_CREDENTIAL_REASON => {
                     format!("lead control credential is missing for '{operator_name}'")
                 }
@@ -547,12 +558,12 @@ impl CoordinationOrchestrator {
             };
             return Ok((false, Some(format!("team daemon skipped: {detail}"))));
         }
-        self.clear_team_daemon_skip_state(team_name, &operator_name);
         match self
             .runtime
             .spawn_team_daemon_at_root(team_name, &operator_name, &self.teams_dir)
         {
             Ok(pid) => {
+                self.clear_team_daemon_skip_state(team_name, &operator_name);
                 tracing::info!(
                     team = %team_name,
                     operator = %operator_name,
@@ -656,15 +667,41 @@ impl CoordinationOrchestrator {
         self.ensure_team_daemon_for_wrapper_best_effort(&request.team_name);
     }
 
-    pub(crate) fn ensure_team_daemon_after_resume_member(&self, request: &ResumeMemberRequest) {
-        self.ensure_team_daemon_for_wrapper_best_effort(&request.team_name);
+    pub(crate) fn ensure_team_daemon_after_resume_member(
+        &self,
+        request: &ResumeMemberRequest,
+    ) -> Option<String> {
+        match self.ensure_team_daemon_after_resume_team(&ResumeTeamRequest {
+            team_name: request.team_name.clone(),
+        }) {
+            Ok((_, warning)) => warning,
+            Err(err) => {
+                tracing::warn!(
+                    team = %request.team_name,
+                    error = %err,
+                    "failed to resolve team daemon operator after resume"
+                );
+                None
+            }
+        }
     }
 
     pub(crate) fn ensure_team_daemon_after_resume_team(
         &self,
         request: &ResumeTeamRequest,
     ) -> Result<(bool, Option<String>), CoordinationError> {
-        self.ensure_team_daemon_for_wrapper(&request.team_name)
+        let team = &request.team_name;
+        let operator = self.team_daemon_operator_name(team)?;
+        // One authority for both durable mesh markers: a resume under an
+        // owner-stop marker or a pending rollback handoff leaves the owner
+        // down (the foreign-pane quarantine only guards an owner start).
+        if let Some(reason @ (OWNER_STOPPED_BY_OPERATOR_REASON | ROLLBACK_PENDING_REASON)) =
+            self.team_daemon_skip_reason(team, &operator)?
+        {
+            self.emit_team_daemon_skipped_once(team, &operator, reason);
+            return Ok((false, Some(format!("team daemon skipped: {reason}"))));
+        }
+        self.ensure_team_daemon_for_wrapper(team)
     }
 
     pub(crate) fn team_daemon_operator_name(
@@ -692,11 +729,41 @@ impl CoordinationOrchestrator {
             .join(format!("{operator_name}.json"))
     }
 
-    fn team_daemon_skip_reason(
+    pub(super) fn team_daemon_skip_reason(
         &self,
         team_name: &str,
         operator_name: &str,
     ) -> Result<Option<&'static str>, CoordinationError> {
+        if TeamConfigStore::delivery_marker_present(
+            &self.teams_dir,
+            team_name,
+            "owner-stopped.json",
+        ) {
+            return Ok(Some(OWNER_STOPPED_BY_OPERATOR_REASON));
+        }
+        if TeamConfigStore::delivery_marker_present(&self.teams_dir, team_name, "handoff.json") {
+            return Ok(Some(ROLLBACK_PENDING_REASON));
+        }
+        self.team_daemon_control_skip_reason(team_name, operator_name)
+    }
+
+    fn team_daemon_control_skip_reason(
+        &self,
+        team_name: &str,
+        operator_name: &str,
+    ) -> Result<Option<&'static str>, CoordinationError> {
+        let config = TeamConfigStore::load(&self.teams_dir, team_name)?;
+        if config.extra.get("messaging_format") == Some(&Value::from(2))
+            && config
+                .extra
+                .get("delivery_owner")
+                .is_none_or(Value::is_null)
+        {
+            return Ok(Some(DELIVERY_OWNER_UNSET_REASON));
+        }
+        if TeamConfigStore::members_own_delivery(&config) {
+            return Ok(Some(DELIVERY_OWNED_BY_MEMBERS_REASON));
+        }
         if !self
             .team_daemon_credential_path(team_name, operator_name)
             .is_file()
@@ -704,7 +771,6 @@ impl CoordinationOrchestrator {
             return Ok(Some(MISSING_LEAD_CREDENTIAL_REASON));
         }
 
-        let config = TeamConfigStore::load(&self.teams_dir, team_name)?;
         let lead = config
             .members
             .iter()
@@ -744,6 +810,20 @@ impl CoordinationOrchestrator {
         reason: &'static str,
     ) {
         let credential_path = self.team_daemon_credential_path(team_name, operator_name);
+        if matches!(
+            reason,
+            OWNER_STOPPED_BY_OPERATOR_REASON
+                | ROLLBACK_PENDING_REASON
+                | DELIVERY_OWNED_BY_MEMBERS_REASON
+                | DELIVERY_OWNER_UNSET_REASON
+        ) && !OWNER_SKIP_EVENTS
+            .get_or_init(|| Mutex::new(HashSet::new()))
+            .lock()
+            .map(|mut seen| seen.insert((self.teams_dir.join(team_name), reason)))
+            .unwrap_or(true)
+        {
+            return;
+        }
         let emitted = TEAM_DAEMON_SKIP_EVENTS.get_or_init(|| Mutex::new(HashMap::new()));
         let should_emit = emitted
             .lock()
@@ -768,7 +848,7 @@ impl CoordinationOrchestrator {
             operator = %operator_name,
             reason,
             credential_path = %credential_path.display(),
-            "team daemon skipped because lead authentication is unavailable"
+            "team daemon startup skipped"
         );
         let mut fields = Map::new();
         fields.insert("team_name".into(), Value::String(team_name.to_string()));
@@ -785,12 +865,17 @@ impl CoordinationOrchestrator {
             "info",
             "coordination",
             "coordination.team_daemon.skipped",
-            Some("Team daemon skipped because lead authentication is unavailable".to_string()),
+            Some("Team daemon startup skipped".to_string()),
             fields,
         );
     }
 
     fn clear_team_daemon_skip_state(&self, team_name: &str, operator_name: &str) {
+        if let Some(emitted) = OWNER_SKIP_EVENTS.get() {
+            if let Ok(mut teams) = emitted.lock() {
+                teams.retain(|(path, _)| path != &self.teams_dir.join(team_name));
+            }
+        }
         let credential_path = self.team_daemon_credential_path(team_name, operator_name);
         if let Some(emitted) = TEAM_DAEMON_SKIP_EVENTS.get() {
             if let Ok(mut paths) = emitted.lock() {

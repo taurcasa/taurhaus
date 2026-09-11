@@ -1,0 +1,7 @@
+{
+  "step": 1,
+  "outcome": "FAIL",
+  "classification": "unclassified pending evidence review",
+  "reason": "onboarding lacks submitted and seat read receipts plus fresh idle beta; polled 180.8s",
+  "at": 1789088230.4844086
+}

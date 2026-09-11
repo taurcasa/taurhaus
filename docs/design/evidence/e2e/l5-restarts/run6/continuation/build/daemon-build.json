@@ -1,0 +1,16 @@
+{
+  "command": [
+    "just",
+    "build-daemon"
+  ],
+  "cwd": "/home/mstie/projects/taurhaus-l5-restarts",
+  "exit": 0,
+  "seconds": 203.5731041431427,
+  "cargo_preflight": [
+    {
+      "at": 1789090053.6910248,
+      "exit": 0,
+      "output": "3749807 <operator-path-redacted> test --test cli_renderers --test module_boundary_assertions --test harness_conformance -- --test-threads=1\n3782316 <operator-path-redacted> check --all-targets\n"
+    }
+  ]
+}

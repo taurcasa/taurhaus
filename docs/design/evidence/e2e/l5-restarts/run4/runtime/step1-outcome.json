@@ -1,0 +1,7 @@
+{
+  "step": 1,
+  "outcome": "FAIL",
+  "classification": "unclassified pending evidence review",
+  "reason": "delivery receipt/read missing baseline alpha; polled 120.7s",
+  "at": 1789086884.4458919
+}

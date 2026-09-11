@@ -1,0 +1,14 @@
+{
+  "command": [
+    "just",
+    "test-contracts"
+  ],
+  "exit": 0,
+  "seconds": 21.323231895978097,
+  "cargo_preflight": [
+    {
+      "exit": 0,
+      "output": "3670591 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo check --tests\n"
+    }
+  ]
+}

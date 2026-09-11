@@ -1,0 +1,41 @@
+EEEE...........................
+======================================================================
+ERROR: test_hosted_delivery_needs_native_receipt_and_card (hosted_test.HostedStartup.test_hosted_delivery_needs_native_receipt_and_card)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/run6/hosted_test.py", line 34, in test_hosted_delivery_needs_native_receipt_and_card
+    self.assertTrue(delivered([{'stage':'native_enqueued'}],a,'thread',seat='beta',
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: delivered() got an unexpected keyword argument 'transport'
+
+======================================================================
+ERROR: test_hosted_startup_needs_no_journal_projection (hosted_test.HostedStartup.test_hosted_startup_needs_no_journal_projection)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/run6/hosted_test.py", line 20, in test_hosted_startup_needs_no_journal_projection
+    self.assertTrue(send_ready([], 'beta', a, onboarding=True, transport='app_server',
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: send_ready() got an unexpected keyword argument 'transport'
+
+======================================================================
+ERROR: test_hosted_startup_requires_matching_card_completion_and_host_idle (hosted_test.HostedStartup.test_hosted_startup_requires_matching_card_completion_and_host_idle)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/run6/hosted_test.py", line 29, in test_hosted_startup_requires_matching_card_completion_and_host_idle
+    self.assertFalse(send_ready([], 'beta',activity,onboarding=True,transport='app_server',
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: send_ready() got an unexpected keyword argument 'transport'
+
+======================================================================
+ERROR: test_later_hosted_send_accepts_native_card_without_read_receipt (hosted_test.HostedStartup.test_later_hosted_send_accepts_native_card_without_read_receipt)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/run6/hosted_test.py", line 45, in test_later_hosted_send_accepts_native_card_without_read_receipt
+    self.assertTrue(send_ready([accepted,receipt],'beta',a,transport='app_server',host_events=events))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: send_ready() got an unexpected keyword argument 'transport'
+
+----------------------------------------------------------------------
+Ran 31 tests in 0.041s
+
+FAILED (errors=4)
