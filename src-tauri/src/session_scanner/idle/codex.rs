@@ -446,6 +446,11 @@ fn persist_binding(project_path: &str, pid: u32, pane_id: Option<&str>, result: 
         return;
     };
 
+    IDENTITY_REASONS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(&pid);
     let record = CodexBindingRecord {
         project_path: normalize_project_path(project_path),
         pid,
@@ -606,16 +611,25 @@ fn codex_identity_scope(
     Some((account, excluded))
 }
 
+static IDENTITY_REASONS: OnceLock<Mutex<HashMap<u32, &'static str>>> = OnceLock::new();
+
 fn unresolved_identity(pid: u32, source: &'static str) -> IdleResult {
     super::codex_readiness::invalidate(pid);
-    static REASONS: OnceLock<Mutex<HashMap<u32, &'static str>>> = OnceLock::new();
     let reason = source.strip_prefix("codex_identity_").unwrap_or(source);
-    let changed = REASONS
+    let mut reasons = IDENTITY_REASONS
         .get_or_init(|| Mutex::new(HashMap::new()))
         .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .insert(pid, reason)
-        != Some(reason);
+        .unwrap_or_else(|e| e.into_inner());
+    if !matches!(
+        reason,
+        "ambiguous_account" | "ambiguous_writer_locks" | "ambiguous"
+    ) {
+        reasons.remove(&pid);
+        tracing::debug!(pid, source, "Codex identity unresolved");
+        return IdleResult::idle();
+    }
+    let changed = reasons.insert(pid, reason) != Some(reason);
+    drop(reasons);
     if changed {
         tracing::warn!(
             event = "codex.identity.unresolved",
@@ -1025,21 +1039,35 @@ mod tests {
 
     #[test]
     fn unresolved_identity_warns_once_per_pid_reason_change_without_paths() {
+        // Regression: 2477b8e2 warned for normal launch/exit races as well as ambiguity.
         let _guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("events.jsonl");
         let sink = taurhaus_lib::logging::LogFileState::new(path.clone()).unwrap();
         taurhaus_lib::logging::install_global_sink(&sink);
         for (pid, reason) in [
-            (4294900001, "ambiguous_account"),
-            (4294900001, "ambiguous_account"),
-            (4294900001, "ambiguous_writer_locks"),
-            (4294900002, "ambiguous_account"),
+            (4294900001, "codex_identity_ambiguous_account"),
+            (4294900001, "codex_identity_ambiguous_account"),
+            (4294900001, "codex_identity_ambiguous_writer_locks"),
+            (4294900002, "codex_identity_ambiguous_account"),
         ] {
             let row = unresolved_identity(pid, reason);
             assert!(row.session_id.is_none());
             assert_eq!(row.state, SessionState::Idle);
         }
+        unresolved_identity(4294900003, "codex_identity_missing");
+        unresolved_identity(4294900004, "codex_identity_process_gone");
+        setup_binding_store(&tmp);
+        let mut resolved = IdleResult::idle();
+        resolved.session_id = Some("fixture-session".into());
+        resolved.jsonl_path = Some(
+            tmp.path()
+                .join("rollout.jsonl")
+                .to_string_lossy()
+                .into_owned(),
+        );
+        persist_binding("/project", 4294900001, None, &resolved);
+        unresolved_identity(4294900001, "codex_identity_ambiguous_writer_locks");
         sink.flush_for_test().unwrap();
         let events: Vec<serde_json::Value> = fs::read_to_string(path)
             .unwrap()
@@ -1047,11 +1075,12 @@ mod tests {
             .map(|l| serde_json::from_str(l).unwrap())
             .filter(|e: &serde_json::Value| e["event"] == "codex.identity.unresolved")
             .collect();
-        assert_eq!(events.len(), 3);
+        assert_eq!(events.len(), 4);
         for (event, (pid, reason)) in events.iter().zip([
             (4294900001_u32, "ambiguous_account"),
             (4294900001, "ambiguous_writer_locks"),
             (4294900002, "ambiguous_account"),
+            (4294900001, "ambiguous_writer_locks"),
         ]) {
             assert_eq!(event["level"], "WARN");
             assert_eq!(event["pid"], pid);
