@@ -6254,10 +6254,18 @@ fn wrapper_ensure_respects_delivery_ownership_and_legacy_configs() {
                 .any(|call| matches!(call, RuntimeCall::SpawnTeamDaemon { .. })),
             expected
         );
+        // Regression: b7fcd133 added ownership warnings to the wrapper, but
+        // resume_member discarded them whenever the owner-stop marker was absent.
+        let resumed = orchestrator.resume_member(team, "builder").unwrap();
+        assert!(resumed.resumed);
         if !expected {
             assert!(warning.unwrap().contains("delivery_owned_by_members"));
+            assert!(resumed.warnings.iter().any(|warning|
+                warning.contains("delivery_owned_by_members")));
         } else {
             assert!(warning.is_none());
+            assert!(!resumed.warnings.iter().any(|warning|
+                warning.contains("team daemon skipped")));
         }
     }
 }
