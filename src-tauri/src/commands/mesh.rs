@@ -409,13 +409,13 @@ fn with_hosted_delivery(
         None
     } else {
         Some(match codex {
+            _ if !canonical_messaging_supported(&contract.version) => {
+                "Native delivery requires Mesh 0.3.0 or newer".into()
+            }
             Some(installed) if installed != verified => {
                 format!("installed Codex {installed} is not the verified {verified}")
             }
             None => format!("installed Codex version is unavailable; verified build is {verified}"),
-            _ if !canonical_messaging_supported(&contract.version) => {
-                "Native delivery requires Mesh 0.3.0 or newer".into()
-            }
             _ => "Mesh has no enabled descriptor for the verified Codex build".into(),
         })
     };
