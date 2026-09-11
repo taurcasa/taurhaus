@@ -30,21 +30,37 @@ pub(crate) fn handle(
             }
             Err(error) => return Err(error.to_string()),
         };
-        if let Some(pane) = record.pane_id.as_deref() {
-            if !crate::session_scanner::control::pane_matches_record(pane, &record)? {
-                return Err("stop deferred: pane belongs to another session".into());
+        // A recorded pane that now belongs to a foreign process is never
+        // touched, but that must not leave the daemon-owned host running:
+        // skip the TUI step and still reap the host.
+        let mut skipped_pane = None;
+        let pane = match record.pane_id.as_deref() {
+            Some(pane) if !crate::session_scanner::control::pane_matches_record(pane, &record)? => {
+                tracing::warn!(
+                    team,
+                    member,
+                    pane,
+                    "member stop: recorded pane belongs to another session; stopping the host only"
+                );
+                skipped_pane = Some(pane.to_string());
+                None
             }
-        }
+            pane => pane,
+        };
         stop_record(
             hosts,
             registry,
             team,
             member,
             &record,
-            record.pane_id.as_deref(),
+            pane,
             configured.cli_tool,
         )?;
-        return Ok(serde_json::json!({"ok":true}));
+        let mut reply = serde_json::json!({"ok":true});
+        if let Some(pane) = skipped_pane {
+            reply["skippedPane"] = serde_json::Value::String(pane);
+        }
+        return Ok(reply);
     }
     let record = record.map_err(|e| e.to_string())?;
     if operation == "reconcile" {
@@ -155,6 +171,11 @@ fn stop_record(
     };
     let Some(host) = record.app_server.as_ref() else {
         hosts.reconcile(registry, team, member)?;
+        // Reconcile declines silently on a contended cell or a still-live
+        // host; a stop that leaves the seat owned must not report success.
+        if hosts.is_owned(registry, team, member)? {
+            return Err("hosted stop failed: the daemon still owns this member's host (busy or still running); retry the stop".into());
+        }
         if let Some(pane) = pane {
             crate::session_scanner::control::stop_tui_if_present(pane, tool, false)?;
         }
@@ -290,6 +311,29 @@ mod tests {
             !std::path::Path::new(&format!("/proc/{}", before.app_server.unwrap().process_id))
                 .exists()
         );
+    }
+
+    #[test]
+    fn member_stop_refuses_when_the_seat_stays_owned_without_a_host_block() {
+        // Regression: member-stop lane round 2: a record without a host block
+        // whose seat is still live made the stop answer ok while the daemon
+        // kept owning (and running) the host.
+        let tmp = tempfile::tempdir().unwrap();
+        let (registry, hosts) = running(tmp.path());
+        let root = registry.resolve("team").unwrap();
+        crate::coordination::stores::MemberRuntimeStore::update(&root, "team", "seat", |record| {
+            record.app_server = None;
+        })
+        .unwrap();
+        let result = handle(
+            &hosts,
+            &registry,
+            "stop",
+            &json!({"team_name":"team", "member_name":"seat"}),
+        );
+        let error = result.expect_err("a still-owned live host must not report a successful stop");
+        assert!(error.contains("still owns"), "{error}");
+        assert!(hosts.is_owned(&registry, "team", "seat").unwrap());
     }
 
     #[test]

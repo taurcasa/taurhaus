@@ -923,6 +923,23 @@ impl HostedMembers {
         result
     }
 
+    /// Whether the registry still owns this member's seat: a contended cell
+    /// counts as owned, because whoever holds it may be running the host.
+    pub fn is_owned(
+        &self,
+        registry: &TeamRootRegistry,
+        team: &str,
+        member: &str,
+    ) -> Result<bool, String> {
+        let root = registry.resolve(team).map_err(|e| e.to_string())?;
+        let cell = self.seat(&root, team, member)?;
+        let owned = match cell.try_lock() {
+            Ok(guard) => guard.is_some(),
+            Err(_) => true,
+        };
+        Ok(owned)
+    }
+
     pub fn reconcile(
         &self,
         registry: &TeamRootRegistry,
