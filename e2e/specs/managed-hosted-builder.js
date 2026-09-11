@@ -18,6 +18,7 @@ import { assertTmuxIsolation } from '../helpers/laneTmux.js'
 import { createLaneCleanup, findRunTokenProcessRecords, killOwnedProcessRecord } from '../helpers/laneCleanup.js'
 import { trustProject } from '../helpers/codexScratchHome.js'
 import { rolloutPaths } from '../helpers/codexRollout.js'
+import { DEFAULT_CANONICAL_POLICY } from '../../src/lib/components/meshTabUtils.js'
 
 const checkout = resolve(import.meta.dirname, '../..')
 const data = process.env.TAURHAUS_DATA_DIR || ''
@@ -145,7 +146,7 @@ async function observeIpc() {
     }
     new MutationObserver(sample).observe(document.body, { subtree: true, attributes: true, childList: true })
     window.__TAURI_INTERNALS__.invoke = async (command, args) => {
-      if (!['check_mesh_install_status', 'coordination_initialize_team', 'coordination_hosted', 'coordination_get_live_status'].includes(command)) return original(command, args)
+      if (!['check_mesh_install_status', 'coordination_initialize_team', 'coordination_hosted', 'coordination_get_live_team_status'].includes(command)) return original(command, args)
       const row = { command, args, at: Date.now(), draftBefore: document.querySelector('#hosted-input')?.value }
       window.__l3.ipc.push(row)
       try {
@@ -210,6 +211,24 @@ describe('canonical builder and hosted conversation (paid)', function () {
     watchdog.unref()
     await waitForProjectsLoaded()
     await observeIpc()
+    const roles = await ipc('templates_list_roles_full')
+    for (const name of ['lead', 'alpha', 'beta']) {
+      const kind = name === 'lead' ? 'lead' : 'agent'
+      const tool = name === 'lead' ? 'claude' : 'codex'
+      const template = structuredClone(roles.find(role => role.kind === kind && role.defaults.cliTool === tool))
+      assert(template, `harness: missing ${tool} ${kind} template`)
+      template.roleId = `l3-${name}`
+      template.name = `L3 ${name}`
+      template.defaults.defaultNamePattern = name
+      if (tool === 'codex') {
+        template.defaults.model = 'gpt-5.6-luna'
+        template.defaults.reasoning_effort = 'low'
+      }
+      template.instructions = `Disposable UI trial. On startup reply READY ${name} in at most five words. For ordinary markers reply in at most ten words. Only execute tools explicitly requested by the operator or the managed Mesh contract. Every mesh command must use --team ${team} --name ${name} --claude-dir ${claudeDir}. Do not spawn agents or self-assign work.`
+      template.behavioralContract = { communication: [], execution: [], escalation: [] }
+      template.capabilities = []
+      await ipc('templates_upsert_role', { request: { template } })
+    }
   })
 
   after(async function () {
@@ -239,4 +258,65 @@ describe('canonical builder and hosted conversation (paid)', function () {
     assert.equal(capability.result.hosted_delivery_supported, true, 'mesh: hosted capability unavailable')
     assert.equal(await $('[aria-labelledby="mesh-canonical-label"]').isSelected(), true, 'taurhaus: canonical is not selected')
   }))
+
+  it('2. initializes once through the builder with alpha tmux and beta app_server', () => step(2, async () => {
+    await prepareBuilder()
+    budget(2, 'creation-time alpha and beta onboarding')
+    await browser.saveScreenshot(join(evidence, 'step-2-before-initialize.png'))
+    await $('[data-testid="mesh-action-initialize"]').click()
+    await poll(async () => {
+      const calls = await browser.execute(() => window.__l3.ipc.filter(r => r.command === 'coordination_initialize_team'))
+      assert.equal(calls.length, 1, 'harness: initialize must be issued exactly once')
+      if (calls[0].error) throw new Error(`taurhaus: initialize failed: ${calls[0].error}`)
+      return Boolean(calls[0].result)
+    }, 'taurhaus: initialize did not finish', 240_000)
+    const call = await browser.execute(() => window.__l3.ipc.find(r => r.command === 'coordination_initialize_team'))
+    assert.deepEqual(call.args.request.messaging, { mode: 'canonical', retentionPolicy: DEFAULT_CANONICAL_POLICY })
+    assert.equal(call.args.request.agents.find(a => a.name === 'alpha').delivery, 'tmux')
+    assert.equal(call.args.request.agents.find(a => a.name === 'beta').delivery, 'app_server')
+    assert.equal(call.result.initialized, true, 'taurhaus: initialize report refused')
+    const config = JSON.parse(readFileSync(join(claudeDir, 'teams', team, 'config.json'), 'utf8'))
+    assert.equal(config.format_version, 2, 'mesh: team is not format 2')
+    assert.equal(config.delivery_owner, 'team', 'mesh: delivery owner is not team')
+    assert.equal(runtime('alpha').delivery, 'tmux')
+    assert.equal(runtime('beta').delivery, 'app_server')
+    save('initialize-result.json', call)
+  }))
 })
+
+async function prepareBuilder() {
+  trustProject(join(codexHome, 'config.toml'), project)
+  // CLI policy lives only in the generated scratch config; no operator config.
+  const configPath = join(codexHome, 'config.toml')
+  writeFileSync(configPath, 'approval_policy = "never"\nsandbox_mode = "workspace-write"\nmodel = "gpt-5.6-luna"\nmodel_reasoning_effort = "low"\n' + readFileSync(configPath, 'utf8'))
+  budget(1, 'throwaway first-use TUI start; no submitted prompt')
+  tmux(['new-session', '-d', '-s', 'taurhaus', '-c', project])
+  cleanup.owe('private tmux server', () => { spawnSync('tmux', ['kill-server'], { env: process.env, timeout: 5000 }) })
+  for (const [key, value] of Object.entries({ HOME: process.env.HOME, CODEX_HOME: codexHome, CLAUDE_DIR: claudeDir, CLAUDE_CONFIG_DIR: claudeDir, TAURHAUS_CLAUDE_DIR: claudeDir, TAURHAUS_DATA_DIR: data, GROK_HOME: process.env.GROK_HOME, GEMINI_CLI_HOME: join(root, 'gemini'), TAURHAUS_AGY_DIR: process.env.TAURHAUS_AGY_DIR })) {
+    tmux(['set-environment', '-g', key, value])
+    tmux(['set-environment', '-t', 'taurhaus', key, value])
+  }
+  const pane = tmux(['new-window', '-d', '-P', '-F', '#{pane_id}', '-t', 'taurhaus', '-c', project, 'codex -m gpt-5.6-luna -c model_reasoning_effort="low" -a never']).trim()
+  await poll(async () => /context left|for shortcuts|gpt-5.6-luna/.test(tmux(['capture-pane', '-p', '-t', pane])), 'harness: scratch Codex composer unavailable')
+  save('warmup-pane.txt', tmux(['capture-pane', '-p', '-t', pane]))
+  tmux(['send-keys', '-t', pane, 'C-c'])
+  await poll(async () => !tmux(['list-panes', '-a', '-F', '#{pane_id}']).split('\n').includes(pane), 'harness: warmup did not quit')
+  assert(readdirSync(codexHome).some(name => /^state_.*\.sqlite$/.test(name)), 'harness: warmup SQLite missing')
+  await setInlineBuilderTeamName(team)
+  await clickTestId('mesh-builder-role-l3-lead')
+  for (const name of ['alpha', 'beta']) await clickTestId(`mesh-builder-add-l3-${name}`)
+  const cards = await $$('[data-testid^="mesh-builder-agent-card-"]')
+  assert.equal(cards.length, 2, 'harness: unexpected initial roster')
+  for (const card of cards) {
+    const id = (await card.getAttribute('data-testid')).replace('mesh-builder-agent-card-', '')
+    await clickTestId(`mesh-builder-agent-edit-toggle-${id}`)
+    const name = (await $(`[data-testid="mesh-builder-agent-name-input-${id}"]`).getValue()).trim()
+    assert(['alpha', 'beta'].includes(name), 'harness: unexpected member name')
+    await setReactiveInputValue(`mesh-builder-agent-name-input-${id}`, name)
+    await card.$('select:has(option[value="app_server"])').selectByAttribute('value', name === 'alpha' ? 'tmux' : 'app_server')
+    await $(`[data-testid="mesh-builder-agent-model-input-${id}"]`).selectByAttribute('value', 'gpt-5.6-luna')
+    await $(`[data-testid="mesh-builder-agent-model-input-${id}-effort"]`).selectByAttribute('value', 'low')
+  }
+  assert.equal(await $('[aria-labelledby="mesh-canonical-label"]').isSelected(), true)
+  await poll(async () => await $('[data-testid="mesh-action-initialize"]').isEnabled(), 'taurhaus: configured builder cannot initialize')
+}
