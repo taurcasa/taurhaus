@@ -84,7 +84,7 @@ fn no_turn_completed_since(path: Option<&str>, launch: DateTime<Utc>) -> bool {
         file.seek(SeekFrom::Start(start)).ok()?;
         let mut bytes = Vec::new();
         file.take(65_537).read_to_end(&mut bytes).ok()?;
-        if bytes.len() > 65_536 || (!bytes.is_empty() && !bytes.ends_with(b"\n")) {
+        if bytes.len() > 65_536 {
             return None;
         }
         let mut lines = bytes.split(|b| *b == b'\n');
@@ -731,6 +731,10 @@ mod tests {
         assert!(!no_turn_completed_since(path.to_str(), now));
         fs::write(&path, "not-json").unwrap();
         assert!(!no_turn_completed_since(path.to_str(), now));
+        // Regression: 167691b6 required a newline even for a complete fresh
+        // metadata row, suppressing the existing first-scan readiness contract.
+        fs::write(&path, "{\"type\":\"session_meta\"}").unwrap();
+        assert!(no_turn_completed_since(path.to_str(), now));
         fs::write(&path, "{\"type\":\"session_meta\"}\n").unwrap();
         assert!(no_turn_completed_since(path.to_str(), now));
         // Regression: resumed-seat-readiness lane, 6398bfa3 (#163) treated
