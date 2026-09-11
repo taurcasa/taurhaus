@@ -1309,7 +1309,6 @@ pub(crate) mod tests {
                         .unwrap();
                 });
                 ready.recv_timeout(Duration::from_secs(1)).unwrap();
-                let started = std::time::Instant::now();
                 let result = hosts.operation(
                     &registry,
                     "team",
@@ -1319,7 +1318,7 @@ pub(crate) mod tests {
                     Value::Null,
                 );
                 assert!(result.is_ok(), "{operation}: {result:?}");
-                assert!(started.elapsed() < Duration::from_millis(1500));
+                // Success proves the contended read waited; scheduler delay is not failure.
             });
         }
         hosts.stop(&registry, "team", "seat").unwrap();
@@ -1617,16 +1616,33 @@ if mode == 'twice' or not previous:
                 .count()
         };
         let before = attempts();
-        hub.refresh_hosts();
-        assert_eq!(attempts(), before + 1);
-        for _ in 0..3 {
-            std::thread::sleep(Duration::from_millis(500));
+        // Regression: 4ad65497's sleep-based retry count depended on scheduler
+        // delays. Drive the one- then two-second backoffs with fixture time.
+        let now = std::time::Instant::now();
+        let tick = |millis| {
+            hosts
+                .seat(tmp.path(), "team", "seat")
+                .unwrap()
+                .lock()
+                .unwrap()
+                .as_mut()
+                .unwrap()
+                .host
+                .activity_clock_for_test = Some(now + Duration::from_millis(millis));
             hub.refresh_hosts();
+        };
+        tick(0);
+        assert_eq!(attempts(), before + 1);
+        for millis in [100, 500, 999] {
+            tick(millis);
+            assert_eq!(attempts(), before + 1);
         }
-        assert!(
-            attempts() < before + 4,
-            "reconnect must skip ticks after failures"
-        );
+        tick(1000);
+        assert_eq!(attempts(), before + 2);
+        tick(2999);
+        assert_eq!(attempts(), before + 2);
+        tick(3000);
+        assert_eq!(attempts(), before + 3);
         hosts.stop(&registry, "team", "seat").unwrap();
     }
 

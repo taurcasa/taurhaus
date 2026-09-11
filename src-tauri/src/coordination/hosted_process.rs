@@ -229,6 +229,8 @@ pub(crate) struct HostProcess {
     uncertain: bool,
     reconnect_failures: u32,
     reconnect_after: Option<Instant>,
+    #[cfg(test)]
+    pub activity_clock_for_test: Option<Instant>,
     pub deferred_compaction: Option<chrono::DateTime<chrono::Utc>>,
 }
 
@@ -276,6 +278,8 @@ impl HostProcess {
             uncertain: false,
             reconnect_failures: 0,
             reconnect_after: None,
+            #[cfg(test)]
+            activity_clock_for_test: None,
             deferred_compaction: None,
         };
         host.stderr =
@@ -510,7 +514,10 @@ impl HostProcess {
     }
 
     pub fn activity_retry_due(&self) -> bool {
-        !self.needs_reconnect() || self.reconnect_after.is_none_or(|at| Instant::now() >= at)
+        let now = Instant::now();
+        #[cfg(test)]
+        let now = self.activity_clock_for_test.unwrap_or(now);
+        !self.needs_reconnect() || self.reconnect_after.is_none_or(|at| now >= at)
     }
 
     /// Read the thread response and queued notifications, without cloning cached events/requests.
@@ -634,7 +641,10 @@ impl HostProcess {
                 let backoff =
                     Duration::from_secs(1 << self.reconnect_failures.min(4).saturating_sub(1))
                         .min(Duration::from_secs(5));
-                self.reconnect_after = Some(Instant::now() + backoff);
+                let now = Instant::now();
+                #[cfg(test)]
+                let now = self.activity_clock_for_test.unwrap_or(now);
+                self.reconnect_after = Some(now + backoff);
                 if self.reconnect_failures == 1 {
                     tracing::warn!(event = "hosted.rpc.reconnect_failed", thread_id = %rpc.thread_id,
                         "Host reconnect failed; background retries will back off");
