@@ -282,6 +282,29 @@ describe('canonical builder and hosted conversation (paid)', function () {
     assert.equal(runtime('beta').delivery, 'app_server')
     save('initialize-result.json', call)
   }))
+  it('3. shows beta startup in its native thread and keeps alpha free of hosted controls', () => step(3, async () => {
+    await openMember('beta')
+    let transcript
+    await poll(async () => {
+      transcript = await hostedTranscript()
+      return transcript.thread?.status?.type === 'idle' && transcript.thread.turns.some(t => t.items?.some(i => i.type === 'agentMessage'))
+    }, 'taurhaus: beta startup transcript did not settle')
+    const record = runtime()
+    assert.equal(transcript.thread.id, record.session_id, 'taurhaus: wrong hosted thread')
+    const text = await $('[aria-label="Hosted transcript"]').getText()
+    assert(text.includes('READY beta'), 'taurhaus: rendered startup reply missing')
+    const pane = tmux(['capture-pane', '-p', '-J', '-S', '-200', '-t', record.paneId])
+    assert(pane.includes('READY beta'), 'taurhaus: attached pane lacks the startup reply')
+    save('step-3-thread.json', transcript)
+    save('step-3-pane.txt', pane)
+    baseline = { threadId: transcript.thread.id, paneId: record.paneId, host: record.appServer, generation: record.attachmentGeneration, contextGeneration: record.contextGeneration }
+    await browser.saveScreenshot(join(evidence, 'step-3-beta.png'))
+    await openMember('alpha')
+    assert.equal(await $('[aria-label="Hosted conversation"]').isExisting(), false, 'taurhaus: alpha has hosted controls')
+    await browser.saveScreenshot(join(evidence, 'step-3-alpha.png'))
+    await openMember('beta')
+  }))
+
 })
 
 async function prepareBuilder() {
@@ -319,4 +342,23 @@ async function prepareBuilder() {
   }
   assert.equal(await $('[aria-labelledby="mesh-canonical-label"]').isSelected(), true)
   await poll(async () => await $('[data-testid="mesh-action-initialize"]').isEnabled(), 'taurhaus: configured builder cannot initialize')
+}
+
+async function openMember(name) {
+  // Only navigation is repeatable. Never use clickUntil for initialize/send/stop.
+  await browser.keys('Escape')
+  await clickUntil(async () => {
+    const nodes = await $$('button[data-node-id]')
+    const node = []
+    for (const item of nodes) if ((await item.getText()).split('\n').some(line => line.trim() === name)) node.push(item)
+    assert.equal(node.length, 1, `harness: missing unique runtime node ${name}`)
+    await node[0].click()
+  }, async () => {
+    const detail = await $('[data-testid="mesh-node-detail"]')
+    return await detail.isExisting() && (await detail.getText()).includes(name)
+  }, { timeout: 60_000, interval: 500, timeoutMsg: `harness: ${name} detail unavailable` })
+  if (name === 'beta') await poll(async () => await $('#hosted-input').isExisting(), 'taurhaus: beta hosted panel unavailable')
+}
+async function hostedTranscript() {
+  return await rpc('coordination.hosted_transcript', { team_name: team, member_name: 'beta' })
 }
