@@ -1,8 +1,9 @@
-# IN PROGRESS — latest run 8, offline observer regressions passed
+# INCOMPLETE — latest run 8, step 1 failed at native Codex startup
 
-Run 8 reuses run 7’s isolated controller with the run-8 resume/rebind criterion.
-Both inherited observer faults were reproduced offline and their fixes verified
-before any paid launch. See [Run 8](#run-8).
+Alpha exited on a scratch SQLite queue migration error (`table queued_items
+already exists`). The controller stopped after the required observation window;
+steps 2–6 were not run. Beta’s one completed input cost **$0.001065640** metered.
+Teardown found zero survivors. See [Run 8](#run-8) for classifications and gates.
 
 ## Historical run 2 — hosted process exited before transport readiness
 
@@ -952,9 +953,140 @@ commit, account/root move, fault/stress injection or operator-process kill.
 
 ## Run 8
 
-Offline preparation: **30 tests PASS**, plus **6 preflight tests PASS**.
-The historical reset-counter assertion and null-field redaction exception both
-reproduced before restoring run 7’s fixes. [Red](l4-resume-team/run8/red.txt),
-[green](l4-resume-team/run8/green.txt), [provenance](l4-resume-team/run8/provenance.json).
+**INCOMPLETE; step 1 FAIL / harness (native Codex startup).** The single production
+initialize operation reported completed, but alpha’s native 0.153.4 TUI exited
+without a session identity. Its pane retained this error:
 
-Runtime steps and post-teardown gates pending.
+```text
+failed to migrate queue DB ... queue_1.sqlite:
+while executing migration 1: error returned from database:
+(code: 1) table queued_items already exists
+```
+
+The controller then exhausted its **100-second** attributed-idle observation
+window with `alpha attribution/idle missing`. The automatic observer initially
+classified that boundary as Taurhaus; the final classification is **harness**
+based on the native startup error. The separate product observation—initialize
+reported completed despite the exited alpha TUI—is retained, not silently
+corrected or used to claim a successful initialization.
+[Pane/error](l4-resume-team/run8/step1-observer-alpha-pane.json),
+[operation status](l4-resume-team/run8/step1-operation.json),
+[classification](l4-resume-team/run8/step1-outcome.json),
+[analysis](l4-resume-team/run8/runtime-analysis.json).
+
+| Step | Outcome / classification | Evidence |
+|---|---|---|
+| 1. Initialize, exchange/read one marker per seat, retain identities/receipts | **FAIL / harness**: alpha native startup failed before markers; beta completed onboarding | [Outcome](l4-resume-team/run8/step1-outcome.json), [final state](l4-resume-team/run8/final-state.json) |
+| 2. Stop every seat through supported session-stop | **NOT RUN / not evaluated**: binding stop after step 1 | [Outcome](l4-resume-team/run8/step2-outcome.json) |
+| 3. Accept both stopped-seat obligations; prove pending via acceptance, no transport receipt and member health refusal | **NOT RUN / not evaluated** | [Outcome](l4-resume-team/run8/step3-outcome.json) |
+| 4. One whole-team resume and status polling | **NOT RUN / not evaluated**: no resume RPC | [Outcome](l4-resume-team/run8/step4-outcome.json) |
+| 5. Resume/rebind identities, new generations, one recovery card and exactly one backlog delivery each | **NOT RUN / not evaluated** | [Outcome](l4-resume-team/run8/step5-outcome.json) |
+| 6. Explicit reads, no replay, journal/transport/executor reconciliation | **NOT RUN / not evaluated**; failure teardown/export completed separately | [Outcome](l4-resume-team/run8/step6-outcome.json) |
+
+### Candidate, isolation and retained evidence
+
+Product base **106f06c7** (PRs #172, #174 and #175), verified as ancestor without
+switching this branch. Mesh **f8ff76e**, detached and built only in the designated
+Mesh worktree; shipped app-server descriptor **enabled**, unchanged. The private
+runtime reported **protocol 27**, actual **Codex 0.153.4**; both native Codex
+siblings were copied into the scratch bin. Model **gpt-5.6-luna**, effort **low**.
+[Provenance and executed-source hashes](l4-resume-team/run8/provenance.json),
+[binary digests](l4-resume-team/run8/build/binaries.json),
+[capabilities](l4-resume-team/run8/delivery-capabilities.json),
+[version](l4-resume-team/run8/codex-version.json),
+[commands/RPCs](l4-resume-team/run8/events.jsonl).
+
+Initialize ID `init_e1e510f472fe4665ac911b7057d203d1`; team incarnation
+`dbdd271ec1ce606eb3b657698c47546d55690ec52b35af65bf4556e0a2c40dce`.
+Alpha: tmux pane `%3`, generation 1, no session ID. Beta: hosted pane `%4`,
+generation 1, thread `01a08dd2-4077-75d2-8e6f-5c3307b683d3`.
+The lead remained login-only with zero model turns. No baseline marker,
+backlog message, explicit read, `stop_session`, or `resume_team` was issued.
+
+The controller reused run 7’s private PID namespace, private tmux infrastructure,
+scratch roots, canonical policy, and command-capable instructions. Only the
+explicit disposable credential source’s `auth.json` was copied, mode 0600, with
+no credential fallback. No observer connected to the app-server socket. The
+complete **268-row sanitized daemon JSONL** is retained; prohibited account usage
+rows/fields and secrets are excluded. Pane excerpts contain at most 60 lines.
+[Bootstrap](l4-resume-team/run8/bootstrap.json), [policy](l4-resume-team/run8/policy.json),
+[daemon log](l4-resume-team/run8/taurhaus.log.jsonl),
+[host events](l4-resume-team/run8/host-events.json),
+[rollouts](l4-resume-team/run8/rollouts.json),
+[activity](l4-resume-team/run8/final-activity.json),
+[passive locks](l4-resume-team/run8/final-locks.json).
+
+### Every input and spend
+
+| Turn ID | Work | Input / cached / output tokens | Metered USD | All tokens at output rate USD |
+|---|---|---:|---:|---:|
+| `01a08dd2-46ba-7c01-8f1c-d4dc6cde0b2c` | beta onboarding, completed | 11219 / 6912 / 55 | 0.001065640 | 0.013528800 |
+| **Total** | **1 observed input; none unmetered** | | **0.001065640** | **0.013528800** |
+
+One observed input plus two conservative seat-start reservations = **3 ≤ 16**.
+Alpha and Claude took zero observed model turns. Metered **$0.001065640 ≤ $0.25**;
+runtime **113.427 seconds ≤ 900**. The rates are the inherited trial rates
+($0.20/$0.02/$1.20 per million uncached input/cached input/output), an
+API-equivalent meter, not an invoice. Runs 1–7 are excluded from this fresh budget.
+No paid retry or additional authorization was requested.
+[Ledger](l4-resume-team/run8/cost-ledger.json),
+[reconciliation](l4-resume-team/run8/spend-reconciliation.json),
+[spend audit](l4-resume-team/run8/final-spend-audit.json).
+
+### Offline red → green, gates and teardown
+
+Before the paid run, the two exact faulty historical observer functions were
+restored in the copied controller solely for the offline red: reset accounting
+from `95d31ae3` (original `c008cc2e`) and embedded JSON redaction from `5f102e6c`.
+The new generated-record tests observed **1 failure + 1 error**: `unmetered reset
+token counter` and `NoneType ... startswith`. Reusing run 7’s committed fixes
+then passed: reset counters open a metering epoch and preserve prior spend;
+null fields stay absent/null and nested JSON remains exportable. No earlier
+runtime evidence/source was edited. The additional run-8 identity test first
+failed on the missing checker, then passed the recorded resume/new-rollout/
+notify-idle criterion, including negative controls. Final **30 tests PASS**
+(three new tests, 27 reused guards), plus **6 preflight tests PASS**. All offline
+tests use generated records/temp files and mocks, without live CLI or auth access.
+[Observer red](l4-resume-team/run8/red.txt),
+[identity red](l4-resume-team/run8/identity-red.txt),
+[green](l4-resume-team/run8/green.txt),
+[preflight](l4-resume-team/run8/preflight.txt).
+
+The corrected step-3 predicate and step-5 assertions are present and offline
+checked, but **not live-proven by this run**. In particular, run 8 supplies no
+live confirmation of the #172/#174 resume fix or of backlog/recovery delivery.
+
+| Gate/check | Exit | Evidence |
+|---|---:|---|
+| `Mesh build` | **0** | [Result](l4-resume-team/run8/build/mesh.json) |
+| `Resource preparation` | **0** | [Result](l4-resume-team/run8/build/resources.json) |
+| `Daemon build` | **0** | [Result](l4-resume-team/run8/build/daemon.json) |
+| `just check-quick` | **0** | [Result](l4-resume-team/run8/gates/check-quick.json) |
+| `just lint` | **0** | [Result](l4-resume-team/run8/gates/lint.json) |
+| `just test-contracts` | **0** | [Result](l4-resume-team/run8/gates/test-contracts.json) |
+| Runtime controller | **1** | [Exit and last logs](l4-resume-team/run8/execution-result.json) |
+| Process/privacy audit | **0** | [Result](l4-resume-team/run8/final-audit.json) |
+
+All required gates run from this checkout root **after teardown**, using scratch
+harness homes and this checkout’s own `src-tauri/target`. Cargo admission uses
+`pgrep -af '(^|/)cargo( |$)'`, 30-second polls, at most 30 minutes, admitting work
+only below three existing Cargo processes; each Cargo command uses one build
+job. No `src-tauri/` diff, so conditional `just test-rust-unit` is not applicable.
+[Gate runner](l4-resume-team/run8/gates.py).
+
+Teardown and the independent process/privacy census rechecked **13 owned
+PID/start-tick identities**, found **zero survivors**, verified the private port
+closed, removed the scratch root and credential copy, and confirmed unchanged
+Mesh source. [Cleanup](l4-resume-team/run8/cleanup.json),
+[audit](l4-resume-team/run8/final-audit.json).
+
+Deviations: steps 2–6 were not run because step 1 failed, as the binding stop
+rule requires. The specified attempt-9 reference worktree does not exist
+(`git show` exit 128); run 7’s existing sandbox layout was reused as directed.
+The historical observer functions were replayed offline because run 7’s final
+commit already contains both fixes. One additional read-only private alpha pane
+capture identified the startup error. A fresh independent Opus evidence lens
+remains with the orchestrator; this implementer has no callable Opus/Workflow
+runner and claims no review approval. No product edit, descriptor mutation,
+Mesh commit, install/release, plan-ledger edit, account/root move, crash/stress
+injection, or operator-process kill occurred.

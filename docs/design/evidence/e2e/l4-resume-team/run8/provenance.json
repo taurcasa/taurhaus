@@ -43,5 +43,6 @@
     "test_support.py": "53da364792268176851b36c1edcff82b1336a425f8c36d8b8c2deadb31a359fa",
     "support.py": "7b2e24505106ac32f3f965d6acde408b28f3312fd60cac80911ea9ff0d625af8",
     "gates.py": "4fa128fbe1b1df1ed549d56282605c7a254d11dfba35ee100c0041f363a8099b"
-  }
+  },
+  "inherited_preflight_sha256": "11bd5a0fc3f25f1f8456b4da4a40c206673ab432cfc360d117bbefb4b0af0228"
 }

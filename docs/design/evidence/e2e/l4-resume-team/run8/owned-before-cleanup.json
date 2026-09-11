@@ -1,0 +1,249 @@
+[
+  {
+    "pid": 3046302,
+    "start_ticks": "30629596",
+    "namespace_pids": [
+      "3046302"
+    ],
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-l4-run8-8x7tulna",
+      "/tmp/th-l4-run8-8x7tulna",
+      "--chdir",
+      "/tmp/th-l4-run8-8x7tulna/project",
+      "/bin/bash",
+      "/tmp/th-l4-run8-8x7tulna/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 3046303,
+    "start_ticks": "30629596",
+    "namespace_pids": [
+      "3046303",
+      "1"
+    ],
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-l4-run8-8x7tulna",
+      "/tmp/th-l4-run8-8x7tulna",
+      "--chdir",
+      "/tmp/th-l4-run8-8x7tulna/project",
+      "/bin/bash",
+      "/tmp/th-l4-run8-8x7tulna/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 3046305,
+    "start_ticks": "30629596",
+    "namespace_pids": [
+      "3046305",
+      "2"
+    ],
+    "argv": [
+      "/bin/bash",
+      "/tmp/th-l4-run8-8x7tulna/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 3046307,
+    "start_ticks": "30629596",
+    "namespace_pids": [
+      "3046307",
+      "3"
+    ],
+    "argv": [
+      "tmux",
+      "-D",
+      "-f",
+      "/dev/null",
+      ""
+    ]
+  },
+  {
+    "pid": 3046343,
+    "start_ticks": "30629607",
+    "namespace_pids": [
+      "3046343",
+      "9"
+    ],
+    "argv": [
+      "/bin/bash",
+      ""
+    ]
+  },
+  {
+    "pid": 3046345,
+    "start_ticks": "30629607",
+    "namespace_pids": [
+      "3046345",
+      "11"
+    ],
+    "argv": [
+      "/tmp/th-l4-run8-8x7tulna/home/.local/bin/taurhaus-daemon",
+      "--port",
+      "44821",
+      "--data-dir",
+      "/tmp/th-l4-run8-8x7tulna/data",
+      ""
+    ]
+  },
+  {
+    "pid": 3046458,
+    "start_ticks": "30629657",
+    "namespace_pids": [
+      "3046458",
+      "119"
+    ],
+    "argv": [
+      "/bin/bash",
+      "-ic",
+      "cd '/tmp/th-l4-run8-8x7tulna/project' && CLAUDE_DIR='/tmp/th-l4-run8-8x7tulna/claude' CLAUDE_CONFIG_DIR='/tmp/th-l4-run8-8x7tulna/claude' CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions --model 'claude-haiku-4-5' --team-name 'l4-resume' --agent-name 'lead' --agent-id 'lead@l4-resume' --agent-type 'orchestrator' -n 'lead'; exec \"$SHELL\"",
+      ""
+    ]
+  },
+  {
+    "pid": 3046461,
+    "start_ticks": "30629657",
+    "namespace_pids": [
+      "3046461",
+      "122"
+    ],
+    "argv": [
+      "claude",
+      "--dangerously-skip-permissions",
+      "--model",
+      "claude-haiku-4-5",
+      "--team-name",
+      "l4-resume",
+      "--agent-name",
+      "lead",
+      "--agent-id",
+      "lead@l4-resume",
+      "--agent-type",
+      "orchestrator",
+      "-n",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 3046481,
+    "start_ticks": "30629662",
+    "namespace_pids": [
+      "3046481",
+      "142"
+    ],
+    "argv": [
+      "/bin/bash",
+      ""
+    ]
+  },
+  {
+    "pid": 3046524,
+    "start_ticks": "30629664",
+    "namespace_pids": [
+      "3046524",
+      "185"
+    ],
+    "argv": [
+      "codex",
+      "-c",
+      "sandbox_mode=\"danger-full-access\"",
+      "-c",
+      "approval_policy=\"never\"",
+      "-c",
+      "model=\"gpt-5.6-luna\"",
+      "-c",
+      "model_reasoning_effort=\"low\"",
+      "app-server",
+      "--listen",
+      "unix:///tmp/th-l4-run8-8x7tulna/tmp/th-host-a325eee4733c4901a8a8d9fd7e2fc316/rpc.sock",
+      ""
+    ]
+  },
+  {
+    "pid": 3047452,
+    "start_ticks": "30630126",
+    "namespace_pids": [
+      "3047452",
+      "876"
+    ],
+    "argv": [
+      "-bash",
+      ""
+    ]
+  },
+  {
+    "pid": 3047508,
+    "start_ticks": "30630164",
+    "namespace_pids": [
+      "3047508",
+      "928"
+    ],
+    "argv": [
+      "codex",
+      "--remote",
+      "unix:///tmp/th-l4-run8-8x7tulna/tmp/th-host-a325eee4733c4901a8a8d9fd7e2fc316/rpc.sock",
+      "resume",
+      "01a08dd2-4077-75d2-8e6f-5c3307b683d3",
+      "--no-alt-screen",
+      "--strict-config",
+      ""
+    ]
+  },
+  {
+    "pid": 3048250,
+    "start_ticks": "30630393",
+    "namespace_pids": [
+      "3048250",
+      "1281"
+    ],
+    "argv": [
+      "/tmp/th-l4-run8-8x7tulna/home/.local/bin/mesh",
+      "team-daemon",
+      "start",
+      "--team",
+      "l4-resume",
+      "--name",
+      "lead",
+      "--claude-dir",
+      "/tmp/th-l4-run8-8x7tulna/claude",
+      ""
+    ]
+  }
+]

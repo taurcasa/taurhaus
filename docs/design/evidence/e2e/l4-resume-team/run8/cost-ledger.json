@@ -1,0 +1,35 @@
+{
+  "paid_inputs": 1,
+  "turn_ids": [
+    "01a08dd2-46ba-7c01-8f1c-d4dc6cde0b2c"
+  ],
+  "turns": [
+    {
+      "turn_id": "01a08dd2-46ba-7c01-8f1c-d4dc6cde0b2c",
+      "thread_id": "01a08dd2-4077-75d2-8e6f-5c3307b683d3",
+      "input": 11219,
+      "cached_input": 6912,
+      "output": 55,
+      "observer": "host",
+      "api_equivalent_usd": 0.00106564,
+      "conservative_usd": 0.0135288
+    }
+  ],
+  "unmetered": [],
+  "api_equivalent_usd": 0.00106564,
+  "conservative_usd": 0.0135288,
+  "basis": "Prior trial packet Luna input/cached/output rates $0.20/$0.02/$1.20 per million; conservative all tokens at $1.20/M, not an invoice.",
+  "seat_start_reservations": 2,
+  "inputs_plus_conservative_starts": 3,
+  "model": "gpt-5.6-luna",
+  "effort": "low",
+  "max_inputs": 16,
+  "max_usd": 0.25,
+  "completed_turn_ids": [
+    "01a08dd2-46ba-7c01-8f1c-d4dc6cde0b2c"
+  ],
+  "attachment_generations": {
+    "alpha": 1,
+    "beta": 1
+  }
+}

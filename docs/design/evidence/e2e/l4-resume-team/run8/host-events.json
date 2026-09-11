@@ -1,0 +1,410 @@
+[
+  {
+    "emittedAtMs": 1789085759183,
+    "method": "remoteControl/status/changed",
+    "params": {
+      "environmentId": null,
+      "serverName": "whocares",
+      "status": "disabled"
+    }
+  },
+  {
+    "emittedAtMs": 1789085763057,
+    "method": "thread/started",
+    "params": {
+      "thread": {
+        "agentNickname": null,
+        "agentRole": null,
+        "canAcceptDirectInput": true,
+        "cliVersion": "0.153.4",
+        "createdAt": 1789085762,
+        "cwd": "/tmp/th-l4-run8-8x7tulna/project",
+        "ephemeral": false,
+        "extra": null,
+        "forkedFromId": null,
+        "gitInfo": null,
+        "historyMode": "paginated",
+        "id": "01a08dd2-4077-75d2-8e6f-5c3307b683d3",
+        "model": "gpt-5.6-luna",
+        "modelProvider": "openai",
+        "name": null,
+        "parentThreadId": null,
+        "path": "/tmp/th-l4-run8-8x7tulna/codex/sessions/2026/09/11/rollout-2026-09-11T02-16-01-01a08dd2-4077-75d2-8e6f-5c3307b683d3.jsonl",
+        "preview": "",
+        "projectId": null,
+        "reasoningEffort": "low",
+        "recencyAt": 1789085762,
+        "section": null,
+        "sectionEnteredAt": null,
+        "sessionId": "01a08dd2-4077-75d2-8e6f-5c3307b683d3",
+        "source": "vscode",
+        "status": {
+          "type": "idle"
+        },
+        "threadSource": null,
+        "turns": [],
+        "updatedAt": 1789085762
+      }
+    }
+  },
+  {
+    "emittedAtMs": 1789085763057,
+    "method": "mcpServer/startupStatus/updated",
+    "params": {
+      "error": null,
+      "failureReason": null,
+      "name": "codex_apps",
+      "status": "starting",
+      "threadId": "01a08dd2-4077-75d2-8e6f-5c3307b683d3"
+    }
+  },
+  {
+    "emittedAtMs": 1789085763664,
+    "method": "thread/status/changed",
+    "params": {
+      "status": {
+        "activeFlags": [],
+        "type": "active"
+      },
+      "threadId": "01a08dd2-4077-75d2-8e6f-5c3307b683d3"
+    }
+  },
+  {
+    "emittedAtMs": 1789085763664,
+    "method": "turn/started",
+    "params": {
+      "threadId": "01a08dd2-4077-75d2-8e6f-5c3307b683d3",
+      "turn": {
+        "completedAt": null,
+        "durationMs": null,
+        "error": null,
+        "id": "01a08dd2-46ba-7c01-8f1c-d4dc6cde0b2c",
+        "items": [],
+        "itemsView": "notLoaded",
+        "startedAt": 1789085763,
+        "status": "inProgress"
+      }
+    }
+  },
+  {
+    "emittedAtMs": 1789085763670,
+    "method": "mcpServer/startupStatus/updated",
+    "params": {
+      "error": null,
+      "failureReason": null,
+      "name": "codex_apps",
+      "status": "ready",
+      "threadId": "01a08dd2-4077-75d2-8e6f-5c3307b683d3"
+    }
+  },
+  {
+    "emittedAtMs": 1789085764364,
+    "method": "thread/goal/cleared",
+    "params": {
+      "threadId": "01a08dd2-4077-75d2-8e6f-5c3307b683d3"
+    }
+  },
+  {
+    "emittedAtMs": 1789085766162,
+    "method": "remoteControl/status/changed",
+    "params": {
+      "environmentId": null,
+      "serverName": "whocares",
+      "status": "disabled"
+    }
+  },
+  {
+    "emittedAtMs": 1789085766262,
+    "method": "deprecationNotice",
+    "params": {
+      "details": null,
+      "summary": "Full-history hydration is deprecated for paginated threads; use `excludeTurns: true`, then page with `thread/turns/list` and `thread/items/list`."
+    }
+  },
+  {
+    "emittedAtMs": 1789085766463,
+    "method": "thread/goal/cleared",
+    "params": {
+      "threadId": "01a08dd2-4077-75d2-8e6f-5c3307b683d3"
+    }
+  },
+  {
+    "emittedAtMs": 1789085766969,
+    "method": "item/started",
+    "params": {
+      "item": {
+        "clientId": null,
+        "content": [
+          {
+            "text": "[taurhaus] recovery_card\nIdentity: beta on l4-resume; key={\"card_schema\":1,\"recipient\":[\"dbdd271ec1ce606eb3b657698c47546d55690ec52b35af65bf4556e0a2c40dce\",\"ce3c2053-3886-4316-8e9c-21ff187c8e6d\"],\"context\":[1,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-l4-run8-8x7tulna/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-l4-run8-8x7tulna/claude\",\"harness_account_root\":\"/tmp/th-l4-run8-8x7tulna/codex\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-l4-run8-8x7tulna/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"66cbae1331c74e3410154db1011b7b55d2ac62b7a5876c76e15a2fe75e7d8824\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: 0ed2ca34d78968ca86df98acd91ba68c3e6889f2a328af677af6d87028ed9714; source=682540e4a3f9cfbca660a5add5db7fa379ff474f5fe7c2f18798f74d7e72c755; audience=unavailable\nProject cwd: /tmp/th-l4-run8-8x7tulna/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: low; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-11 00:16:03.064295373 UTC\nCurrent task: # \u2014 \nOperational constraints: unavailable\nFocal files: unavailable\nRole: unavailable\nPurpose: This is an isolated messaging trial. Reply briefly (at most 40 words). When a message assigns you a task, run exactly the mesh lifecycle commands it names. Never touch files. Do not send unsolicited messages.\n\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.",
+            "text_elements": [],
+            "type": "text"
+          }
+        ],
+        "id": "01a08dd2-5539-7172-a5a2-6b97a8a74e17",
+        "type": "userMessage"
+      },
+      "startedAtMs": 1789085766969,
+      "threadId": "01a08dd2-4077-75d2-8e6f-5c3307b683d3",
+      "turnId": "01a08dd2-46ba-7c01-8f1c-d4dc6cde0b2c"
+    }
+  },
+  {
+    "emittedAtMs": 1789085767165,
+    "method": "item/completed",
+    "params": {
+      "completedAtMs": 1789085766969,
+      "item": {
+        "clientId": null,
+        "content": [
+          {
+            "text": "[taurhaus] recovery_card\nIdentity: beta on l4-resume; key={\"card_schema\":1,\"recipient\":[\"dbdd271ec1ce606eb3b657698c47546d55690ec52b35af65bf4556e0a2c40dce\",\"ce3c2053-3886-4316-8e9c-21ff187c8e6d\"],\"context\":[1,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-l4-run8-8x7tulna/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-l4-run8-8x7tulna/claude\",\"harness_account_root\":\"/tmp/th-l4-run8-8x7tulna/codex\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-l4-run8-8x7tulna/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"66cbae1331c74e3410154db1011b7b55d2ac62b7a5876c76e15a2fe75e7d8824\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: 0ed2ca34d78968ca86df98acd91ba68c3e6889f2a328af677af6d87028ed9714; source=682540e4a3f9cfbca660a5add5db7fa379ff474f5fe7c2f18798f74d7e72c755; audience=unavailable\nProject cwd: /tmp/th-l4-run8-8x7tulna/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: low; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-11 00:16:03.064295373 UTC\nCurrent task: # \u2014 \nOperational constraints: unavailable\nFocal files: unavailable\nRole: unavailable\nPurpose: This is an isolated messaging trial. Reply briefly (at most 40 words). When a message assigns you a task, run exactly the mesh lifecycle commands it names. Never touch files. Do not send unsolicited messages.\n\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.",
+            "text_elements": [],
+            "type": "text"
+          }
+        ],
+        "id": "01a08dd2-5539-7172-a5a2-6b97a8a74e17",
+        "type": "userMessage"
+      },
+      "threadId": "01a08dd2-4077-75d2-8e6f-5c3307b683d3",
+      "turnId": "01a08dd2-46ba-7c01-8f1c-d4dc6cde0b2c"
+    }
+  },
+  {
+    "emittedAtMs": 1789085767265,
+    "method": "thread/name/updated",
+    "params": {
+      "threadId": "01a08dd2-4077-75d2-8e6f-5c3307b683d3",
+      "threadName": "[taurhaus] recovery_card Identity: b"
+    }
+  },
+  {
+    "emittedAtMs": 1789085768466,
+    "method": "thread/started",
+    "params": {
+      "thread": {
+        "agentNickname": null,
+        "agentRole": null,
+        "canAcceptDirectInput": true,
+        "cliVersion": "0.153.4",
+        "createdAt": 1789085768,
+        "cwd": "/tmp/th-l4-run8-8x7tulna/project",
+        "ephemeral": true,
+        "extra": null,
+        "forkedFromId": null,
+        "gitInfo": null,
+        "historyMode": "legacy",
+        "id": "01a08dd2-5854-7051-b081-1c483fcec0a0",
+        "model": "gpt-5.6-luna",
+        "modelProvider": "openai",
+        "name": null,
+        "parentThreadId": null,
+        "path": null,
+        "preview": "",
+        "projectId": null,
+        "reasoningEffort": "low",
+        "recencyAt": 1789085768,
+        "section": null,
+        "sectionEnteredAt": null,
+        "sessionId": "01a08dd2-5854-7051-b081-1c483fcec0a0",
+        "source": "vscode",
+        "status": {
+          "type": "idle"
+        },
+        "threadSource": "system",
+        "turns": [],
+        "updatedAt": 1789085768
+      }
+    }
+  },
+  {
+    "emittedAtMs": 1789085768466,
+    "method": "item/started",
+    "params": {
+      "item": {
+        "content": [],
+        "id": "rs_05ca3b5321cd8920016aa34843076c87d28ab9f38e896a0c5f",
+        "summary": [],
+        "type": "reasoning"
+      },
+      "startedAtMs": 1789085768466,
+      "threadId": "01a08dd2-4077-75d2-8e6f-5c3307b683d3",
+      "turnId": "01a08dd2-46ba-7c01-8f1c-d4dc6cde0b2c"
+    }
+  },
+  {
+    "emittedAtMs": 1789085769034,
+    "method": "remoteControl/status/changed",
+    "params": {
+      "environmentId": null,
+      "serverName": "whocares",
+      "status": "disabled"
+    }
+  },
+  {
+    "emittedAtMs": 1789085769035,
+    "method": "deprecationNotice",
+    "params": {
+      "details": null,
+      "summary": "Full-history hydration is deprecated for paginated threads; use `excludeTurns: true`, then page with `thread/turns/list` and `thread/items/list`."
+    }
+  },
+  {
+    "emittedAtMs": 1789085769170,
+    "method": "thread/goal/cleared",
+    "params": {
+      "threadId": "01a08dd2-4077-75d2-8e6f-5c3307b683d3"
+    }
+  },
+  {
+    "emittedAtMs": 1789085769388,
+    "method": "item/completed",
+    "params": {
+      "completedAtMs": 1789085769386,
+      "item": {
+        "delivery": null,
+        "id": "msg_05ca3b5321cd8920016aa348437dec87d2873af8631a345ef7",
+        "memoryCitation": null,
+        "phase": "final_answer",
+        "questions": null,
+        "text": "Team lead, recovery card shows no assigned task, objective, or completion signal. Please provide the missing assignment context and release instructions.",
+        "type": "agentMessage"
+      },
+      "threadId": "01a08dd2-4077-75d2-8e6f-5c3307b683d3",
+      "turnId": "01a08dd2-46ba-7c01-8f1c-d4dc6cde0b2c"
+    }
+  },
+  {
+    "emittedAtMs": 1789085769567,
+    "method": "thread/tokenUsage/updated",
+    "params": {
+      "threadId": "01a08dd2-4077-75d2-8e6f-5c3307b683d3",
+      "tokenUsage": {
+        "last": {
+          "cacheWriteInputTokens": 0,
+          "cachedInputTokens": 6912,
+          "inputTokens": 11219,
+          "outputTokens": 55,
+          "reasoningOutputTokens": 23,
+          "totalTokens": 11274
+        },
+        "modelContextWindow": 31129,
+        "total": {
+          "cacheWriteInputTokens": 0,
+          "cachedInputTokens": 6912,
+          "inputTokens": 11219,
+          "outputTokens": 55,
+          "reasoningOutputTokens": 23,
+          "totalTokens": 11274
+        }
+      },
+      "turnId": "01a08dd2-46ba-7c01-8f1c-d4dc6cde0b2c"
+    }
+  },
+  {
+    "emittedAtMs": 1789085769767,
+    "method": "thread/status/changed",
+    "params": {
+      "status": {
+        "type": "idle"
+      },
+      "threadId": "01a08dd2-4077-75d2-8e6f-5c3307b683d3"
+    }
+  },
+  {
+    "emittedAtMs": 1789085769767,
+    "method": "turn/completed",
+    "params": {
+      "threadId": "01a08dd2-4077-75d2-8e6f-5c3307b683d3",
+      "turn": {
+        "completedAt": 1789085769,
+        "durationMs": 6306,
+        "error": null,
+        "id": "01a08dd2-46ba-7c01-8f1c-d4dc6cde0b2c",
+        "items": [
+          {
+            "delivery": null,
+            "id": "msg_05ca3b5321cd8920016aa348437dec87d2873af8631a345ef7",
+            "memoryCitation": null,
+            "phase": "final_answer",
+            "questions": null,
+            "text": "Team lead, recovery card shows no assigned task, objective, or completion signal. Please provide the missing assignment context and release instructions.",
+            "type": "agentMessage"
+          }
+        ],
+        "itemsView": "summary",
+        "startedAt": 1789085763,
+        "status": "completed"
+      }
+    }
+  },
+  {
+    "emittedAtMs": 1789085770388,
+    "method": "remoteControl/status/changed",
+    "params": {
+      "environmentId": null,
+      "serverName": "whocares",
+      "status": "disabled"
+    }
+  },
+  {
+    "emittedAtMs": 1789085770389,
+    "method": "deprecationNotice",
+    "params": {
+      "details": null,
+      "summary": "Full-history hydration is deprecated for paginated threads; use `excludeTurns: true`, then page with `thread/turns/list` and `thread/items/list`."
+    }
+  },
+  {
+    "emittedAtMs": 1789085770471,
+    "method": "thread/tokenUsage/updated",
+    "params": {
+      "threadId": "01a08dd2-4077-75d2-8e6f-5c3307b683d3",
+      "tokenUsage": {
+        "last": {
+          "cacheWriteInputTokens": 0,
+          "cachedInputTokens": 6912,
+          "inputTokens": 11219,
+          "outputTokens": 55,
+          "reasoningOutputTokens": 23,
+          "totalTokens": 11274
+        },
+        "modelContextWindow": 31129,
+        "total": {
+          "cacheWriteInputTokens": 0,
+          "cachedInputTokens": 6912,
+          "inputTokens": 11219,
+          "outputTokens": 55,
+          "reasoningOutputTokens": 23,
+          "totalTokens": 11274
+        }
+      },
+      "turnId": "01a08dd2-46ba-7c01-8f1c-d4dc6cde0b2c"
+    }
+  },
+  {
+    "emittedAtMs": 1789085770471,
+    "method": "thread/goal/cleared",
+    "params": {
+      "threadId": "01a08dd2-4077-75d2-8e6f-5c3307b683d3"
+    }
+  },
+  {
+    "emittedAtMs": 1789085773158,
+    "method": "thread/status/changed",
+    "params": {
+      "status": {
+        "type": "idle"
+      },
+      "threadId": "01a08dd2-5854-7051-b081-1c483fcec0a0"
+    }
+  },
+  {
+    "emittedAtMs": 1789085773271,
+    "method": "thread/name/updated",
+    "params": {
+      "threadId": "01a08dd2-4077-75d2-8e6f-5c3307b683d3",
+      "threadName": "Recover taurhaus card"
+    }
+  }
+]

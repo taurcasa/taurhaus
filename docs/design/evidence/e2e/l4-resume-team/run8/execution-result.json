@@ -1,0 +1,13 @@
+{
+  "command": [
+    "python3",
+    "-B",
+    "docs/design/evidence/e2e/l4-resume-team/run8/controller.py"
+  ],
+  "exit_code": 1,
+  "last_log_lines": [
+    "{\"at\": 1789085871.018341, \"step\": 1, \"kind\": \"failure\", \"reason\": \"alpha attribution/idle missing\", \"classification\": \"taurhaus\"}",
+    "{\"at\": 1789085871.2183897, \"step\": 1, \"kind\": \"cleanup\", \"survivors\": [], \"port_closed\": true, \"root_removed\": true, \"auth_removed\": true, \"mesh_source_unchanged\": true}"
+  ],
+  "status": "executed; stopped after step1 failure; no paid retry"
+}
