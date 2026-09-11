@@ -1,11 +1,6 @@
-# FAIL — latest run 9, step 5: alpha relaunched fresh
+# INCOMPLETE — latest run 10 in progress
 
-Steps 1–4 passed, including the single whole-team resume. Step 5 failed because
-alpha’s launch reports `mode: fresh` without the recorded session’s resume
-argument; step 6 was not run. Reconciled spend is **$0.007689400 metered** across
-seven turns, **12/16 inputs** including all conservative start reservations.
-Teardown found zero survivors; all three required gates exit **0**.
-See [Run 9](#run-9) for the full evidence and remaining review boundary.
+Step 1 passed; subsequent ordered steps are running. See [Run 10](#run-10).
 
 ## Historical run 2 — hosted process exited before transport readiness
 
@@ -1318,3 +1313,12 @@ stopped-session identity loss demonstrated here; (2) separately, run8’s initia
 reported completed while alpha had exited at startup. The latter remains a
 product completion-reporting follow-up and is **not** a run9 step failure; warming
 the fixture avoids the cold-home race but does not certify that reporting path.
+
+
+## Run 10
+
+Run10 uses the daemon rebuilt from `fd5dd9f0` (contains `ac2bc513`, PR #181), Mesh `3015cb0` matching `release/overhaul-rc`, Codex 0.153.4, and two Luna/low seats. No product changes.
+
+| Step | Outcome / classification | Evidence |
+|---|---|---|
+| 1. Initialize and exchange/read each marker | PASS / runtime | [Outcome](l4-resume-team/run10/step1-outcome.json), [identities](l4-resume-team/run10/original-identities.json), [state and receipts](l4-resume-team/run10/step1-state.json), [warm-up](l4-resume-team/run10/warmup.json). |

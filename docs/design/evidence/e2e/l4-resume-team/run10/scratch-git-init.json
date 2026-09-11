@@ -1,0 +1,9 @@
+{
+  "argv": [
+    "git",
+    "init",
+    "-q"
+  ],
+  "exit": 0,
+  "output": ""
+}

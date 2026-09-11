@@ -6,7 +6,7 @@
   "ancestor_exit": 0,
   "mesh_commit": "3015cb0fda5328d1f8c793b528275e6205683208",
   "mesh_rc": "3015cb0fda5328d1f8c793b528275e6205683208",
-  "controller_commit": "recorded before execution",
+  "controller_commit": "99c59ab853442e8c9fa175ed93c916594ee3ce95",
   "protocol": 27,
   "model": "gpt-5.6-luna",
   "effort": "low",

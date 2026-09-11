@@ -1,0 +1,622 @@
+[
+  {
+    "emittedAtMs": 1789102681549,
+    "method": "remoteControl/status/changed",
+    "params": {
+      "environmentId": null,
+      "serverName": "whocares",
+      "status": "disabled"
+    }
+  },
+  {
+    "emittedAtMs": 1789102683579,
+    "method": "thread/started",
+    "params": {
+      "thread": {
+        "agentNickname": null,
+        "agentRole": null,
+        "canAcceptDirectInput": true,
+        "cliVersion": "0.153.4",
+        "createdAt": 1789102683,
+        "cwd": "/tmp/th-l4-run10-t5rda_tj/project",
+        "ephemeral": false,
+        "extra": null,
+        "forkedFromId": null,
+        "gitInfo": null,
+        "historyMode": "paginated",
+        "id": "01a08ed4-6e4d-7481-a488-b01bc3a7456d",
+        "model": "gpt-5.6-luna",
+        "modelProvider": "openai",
+        "name": null,
+        "parentThreadId": null,
+        "path": "/tmp/th-l4-run10-t5rda_tj/codex/sessions/2026/09/11/rollout-2026-09-11T06-58-01-01a08ed4-6e4d-7481-a488-b01bc3a7456d.jsonl",
+        "preview": "",
+        "projectId": null,
+        "reasoningEffort": "low",
+        "recencyAt": 1789102683,
+        "section": null,
+        "sectionEnteredAt": null,
+        "sessionId": "01a08ed4-6e4d-7481-a488-b01bc3a7456d",
+        "source": "vscode",
+        "status": {
+          "type": "idle"
+        },
+        "threadSource": null,
+        "turns": [],
+        "updatedAt": 1789102683
+      }
+    }
+  },
+  {
+    "emittedAtMs": 1789102683579,
+    "method": "mcpServer/startupStatus/updated",
+    "params": {
+      "error": null,
+      "failureReason": null,
+      "name": "codex_apps",
+      "status": "starting",
+      "threadId": "01a08ed4-6e4d-7481-a488-b01bc3a7456d"
+    }
+  },
+  {
+    "emittedAtMs": 1789102684484,
+    "method": "thread/status/changed",
+    "params": {
+      "status": {
+        "activeFlags": [],
+        "type": "active"
+      },
+      "threadId": "01a08ed4-6e4d-7481-a488-b01bc3a7456d"
+    }
+  },
+  {
+    "emittedAtMs": 1789102684484,
+    "method": "turn/started",
+    "params": {
+      "threadId": "01a08ed4-6e4d-7481-a488-b01bc3a7456d",
+      "turn": {
+        "completedAt": null,
+        "durationMs": null,
+        "error": null,
+        "id": "01a08ed4-7684-7530-afbb-ae57a73227ce",
+        "items": [],
+        "itemsView": "notLoaded",
+        "startedAt": 1789102683,
+        "status": "inProgress"
+      }
+    }
+  },
+  {
+    "emittedAtMs": 1789102684489,
+    "method": "mcpServer/startupStatus/updated",
+    "params": {
+      "error": null,
+      "failureReason": null,
+      "name": "codex_apps",
+      "status": "ready",
+      "threadId": "01a08ed4-6e4d-7481-a488-b01bc3a7456d"
+    }
+  },
+  {
+    "emittedAtMs": 1789102685181,
+    "method": "thread/goal/cleared",
+    "params": {
+      "threadId": "01a08ed4-6e4d-7481-a488-b01bc3a7456d"
+    }
+  },
+  {
+    "emittedAtMs": 1789102686582,
+    "method": "remoteControl/status/changed",
+    "params": {
+      "environmentId": null,
+      "serverName": "whocares",
+      "status": "disabled"
+    }
+  },
+  {
+    "emittedAtMs": 1789102686584,
+    "method": "deprecationNotice",
+    "params": {
+      "details": null,
+      "summary": "Full-history hydration is deprecated for paginated threads; use `excludeTurns: true`, then page with `thread/turns/list` and `thread/items/list`."
+    }
+  },
+  {
+    "emittedAtMs": 1789102686883,
+    "method": "thread/goal/cleared",
+    "params": {
+      "threadId": "01a08ed4-6e4d-7481-a488-b01bc3a7456d"
+    }
+  },
+  {
+    "emittedAtMs": 1789102687285,
+    "method": "item/started",
+    "params": {
+      "item": {
+        "clientId": null,
+        "content": [
+          {
+            "text": "[taurhaus] recovery_card\nIdentity: beta on l4-resume; key={\"card_schema\":1,\"recipient\":[\"dd87beca32df887c044cb77a703825137a1ae4098b875ab5ba91d459d59b376f\",\"e3af2927-e35d-4c60-a5e3-b14af961ffe7\"],\"context\":[1,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-l4-run10-t5rda_tj/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-l4-run10-t5rda_tj/claude\",\"harness_account_root\":\"/tmp/th-l4-run10-t5rda_tj/codex\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-l4-run10-t5rda_tj/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"66cbae1331c74e3410154db1011b7b55d2ac62b7a5876c76e15a2fe75e7d8824\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: 29c2758db2cc199eb8a55a5c7d3eb176cc7f28b019a7449a115f0feb5570f451; source=682540e4a3f9cfbca660a5add5db7fa379ff474f5fe7c2f18798f74d7e72c755; audience=unavailable\nProject cwd: /tmp/th-l4-run10-t5rda_tj/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: low; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-11 04:58:03.585505209 UTC\nCurrent task: # \u2014 \nOperational constraints: unavailable\nFocal files: unavailable\nRole: unavailable\nPurpose: This is an isolated messaging trial. Reply briefly (at most 40 words). When a message assigns you a task, run exactly the mesh lifecycle commands it names. Never touch files. Do not send unsolicited messages.\n\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.",
+            "text_elements": [],
+            "type": "text"
+          }
+        ],
+        "id": "01a08ed4-8434-7ef3-ba35-d6d0c806322b",
+        "type": "userMessage"
+      },
+      "startedAtMs": 1789102687284,
+      "threadId": "01a08ed4-6e4d-7481-a488-b01bc3a7456d",
+      "turnId": "01a08ed4-7684-7530-afbb-ae57a73227ce"
+    }
+  },
+  {
+    "emittedAtMs": 1789102687886,
+    "method": "item/completed",
+    "params": {
+      "completedAtMs": 1789102687284,
+      "item": {
+        "clientId": null,
+        "content": [
+          {
+            "text": "[taurhaus] recovery_card\nIdentity: beta on l4-resume; key={\"card_schema\":1,\"recipient\":[\"dd87beca32df887c044cb77a703825137a1ae4098b875ab5ba91d459d59b376f\",\"e3af2927-e35d-4c60-a5e3-b14af961ffe7\"],\"context\":[1,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-l4-run10-t5rda_tj/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-l4-run10-t5rda_tj/claude\",\"harness_account_root\":\"/tmp/th-l4-run10-t5rda_tj/codex\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-l4-run10-t5rda_tj/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"66cbae1331c74e3410154db1011b7b55d2ac62b7a5876c76e15a2fe75e7d8824\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: 29c2758db2cc199eb8a55a5c7d3eb176cc7f28b019a7449a115f0feb5570f451; source=682540e4a3f9cfbca660a5add5db7fa379ff474f5fe7c2f18798f74d7e72c755; audience=unavailable\nProject cwd: /tmp/th-l4-run10-t5rda_tj/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: low; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-11 04:58:03.585505209 UTC\nCurrent task: # \u2014 \nOperational constraints: unavailable\nFocal files: unavailable\nRole: unavailable\nPurpose: This is an isolated messaging trial. Reply briefly (at most 40 words). When a message assigns you a task, run exactly the mesh lifecycle commands it names. Never touch files. Do not send unsolicited messages.\n\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.",
+            "text_elements": [],
+            "type": "text"
+          }
+        ],
+        "id": "01a08ed4-8434-7ef3-ba35-d6d0c806322b",
+        "type": "userMessage"
+      },
+      "threadId": "01a08ed4-6e4d-7481-a488-b01bc3a7456d",
+      "turnId": "01a08ed4-7684-7530-afbb-ae57a73227ce"
+    }
+  },
+  {
+    "emittedAtMs": 1789102688087,
+    "method": "thread/name/updated",
+    "params": {
+      "threadId": "01a08ed4-6e4d-7481-a488-b01bc3a7456d",
+      "threadName": "[taurhaus] recovery_card Identity: b"
+    }
+  },
+  {
+    "emittedAtMs": 1789102689387,
+    "method": "item/started",
+    "params": {
+      "item": {
+        "content": [],
+        "id": "rs_0a3239d2c3abfb4f016aa38a5b9af887d2bcdab8b5fd2b2de7",
+        "summary": [],
+        "type": "reasoning"
+      },
+      "startedAtMs": 1789102689386,
+      "threadId": "01a08ed4-6e4d-7481-a488-b01bc3a7456d",
+      "turnId": "01a08ed4-7684-7530-afbb-ae57a73227ce"
+    }
+  },
+  {
+    "emittedAtMs": 1789102690188,
+    "method": "thread/started",
+    "params": {
+      "thread": {
+        "agentNickname": null,
+        "agentRole": null,
+        "canAcceptDirectInput": true,
+        "cliVersion": "0.153.4",
+        "createdAt": 1789102690,
+        "cwd": "/tmp/th-l4-run10-t5rda_tj/project",
+        "ephemeral": true,
+        "extra": null,
+        "forkedFromId": null,
+        "gitInfo": null,
+        "historyMode": "legacy",
+        "id": "01a08ed4-8a77-7412-be39-f7bad17a0ede",
+        "model": "gpt-5.6-luna",
+        "modelProvider": "openai",
+        "name": null,
+        "parentThreadId": null,
+        "path": null,
+        "preview": "",
+        "projectId": null,
+        "reasoningEffort": "low",
+        "recencyAt": 1789102690,
+        "section": null,
+        "sectionEnteredAt": null,
+        "sessionId": "01a08ed4-8a77-7412-be39-f7bad17a0ede",
+        "source": "vscode",
+        "status": {
+          "type": "idle"
+        },
+        "threadSource": "system",
+        "turns": [],
+        "updatedAt": 1789102690
+      }
+    }
+  },
+  {
+    "emittedAtMs": 1789102690188,
+    "method": "item/completed",
+    "params": {
+      "completedAtMs": 1789102689887,
+      "item": {
+        "content": [],
+        "id": "rs_0a3239d2c3abfb4f016aa38a5b9af887d2bcdab8b5fd2b2de7",
+        "summary": [],
+        "type": "reasoning"
+      },
+      "threadId": "01a08ed4-6e4d-7481-a488-b01bc3a7456d",
+      "turnId": "01a08ed4-7684-7530-afbb-ae57a73227ce"
+    }
+  },
+  {
+    "emittedAtMs": 1789102690489,
+    "method": "item/started",
+    "params": {
+      "item": {
+        "delivery": null,
+        "id": "msg_0a3239d2c3abfb4f016aa38a5c169c87d2bb2aeb6936a1ce87",
+        "memoryCitation": null,
+        "phase": "final_answer",
+        "questions": null,
+        "text": "",
+        "type": "agentMessage"
+      },
+      "startedAtMs": 1789102690489,
+      "threadId": "01a08ed4-6e4d-7481-a488-b01bc3a7456d",
+      "turnId": "01a08ed4-7684-7530-afbb-ae57a73227ce"
+    }
+  },
+  {
+    "emittedAtMs": 1789102690689,
+    "method": "thread/status/changed",
+    "params": {
+      "status": {
+        "activeFlags": [],
+        "type": "active"
+      },
+      "threadId": "01a08ed4-8a77-7412-be39-f7bad17a0ede"
+    }
+  },
+  {
+    "emittedAtMs": 1789102690790,
+    "method": "item/completed",
+    "params": {
+      "completedAtMs": 1789102690691,
+      "item": {
+        "delivery": null,
+        "id": "msg_0a3239d2c3abfb4f016aa38a5c169c87d2bb2aeb6936a1ce87",
+        "memoryCitation": null,
+        "phase": "final_answer",
+        "questions": null,
+        "text": "Team lead, the recovery card has no assignment, objective, first action, or completion signal. Please provide the missing identity, release/GO signal, and required task context.",
+        "type": "agentMessage"
+      },
+      "threadId": "01a08ed4-6e4d-7481-a488-b01bc3a7456d",
+      "turnId": "01a08ed4-7684-7530-afbb-ae57a73227ce"
+    }
+  },
+  {
+    "emittedAtMs": 1789102690992,
+    "method": "thread/tokenUsage/updated",
+    "params": {
+      "threadId": "01a08ed4-6e4d-7481-a488-b01bc3a7456d",
+      "tokenUsage": {
+        "last": {
+          "cacheWriteInputTokens": 0,
+          "cachedInputTokens": 6912,
+          "inputTokens": 11207,
+          "outputTokens": 64,
+          "reasoningOutputTokens": 23,
+          "totalTokens": 11271
+        },
+        "modelContextWindow": 31129,
+        "total": {
+          "cacheWriteInputTokens": 0,
+          "cachedInputTokens": 6912,
+          "inputTokens": 11207,
+          "outputTokens": 64,
+          "reasoningOutputTokens": 23,
+          "totalTokens": 11271
+        }
+      },
+      "turnId": "01a08ed4-7684-7530-afbb-ae57a73227ce"
+    }
+  },
+  {
+    "emittedAtMs": 1789102691490,
+    "method": "thread/status/changed",
+    "params": {
+      "status": {
+        "type": "idle"
+      },
+      "threadId": "01a08ed4-6e4d-7481-a488-b01bc3a7456d"
+    }
+  },
+  {
+    "emittedAtMs": 1789102691490,
+    "method": "turn/completed",
+    "params": {
+      "threadId": "01a08ed4-6e4d-7481-a488-b01bc3a7456d",
+      "turn": {
+        "completedAt": 1789102691,
+        "durationMs": 7209,
+        "error": null,
+        "id": "01a08ed4-7684-7530-afbb-ae57a73227ce",
+        "items": [
+          {
+            "delivery": null,
+            "id": "msg_0a3239d2c3abfb4f016aa38a5c169c87d2bb2aeb6936a1ce87",
+            "memoryCitation": null,
+            "phase": "final_answer",
+            "questions": null,
+            "text": "Team lead, the recovery card has no assignment, objective, first action, or completion signal. Please provide the missing identity, release/GO signal, and required task context.",
+            "type": "agentMessage"
+          }
+        ],
+        "itemsView": "summary",
+        "startedAt": 1789102683,
+        "status": "completed"
+      }
+    }
+  },
+  {
+    "emittedAtMs": 1789102695696,
+    "method": "thread/status/changed",
+    "params": {
+      "status": {
+        "type": "idle"
+      },
+      "threadId": "01a08ed4-8a77-7412-be39-f7bad17a0ede"
+    }
+  },
+  {
+    "emittedAtMs": 1789102696119,
+    "method": "remoteControl/status/changed",
+    "params": {
+      "environmentId": null,
+      "serverName": "whocares",
+      "status": "disabled"
+    }
+  },
+  {
+    "emittedAtMs": 1789102696120,
+    "method": "deprecationNotice",
+    "params": {
+      "details": null,
+      "summary": "Full-history hydration is deprecated for paginated threads; use `excludeTurns: true`, then page with `thread/turns/list` and `thread/items/list`."
+    }
+  },
+  {
+    "emittedAtMs": 1789102696295,
+    "method": "thread/tokenUsage/updated",
+    "params": {
+      "threadId": "01a08ed4-6e4d-7481-a488-b01bc3a7456d",
+      "tokenUsage": {
+        "last": {
+          "cacheWriteInputTokens": 0,
+          "cachedInputTokens": 6912,
+          "inputTokens": 11207,
+          "outputTokens": 64,
+          "reasoningOutputTokens": 23,
+          "totalTokens": 11271
+        },
+        "modelContextWindow": 31129,
+        "total": {
+          "cacheWriteInputTokens": 0,
+          "cachedInputTokens": 6912,
+          "inputTokens": 11207,
+          "outputTokens": 64,
+          "reasoningOutputTokens": 23,
+          "totalTokens": 11271
+        }
+      },
+      "turnId": "01a08ed4-7684-7530-afbb-ae57a73227ce"
+    }
+  },
+  {
+    "emittedAtMs": 1789102696295,
+    "method": "thread/goal/cleared",
+    "params": {
+      "threadId": "01a08ed4-6e4d-7481-a488-b01bc3a7456d"
+    }
+  },
+  {
+    "emittedAtMs": 1789102704405,
+    "method": "thread/status/changed",
+    "params": {
+      "status": {
+        "activeFlags": [],
+        "type": "active"
+      },
+      "threadId": "01a08ed4-6e4d-7481-a488-b01bc3a7456d"
+    }
+  },
+  {
+    "emittedAtMs": 1789102704405,
+    "method": "turn/started",
+    "params": {
+      "threadId": "01a08ed4-6e4d-7481-a488-b01bc3a7456d",
+      "turn": {
+        "completedAt": null,
+        "durationMs": null,
+        "error": null,
+        "id": "01a08ed4-c699-7c31-a5d4-3bc7d8805077",
+        "items": [],
+        "itemsView": "notLoaded",
+        "startedAt": 1789102704,
+        "status": "inProgress"
+      }
+    }
+  },
+  {
+    "emittedAtMs": 1789102704807,
+    "method": "item/started",
+    "params": {
+      "item": {
+        "clientId": null,
+        "content": [
+          {
+            "text": "[mesh message data] {\"assignment\":null,\"author\":\"lead\",\"body\":\"ACTION REQUIRED: Reply exactly L4_old_beta_d995c3. No tools are needed for this marker.\",\"delivery_id\":\"bb9e9b44-d30c-4575-9315-ecdd07893dd7\",\"expectation\":null,\"message_id\":\"3baf62bf-377c-4581-8c69-0694c6a0488d\",\"metadata\":{},\"task\":null}\n",
+            "text_elements": [],
+            "type": "text"
+          }
+        ],
+        "id": "01a08ed4-c8a7-7421-895b-464c653aa969",
+        "type": "userMessage"
+      },
+      "startedAtMs": 1789102704807,
+      "threadId": "01a08ed4-6e4d-7481-a488-b01bc3a7456d",
+      "turnId": "01a08ed4-c699-7c31-a5d4-3bc7d8805077"
+    }
+  },
+  {
+    "emittedAtMs": 1789102704906,
+    "method": "item/completed",
+    "params": {
+      "completedAtMs": 1789102704807,
+      "item": {
+        "clientId": null,
+        "content": [
+          {
+            "text": "[mesh message data] {\"assignment\":null,\"author\":\"lead\",\"body\":\"ACTION REQUIRED: Reply exactly L4_old_beta_d995c3. No tools are needed for this marker.\",\"delivery_id\":\"bb9e9b44-d30c-4575-9315-ecdd07893dd7\",\"expectation\":null,\"message_id\":\"3baf62bf-377c-4581-8c69-0694c6a0488d\",\"metadata\":{},\"task\":null}\n",
+            "text_elements": [],
+            "type": "text"
+          }
+        ],
+        "id": "01a08ed4-c8a7-7421-895b-464c653aa969",
+        "type": "userMessage"
+      },
+      "threadId": "01a08ed4-6e4d-7481-a488-b01bc3a7456d",
+      "turnId": "01a08ed4-c699-7c31-a5d4-3bc7d8805077"
+    }
+  },
+  {
+    "emittedAtMs": 1789102705824,
+    "method": "item/started",
+    "params": {
+      "item": {
+        "content": [],
+        "id": "rs_0a3239d2c3abfb4f016aa38a6c18a887d2be7d3e9f3519678a",
+        "summary": [],
+        "type": "reasoning"
+      },
+      "startedAtMs": 1789102705824,
+      "threadId": "01a08ed4-6e4d-7481-a488-b01bc3a7456d",
+      "turnId": "01a08ed4-c699-7c31-a5d4-3bc7d8805077"
+    }
+  },
+  {
+    "emittedAtMs": 1789102705972,
+    "method": "item/completed",
+    "params": {
+      "completedAtMs": 1789102705970,
+      "item": {
+        "content": [],
+        "id": "rs_0a3239d2c3abfb4f016aa38a6c18a887d2be7d3e9f3519678a",
+        "summary": [],
+        "type": "reasoning"
+      },
+      "threadId": "01a08ed4-6e4d-7481-a488-b01bc3a7456d",
+      "turnId": "01a08ed4-c699-7c31-a5d4-3bc7d8805077"
+    }
+  },
+  {
+    "emittedAtMs": 1789102705974,
+    "method": "item/started",
+    "params": {
+      "item": {
+        "delivery": null,
+        "id": "msg_0a3239d2c3abfb4f016aa38a6c42fc87d2ae547e756c3bf977",
+        "memoryCitation": null,
+        "phase": "final_answer",
+        "questions": null,
+        "text": "",
+        "type": "agentMessage"
+      },
+      "startedAtMs": 1789102705974,
+      "threadId": "01a08ed4-6e4d-7481-a488-b01bc3a7456d",
+      "turnId": "01a08ed4-c699-7c31-a5d4-3bc7d8805077"
+    }
+  },
+  {
+    "emittedAtMs": 1789102706207,
+    "method": "item/completed",
+    "params": {
+      "completedAtMs": 1789102706179,
+      "item": {
+        "delivery": null,
+        "id": "msg_0a3239d2c3abfb4f016aa38a6c42fc87d2ae547e756c3bf977",
+        "memoryCitation": null,
+        "phase": "final_answer",
+        "questions": null,
+        "text": "L4_old_beta_d995c3",
+        "type": "agentMessage"
+      },
+      "threadId": "01a08ed4-6e4d-7481-a488-b01bc3a7456d",
+      "turnId": "01a08ed4-c699-7c31-a5d4-3bc7d8805077"
+    }
+  },
+  {
+    "emittedAtMs": 1789102706310,
+    "method": "thread/tokenUsage/updated",
+    "params": {
+      "threadId": "01a08ed4-6e4d-7481-a488-b01bc3a7456d",
+      "tokenUsage": {
+        "last": {
+          "cacheWriteInputTokens": 0,
+          "cachedInputTokens": 11008,
+          "inputTokens": 11382,
+          "outputTokens": 22,
+          "reasoningOutputTokens": 8,
+          "totalTokens": 11404
+        },
+        "modelContextWindow": 31129,
+        "total": {
+          "cacheWriteInputTokens": 0,
+          "cachedInputTokens": 17920,
+          "inputTokens": 22589,
+          "outputTokens": 86,
+          "reasoningOutputTokens": 31,
+          "totalTokens": 22675
+        }
+      },
+      "turnId": "01a08ed4-c699-7c31-a5d4-3bc7d8805077"
+    }
+  },
+  {
+    "emittedAtMs": 1789102706508,
+    "method": "thread/status/changed",
+    "params": {
+      "status": {
+        "type": "idle"
+      },
+      "threadId": "01a08ed4-6e4d-7481-a488-b01bc3a7456d"
+    }
+  },
+  {
+    "emittedAtMs": 1789102706508,
+    "method": "turn/completed",
+    "params": {
+      "threadId": "01a08ed4-6e4d-7481-a488-b01bc3a7456d",
+      "turn": {
+        "completedAt": 1789102706,
+        "durationMs": 2104,
+        "error": null,
+        "id": "01a08ed4-c699-7c31-a5d4-3bc7d8805077",
+        "items": [
+          {
+            "delivery": null,
+            "id": "msg_0a3239d2c3abfb4f016aa38a6c42fc87d2ae547e756c3bf977",
+            "memoryCitation": null,
+            "phase": "final_answer",
+            "questions": null,
+            "text": "L4_old_beta_d995c3",
+            "type": "agentMessage"
+          }
+        ],
+        "itemsView": "summary",
+        "startedAt": 1789102704,
+        "status": "completed"
+      }
+    }
+  }
+]
