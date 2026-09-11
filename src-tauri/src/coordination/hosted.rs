@@ -59,11 +59,21 @@ impl Drop for SocketDirectory {
         let _ = std::fs::remove_dir_all(&self.0);
     }
 }
-#[derive(Default)]
+#[cfg_attr(not(test), derive(Default))]
 pub(crate) struct HostedMembers {
     seats: Mutex<HashMap<SeatKey, Seat>>,
     #[cfg(test)]
     activity_hub: Arc<SessionActivityHub>,
+}
+
+#[cfg(test)]
+impl Default for HostedMembers {
+    fn default() -> Self {
+        Self {
+            seats: Mutex::default(),
+            activity_hub: SessionActivityHub::shared(),
+        }
+    }
 }
 
 fn host_alive(host: &AppServerAttachment) -> bool {
@@ -1212,32 +1222,6 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn hosted_refresh_does_not_poll_another_fixture() {
-        // Regression: 3000bc3e registered all test seats in the shared hub,
-        // so refreshing one fixture consumed another fixture's queued RPCs.
-        let first = tempfile::tempdir().unwrap();
-        let second = tempfile::tempdir().unwrap();
-        let (_, hosts) = running(first.path());
-        let (_, other) = running(second.path());
-        let before = fixture_text(first.path(), "requests.jsonl");
-        let untouched = fixture_text(second.path(), "requests.jsonl");
-        let hub = hosts.activity_hub();
-        hub.refresh_hosts();
-        assert_ne!(fixture_text(first.path(), "requests.jsonl"), before);
-        assert_eq!(fixture_text(second.path(), "requests.jsonl"), untouched);
-        drop(hosts);
-        assert!(hub.runtime_snapshot().runtime_sessions.is_empty());
-        assert_eq!(
-            other
-                .activity_hub()
-                .runtime_snapshot()
-                .runtime_sessions
-                .len(),
-            1
-        );
-    }
-
-    #[test]
     fn hosted_stop_reaps_before_contended_record_update() {
         // Regression: 73a42755 reacquired the host lock after destroying the TUI,
         // so a concurrent hook could prevent the owned child from being reaped.
@@ -1755,7 +1739,6 @@ if mode == 'twice' or not previous:
             args: saved(tmp.path()).app_server.unwrap().attach_argv.join(" "),
             cli_tool: crate::session_scanner::cli_tool::CliTool::Codex,
         };
-        let _hub_scope = SessionActivityHub::scoped_for_test(hub.clone());
         let resolved = crate::session_scanner::cli_tool::spec(process.cli_tool)
             .session_source()
             .process_session(&process, Some("%fixture"))

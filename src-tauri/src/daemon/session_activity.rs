@@ -2,7 +2,9 @@
 pub mod hosted_activity;
 #[cfg(test)]
 use std::path::Path;
-use std::sync::{Arc, Condvar, Mutex, OnceLock};
+#[cfg(not(test))]
+use std::sync::OnceLock;
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -320,28 +322,6 @@ pub struct SessionActivityHub {
     scanner: Mutex<Option<ScannerThread>>,
 }
 
-#[cfg(test)]
-impl Default for SessionActivityHub {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[cfg(test)]
-thread_local! {
-    static TEST_HUB: std::cell::RefCell<Option<Arc<SessionActivityHub>>> = const { std::cell::RefCell::new(None) };
-}
-
-#[cfg(test)]
-pub(crate) struct TestHubScope(Option<Arc<SessionActivityHub>>);
-
-#[cfg(test)]
-impl Drop for TestHubScope {
-    fn drop(&mut self) {
-        TEST_HUB.set(self.0.take());
-    }
-}
-
 /// The scanner thread a hub started, owned by that hub.
 struct ScannerThread {
     stop: Arc<ScannerStop>,
@@ -470,18 +450,20 @@ impl SessionActivityHub {
     /// Access publication without starting process/tmux discovery.
     pub fn shared() -> Arc<Self> {
         #[cfg(test)]
-        if let Some(hub) = TEST_HUB.with_borrow(Clone::clone) {
-            return hub;
+        {
+            // Libtest gives each test its own thread. Fixtures capture this hub
+            // before moving work to helper threads, so refreshes stay test-local.
+            thread_local! {
+                static HUB: Arc<SessionActivityHub> = Arc::new(SessionActivityHub::new());
+            }
+            HUB.with(Arc::clone)
         }
-        static HUB: OnceLock<Arc<SessionActivityHub>> = OnceLock::new();
-        HUB.get_or_init(|| Arc::new(SessionActivityHub::new()))
-            .clone()
-    }
-
-    /// Scope scanner entry points to a fixture's hub; restore even on panic.
-    #[cfg(test)]
-    pub(crate) fn scoped_for_test(hub: Arc<Self>) -> TestHubScope {
-        TestHubScope(TEST_HUB.replace(Some(hub)))
+        #[cfg(not(test))]
+        {
+            static HUB: OnceLock<Arc<SessionActivityHub>> = OnceLock::new();
+            HUB.get_or_init(|| Arc::new(SessionActivityHub::new()))
+                .clone()
+        }
     }
 
     /// Get the latest snapshot immediately (non-blocking).

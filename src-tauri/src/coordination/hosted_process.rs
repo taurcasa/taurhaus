@@ -313,7 +313,8 @@ impl HostProcess {
                     socket: Some(WebSocket::connect(stream, guard)?),
                     activity_socket: socket.into(),
                     #[cfg(test)]
-                    activity_hub: Arc::default(),
+                    activity_hub:
+                        taurhaus_lib::daemon::session_activity::SessionActivityHub::shared(),
                     events: VecDeque::new(),
                     compactions: VecDeque::new(),
                     thread_id: String::new(),
