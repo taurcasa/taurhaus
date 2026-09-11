@@ -33,8 +33,8 @@ def public_row(row):
     return result
 
 
-def capture():
-    out = BASE / 'run5'
+def capture(out=None):
+    out = out if out is not None else BASE / 'run5'
     events = complete_rows((out / 'events.jsonl').read_text())
     isolation = next((row for row in events if row.get('kind') == 'isolation'), None)
     if not isolation:

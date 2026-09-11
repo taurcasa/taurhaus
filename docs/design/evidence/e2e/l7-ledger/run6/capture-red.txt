@@ -1,0 +1,13 @@
+E.......
+======================================================================
+ERROR: test_capture_accepts_sixth_trial_without_touching_history (__main__.CaptureRules.test_capture_accepts_sixth_trial_without_touching_history)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l7-ledger/docs/design/evidence/e2e/l7-ledger/run5_capture_test.py", line 24, in test_capture_accepts_sixth_trial_without_touching_history
+    run5_capture.capture(out=out)
+TypeError: capture() got an unexpected keyword argument 'out'
+
+----------------------------------------------------------------------
+Ran 8 tests in 0.047s
+
+FAILED (errors=1)

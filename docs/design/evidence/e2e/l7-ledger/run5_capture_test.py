@@ -12,6 +12,19 @@ from run5_capture import public_row
 
 
 class CaptureRules(unittest.TestCase):
+    def test_capture_accepts_sixth_trial_without_touching_history(self):
+        with tempfile.TemporaryDirectory(prefix='th-l7-') as temporary:
+            root = Path(temporary)
+            out = root / 'evidence/run6'
+            out.mkdir(parents=True)
+            (out / 'events.jsonl').write_text(json.dumps({'kind': 'isolation', 'root': str(root)}) + '\n')
+            sessions = root / 'codex/sessions'
+            sessions.mkdir(parents=True)
+            (sessions / 'rollout-fixture.jsonl').write_text('{"type":"event_msg","payload":{"type":"task_complete","turn_id":"sixth"}}\n')
+            run5_capture.capture(out=out)
+            self.assertEqual(json.loads((out / 'rollout-tail.json').read_text())[0]['tail'][0]['payload']['turn_id'], 'sixth')
+            self.assertFalse((out.parent / 'run5').exists())
+
     def test_native_evidence_keeps_identity_without_private_text(self):
         row = {'timestamp': 'fixture-time', 'type': 'event_msg', 'payload': {
             'type': 'task_complete', 'turn_id': 'fixture-turn',
