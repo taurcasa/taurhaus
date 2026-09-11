@@ -536,6 +536,18 @@ describe('workflow procedures — the Codex lane', () => {
     expect(calls[0].prompt).toContain('-c \'model_reasoning_effort="high"\'')
   })
 
+  it('exports the requested codexHome on codex exec and on every resume', async () => {
+    const { calls } = await run('feature-pr.js', { ...spacey, codexHome: '/home/someone/.codex-account-b' })
+    const prompt = calls[0].prompt
+    expect(prompt).toContain("env -u TMUX CODEX_HOME='/home/someone/.codex-account-b' codex exec --yolo")
+    expect(prompt).toContain("CODEX_HOME='/home/someone/.codex-account-b' codex exec resume <SESSION_ID>")
+  })
+
+  it('runs the CLI default account when codexHome is absent', async () => {
+    const { calls } = await run('feature-pr.js', spacey)
+    expect(calls[0].prompt).not.toContain('CODEX_HOME=')
+  })
+
   it('carries the same flags into the resumed turns', async () => {
     const { calls } = await run('feature-pr.js', spacey)
     const resume = calls[0].prompt.slice(calls[0].prompt.indexOf('codex exec resume'))

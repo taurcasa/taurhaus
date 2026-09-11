@@ -236,6 +236,13 @@ function call(o) {
 const CODEX_MODEL = A.codexModel ? String(A.codexModel) : ''
 if (CODEX_MODEL && !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(CODEX_MODEL)) throw new Error(NAME + ': args.codexModel must be a bare model slug — got ' + JSON.stringify(A.codexModel))
 
+// The Codex account: `codexHome` names the CODEX_HOME directory whose auth.json the runner uses
+// (an operator keeps several accounts side by side, e.g. ~/.codex and ~/.codex-account-b). Without
+// it the CLI's own default home runs. It is exported on the exec line and on every resume, so a
+// resumed turn never silently falls back to the default account.
+const CODEX_HOME = A.codexHome ? posixPath(A.codexHome, 'args.codexHome') : ''
+const CODEX_ENV = ' env -u TMUX' + (CODEX_HOME ? ' CODEX_HOME=' + sh(CODEX_HOME) : '')
+
 // Two runs of the same procedure would otherwise write the same scratch files, poll the same EXIT
 // marker and — the part that kills — claim the same pidfile. The scratch dir is shared across
 // checkouts, and `tag` defaults to the branch, so two worktrees on one branch (the normal shape of
@@ -588,7 +595,8 @@ function codexWrapper(o) {
   const exec =
     'timeout ' +
     o.timeout +
-    ' env -u TMUX codex exec --yolo --skip-git-repo-check' +
+    CODEX_ENV +
+    ' codex exec --yolo --skip-git-repo-check' +
     CODEX_FLAGS +
     (o.schema ? ' --output-schema ' + sh(base + '.schema.json') : '') +
     ' -C ' +
@@ -658,6 +666,7 @@ function codexWrapper(o) {
   const resumeCmd =
     'timeout ' +
     o.timeout +
+    CODEX_ENV +
     ' codex exec resume <SESSION_ID> --yolo --skip-git-repo-check' +
     CODEX_FLAGS +
     ' -o ' +
