@@ -141,7 +141,7 @@ class Trial(Runtime):
         self.mesh(['task', 'create', '--subject', 'L7 tiny artifact round trip',
                    '--description', 'Demonstrate real seat artifact intake and completion.',
                    '--deliverable', 'OBSERVATION.md and RESULT.md, each at most 2048 bytes.',
-                   '--first-step', 'Read this assignment; accept and start it with its full assignment ID; reply TASK_READY and await explicit artifact instructions.',
+                   '--first-step', 'Explicitly read/mark the inbox with mesh read --json --mark-read, paging until done; accept and start this assignment with its full assignment ID; reply TASK_READY and await explicit artifact instructions.',
                    '--completion-signal', 'Complete only when instructed with RESULT.md through --summary-file.',
                    '--review-route', 'Lead checks ledger receipts and offline read-back; stop after the requested completion.'])
         self.wait(self.settled, 'onboarding not settled before assignment', 120)

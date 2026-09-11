@@ -137,8 +137,10 @@ class Trial:
         value['prior_unmetered_turns']=[r['turn_id'] for p in prior_runs for r in p.get('turns',[]) if r.get('usd') is None]
         self.save('cost-ledger.json',value)
         if next_input:
-            assert prior_inputs + max(value['paid_inputs'],len(self.reservations)) < 12, 'input cap reached'
-            assert prior_usd + value['api_equivalent_usd'] + .025 <= .20, 'cost headroom exhausted'
+            # Operator explicitly gives this requested trial a fresh budget.
+            # Historical spend remains visible; unknown metering never becomes zero-cost proof.
+            assert max(value['paid_inputs'],len(self.reservations)) < 12, 'input cap reached'
+            assert value['api_equivalent_usd'] + .025 <= .20, 'cost headroom exhausted'
         return value
     def reserve(self,reason):
         self.budget(next_input=True)
@@ -235,7 +237,7 @@ class Trial:
         instructions = ('Use only the scratch project. On onboarding, explicitly read and mark your inbox with '
             'mesh read --json --mark-read --claude-dir "$CLAUDE_DIR" --team l7-ledger --name alpha; '
             'follow every next_cursor using the same filters and --since until done. Reply READY. '
-            'For assignments, run mesh task accept and task start with the frozen full assignment, then reply TASK_READY; do not complete yet. '
+            'For assignments, first explicitly read/mark your inbox with the same mesh read command, paging until done, then run mesh task accept and task start with the frozen full assignment, then reply TASK_READY; do not complete yet. '
             'Every Mesh command must name --claude-dir "$CLAUDE_DIR" --team l7-ledger --name alpha. '
             'Read each new instruction explicitly before acting. Only write OBSERVATION.md and RESULT.md, each at most 2048 bytes, when specifically requested. '
             'Ledger entry, task complete --summary-file, and ledger-only retry are permitted only when specifically requested. '
@@ -344,4 +346,3 @@ class Trial:
         self.save('cleanup.json',{'before':before,'survivors':survivors,'port_closed':closed,'auth_removed':auth_removed,'root_removed':not self.root.exists()})
         self.events.close()
         if survivors or not closed:self.code=2
-

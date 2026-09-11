@@ -6,6 +6,32 @@ from controller import output_text, objects, assignment_message_id
 
 
 class EvidenceRules(unittest.TestCase):
+    # // Regression: 0915c1fd charged earlier authorized trials against the operator's fresh run budget.
+    def test_fresh_run_admission_retains_historical_spend(self):
+        from pathlib import Path
+        import tempfile
+        import time
+        from unittest.mock import Mock, patch
+        from runtime import Trial
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            (base / 'run-old').mkdir()
+            (base / 'run-old/cost-ledger.json').write_text(json.dumps({'paid_inputs': 12, 'api_equivalent_usd': .2, 'turns': []}))
+            trial = Trial.__new__(Trial)
+            trial.out = base / 'run-new'
+            trial.started = time.monotonic()
+            trial.reservations = []
+            trial.sessions = lambda: []
+            trial.notify = lambda: []
+            trial.save = Mock()
+            with patch('runtime.BASE', base):
+                value = trial.budget(next_input=True)
+                self.assertEqual(value['prior_run_inputs'], 12)
+                self.assertEqual(value['prior_known_usd'], .2)
+                trial.reservations = [{}] * 12
+                with self.assertRaisesRegex(AssertionError, 'input cap'):
+                    trial.budget(next_input=True)
+
     # // Regression: 030980a7 required a canonical ID even when the submitted card itself was in a tool result.
     def test_delivery_accepts_exact_card_in_wrapped_tool_result(self):
         body = 'ACTION REQUIRED: fixture assignment\nAssignment: unique-fixture-id'
