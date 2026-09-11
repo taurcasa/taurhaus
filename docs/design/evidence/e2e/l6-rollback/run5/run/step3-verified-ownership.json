@@ -1,0 +1,45 @@
+{
+  "verified": true,
+  "before_marker": {
+    "epoch": 2,
+    "reason": "operator",
+    "schema": 1,
+    "stopped_at": "2026-09-11T05:16:22.820559609+00:00",
+    "stopped_by": "lead"
+  },
+  "after_marker": null,
+  "epoch_before": {
+    "root": "/tmp/th-l6-_rc3jb84/claude",
+    "directory_identity": [
+      2096,
+      1715022
+    ],
+    "incarnation": "a331dfb18b101ce9accde0cfd02e3a35103b3ffad12ab658c50a5853a544a3a6",
+    "epoch": 3,
+    "pid": 3137,
+    "process_start": "32433333"
+  },
+  "epoch_after": {
+    "root": "/tmp/th-l6-_rc3jb84/claude",
+    "directory_identity": [
+      2096,
+      1715022
+    ],
+    "incarnation": "a331dfb18b101ce9accde0cfd02e3a35103b3ffad12ab658c50a5853a544a3a6",
+    "epoch": 3,
+    "pid": 3137,
+    "process_start": "32433333"
+  },
+  "handoff_before": null,
+  "handoff_after": null,
+  "B": {
+    "delivery_id": "386f2d46-2826-48bc-9358-a43ebdee573e",
+    "from": "lead",
+    "id": "386f2d46-2826-48bc-9358-a43ebdee573e",
+    "message_id": "e9757d59-c1a6-40c5-9fe1-bfc4b41c93bc",
+    "read": false,
+    "summary": "B",
+    "text": "ACTION REQUIRED: Read this message explicitly, then reply exactly B-d872fac9.",
+    "timestamp": "2026-09-11T05:16:21.098Z"
+  }
+}
