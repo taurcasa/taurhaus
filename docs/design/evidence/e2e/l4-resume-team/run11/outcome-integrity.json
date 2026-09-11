@@ -1,0 +1,11 @@
+{
+  "rule": "Controller-written outcomes retained byte-exact; adjudication is separate.",
+  "sha256": {
+    "step1-outcome.json": "614e3238582b47c5692b025a21c1fee6a2ae022614aae42c82996adf0e28c47e",
+    "step2-outcome.json": "2dc54cb4805f49c098b05fc22e60b52fee20586807acd7ffc1dbb5b5b4dfeb86",
+    "step3-outcome.json": "f464919b0211bf86fb1565628f95688bcd2e0bacf05905e6a5678117519ebd24",
+    "step4-outcome.json": "a4920bba9481b71132ebe99353fba779d6958d71dccc74238b0a3998cf36ff9b",
+    "step5-outcome.json": "4fd2dfd5d0c255a67b5d0f1db897de3fe643a0457dc25881967e5670dc5731b8",
+    "step6-outcome.json": "6f3a2933d0a0ce076f9cfd69365bf27863442ac13a8538347ae06ca4de32d621"
+  }
+}

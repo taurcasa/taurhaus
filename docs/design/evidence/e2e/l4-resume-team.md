@@ -1,7 +1,12 @@
-# IN PROGRESS — latest run 11
+# INCOMPLETE — latest run 11, step 2: harness/spec health spelling mismatch
 
-Run11 uses the corrected ready-session stop observer. Runtime outcomes are recorded
-under [run11](l4-resume-team/run11/); the historical runs below remain unchanged.
+Step 1 passed. Step 2 stopped after the full 100-second poll: the ruling requires
+`sessionDead`, but this base serializes and emits `session_dead`. All supported
+seat stops completed; alpha retained its ready-session identity, rollout and pane
+binding, and cleared `daemon_pid`. Steps 3–6 were not run. Raw outcomes remain
+byte-exact, with a separate **harness** adjudication. Metered spend **$0.004636680**,
+**7/16 inputs**. Teardown verified zero survivors; all three gates exited **0**.
+See [Run 11](#run-11). Independent Opus review remains unavailable; no lane PASS.
 
 ## Historical run 2 — hosted process exited before transport readiness
 
@@ -1487,3 +1492,103 @@ and completed explicit read receipts; alpha `submitted`, beta `native_enqueued`.
 The [ready session](l4-resume-team/run11/step1-ready-session.json) records alpha's
 attributed idle identity and rollout path. Metered subtotal $0.004636680; 7/16
 inputs including three conservative startup reservations.
+
+### Runtime result and classification
+
+| Step | Outcome | Evidence and classification |
+|---|---|---|
+| 1. Initialize, exchange/read markers | **PASS — runtime** | Both transports, completed receipts and ready alpha activity; [outcome](l4-resume-team/run11/step1-outcome.json), [snapshot](l4-resume-team/run11/step1-state.json). |
+| 2. Supported whole-team stop | **FAIL — harness/spec discrepancy** | All three stops completed, beta's owned host ended, then full health poll expired on the literal spelling; [raw outcome](l4-resume-team/run11/step2-outcome.json), [separate adjudication](l4-resume-team/run11/step2-adjudication.json). |
+| 3. Accept stopped backlog | **NOT RUN — not evaluated** | Stop after step 2; [outcome](l4-resume-team/run11/step3-outcome.json). |
+| 4. One `resume_team` | **NOT RUN — not evaluated** | Zero resume calls; [outcome](l4-resume-team/run11/step4-outcome.json). |
+| 5. Identity, recovery cards and pending delivery | **NOT RUN — not evaluated** | No resumed generation; [outcome](l4-resume-team/run11/step5-outcome.json). |
+| 6. Final explicit reads and reconciliation | **NOT RUN — not evaluated** | Step-1 reads completed, but no post-resume reconciliation; [outcome](l4-resume-team/run11/step6-outcome.json). Failure teardown is separate. |
+
+Team incarnation `a48a4a7e295cd5dfdefc38ebca69c134b1ce06495fae531c5e6f84f1a13b1d05`; initialize
+`init_6ed37ffd9e494f499f57c7698e324f1f`; private protocol 27, Codex 0.153.4,
+Luna low; alpha tmux and beta app_server, attachment generation 1 each.
+Alpha ready session `01a08ee4-401e-7371-9cc3-a51d32283603`; beta thread
+`01a08ee4-402f-7653-b69c-8aa92ba9874c`. The lead remained login-only, zero Claude turns.
+
+The [immediate alpha record](l4-resume-team/run11/step2-alpha-runtime-record.json)
+shows the launch-time null path becoming the exact ready-session rollout path;
+health was still `healthy`, as permitted. The external read-only
+[converged capture](l4-resume-team/run11/step2-observed-convergence.json) and final
+[stop poll](l4-resume-team/run11/step2-stop-poll.json) show `session_dead`, cleared
+`daemon_pid`, the same session/path, and unchanged `paneId`, `panePid`, and
+`paneStartTime`. Only the private infrastructure pane `%0` remained; the complete
+seat census, including `codex-code-mode-host`, was empty. Beta retained its thread
+ID; `hosted.stop_session.host_stopped` recorded `signal: 9 (SIGKILL)` from the
+supported stop operation. This was not injected fault behavior.
+
+The run11 ruling explicitly named `sessionDead`. The existing product enum has
+`#[serde(rename_all = "snake_case")]`, and
+`health_state_serializes_as_snake_case` asserts `"session_dead"`
+(`src-tauri/src/coordination/domain.rs:92,201`). The controller followed the
+literal ruling and exhausted its poll. Its broad raw failure label `taurhaus`
+is preserved; the evidence supports a **harness/spec spelling discrepancy**,
+not a new product stop defect. [Stop analysis](l4-resume-team/run11/stop-contract-analysis.json)
+retains poll duration and all three stop requests. No paid retry, predicate
+rewrite during execution, product change, or resume followed this failure.
+The [outcome hashes](l4-resume-team/run11/outcome-integrity.json) pin all six raw files.
+
+### Every spend, teardown and gates
+
+| Seat / input | Turn ID | API-equivalent USD |
+|---|---|---:|
+| beta model turn | `01a08ee4-49f7-7132-adc9-1a49081ca109` | 0.001085240 |
+| beta model turn | `01a08ee4-96e9-7493-a9e1-5f98401f256e` | 0.000310960 |
+| alpha model turn | `01a08ee4-5705-7472-9dd0-1421e532a219` | 0.002138920 |
+| alpha model turn | `01a08ee4-7825-7c90-afb0-eb4df8e74a58` | 0.001101560 |
+| Total metered | Four observed turns | **0.004636680** |
+
+[Ledger](l4-resume-team/run11/cost-ledger.json) and
+[spend audit](l4-resume-team/run11/final-spend-audit.json) retain token counts and
+observer identities. The warm-up and two seat starts reserve three additional
+inputs, totaling **7/16**. Warm-up had no turn ID or submitted model prompt;
+unreported startup cost stays unknown. All four observed model turns are metered.
+Rates are the inherited trial basis ($0.20 input / $0.02 cached / $1.20 output per
+million), not an invoice; the all-output-rate subtotal is **$0.079243200**.
+Runs 1–10 do not count against this fresh budget. Metering did not gate a lifecycle
+operation or cause this failure. No review model ran; implementer accounting is
+separate and owned by the orchestrator.
+
+[Cleanup](l4-resume-team/run11/cleanup.json) and the read-only
+[audit](l4-resume-team/run11/final-audit.json) verify zero survivors, closed private
+port, removed scratch root and auth, unchanged Mesh source and no privacy
+violations. Runtime was **173.731 seconds**. The complete sanitized persisted
+[daemon JSONL](l4-resume-team/run11/taurhaus.log.jsonl) retains **336 rows**;
+account usage is excluded under the evidence privacy rules. Commands, IDs and RPC
+responses are in [events](l4-resume-team/run11/events.jsonl). Pane excerpts are at
+most 60 lines. The controller exited **1** after completing teardown.
+
+| Gate (checkout root, after teardown) | Exit |
+|---|---:|
+| `just check-quick` | 0 |
+| `just lint` | 0 |
+| `just test-contracts` | 0 |
+
+[Gate summary](l4-resume-team/run11/gate-summary.json) retains each command's exit,
+timing and logs. `check-quick` passed all 2,521 frontend tests. Cargo admission
+probes each saw fewer than three existing processes; builds used one job and this
+checkout's `src-tauri/target`. No `src-tauri/` file changed, so the conditional
+`just test-rust-unit` was not required. No full `just check`, install or release.
+
+### Deviations and review boundary
+
+- Literal `sessionDead` in the ruling conflicts with this base's actual
+  `session_dead` serialization. The harness stopped after the full poll; steps
+  3–6 remain unrun. The stop's substantive retention/process observations are
+  recorded without promoting the numbered step or the lane to PASS.
+- The converged sidecar is an external read-only copy of the controller's poll;
+  the controller's success-only converged export was unreachable under that
+  spelling predicate. Immediate capture and raw outcomes remain untouched.
+- Existing binaries were reused after digest and product-source checks, as
+  authorized; no rebuild or Mesh mutation was needed. Versioned run10's controller,
+  descended from run4's isolation layout, supplied the inherited runtime harness.
+- The historical initialize-completed/startup-exit product follow-up is carried
+  in [product follow-ups](l4-resume-team/run11/product-followups.json); it did not
+  recur in run11 and is not a step failure here.
+- [Independent Opus review](l4-resume-team/run11/review-availability.json) could not
+  run: this session exposes no Opus model or Workflow execution tool. It remains
+  the orchestrator's separate review stage. No cross-family review is claimed.
