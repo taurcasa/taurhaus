@@ -80,7 +80,8 @@ describe('default WDIO spec list', () => {
   })
 
   it('keeps the paid parallel-stage isolation measurement named-only', () => {
-    expect(paidSpecs).toHaveLength(4)
+    expect(paidSpecs).toHaveLength(5)
+    expect(paidSpecs).toContain('managed-hosted-builder.js')
     expect(paidSpecs).toContain('managed-stage-parallel.js')
   })
 

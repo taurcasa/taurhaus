@@ -50,6 +50,7 @@ export const CODEX_SCRATCH_SPECS = [
   'managed-stage-codex.js',
   'managed-stage-deadline.js',
   'managed-stage-parallel.js',
+  'managed-hosted-builder.js',
 ]
 export const paidSpecs = [...CODEX_SCRATCH_SPECS]
 export const captureSpecs = ['general-screenshots.js', 'readme-screenshots.js', 'mesh-screenshots.js']
