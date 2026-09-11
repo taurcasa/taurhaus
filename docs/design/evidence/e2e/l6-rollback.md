@@ -1001,7 +1001,8 @@ The post-(c) members-owned window spanned **05:16:36.153Z–05:17:03.903Z**
 (the latter is the last retained daemon row). The only self-heal passes occurred
 at **05:16:04.930Z** and **05:16:34.939Z**, before verified `transition: complete`
 at **05:16:36.057Z**: **zero passes after either boundary**. The immediate census
-cannot establish a behavioral difference from earlier runs. The controller's sanctioned start is recorded **0.209 s after
+cannot establish a behavioral difference from earlier runs.
+The controller's sanctioned start is recorded **0.209 s after
 verified `transition: complete`**, and **0.113 s after (c) returned**.
 The first census shows the lane's RC digest, `--pane %2`, team `l6-rollback-run5`,
 member `alpha`, and host PID **2188929**; maximum concurrent alpha executors = **1**.
@@ -1068,7 +1069,7 @@ were removed. Teardown reports **zero survivors**, closed listener, removed auth
 and removed root. [Cleanup](l6-rollback/run5/run/cleanup.json).
 The original run5 packet path scan excludes Python sources. Its one committed
 operator-home path is the spec-authorized credential source constant in
-`run5/preflight.py:13` (`/home/mstie/.codex-account-b/auth.json`); that source is
+`run5/preflight.py:13`; that source is
 an explicit exception to the packet's path-clean claim. No credential file was
 read during this offline correction. The review cites the parent `audit.py`,
 but the Python exclusion is in `run5/audit.py:47`.
@@ -1153,5 +1154,24 @@ artifacts of the initial adjudication, including its superseded FAIL assertions;
 they are not current verdict checks. This correction changes only this document,
 `run5/adjudicate.py` and its generated `adjudication.json`. The original controller,
 raw outcomes and retained runtime streams remain byte-exact. No lane process or
-paid model turn was started; additional seat spend is **$0**. The original four
+paid seat model turn was started; additional seat spend is **$0**. The original four
 metered spends and total **$0.01063136** above remain unchanged.
+
+Post-correction gates were rerun from this checkout root after the retained
+teardown, with `CARGO_TARGET_DIR` set to this checkout's `src-tauri/target` and
+`CARGO_BUILD_JOBS=1`. Required `pgrep` admission found zero Cargo processes before
+each gate; no admission wait was needed.
+
+| Exact gate rerun | Exit | Elapsed |
+| --- | --- | --- |
+| `just check-quick` | **0** | 19.733 s; 150 frontend test files / 2,521 tests passed |
+| `just lint` | **0** | 6.850 s |
+| `just test-contracts` | **0** | 5.428 s |
+
+Local logs: `.check-logs/l6-run5-review/` (prior committed gate sidecars remain
+historical). The four new offline regressions and two existing accounting tests
+exited 0; all export-manifest and raw-outcome SHA-256 checks passed. No Rust
+source changed, so `just test-rust-unit` is not required by the Rust-diff rule.
+All gate subprocesses exited; this correction started no daemon, executor,
+tmux server or real harness CLI. No product change, branch switch, additional
+checkout mutation, credential access, paid lane rerun or plan-ledger edit.
