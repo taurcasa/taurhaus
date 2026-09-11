@@ -324,6 +324,14 @@ impl TeamConfigStore {
         }
     }
 
+    /// Canonical configs require explicit team ownership before owner recovery.
+    pub(crate) fn members_own_delivery(config: &TeamConfig) -> bool {
+        let owner = config.extra.get("delivery_owner").and_then(Value::as_str);
+        owner == Some("members")
+            || (config.extra.get("messaging_format") == Some(&Value::from(2))
+                && owner != Some("team"))
+    }
+
     /// Load a single team configuration from `<teams_dir>/<team_name>/config.json`.
     pub fn load(teams_dir: &Path, team_name: &str) -> Result<TeamConfig, CoordinationError> {
         let config_path = config_path(teams_dir, team_name);

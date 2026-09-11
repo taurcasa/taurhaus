@@ -6132,6 +6132,55 @@ fn self_heal_honours_member_owned_delivery() {
 }
 
 #[test]
+fn wrapper_ensure_respects_delivery_ownership_and_legacy_configs() {
+    // Regression: 7f8f13ad moved wrappers to the control-only gate, letting
+    // initialize/add-agent restart a rolled-back members-owned team's owner.
+    for (format, owner, expected) in [
+        (Some(2), Some("members"), false),
+        (Some(1), Some("members"), false),
+        (Some(2), Some("team"), true),
+        (None, None, true),
+    ] {
+        let tmp = TempDir::new().unwrap();
+        let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+        let team = "wrapper-ownership";
+        create_resumable_team(&mut orchestrator, &tmp, team, CliTool::Claude);
+        MemberRuntimeStore::update(tmp.path(), team, "team-lead", |record| {
+            record.health = HealthState::Healthy;
+        })
+        .unwrap();
+        let path = tmp.path().join(team).join("config.json");
+        let mut wire: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        if let Some(format) = format {
+            wire["messaging_format"] = format.into();
+        } else {
+            wire.as_object_mut().unwrap().remove("messaging_format");
+        }
+        if let Some(owner) = owner {
+            wire["delivery_owner"] = owner.into();
+        } else {
+            wire.as_object_mut().unwrap().remove("delivery_owner");
+        }
+        std::fs::write(path, wire.to_string()).unwrap();
+        let (ensured, warning) = orchestrator.ensure_team_daemon_for_wrapper(team).unwrap();
+        assert_eq!(ensured, expected, "format={format:?}, owner={owner:?}");
+        assert_eq!(
+            runtime
+                .calls()
+                .iter()
+                .any(|call| matches!(call, RuntimeCall::SpawnTeamDaemon { .. })),
+            expected
+        );
+        if !expected {
+            assert!(warning.unwrap().contains("delivery_owned_by_members"));
+        } else {
+            assert!(warning.is_none());
+        }
+    }
+}
+
+#[test]
 fn resume_seats_honours_owner_stop_without_blocking_explicit_owner_start() {
     // Regression: e19ffad0 (e2e lane 6 run 2): resume restarted the rollback owner.
     let tmp = TempDir::new().unwrap();

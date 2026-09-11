@@ -541,6 +541,7 @@ impl CoordinationOrchestrator {
         if let Some(reason) = self.team_daemon_control_skip_reason(team_name, &operator_name)? {
             self.emit_team_daemon_skipped_once(team_name, &operator_name, reason);
             let detail = match reason {
+                DELIVERY_OWNED_BY_MEMBERS_REASON => reason.to_string(),
                 MISSING_LEAD_CREDENTIAL_REASON => {
                     format!("lead control credential is missing for '{operator_name}'")
                 }
@@ -737,13 +738,6 @@ impl CoordinationOrchestrator {
         if TeamConfigStore::delivery_marker_present(&self.teams_dir, team_name, "handoff.json") {
             return Ok(Some(ROLLBACK_PENDING_REASON));
         }
-        let config = TeamConfigStore::load(&self.teams_dir, team_name)?;
-        if (config.extra.get("messaging_format") == Some(&Value::from(2))
-            || config.extra.get("delivery_owner").and_then(Value::as_str) == Some("members"))
-            && !TeamConfigStore::team_owns_delivery(&self.teams_dir, team_name)?
-        {
-            return Ok(Some(DELIVERY_OWNED_BY_MEMBERS_REASON));
-        }
         self.team_daemon_control_skip_reason(team_name, operator_name)
     }
 
@@ -752,6 +746,10 @@ impl CoordinationOrchestrator {
         team_name: &str,
         operator_name: &str,
     ) -> Result<Option<&'static str>, CoordinationError> {
+        let config = TeamConfigStore::load(&self.teams_dir, team_name)?;
+        if TeamConfigStore::members_own_delivery(&config) {
+            return Ok(Some(DELIVERY_OWNED_BY_MEMBERS_REASON));
+        }
         if !self
             .team_daemon_credential_path(team_name, operator_name)
             .is_file()
@@ -759,7 +757,6 @@ impl CoordinationOrchestrator {
             return Ok(Some(MISSING_LEAD_CREDENTIAL_REASON));
         }
 
-        let config = TeamConfigStore::load(&self.teams_dir, team_name)?;
         let lead = config
             .members
             .iter()
