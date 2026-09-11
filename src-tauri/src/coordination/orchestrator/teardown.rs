@@ -660,15 +660,33 @@ impl CoordinationOrchestrator {
         self.ensure_team_daemon_for_wrapper_best_effort(&request.team_name);
     }
 
-    pub(crate) fn ensure_team_daemon_after_resume_member(&self, request: &ResumeMemberRequest) {
-        self.ensure_team_daemon_for_wrapper_best_effort(&request.team_name);
+    pub(crate) fn ensure_team_daemon_after_resume_member(
+        &self,
+        request: &ResumeMemberRequest,
+    ) -> Option<String> {
+        match self.ensure_team_daemon_after_resume_team(&ResumeTeamRequest {
+            team_name: request.team_name.clone(),
+        }) {
+            Ok((_, warning)) => warning,
+            Err(err) => {
+                tracing::warn!(error = %err, "failed to resolve team daemon operator after resume");
+                None
+            }
+        }
     }
 
     pub(crate) fn ensure_team_daemon_after_resume_team(
         &self,
         request: &ResumeTeamRequest,
     ) -> Result<(bool, Option<String>), CoordinationError> {
-        self.ensure_team_daemon_for_wrapper(&request.team_name)
+        let team = &request.team_name;
+        if TeamConfigStore::delivery_marker_present(&self.teams_dir, team, "owner-stopped.json") {
+            let operator = self.team_daemon_operator_name(team)?;
+            let reason = OWNER_STOPPED_BY_OPERATOR_REASON;
+            self.emit_team_daemon_skipped_once(team, &operator, reason);
+            return Ok((false, Some(format!("team daemon skipped: {reason}"))));
+        }
+        self.ensure_team_daemon_for_wrapper(team)
     }
 
     pub(crate) fn team_daemon_operator_name(
