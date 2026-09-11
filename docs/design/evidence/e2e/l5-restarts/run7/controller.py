@@ -161,6 +161,7 @@ def identities():
 def observe_owners():
     with (OUT / 'owner-observations.jsonl').open('w',buffering=1) as stream:
         while not owner_stop.is_set():
+            deadline=time.monotonic()+.5
             try:
                 owners=[i for i in identities() if 'team-daemon' in i['argv'] and 'start' in i['argv']]
                 path=ROOT / 'claude/teams' / TEAM / 'state/delivery/epoch.json'
@@ -169,7 +170,7 @@ def observe_owners():
                 stream.write(json.dumps(clean({'at':time.time(),**value}))+'\n')
             except (OSError,ValueError) as error:
                 stream.write(json.dumps({'at':time.time(),'error':type(error).__name__})+'\n')
-            owner_stop.wait(.5)
+            owner_stop.wait(max(0,deadline-time.monotonic()))
 
 
 def snapshot():

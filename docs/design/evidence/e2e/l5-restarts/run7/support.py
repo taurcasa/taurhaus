@@ -118,11 +118,6 @@ def rollout_events(rows, thread_id):
     return result
 
 
-def consumed_by_read(row):
-    return row.get('payload',{}).get('kind') == 'consumed_by_read'
-
-
-
 def read_by_seat(receipts, seat=None):
     return any(r.get('kind') == 'consumed_by_read' and
                (seat is None or r.get('reader_name') == seat) for r in receipts)
@@ -252,7 +247,7 @@ def owner_window_evidence(observations, start, end, old_pid, new_pid, first_deli
 
 
 def transport_proven(accepted, receipts, seat, transport, witness):
-    """Step 5 proves one accepted target, one attempt and its native transport witness."""
+    """Step 5 proves one exposure and its paired attempt; pending retries are not exposures."""
     targets=[t for t in accepted.get('delivery_targets', []) if t.get('recipient')==seat]
     if len(targets)!=1 or not witness:
         return False
@@ -261,6 +256,6 @@ def transport_proven(accepted, receipts, seat, transport, witness):
     attempts=[r for r in matching if r.get('stage')=='attempt_started']
     exposed=[r for r in matching if r.get('stage') in ['submitted','native_enqueued']]
     stage='native_enqueued' if transport=='app_server' else 'submitted'
-    return (len(attempts)==len(exposed)==1 and exposed[0]['stage']==stage
-            and bool(attempts[0].get('attempt_id'))
-            and attempts[0]['attempt_id']==exposed[0].get('attempt_id'))
+    if len(exposed)!=1 or exposed[0]['stage']!=stage or not exposed[0].get('attempt_id'):
+        return False
+    return sum(r.get('attempt_id')==exposed[0]['attempt_id'] for r in attempts)==1

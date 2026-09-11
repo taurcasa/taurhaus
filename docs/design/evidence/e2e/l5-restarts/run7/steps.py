@@ -2,7 +2,7 @@
 import datetime, json, secrets, sys, time
 from pathlib import Path
 from actions import action
-from support import transport_proven, host_card_seen, send_ready, read_by_seat, owner_window_evidence, clean, complete_rows, delivered, pending, reply_seen, identity_preserved, attributed_activity, busy, owner_evidence
+from support import transport_proven, host_card_seen, send_ready, read_by_seat, owner_window_evidence, clean, complete_rows, delivered, pending, reply_seen, identity_preserved, attributed_activity, busy
 B=Path(__file__).resolve().parent;OUT=B/'runtime';TEAM='l5-restarts'
 
 def save(name,value): (OUT/name).write_text(json.dumps(clean(value),indent=2)+'\n')
@@ -218,8 +218,6 @@ if __name__=='__main__':
      rs=receipts(mid)
      targets=[t for t in accepted[0]['payload']['delivery_targets'] if t['recipient']==seat]
      assert len(targets)==1,'accepted target missing or duplicate'
-     attempts=[r for r in rs if r.get('stage')=='attempt_started']
-     assert len(attempts)<=1,'duplicate delivery attempt'
      if label=='mesh-backlog':assert transport_proven(accepted[0]['payload'],rs,seat,transport(seat),True),'transport accounting changed'
      accounting.append({'label':label,'seat':seat,'message':item,'accepted':accepted[0],'receipts':rs})
      assert len([r for r in rs if r.get('stage') in ['submitted','native_enqueued']])<=1,'duplicate exposure receipt'

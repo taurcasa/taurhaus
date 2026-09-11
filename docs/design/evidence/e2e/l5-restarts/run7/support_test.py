@@ -155,7 +155,6 @@ class OperatorPathRegression(unittest.TestCase):
   source=Path(__file__).with_name('controller.py').read_text()
   self.assertIn('os.environ["L5_CREDENTIAL_SOURCE"]',source)
 
-if __name__=='__main__':unittest.main()
 
 class Run4Regression(unittest.TestCase):
  def test_retained_run3_identities_match_exactly_one_live_owner(self):
@@ -239,3 +238,5 @@ class Run5Regression(unittest.TestCase):
   accepted={'event_type':'message_accepted','payload':{'message_id':'q','delivery_targets':[{'recipient':'alpha'}]}}
   consumed={'event_type':'receipt','payload':{'message_id':'q','kind':'consumed_by_read','reader_name':'alpha'}}
   self.assertFalse(pending([accepted,consumed],'q','alpha',{'state':'active','activity_attribution':'attributed','session_id':'a'}))
+
+if __name__=='__main__':unittest.main()
