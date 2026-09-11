@@ -1,5 +1,5 @@
 {
-  "paid_inputs": 4,
+  "paid_inputs": 5,
   "turns": [
     {
       "turn_id": "01a08f17-c9d5-7b11-bbc8-3aff71610f41",
@@ -35,6 +35,17 @@
       "conservative_usd": 0.07403159999999999
     },
     {
+      "turn_id": "01a08f19-b3cf-7e23-b4c1-e07450c0890e",
+      "usd": 0.005257520000000001,
+      "completed": true,
+      "usage": {
+        "input_tokens": 65686,
+        "cached_input_tokens": 48896,
+        "output_tokens": 768
+      },
+      "conservative_usd": 0.0797448
+    },
+    {
       "turn_id": "01a08f17-cbe5-7300-a3c2-1b160cc2a68d",
       "usd": null,
       "completed": true,
@@ -42,8 +53,8 @@
     }
   ],
   "metering_complete": false,
-  "api_equivalent_usd": 0.0166012,
-  "conservative_usd": 0.22764239999999997,
+  "api_equivalent_usd": 0.02185872,
+  "conservative_usd": 0.30738719999999997,
   "rates_usd_per_million": {
     "input": 0.2,
     "cached_input": 0.02,
@@ -67,6 +78,12 @@
       "reason": "step 2 instruction",
       "step": 2,
       "at": 1789107164.3759246,
+      "generation": 1
+    },
+    {
+      "reason": "step 3 instruction",
+      "step": 3,
+      "at": 1789107220.0425992,
       "generation": 1
     }
   ],

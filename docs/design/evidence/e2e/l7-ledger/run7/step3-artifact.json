@@ -1,0 +1,12 @@
+{
+  "file": "RESULT.md",
+  "bytes": 348,
+  "sha256": "bd3df8087b72564bc5e891c246eeb6edeaa987c03ae46646fc0e494e2e1176bb",
+  "event_id": "2f073251-a7f3-4e8a-ba4f-5abc022d0634",
+  "root_id": "2f073251-a7f3-4e8a-ba4f-5abc022d0634",
+  "author": {
+    "actor_id": "alpha",
+    "authority_ref": "1be24833281e322c4c0c3574ee83fc25b71f7ffe6f470a3889fcb8b21b6ffc25",
+    "member_incarnation_id": "alpha@l7-ledger"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "source": {
+    "assignment_id": "c2760346-c20e-4728-bc79-f41697b7b0c6",
+    "committed": true,
+    "task_id": "1"
+  },
+  "ledger": {
+    "receipts": [
+      {
+        "committed_cut": {
+          "committed_bytes": 3364,
+          "last_sequence": 2,
+          "prefix_digest": "0a79659768dbacc76121c9d96c88e95450994cdb30389a54894cade54dea4a40"
+        },
+        "entry_id": "2f073251-a7f3-4e8a-ba4f-5abc022d0634",
+        "event_id": "2f073251-a7f3-4e8a-ba4f-5abc022d0634",
+        "head": "2f073251-a7f3-4e8a-ba4f-5abc022d0634",
+        "ledger_id": "2808b8cf-1791-4d10-98ed-70afd38f77ec",
+        "log_epoch": "8c68b8d6-6877-4e4d-85d6-9ff890947001",
+        "request_digest": "f47a843a9348a2b836e1abeccfef16b01e06c61ffe6698ae1edecc8029808cd3",
+        "sequence": 2
+      }
+    ]
+  },
+  "source_event_id": "898d0b18-1f12-4e6b-a481-c8223b26cfcb",
+  "header_stripped": true,
+  "artifact_sha256": "bd3df8087b72564bc5e891c246eeb6edeaa987c03ae46646fc0e494e2e1176bb"
+}
