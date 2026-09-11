@@ -1,0 +1,69 @@
+{
+  "obligation": {
+    "message_id": "77654b19-9235-411a-a91d-407562f7c2b7",
+    "delivery_id": "e76195bd-0c50-42be-abaf-47b76c77dd2d",
+    "recipient": "lead",
+    "source_generation": "5353bcfa-40b3-4041-8ebf-f68593b328d3",
+    "source_position": 1,
+    "body": "<message-body-redacted>"
+  },
+  "attempts": [
+    {
+      "claim": {
+        "obligation": {
+          "message_id": "77654b19-9235-411a-a91d-407562f7c2b7",
+          "delivery_id": "e76195bd-0c50-42be-abaf-47b76c77dd2d",
+          "recipient": "lead",
+          "source_generation": "5353bcfa-40b3-4041-8ebf-f68593b328d3",
+          "source_position": 1,
+          "body": "<message-body-redacted>"
+        },
+        "attachment": {
+          "launch_root": {
+            "claudeDir": "/tmp/th-l7-cn74xgwx/claude",
+            "rootAuthorityRevision": 0,
+            "teamsDir": "/tmp/th-l7-cn74xgwx/claude/teams",
+            "teamIncarnationId": "0b55e22bf0e4979ac25dc4256d359023a8c8305ce67386ac5d1780c9fd2ee0d6"
+          },
+          "attachment_generation": 1,
+          "root": "/tmp/th-l7-cn74xgwx/claude",
+          "team_incarnation": "0b55e22bf0e4979ac25dc4256d359023a8c8305ce67386ac5d1780c9fd2ee0d6",
+          "member": "lead",
+          "session": "$0",
+          "context_generation": "0",
+          "generation": "1",
+          "socket": "/tmp/th-l7-cn74xgwx/tmux/tmux-1000/default",
+          "pane": "%1",
+          "pane_pid": 116,
+          "pane_start": "31357706",
+          "tmux_session": "$0",
+          "harness": "claude"
+        },
+        "epoch": 2,
+        "adapter": "native-mailbox/1",
+        "attempt_id": "5650e197-592e-4408-8c19-6945f3bb46d4"
+      },
+      "receipts": [
+        {
+          "stage": "accepted",
+          "origin": "legacy_mapping",
+          "evidence": "source obligation",
+          "observed_at": "2026-09-11T02:17:20.820233531+00:00"
+        },
+        {
+          "stage": "attempt_started",
+          "origin": "adapter",
+          "evidence": "durable claim",
+          "observed_at": "2026-09-11T02:17:20.820242672+00:00"
+        },
+        {
+          "stage": "native_enqueued",
+          "origin": "canonical_projection",
+          "evidence": "durable native mailbox projection; uptake unobserved",
+          "observed_at": "2026-09-11T02:17:20.930143657+00:00"
+        }
+      ],
+      "presentation_started": true
+    }
+  ]
+}

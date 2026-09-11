@@ -1,0 +1,53 @@
+{
+  "paid_inputs": 2,
+  "turns": [
+    {
+      "turn_id": "01a08e41-57a6-7410-b76d-60380a8ee2d4",
+      "usd": 0.00407104,
+      "completed": true,
+      "usage": {
+        "input_tokens": 43766,
+        "cached_input_tokens": 29952,
+        "output_tokens": 591
+      },
+      "conservative_usd": 0.0532284
+    },
+    {
+      "turn_id": "01a08e41-59c9-79c1-a1f0-9d925800219d",
+      "usd": null,
+      "completed": true,
+      "source": "notify-only"
+    }
+  ],
+  "metering_complete": false,
+  "api_equivalent_usd": 0.00407104,
+  "conservative_usd": 0.0532284,
+  "rates_usd_per_million": {
+    "input": 0.2,
+    "cached_input": 0.02,
+    "output": 1.2
+  },
+  "rate_source": "Inherited integration/messaging packet; estimates, not invoices",
+  "input_reservations": [
+    {
+      "reason": "production initialization/onboarding",
+      "step": 1,
+      "at": 1789093038.9265041,
+      "generation": null
+    },
+    {
+      "reason": "task assignment",
+      "step": 1,
+      "at": 1789093060.3792443,
+      "generation": 1
+    }
+  ],
+  "prior_run_inputs": 9,
+  "prior_known_usd": 0.01830316,
+  "prior_unmetered_turns": [
+    "01a08e08-9df0-70f3-86be-c40886758378",
+    "01a08e2e-1175-7d03-9902-46ed51d64976",
+    "01a08e21-fb15-7083-815d-d6f69fb4dc35",
+    "01a08e1c-ab41-7551-b212-03c5d70f5ca4"
+  ]
+}
