@@ -6027,3 +6027,66 @@ fn team_owned_inbox_append_does_not_wake_member_executor() {
         .any(|c| matches!(c, RuntimeCall::SpawnDaemon { .. })));
     assert_one_inbox_append(tmp.path(), "team-owned", "seat");
 }
+
+// Regression: e19ffad0 (e2e lane 6 run 2): self-heal restarted an operator-stopped owner.
+fn assert_owner_self_heal_skip(marker: &str, reason: &str) {
+    let _guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+    let tmp = TempDir::new().unwrap();
+    let log_path = tmp.path().join("events.jsonl");
+    let sink = taurhaus_lib::logging::LogFileState::new(log_path.clone()).unwrap();
+    taurhaus_lib::logging::install_global_sink(&sink);
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    let team = "owner-rollback";
+    orchestrator.create_team(team, None).unwrap();
+    let mut lead = sample_member("lead", CliTool::Claude);
+    lead.role = MemberRole::Lead;
+    lead.project_path = tmp.path().to_path_buf();
+    orchestrator.add_member(team, lead).unwrap();
+    write_lead_credential(tmp.path(), team, "lead");
+    MemberRuntimeStore::update(tmp.path(), team, "lead", |r| {
+        r.health = HealthState::Healthy;
+        r.pane_id = Some("%1".into());
+    })
+    .unwrap();
+    runtime.set_pane_current_command("%1", Some("claude"));
+    let path = tmp.path().join(team).join("state/delivery").join(marker);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    // Unreadable as JSON still means stopped; never parse or clear Mesh's marker.
+    std::fs::write(&path, "broken").unwrap();
+    for _ in 0..2 {
+        let result = orchestrator.trigger_team_self_heal(team).unwrap();
+        assert!(result.member_liveness_reconciled);
+        assert!(!result.team_daemon_ensured);
+    }
+    assert!(!runtime
+        .calls()
+        .iter()
+        .any(|c| matches!(c, RuntimeCall::SpawnTeamDaemon { .. })));
+    sink.flush_for_test().unwrap();
+    let events: Vec<serde_json::Value> = std::fs::read_to_string(&log_path)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(
+        events
+            .iter()
+            .filter(|e| e["event"] == "coordination.team_daemon.skipped"
+                && e["team_name"] == team
+                && e["reason"] == reason)
+            .count(),
+        1
+    );
+    std::fs::remove_file(path).unwrap();
+    assert!(
+        orchestrator
+            .trigger_team_self_heal(team)
+            .unwrap()
+            .team_daemon_ensured
+    );
+}
+
+#[test]
+fn self_heal_honours_owner_stopped_marker() {
+    assert_owner_self_heal_skip("owner-stopped.json", "owner_stopped_by_operator");
+}

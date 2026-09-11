@@ -18,6 +18,7 @@ use crate::coordination::stores::{MemberRuntimeRecord, MemberRuntimeStore, TeamC
 use super::{CoordinationOrchestrator, RemoveMemberStepResult};
 
 static TEAM_DAEMON_SKIP_EVENTS: OnceLock<Mutex<HashMap<PathBuf, String>>> = OnceLock::new();
+const OWNER_STOPPED_BY_OPERATOR_REASON: &str = "owner_stopped_by_operator";
 const MISSING_LEAD_CREDENTIAL_REASON: &str = "missing_lead_control_credential";
 const MISSING_LEAD_CONFIG_HASH_REASON: &str = "missing_lead_control_auth_token_hash";
 const INACTIVE_LEAD_REASON: &str = "inactive_lead_control_identity";
@@ -531,7 +532,7 @@ impl CoordinationOrchestrator {
             ));
         }
         let operator_name = self.team_daemon_operator_name(team_name)?;
-        if let Some(reason) = self.team_daemon_skip_reason(team_name, &operator_name)? {
+        if let Some(reason) = self.team_daemon_control_skip_reason(team_name, &operator_name)? {
             self.emit_team_daemon_skipped_once(team_name, &operator_name, reason);
             let detail = match reason {
                 MISSING_LEAD_CREDENTIAL_REASON => {
@@ -693,6 +694,21 @@ impl CoordinationOrchestrator {
     }
 
     fn team_daemon_skip_reason(
+        &self,
+        team_name: &str,
+        operator_name: &str,
+    ) -> Result<Option<&'static str>, CoordinationError> {
+        if TeamConfigStore::delivery_marker_present(
+            &self.teams_dir,
+            team_name,
+            "owner-stopped.json",
+        ) {
+            return Ok(Some(OWNER_STOPPED_BY_OPERATOR_REASON));
+        }
+        self.team_daemon_control_skip_reason(team_name, operator_name)
+    }
+
+    fn team_daemon_control_skip_reason(
         &self,
         team_name: &str,
         operator_name: &str,
