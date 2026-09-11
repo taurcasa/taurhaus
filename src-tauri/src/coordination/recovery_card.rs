@@ -270,6 +270,8 @@ pub struct RecoveryCard {
     pub member_name: String,
     pub project_path: String,
     pub steering: String,
+    #[serde(skip)]
+    pub(crate) creation_headline: Option<String>,
     steering_hold: bool,
     pub generated_at: chrono::DateTime<chrono::Utc>,
     pub constraints: String,
@@ -406,6 +408,7 @@ impl RecoveryCard {
             member_name: member.name.clone(),
             project_path: member.project_path.to_string_lossy().into_owned(),
             steering,
+            creation_headline: None,
             steering_hold,
             generated_at: chrono::Utc::now(),
             lease_context: String::new(),
@@ -431,7 +434,7 @@ impl RecoveryCard {
         }
     }
 
-    pub fn render(&self) -> String {
+    fn recovery_lines(&self) -> Vec<String> {
         let unavailable =
             |text: &str| if text.is_empty() { "unavailable" } else { text }.to_string();
         let a = &self.assignment;
@@ -505,6 +508,28 @@ impl RecoveryCard {
             && !a.first_action.is_empty()
             && !self.steering_hold;
         lines.push(if executable { format!("Next action: {}", a.first_action) } else { "Next action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.".into() });
+        lines
+    }
+
+    pub fn render(&self) -> String {
+        let mut lines = if let Some(headline) = &self.creation_headline {
+            let mut lines = vec![
+                headline.clone(),
+                format!("Identity: {} on {}", self.member_name, self.team_name),
+                format!("Project cwd: {}", self.project_path),
+                self.steering.clone(),
+            ];
+            if !self.lease_context.is_empty() {
+                lines.push(self.lease_context.clone());
+            }
+            lines.push(format!(
+                "Next action: mesh read --unread --mark-read --team {} --name {}",
+                self.team_name, self.member_name
+            ));
+            lines
+        } else {
+            self.recovery_lines()
+        };
         // Focal links and lease context are optional; reserve all operative facts first.
         if lines.join("\n").len() > CARD_BYTE_CAP {
             lines.retain(|line| !line.starts_with("Focal files:") && line != &self.lease_context);

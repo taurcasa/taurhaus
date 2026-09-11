@@ -3280,7 +3280,9 @@ fn initialize_pipeline_claude_template_agent_receives_role_context_message() {
     match &delivered[1] {
         DeliveryRequest::OperatorNotice(payload) => {
             assert_eq!(payload.member_name, "researcher");
-            assert!(payload.message.contains("[taurhaus] recovery_card"));
+            // Regression: 3ca169ed4 used recovery wording for an unassigned new seat.
+            assert_eq!(payload.message.lines().next().unwrap(),
+                "New team architecture-final: no assignment yet. Lead: team-lead. Wait for the lead's first message (mesh read) or your assignment card.");
             assert!(payload
                 .message
                 .contains("Role: adversarial-reviewer-claude"));
@@ -3289,7 +3291,7 @@ fn initialize_pipeline_claude_template_agent_receives_role_context_message() {
                 .message
                 .contains("HOLD: minimal role steering unavailable"));
             assert!(payload.message.contains("Investigate"));
-            assert!(!payload.message.contains("mesh read --unread"));
+            assert!(payload.message.contains("mesh read --unread"));
         }
         other => panic!("unexpected delivery payload for agent: {other:?}"),
     }
@@ -5001,6 +5003,8 @@ fn resume_pipeline_claude_member_with_role_context_sends_role_context_message() 
 
     let mut member_runtime =
         MemberRuntimeStore::load(tmp.path(), "architecture-final", "researcher").expect("runtime");
+    // A resume fixture must include the original attachment before relaunching.
+    member_runtime.attachment_generation = 1;
     member_runtime.pane_id = Some("%10".to_string());
     member_runtime.health = HealthState::SessionDead;
     MemberRuntimeStore::save(

@@ -2126,13 +2126,16 @@ fn reonboard_succeeds_for_existing_member() {
     assert!(result.delivered);
     let requests = fake.delivered_requests();
     assert_eq!(requests.len(), deliveries_before);
-    let DeliveryRequest::OperatorNotice(delivery) = requests.last().expect("reonboard delivery")
+    let DeliveryRequest::OperatorNotice(delivery) = requests.last().expect("creation delivery")
     else {
         panic!("expected operator notice")
     };
-    // The bounded card replaces the catalog guarded after efcd7d2; unchanged
-    // unforced recovery returns the prior delivery without replaying it.
-    crate::coordination::recovery_card::assert_control_golden(&delivery.message);
+    // Regression: 3ca169ed4 gave newly created members a recovery card. Unforced
+    // reonboarding must retain the creation card without replaying it.
+    assert_eq!(
+        delivery.message.lines().next().unwrap(),
+        "New team architecture-final: no assignment yet. Lead: team-lead. Wait for the lead's first message (mesh read) or your assignment card."
+    );
 }
 
 #[test]
