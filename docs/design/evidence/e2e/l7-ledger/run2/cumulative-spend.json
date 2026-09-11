@@ -1,0 +1,23 @@
+{
+  "runs": [
+    {
+      "run": "run",
+      "known_usd": 0.00242444,
+      "known_conservative_usd": 0.0246468
+    },
+    {
+      "run": "run2",
+      "known_usd": 0.005458719999999999,
+      "known_conservative_usd": 0.0539436
+    }
+  ],
+  "known_usd": 0.00788316,
+  "known_conservative_usd": 0.0785904,
+  "observed_turn_identities": 4,
+  "controller_input_reservations": 3,
+  "unmetered_turn_ids": [
+    "01a08e08-9df0-70f3-86be-c40886758378",
+    "01a08e1c-ab41-7551-b212-03c5d70f5ca4"
+  ],
+  "dollar_cap_verified": false
+}

@@ -1,9 +1,66 @@
-# Lane 7 continuation — in progress
+# Lane 7 continuation — FAIL at step 1: harness assignment-ID lookup
 
-The user requested continuation after the committed startup predicate fix.
-The next isolated trial writes to `l7-ledger/run2/`; earlier evidence remains
-intact below. All 10 offline controller checks pass before continuation.
-No new runtime PASS is claimed yet.
+The authorized second trial passed startup onboarding, created task `1`, and
+assigned it to alpha. It then stopped **before ledger init**: task assign returned
+`delivery_id`, while controller `66df97a5` searched only `legacy_id`. That lookup
+raised `StopIteration` (an empty exception string). This is a **harness defect**;
+the raw default Mesh classification is corrected by the
+[run-2 adjudication](l7-ledger/run2/adjudication.json).
+
+| Step | Run-2 outcome | Classification |
+| --- | --- | --- |
+| 1. Task/assignment and ledger init | **FAIL** | Harness; task created and assigned, ledger init not attempted. |
+| 2. Standalone note intake | **NOT RUN** | Blocked by step 1. |
+| 3. RESULT completion/intake | **NOT RUN** | No source completion or ledger rejection occurred. |
+| 4. Ledger-only retry | **NOT RUN** | No retry. |
+| 5. Snapshot and offline render | **NOT RUN** | No snapshot. |
+| 6. Receipt reconciliation | **NOT RUN** | Failure teardown independently **PASS**. |
+
+The recorded assignment ID is `d9c0fd46-012f-4de8-8ca7-8fb5708d3d06`.
+Its returned delivery ID `4cac5cb3-a379-42bd-a8e0-13aa62b54470` maps to canonical
+message `5d55fb71-f8b6-4d0c-84ed-fb32ed0a1f74`. The offline regression failed first,
+then all **11 tests passed** after matching the actual delivery ID.
+[Red](l7-ledger/assignment-delivery-red.txt),
+[green](l7-ledger/assignment-delivery-green.txt),
+[executed controller](l7-ledger/run2/controller-at-execution.py).
+No further paid trial followed this failure.
+
+Runtime exited **1** after **18.590 seconds**. Teardown reports **no survivors,
+closed private port, removed scratch root and removed credential copy**.
+[Exit](l7-ledger/run2/controller-exit.json), [cleanup](l7-ledger/run2/cleanup.json).
+The binary builds, protocol 27, model/effort and descriptor are unchanged from the
+first run; startup uses the corrected read predicate and private roots.
+[Startup evidence](l7-ledger/run2/startup-ready.json),
+[candidate](l7-ledger/run2/candidate.json),
+[commands and binary digests](l7-ledger/run2/events.jsonl).
+
+**Log-retention limitation:** this run's daemon source had 69 physical lines;
+68 complete JSON records were exported. The unparsed physical line was not
+retained, and its content is unavailable after teardown. It cannot be assumed
+to be an empty line or a complete event. Complete-source retention is therefore
+**unverified**, an additional evidence deficiency.
+[Manifest](l7-ledger/run2/daemon-log-manifest.json),
+[retained daemon JSONL](l7-ledger/run2/taurhaus.log.jsonl).
+
+| Run-2 turn | Known API-equivalent USD | Conservative USD |
+| --- | --- | --- |
+| `01a08e1c-a901-7293-94de-136cad81ad0f` — 44,522 input, 22,016 cached, 431 output | **0.00545872** | **0.05394360** |
+| `01a08e1c-ab41-7551-b212-03c5d70f5ca4` — notify-only | **Unavailable** | **Unavailable** |
+| Claude lead — login-only | **0** | **0** |
+
+Across both trials: **4 observed turn identities**, **3 controller input
+reservations**, known subtotal **USD 0.00788316**, conservative known subtotal
+**USD 0.07859040**, plus **two unmetered identities**. Total dollar spend and the
+USD 0.20 cap remain unverified. Metering did not gate lifecycle operations.
+[Run-2 meter](l7-ledger/run2/cost-ledger.json),
+[counter excerpts](l7-ledger/run2/native-turn-meter.json),
+[cumulative spend](l7-ledger/run2/cumulative-spend.json).
+
+Post-teardown continuation gates are running. No product source changed.
+The green controller fixes were committed; no numbered runtime step completed.
+The independent Opus evidence lens remains unavailable in this executor.
+
+## Historical first trial
 
 # Lane 7 — FAIL / unavailable at startup: harness read-receipt predicate
 

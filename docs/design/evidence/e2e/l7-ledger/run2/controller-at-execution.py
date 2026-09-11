@@ -45,7 +45,7 @@ def objects(text):
 def assignment_message_id(rows, legacy_id):
     return next(r['payload']['message_id'] for r in rows
                 if r.get('event_type') == 'message_accepted'
-                and any(t.get('recipient') == 'alpha' and legacy_id in (t.get('delivery_id'), t.get('legacy_id'))
+                and any(t.get('recipient') == 'alpha' and t.get('legacy_id') == legacy_id
                         for t in r.get('payload', {}).get('delivery_targets', [])))
 
 

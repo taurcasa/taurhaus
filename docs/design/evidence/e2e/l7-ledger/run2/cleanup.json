@@ -1,0 +1,189 @@
+{
+  "before": [
+    {
+      "pid": 3897474,
+      "start_ticks": "31117261",
+      "argv": [
+        "bwrap",
+        "--die-with-parent",
+        "--unshare-pid",
+        "--ro-bind",
+        "/",
+        "/",
+        "--tmpfs",
+        "/home",
+        "--tmpfs",
+        "/tmp",
+        "--tmpfs",
+        "/run",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+        "--bind",
+        "/tmp/th-l7-40m_bg3n",
+        "/tmp/th-l7-40m_bg3n",
+        "--chdir",
+        "/tmp/th-l7-40m_bg3n/project",
+        "/bin/bash",
+        "/tmp/th-l7-40m_bg3n/boot.sh",
+        ""
+      ]
+    },
+    {
+      "pid": 3897475,
+      "start_ticks": "31117261",
+      "argv": [
+        "bwrap",
+        "--die-with-parent",
+        "--unshare-pid",
+        "--ro-bind",
+        "/",
+        "/",
+        "--tmpfs",
+        "/home",
+        "--tmpfs",
+        "/tmp",
+        "--tmpfs",
+        "/run",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+        "--bind",
+        "/tmp/th-l7-40m_bg3n",
+        "/tmp/th-l7-40m_bg3n",
+        "--chdir",
+        "/tmp/th-l7-40m_bg3n/project",
+        "/bin/bash",
+        "/tmp/th-l7-40m_bg3n/boot.sh",
+        ""
+      ]
+    },
+    {
+      "pid": 3897476,
+      "start_ticks": "31117261",
+      "argv": [
+        "/bin/bash",
+        "/tmp/th-l7-40m_bg3n/boot.sh",
+        ""
+      ]
+    },
+    {
+      "pid": 3897477,
+      "start_ticks": "31117261",
+      "argv": [
+        "tmux",
+        "-D",
+        "-f",
+        "/dev/null",
+        ""
+      ]
+    },
+    {
+      "pid": 3897507,
+      "start_ticks": "31117272",
+      "argv": [
+        "/bin/bash",
+        ""
+      ]
+    },
+    {
+      "pid": 3897509,
+      "start_ticks": "31117272",
+      "argv": [
+        "/tmp/th-l7-40m_bg3n/home/.local/bin/taurhaus-daemon",
+        "--port",
+        "48061",
+        "--data-dir",
+        "/tmp/th-l7-40m_bg3n/data",
+        ""
+      ]
+    },
+    {
+      "pid": 3897678,
+      "start_ticks": "31117313",
+      "argv": [
+        "/bin/bash",
+        "-ic",
+        "cd '/tmp/th-l7-40m_bg3n/project' && CLAUDE_DIR='/tmp/th-l7-40m_bg3n/claude' CLAUDE_CONFIG_DIR='/tmp/th-l7-40m_bg3n/claude' CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions --model 'claude-haiku-4-5' --team-name 'l7-ledger' --agent-name 'lead' --agent-id 'lead@l7-ledger' --agent-type 'orchestrator' -n 'lead'; exec \"$SHELL\"",
+        ""
+      ]
+    },
+    {
+      "pid": 3897681,
+      "start_ticks": "31117314",
+      "argv": [
+        "claude",
+        "--dangerously-skip-permissions",
+        "--model",
+        "claude-haiku-4-5",
+        "--team-name",
+        "l7-ledger",
+        "--agent-name",
+        "lead",
+        "--agent-id",
+        "lead@l7-ledger",
+        "--agent-type",
+        "orchestrator",
+        "-n",
+        "lead",
+        ""
+      ]
+    },
+    {
+      "pid": 3897709,
+      "start_ticks": "31117319",
+      "argv": [
+        "/bin/bash",
+        "-ic",
+        "cd '/tmp/th-l7-40m_bg3n/project' && CLAUDE_DIR='/tmp/th-l7-40m_bg3n/claude' CODEX_HOME='/tmp/th-l7-40m_bg3n/codex' codex --yolo --dangerously-bypass-hook-trust -c 'notify=[\"/tmp/th-l7-40m_bg3n/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]' -m 'gpt-5.6-luna' -c 'model_reasoning_effort=\"low\"'; exec \"$SHELL\"",
+        ""
+      ]
+    },
+    {
+      "pid": 3897712,
+      "start_ticks": "31117319",
+      "argv": [
+        "codex",
+        "--yolo",
+        "--dangerously-bypass-hook-trust",
+        "-c",
+        "notify=[\"/tmp/th-l7-40m_bg3n/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]",
+        "-m",
+        "gpt-5.6-luna",
+        "-c",
+        "model_reasoning_effort=\"low\"",
+        ""
+      ]
+    },
+    {
+      "pid": 3897778,
+      "start_ticks": "31117327",
+      "argv": [
+        "/tmp/th-l7-40m_bg3n/home/.local/bin/mesh",
+        "team-daemon",
+        "start",
+        "--team",
+        "l7-ledger",
+        "--name",
+        "lead",
+        "--claude-dir",
+        "/tmp/th-l7-40m_bg3n/claude",
+        ""
+      ]
+    },
+    {
+      "pid": 3901407,
+      "start_ticks": "31117980",
+      "argv": [
+        "/tmp/th-l7-40m_bg3n/home/.local/bin/codex-code-mode-host",
+        ""
+      ]
+    }
+  ],
+  "survivors": [],
+  "port_closed": true,
+  "auth_removed": true,
+  "root_removed": true
+}

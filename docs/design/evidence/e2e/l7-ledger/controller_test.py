@@ -11,6 +11,11 @@ class EvidenceRules(unittest.TestCase):
         rows = [{'event_type': 'message_accepted', 'payload': {'message_id': 'canonical', 'delivery_targets': [{'recipient': 'alpha', 'legacy_id': 'legacy'}]}}]
         self.assertEqual(assignment_message_id(rows, 'legacy'), 'canonical')
 
+    # // Regression: 66df97a5 matched only legacy_id; canonical task assign returns delivery_id.
+    def test_assignment_maps_current_delivery_id(self):
+        rows = [{'event_type': 'message_accepted', 'payload': {'message_id': 'canonical', 'delivery_targets': [{'recipient': 'alpha', 'delivery_id': 'delivery', 'legacy_id': 'legacy'}]}}]
+        self.assertEqual(assignment_message_id(rows, 'delivery'), 'canonical')
+
     # // Regression: 104e480f decoded text blocks but not stdout nested in exec_command's JSON result.
     def test_wrapped_stdout_receipt_is_decoded(self):
         receipt = {'receipts': [{'event_id': 'e'}]}

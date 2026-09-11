@@ -1,0 +1,145 @@
+{
+  "step": 1,
+  "outcome": "FAIL",
+  "classification": "harness",
+  "raw_classification": "mesh (incorrect default)",
+  "reason": "StopIteration: task assign returned delivery_id; controller only compared legacy_id",
+  "assignment_receipt": {
+    "assignment_id": "d9c0fd46-012f-4de8-8ca7-8fb5708d3d06",
+    "delivered": true,
+    "id": "4cac5cb3-a379-42bd-a8e0-13aa62b54470",
+    "task_id": "1"
+  },
+  "canonical_message_id": "5d55fb71-f8b6-4d0c-84ed-fb32ed0a1f74",
+  "accepted": {
+    "checksum": "b13502ccbfed9c12470491fad375787c442b6e865342a38d99debdf63d94824a",
+    "committed_at": "2026-09-11T01:37:30.985825145+00:00",
+    "event_id": "283ca7c6-bd4c-49cb-8bf0-551680f541af",
+    "event_type": "message_accepted",
+    "log_epoch": "c1ff9598-1cf7-49cb-9839-f99385a1f3c3",
+    "payload": {
+      "acceptance": "canonical",
+      "archive_outcome": "retained",
+      "audience_proof": {
+        "kind": "captured-members",
+        "members": [
+          {
+            "member_id": "35ee6057-4e39-48f2-8a41-44e9fa1746de",
+            "name": "lead"
+          },
+          {
+            "member_id": "alpha@l7-ledger",
+            "name": "alpha"
+          }
+        ],
+        "team_id": "3a6d42c94a14e26adc8996a75b1b0699584bdb4cb4016a5ef62fe570151c05ad"
+      },
+      "author": {
+        "claimed_sender": "lead",
+        "service": "main-generated-task",
+        "verified": true
+      },
+      "body": "<message-body-redacted>",
+      "body_bytes": 947,
+      "body_format": "text/plain",
+      "body_hash": "3ad50b6315a5d56cea93f17e93d102b388126a952871d04761f4102b44a648e0",
+      "conversation_id": "4d5acf0e3262f1c8b4c0e85ba4d01d71fef688672ce73feb99de33bb56f95f17",
+      "conversation_kind": "dm",
+      "correction_reason": null,
+      "delivery_targets": [
+        {
+          "delivery_id": "4cac5cb3-a379-42bd-a8e0-13aa62b54470",
+          "legacy_acceptance": "unknown",
+          "legacy_id": "0bd9ea8e-2ee7-425b-bf7c-8956e6741288",
+          "member_id": "alpha@l7-ledger",
+          "read_audience": [
+            {
+              "member_id": "35ee6057-4e39-48f2-8a41-44e9fa1746de",
+              "name": "lead"
+            },
+            {
+              "member_id": "alpha@l7-ledger",
+              "name": "alpha"
+            }
+          ],
+          "recipient": "alpha",
+          "source_path": "inboxes/alpha.json"
+        }
+      ],
+      "dispatch_decision": {
+        "expectation": "action",
+        "policy_revision": 1,
+        "provenance": "generated",
+        "wake_eligible": true
+      },
+      "envelope": {
+        "deliveryGeneration": "d9c0fd46-012f-4de8-8ca7-8fb5708d3d06",
+        "from": "lead",
+        "id": "0bd9ea8e-2ee7-425b-bf7c-8956e6741288",
+        "kind": "assignment",
+        "read": false,
+        "summary": "<message-body-redacted>",
+        "taskId": "1",
+        "taskSubject": "L7 tiny artifact round trip",
+        "text": "<message-body-redacted>",
+        "timestamp": "2026-09-11T01:37:30.960Z"
+      },
+      "idempotency_key": "d6361c30b549921f565a30603cb5e04bc0f18d317e748c48042f0847ccbaa395",
+      "legacy_acceptance": "unknown",
+      "link": null,
+      "message_id": "5d55fb71-f8b6-4d0c-84ed-fb32ed0a1f74",
+      "origin": "generated",
+      "producer": "main-generated-task:main-generated-task",
+      "read_audience": [
+        {
+          "member_id": "35ee6057-4e39-48f2-8a41-44e9fa1746de",
+          "name": "lead"
+        },
+        {
+          "member_id": "alpha@l7-ledger",
+          "name": "alpha"
+        }
+      ],
+      "reply_to_message_id": null,
+      "request_digest": "dfafbcdf5d5e1bb861de6c76c5c67b3fdebdd00c0bf33bf8d26d1c0187a2b59f",
+      "response_expectation": {
+        "basis": "producer",
+        "expectation": "action",
+        "kind": "action",
+        "policy_revision": 1,
+        "provenance": "generated",
+        "wake_eligible": true
+      },
+      "retention_class": "dm",
+      "source_authority": null,
+      "source_event_refs": [
+        {
+          "assignment_id": "d9c0fd46-012f-4de8-8ca7-8fb5708d3d06",
+          "digest": "c808da96e5061d47f0e3bdd3c127efcc605a075de95d30269e55bc0b155a1288",
+          "event_id": "3c3944bb-5dae-47b9-8d2e-97aa707f2afa",
+          "event_type": "task_assigned",
+          "task_id": "1"
+        }
+      ],
+      "summary": "<message-body-redacted>",
+      "supersedes_message_ids": [],
+      "task_links": [
+        {
+          "assignment_id": "d9c0fd46-012f-4de8-8ca7-8fb5708d3d06",
+          "link_basis": "canonical-event",
+          "relation": "primary",
+          "task_id": "1"
+        }
+      ],
+      "visibility_policy_id": "captured-members",
+      "visibility_policy_revision": 1,
+      "wake_priority": "urgent"
+    },
+    "schema_version": 1,
+    "sequence": 11,
+    "team_id": "3a6d42c94a14e26adc8996a75b1b0699584bdb4cb4016a5ef62fe570151c05ad"
+  },
+  "ledger_init_attempted": false,
+  "source_completion_attempted": false,
+  "runtime_rerun_after_fix": false
+}
