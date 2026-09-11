@@ -282,12 +282,12 @@ fn terminal_write_for_pane_with_runtime<T>(
     teams_dir: &Path,
     pane: &str,
     op: &str,
-    _runtime: &dyn crate::coordination::runtime::CoordinationRuntime,
+    runtime: &dyn crate::coordination::runtime::CoordinationRuntime,
     write: impl FnOnce() -> Result<T, String>,
 ) -> Result<T, String> {
     let registry = super::team_roots::TeamRootRegistry::new(teams_dir.to_path_buf());
     if let Some((root, team, member)) =
-        resolve_terminal_member_with_runtime(&registry, pane, _runtime)?
+        resolve_terminal_member_with_runtime(&registry, pane, runtime)?
     {
         // Windows app fallback must not create lock/holder state on the UNC volume.
         #[cfg(target_os = "windows")]
@@ -307,7 +307,7 @@ fn terminal_write_for_pane_with_runtime<T>(
             }
             if record.health == crate::coordination::domain::HealthState::SessionDead {
                 use crate::coordination::runtime::{pane_belongs_to_member, PaneOwnership};
-                let owned = _runtime.live_pane(pane)?.is_some_and(|live| {
+                let owned = runtime.live_pane(pane)?.is_some_and(|live| {
                     live.is_dead || pane_belongs_to_member(&record, &live) == PaneOwnership::Owned
                 });
                 if !owned {
@@ -363,9 +363,10 @@ fn resolve_terminal_member_with_runtime(
                                 || pane_belongs_to_member(record, &live) == PaneOwnership::Owned
                         })
                     {
-                        // A recycled id may belong to a later record. If no owner
-                        // is found, retain the fence against an unlocked write.
-                        uncertain = true;
+                        // A proven-foreign dead binding is not this pane's owner:
+                        // keep scanning for the record that is. It does not make
+                        // the inventory uncertain — with no owner at all the pane
+                        // is unmanaged and takes the unlocked write, as before.
                         continue;
                     }
                 }
@@ -1210,13 +1211,22 @@ mod tests {
             Ok(())
         })
         .unwrap();
+        // Round-6 review: a pane whose only claimant is a dead record proven
+        // not to own it is unmanaged — the write proceeds without a member lock
+        // instead of being refused as an incomplete inventory.
         for (pid, start) in [(902, 42), (901, 43)] {
             runtime.set_pane_identity("%1", Some(pid), Some(start));
-            let result: Result<(), String> =
-                terminal_write_for_pane_with_runtime(tmp.path(), "%1", "stop", &runtime, || {
-                    panic!("foreign pane must not be written")
-                });
-            assert!(result.unwrap_err().contains("terminal write deferred"));
+            let mut wrote = false;
+            terminal_write_for_pane_with_runtime(tmp.path(), "%1", "stop", &runtime, || {
+                wrote = true;
+                assert!(
+                    !taurhaus_lib::platform::terminal_io::active(),
+                    "an unmanaged pane takes no member terminal lock"
+                );
+                Ok(())
+            })
+            .unwrap();
+            assert!(wrote, "unmanaged pane must be written");
         }
     }
 
