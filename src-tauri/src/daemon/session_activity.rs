@@ -320,6 +320,28 @@ pub struct SessionActivityHub {
     scanner: Mutex<Option<ScannerThread>>,
 }
 
+#[cfg(test)]
+impl Default for SessionActivityHub {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+thread_local! {
+    static TEST_HUB: std::cell::RefCell<Option<Arc<SessionActivityHub>>> = const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+pub(crate) struct TestHubScope(Option<Arc<SessionActivityHub>>);
+
+#[cfg(test)]
+impl Drop for TestHubScope {
+    fn drop(&mut self) {
+        TEST_HUB.set(self.0.take());
+    }
+}
+
 /// The scanner thread a hub started, owned by that hub.
 struct ScannerThread {
     stop: Arc<ScannerStop>,
@@ -447,9 +469,19 @@ impl SessionActivityHub {
 
     /// Access publication without starting process/tmux discovery.
     pub fn shared() -> Arc<Self> {
+        #[cfg(test)]
+        if let Some(hub) = TEST_HUB.with_borrow(Clone::clone) {
+            return hub;
+        }
         static HUB: OnceLock<Arc<SessionActivityHub>> = OnceLock::new();
         HUB.get_or_init(|| Arc::new(SessionActivityHub::new()))
             .clone()
+    }
+
+    /// Scope scanner entry points to a fixture's hub; restore even on panic.
+    #[cfg(test)]
+    pub(crate) fn scoped_for_test(hub: Arc<Self>) -> TestHubScope {
+        TestHubScope(TEST_HUB.replace(Some(hub)))
     }
 
     /// Get the latest snapshot immediately (non-blocking).

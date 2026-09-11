@@ -62,6 +62,8 @@ impl Drop for SocketDirectory {
 #[derive(Default)]
 pub(crate) struct HostedMembers {
     seats: Mutex<HashMap<SeatKey, Seat>>,
+    #[cfg(test)]
+    activity_hub: Arc<SessionActivityHub>,
 }
 
 fn host_alive(host: &AppServerAttachment) -> bool {
@@ -99,6 +101,17 @@ pub(super) fn detach_owned_tui(
 }
 
 impl HostedMembers {
+    fn activity_hub(&self) -> Arc<SessionActivityHub> {
+        #[cfg(test)]
+        {
+            self.activity_hub.clone()
+        }
+        #[cfg(not(test))]
+        {
+            SessionActivityHub::shared()
+        }
+    }
+
     fn seat(&self, root: &Path, team: &str, member: &str) -> Result<Seat, String> {
         let mut seats = self.seats.lock().map_err(|_| "host registry unavailable")?;
         Ok(seats
@@ -283,7 +296,11 @@ impl HostedMembers {
         let weak = Arc::downgrade(&cell);
         let (refresh_root, refresh_team, refresh_member) =
             (root.clone(), team.to_owned(), member.to_owned());
-        let activity = SessionActivityHub::shared().register_host(
+        #[cfg(test)]
+        host.set_activity_hub_for_test(self.activity_hub());
+        #[cfg(test)]
+        let refresh_hub = Arc::downgrade(&self.activity_hub);
+        let activity = self.activity_hub().register_host(
             socket.clone(),
             launch.account_root.clone(),
             RuntimeSession {
@@ -332,7 +349,11 @@ impl HostedMembers {
                         .refresh_activity(&guard)
                         .is_err_and(|error| host_connection_closed(&error));
                 if disconnected || closed {
-                    SessionActivityHub::shared().publish_host_status(
+                    #[cfg(test)]
+                    let hub = refresh_hub.upgrade().expect("owned activity lease");
+                    #[cfg(not(test))]
+                    let hub = SessionActivityHub::shared();
+                    hub.publish_host_status(
                         &seat.attachment.socket_path,
                         &seat.host.thread_id,
                         &Value::Null,
@@ -519,7 +540,7 @@ impl HostedMembers {
             }
             return Err("host changed during TUI attach".into());
         }
-        SessionActivityHub::shared().attach_host_pane(
+        self.activity_hub().attach_host_pane(
             &seat.attachment.socket_path,
             &resolution.pane_id,
             live.pane_pid,
@@ -769,7 +790,7 @@ impl HostedMembers {
                 Ok(polled) => polled,
                 Err(error) => {
                     if host_connection_closed(&error) {
-                        SessionActivityHub::shared().publish_host_status(
+                        self.activity_hub().publish_host_status(
                             &seat.attachment.socket_path,
                             &seat.host.thread_id,
                             &Value::Null,
@@ -872,7 +893,7 @@ impl HostedMembers {
             .as_ref()
             .is_err_and(|error| host_connection_closed(error))
         {
-            SessionActivityHub::shared().publish_host_status(
+            self.activity_hub().publish_host_status(
                 &seat.attachment.socket_path,
                 &seat.host.thread_id,
                 &Value::Null,
@@ -1188,6 +1209,32 @@ pub(crate) mod tests {
     }
     pub(crate) fn saved(root: &Path) -> MemberRuntimeRecord {
         MemberRuntimeStore::load(root, "team", "seat").unwrap()
+    }
+
+    #[test]
+    fn hosted_refresh_does_not_poll_another_fixture() {
+        // Regression: 1b19edd2 registered all test seats in the shared hub,
+        // so refreshing one fixture consumed another fixture's queued RPCs.
+        let first = tempfile::tempdir().unwrap();
+        let second = tempfile::tempdir().unwrap();
+        let (_, hosts) = running(first.path());
+        let (_, other) = running(second.path());
+        let before = fixture_text(first.path(), "requests.jsonl");
+        let untouched = fixture_text(second.path(), "requests.jsonl");
+        let hub = hosts.activity_hub();
+        hub.refresh_hosts();
+        assert_ne!(fixture_text(first.path(), "requests.jsonl"), before);
+        assert_eq!(fixture_text(second.path(), "requests.jsonl"), untouched);
+        drop(hosts);
+        assert!(hub.runtime_snapshot().runtime_sessions.is_empty());
+        assert_eq!(
+            other
+                .activity_hub()
+                .runtime_snapshot()
+                .runtime_sessions
+                .len(),
+            1
+        );
     }
 
     #[test]
@@ -1516,7 +1563,7 @@ if mode == 'twice' or not previous:
         std::fs::write(&launch.program, script).unwrap();
         hosts.launch(&registry, "team", "seat", &launch).unwrap();
         let generation = saved(tmp.path()).attachment_generation;
-        let hub = SessionActivityHub::shared();
+        let hub = hosts.activity_hub();
         let source = || {
             hub.runtime_snapshot()
                 .runtime_sessions
@@ -1561,7 +1608,7 @@ if mode == 'twice' or not previous:
         assert!(input(&hosts, &registry, generation, "disconnect").is_err());
         // The fake host uses this marker to refuse initialize on new connections.
         std::fs::write(tmp.path().join("fail-reconnect"), "").unwrap();
-        let hub = SessionActivityHub::shared();
+        let hub = hosts.activity_hub();
         let attempts = || {
             std::fs::read_to_string(tmp.path().join("requests.jsonl"))
                 .unwrap()
@@ -1606,7 +1653,7 @@ if mode == 'twice' or not previous:
             .unwrap()
             .host
             .disconnect_for_test();
-        SessionActivityHub::shared().refresh_hosts();
+        hosts.activity_hub().refresh_hosts();
         let recovered = transcript(&hosts, &registry, generation);
         assert!(
             recovered["outcomeUnknown"] == true
@@ -1625,9 +1672,10 @@ if mode == 'twice' or not previous:
         input(&hosts, &registry, generation, "active").unwrap();
         std::fs::write(tmp.path().join("pending-read"), "").unwrap();
         let started = std::time::Instant::now();
-        SessionActivityHub::shared().refresh_hosts();
+        hosts.activity_hub().refresh_hosts();
         let elapsed = started.elapsed();
-        let row = SessionActivityHub::shared()
+        let row = hosts
+            .activity_hub()
             .runtime_snapshot()
             .runtime_sessions
             .into_iter()
@@ -1647,7 +1695,7 @@ if mode == 'twice' or not previous:
         taurhaus_lib::logging::install_global_sink(&sink);
         let (registry, hosts) = running(tmp.path());
         let generation = saved(tmp.path()).attachment_generation;
-        let hub = SessionActivityHub::shared();
+        let hub = hosts.activity_hub();
         let op =
             |method, params| hosts.operation(&registry, "team", "seat", generation, method, params);
         let snapshot = || {
@@ -1691,6 +1739,7 @@ if mode == 'twice' or not previous:
             args: saved(tmp.path()).app_server.unwrap().attach_argv.join(" "),
             cli_tool: crate::session_scanner::cli_tool::CliTool::Codex,
         };
+        let _hub_scope = SessionActivityHub::scoped_for_test(hub.clone());
         let resolved = crate::session_scanner::cli_tool::spec(process.cli_tool)
             .session_source()
             .process_session(&process, Some("%fixture"))
@@ -2443,7 +2492,8 @@ if mode == 'twice' or not previous:
         run_compact_hook_cli(payload.to_string().as_bytes(), &mut output, root).unwrap();
         assert!(String::from_utf8(output).unwrap().contains("recovery_card"));
         // Both observers describe this same persisted event, regardless of scheduling.
-        let boundary = json!({"completedAtMs":compaction(root).last_compaction_timestamp.timestamp_millis()});
+        let boundary =
+            json!({"completedAtMs":compaction(root).last_compaction_timestamp.timestamp_millis()});
         std::fs::write(root.join("compact.json"), boundary.to_string()).unwrap();
         hosts.reconcile(&reg, "team", "seat").unwrap();
         assert_eq!(saved(root).context_generation, 1);

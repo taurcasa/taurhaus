@@ -308,6 +308,8 @@ impl HostProcess {
                 host.rpc = Some(Rpc {
                     socket: Some(WebSocket::connect(stream, guard)?),
                     activity_socket: socket.into(),
+                    #[cfg(test)]
+                    activity_hub: Arc::default(),
                     events: VecDeque::new(),
                     compactions: VecDeque::new(),
                     thread_id: String::new(),
@@ -439,6 +441,14 @@ impl HostProcess {
             }
             std::thread::sleep(Duration::from_millis(5));
         }
+    }
+
+    #[cfg(test)]
+    pub fn set_activity_hub_for_test(
+        &mut self,
+        hub: Arc<taurhaus_lib::daemon::session_activity::SessionActivityHub>,
+    ) {
+        self.rpc.as_mut().unwrap().activity_hub = hub;
     }
 
     #[cfg(test)]
@@ -916,6 +926,8 @@ fn event_turns(events: &VecDeque<Value>, thread_id: &str) -> Vec<Value> {
 }
 
 struct Rpc {
+    #[cfg(test)]
+    activity_hub: Arc<taurhaus_lib::daemon::session_activity::SessionActivityHub>,
     activity_socket: PathBuf,
     socket: Option<WebSocket>,
     events: VecDeque<Value>,
@@ -932,11 +944,11 @@ struct Rpc {
 }
 impl Rpc {
     fn publish_activity(&self) {
-        taurhaus_lib::daemon::session_activity::SessionActivityHub::shared().publish_host_status(
-            &self.activity_socket,
-            &self.thread_id,
-            &self.status,
-        );
+        #[cfg(test)]
+        let hub = &self.activity_hub;
+        #[cfg(not(test))]
+        let hub = taurhaus_lib::daemon::session_activity::SessionActivityHub::shared();
+        hub.publish_host_status(&self.activity_socket, &self.thread_id, &self.status);
     }
 
     fn observe(&mut self, frame: &Value) {
