@@ -1,4 +1,7 @@
-# L6 rollback — run2 IN PROGRESS (step 2 PASS)
+# L6 rollback — run2 FAIL at step 3 (Taurhaus activity readiness)
+
+Run2 executed steps 1–2, then stopped at the step-3 activity-readiness poll.
+All three inputs finished and were metered; teardown and all required gates pass.
 
 Run2 follows the **2026-09-11 amendment** in `docs/design/e2e-coverage-audit.md`,
 section 6, read from the orchestrator’s main checkout: format first, ownership
@@ -276,6 +279,194 @@ historical teardown, with no paid window. No tracked `src-tauri/` change occurre
 so `just test-rust-unit` was not required. This fix round adds no live rollback
 coverage and leaves the original unknown spend explicitly unresolved.
 
-Run2 step 1: PASS (S-runtime); see run2/run/step1-outcome.json.
 
-Run2 step 2: PASS (S-runtime); see run2/run/step2-outcome.json.
+
+## Run2 — amended format-first trial, 2026-09-11
+
+**FAIL at step 3; no completed rollback.** Steps 1–2 pass, with step 2 using
+its one permitted temporary refusal. The ordinary Codex turn **did complete**;
+Taurhaus never supplied the controller's required attributed, freshly idle
+production activity during the **90.240-second** settle poll. The error text
+`ordinary work did not settle` describes that failed readiness predicate, not
+an unfinished model response. The format retry was **not issued**. There is
+no evidence of a second/permanent format-command refusal, an ownership
+handoff, or legacy delivery. The deeper activity-classification cause is unproved.
+
+This run follows the **2026-09-11 amendment** in section 6 of
+`/home/mstie/projects/taurhaus/docs/design/e2e-coverage-audit.md`, read at the
+binding absolute path: format first, ownership second. Run1 above is retained
+as the historical ownership-first contract observation, with its own budget.
+
+| Amended ordered step | Outcome | Classification / S-runtime evidence |
+| --- | --- | --- |
+| 1. Initialize; deliver/read A; observe B pending during ordinary work | **PASS** | S-runtime: production canonical initialization; one A terminal receipt, explicit read and assistant reply; B accepted without receipt while working, with owner heartbeat **after** acceptance. |
+| 2. Lead requests `team format --legacy --quiescent` with B pending | **PASS — permitted temporary refusal** | Mesh: exit **1**, `team owner already holds lifetime lock`. B intact, no begun/submitted receipt; format **2**, owner **team**, epoch **2** unchanged. No legacy projection or reconciliation report was produced. |
+| 3. Settle; retry once if refused; verify committed format boundary | **FAIL** | Taurhaus activity readiness: 90.240 seconds / 348 runtime samples did not establish attributed fresh idle. Native turn completed and was metered; delivery sidecar remained working, then uncertain. Retry and format-boundary assertion were not reached. |
+| 4. Lead requests ownership `members`; durable handoff, report, epoch boundary | **NOT RUN** | Blocked by step 3. No ownership command, durable rollback request, report, or members boundary. |
+| 5. Guarded RC member executor; B accounting and fresh C reply | **NOT RUN** | Blocked by step 3. No member executor start; C never created. |
+| 6. Explicit read/ack; cross-boundary A/B/C reconciliation; export/teardown | **NOT RUN** | Read/ack and rollback reconciliation not reached. Mandatory failure export/teardown independently **PASS**. |
+
+[Outcome](l6-rollback/run2/run/controller-exit.json),
+[format command](l6-rollback/run2/run/step2-command.json),
+[settle analysis](l6-rollback/run2/step3-analysis.json),
+[complete commands/RPCs and exits](l6-rollback/run2/run/events.jsonl).
+Runtime: **125.983 seconds**, controller exit **1**, one initialization, no
+paid restart, recovery, compaction, or automated model-turn retry.
+
+### Run2 pending proof and preserved identities
+
+B was accepted at **23:59:17.025803963 UTC**, sampled with production working
+activity at **23:59:17.428832675**, and owner heartbeat at
+**23:59:17.950301702**. The pending observation was captured at
+**23:59:17.989 UTC**, with `last_defer_reason: pending: activity not freshly idle`.
+Unlike run1, the heartbeat follows this acceptance; the predicate never accepts
+a `stage: pending` row. No B transport/read receipt or native exposure existed.
+The immediately preceding command snapshot still had B unbegun.
+
+| Fact | Observed identity / disposition |
+| --- | --- |
+| Team / incarnation | `l6-rollback-run2` / `640a339a973c0d762946d00205b514974dd607004fbd504046da27843ed877ac` |
+| Alpha session / attachment / context | `01a08dc2-7165-7742-85a8-a6094661515f` / **1** / **"0"** |
+| Socket / pane / pane PID / start ticks | `/tmp/th-l6-bo64jqch/tmux/tmux-1000/default` / `%2` / **140** / **30526223** |
+| A marker / logical ID | `A-94835941` / `9523f1c8-4c1c-4910-982d-95b1ae8ad4b5` |
+| A delivery ID / state | `88b2455e-296e-4703-805a-135d6b6b9d2a` / one submitted receipt, consumed_by_read, assistant reply |
+| B marker / original logical ID | `B-7dc78201` / `193725f0-62b0-4c1b-aa94-a243a0373d36` |
+| B delivery ID / allocated legacy ID | `77a04119-535d-4e5a-b8ea-3d39082b6858` / `940e4896-40e7-455a-ab9d-90a099e07b06` |
+| B final disposition | Accepted, unread, unsubmitted; **zero model inputs/exposures for B**, no legacy projection claim |
+| Final format / owner / epoch | **2 / team / 2**; no rollback boundary |
+
+[Pending proof](l6-rollback/run2/run/pending/193725f0-62b0-4c1b-aa94-a243a0373d36.json),
+[boundary snapshot](l6-rollback/run2/run/step1-pending-boundary.json),
+[A history](l6-rollback/run2/run/A-history.json),
+[retained canonical journal](l6-rollback/run2/run/team/state/messaging-v2/segments/000001.jsonl).
+The two step-2 snapshots are byte-identical aliases of the step-1 boundary;
+[the manifest](l6-rollback/run2/export-manifest.json) records that deduplication.
+An allocated legacy ID does not establish legacy projection.
+
+The native ordinary turn completed at **23:59:44.319 UTC**. Later snapshots
+reported the matching runtime session `state: idle`, `activity_attribution: none`,
+while the delivery sidecar progressed from `likely_working` to `uncertain`.
+Its final observation was **00:00:26.431757390 UTC**; it never became fresh idle
+for delivery. No activity flag, lock, handoff, freshness rule, or process was
+changed to force readiness. [Final runtime snapshot](l6-rollback/run2/run/final-runtime-sessions.json),
+[final activity](l6-rollback/run2/run/final-activity.json),
+[final pane](l6-rollback/run2/run/final-pane-2.txt).
+Source context: Mesh `src/journal/transition.rs` acquires the owner lifetime lock
+before downgrade; `src/delivery/store.rs` emits the observed refusal. That
+explains step 2, but does not replace the unexecuted retry with a failure claim.
+
+### Run2 candidate, spend, and isolation
+
+Taurhaus product **a7e6db7e**, unchanged source, built from this checkout with
+`just build-daemon` (**exit 0**); run2 started atop evidence commit **e69d468c**.
+Mesh detached **310144de1f7939e7fbb2d80ab42ebd00580ce15d**, built with
+`cargo build --bin mesh` in `/home/mstie/projects/mesh-l6` (**exit 0**).
+No descriptor/source edit, Mesh commit, install, release, or product change.
+Private daemon ping: **protocol 27**, version 0.9.7, probed port **46923**.
+Actual native Codex **0.153.4**, **gpt-5.6-luna / low**; both native siblings copied.
+
+| Binary | SHA-256 |
+| --- | --- |
+| Taurhaus daemon | `5ca8150fe8c15d3bf770a51b7eaf7b94be7b18b0bd56f82c0521d500563aa21e` |
+| Mesh guarded RC | `c90231406f461568ba4b6766ec2a06d8cfd9702723875a85778d36f6057b060f` |
+| Codex | `56ef98ab4032d317ab26e9b5e5a175650717351edb16ed9cde0cb6d1734d62da` |
+| codex-code-mode-host | `3e85d67471825f73d02ff5f7e047ca1f6ca8caa3f59e4c6e8d9ca6ca7302cb45` |
+
+| Every paid input / turn ID | Input / cached / output tokens | API-equivalent USD |
+| --- | --- | --- |
+| Onboarding — `01a08dc2-769b-7d22-be35-d066916195a2` | 70,246 / 60,928 / 767 | **0.00400256** |
+| A — `01a08dc2-c795-7770-8cfc-a8fa530854f8` | 44,591 / 26,112 / 274 | **0.00454684** |
+| Ordinary B-work — `01a08dc2-eafa-75e1-a6f2-d527c14d5111` | 15,599 / 13,056 / 1,485 | **0.00255172** |
+| B pending; C; recovery/retries/compaction; Claude model inputs | No submitted inputs | **0** |
+| Total | **3 inputs**, 3 completed native turns, 1 attachment generation | **0.01110112** |
+
+All model turns have final metering. The ledger retains **10 usage deltas**;
+conservative all-tokens-at-output-rate cost is **$0.1595544**, also below $0.20.
+There are four input reservations, including unsubmitted B. One notify-only
+identity is retained separately; it is not counted as another model turn.
+Rates remain the inherited packet estimates ($0.20/M input, $0.02/M cached,
+$1.20/M output), not an invoice. Implementer/reviewer usage belongs to the
+orchestrator's separate accounting and is not exposed to this seat ledger.
+[Every usage delta and reservation](l6-rollback/run2/run/cost-ledger.json).
+
+The reused controller provisions scratch-only roots and a private PID namespace,
+hides operator homes, removes inherited TMUX, pins binaries, blocks unrelated
+CLIs, and starts a private tmux server. Only the standing-authorized single auth
+file is copied (0600) into initially empty CODEX_HOME; no credential contents
+are exported. Production initialize uses the builder's canonical messaging
+policy, one real tmux alpha and one login-only Claude lead (zero model turns).
+No fault injection or stress run occurred.
+
+### Run2 export, checks, reproduction, and deviations
+
+The **complete 355-row daemon JSONL**, including shutdown, is retained without
+an event-selection filter. Other complete streams: 18 journal rows, 6 workflow
+rows, 81 native transcript rows, 996 controller events and 7 passive lock samples.
+The read-only post-teardown audit verified **70 retained files**, **13 aliases**,
+complete JSONL, sanitized paths/credentials, and pane excerpts of **at most 60 lines**.
+**No owned daemon, member/team executor, tmux server, Codex, code-mode host or
+Claude survives; port closed; auth copy and scratch root removed.**
+[Daemon JSONL](l6-rollback/run2/run/taurhaus.log.jsonl),
+[cleanup](l6-rollback/run2/run/cleanup.json), [audit](l6-rollback/run2/final-audit.json).
+
+Five new offline tests first exited **1**: the inherited predicate incorrectly
+accepted `stage: pending` (one assertion failure), and four new requirements had
+no implementation (four import errors). The run2 predicates then passed all
+**5**, while the **26 inherited tests** also passed. Coverage checks working plus
+scheduler opportunity, heartbeat timestamp parsing, message-specific pending
+obligations, exclusion of begun/receipt state, exact format-1 committed history,
+and assistant reply versus tool echo. The regression comment names **82e2655b**.
+Tests use synthetic values only, without CLIs or credential reads.
+[Red](l6-rollback/run2/red.txt), [green](l6-rollback/run2/green.txt),
+[tests](l6-rollback/run2/run2_test.py), [rules](l6-rollback/run2/run2_rules.py).
+No product regression was fixed.
+
+| Exact command from this checkout root, after teardown | Exit | Result |
+| --- | --- | --- |
+| `just check-quick` | **0** | Rust test compile + typecheck + **2,519 frontend tests** pass |
+| `just lint` | **0** | Rust, frontend, workflow and recipe lint pass |
+| `just test-contracts` | **0** | **68 tests** pass: 15 renderers, 20 harness, 33 boundaries |
+
+[Gate results](l6-rollback/run2/gates-result.json),
+[quick gate](l6-rollback/run2/check-quick.json),
+[lint](l6-rollback/run2/lint.json), [contracts](l6-rollback/run2/test-contracts.json).
+All first attempts passed; no gate overlapped the paid runtime. Cargo admission
+used the required `pgrep -af '(^|/)cargo( |$)'` probe before each command,
+30-second polls only if at least three Cargo processes existed, maximum 30 minutes.
+Build admission saw **1** then **2** existing Cargo processes; each gate saw **0**.
+Each admitted command used one build job and its own checkout's target directory.
+Raw gate logs were written under ignored `src-tauri/target/l6-run2-gates` to
+avoid the historical self-scanning log collision, then copied/sanitized here.
+No tracked `src-tauri/` diff; conditional `just test-rust-unit` did not apply.
+
+Exact live controller: [run2controller.py](l6-rollback/run2/run2controller.py),
+reusing the parent support/preflight/rollback modules. Reproduction from this
+checkout, with a new output directory and a separately authorized fresh budget:
+
+```sh
+python3 -B -m unittest discover -s docs/design/evidence/e2e/l6-rollback/run2 -p '*_test.py'
+python3 -B docs/design/evidence/e2e/l6-rollback/run2/run2controller.py --auth-source "$AUTHORIZED_SOURCE" --out docs/design/evidence/e2e/l6-rollback/run2/NEW_RUN
+```
+
+`AUTHORIZED_SOURCE` is the exact standing-authorized pin in the parent
+`preflight.py`; no fallback. The selected output must not already exist.
+No paid restart was performed during this task. Packaging/audit used the parent
+`pack.py` and `audit.py` with `BASE` set to `run2`; raw complete streams remain
+independently retained. The numbered green runtime steps were committed
+immediately, before proceeding.
+
+Deviations / limits:
+
+- The specified L2 worktree is absent (Git exit **128**). The inherited one-seat
+  controller was reused from run1, whose L2 lineage was recovered read-only from
+  local commit **2690352e**; that commit's report was checked again. No other
+  Taurhaus checkout was changed.
+- The Mesh stage-2b brief is only a membership addendum in this RC. Its USAGE
+  contract, the separate stage-2b implementation packet, stage-3 packet, and
+  rollback source were read before execution.
+- Step 3 stopped on production activity readiness before the allowed retry.
+  Native ordinary work completed; no second format result, permanent format
+  refusal, ownership boundary, fresh C or cross-boundary read/ack is claimed.
+- No independent Opus lens ran inside this implementer lane; it remains the
+  enclosing workflow's review obligation. This packet is a failed trial, not
+  full workflow PASS or release approval.

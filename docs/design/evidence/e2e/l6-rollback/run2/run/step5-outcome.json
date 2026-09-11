@@ -1,0 +1,5 @@
+{
+  "step": 5,
+  "outcome": "NOT RUN",
+  "reason": "blocked by step 3"
+}

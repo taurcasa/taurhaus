@@ -25,8 +25,14 @@
     },
     {
       "turn_id": "01a08dc2-eafa-75e1-a6f2-d527c14d5111",
-      "usd": null,
-      "completed": false
+      "usd": 0.0025517200000000004,
+      "completed": true,
+      "usage": {
+        "input_tokens": 15599,
+        "cached_input_tokens": 13056,
+        "output_tokens": 1485
+      },
+      "conservative_usd": 0.0205008
     },
     {
       "turn_id": "01a08dc2-78c4-7fe2-9187-ae4ae192b6d7",
@@ -126,11 +132,21 @@
         "output_tokens": 15
       },
       "usd": 0.0005944000000000001
+    },
+    {
+      "at": "2026-09-10T23:59:44.293Z",
+      "turn_id": "01a08dc2-eafa-75e1-a6f2-d527c14d5111",
+      "usage": {
+        "input_tokens": 15599,
+        "cached_input_tokens": 13056,
+        "output_tokens": 1485
+      },
+      "usd": 0.0025517200000000004
     }
   ],
-  "metering_complete": false,
-  "api_equivalent_usd": 0.0085494,
-  "conservative_usd": 0.1390536,
+  "metering_complete": true,
+  "api_equivalent_usd": 0.01110112,
+  "conservative_usd": 0.15955439999999999,
   "rates_usd_per_million": {
     "input": 0.2,
     "cached_input": 0.02,
