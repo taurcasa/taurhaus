@@ -495,8 +495,8 @@ impl CoordinationOrchestrator {
                             // taurhaus's own staged first capture only while
                             // that record is still healthy from the launch that
                             // committed the level. Once liveness has marked the
-                            // record dead it also cleared the session id, so a
-                            // session found afterwards is one nothing here
+                            // record dead, a new session found afterwards is
+                            // one nothing here
                             // launched — a hand-restart running at whatever its
                             // config says. `applied_effort` must stop asserting
                             // the dead session's level, or the next pass reads
@@ -547,7 +547,7 @@ impl CoordinationOrchestrator {
             // becomes detectable one pass later, after health already reads
             // Healthy, and the stale applied level would otherwise satisfy the
             // effort sweep forever.
-            if runtime.health == HealthState::SessionDead && runtime.session_id.is_none() {
+            if runtime.health == HealthState::SessionDead {
                 runtime.applied_effort = None;
                 adopted_runtime_session = true;
             }

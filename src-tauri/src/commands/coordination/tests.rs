@@ -3230,7 +3230,8 @@ fn project_mesh_snapshot_classifies_cold_resume_when_all_members_are_offline() {
         let pane_id = runtime_record.pane_id.clone().expect("pane id");
         runtime.set_pane_exists(&pane_id, false);
         runtime_record.health = HealthState::SessionDead;
-        runtime_record.session_id = None;
+        // Regression: 39eeb33a erased stopped identities; retained ids must still present offline.
+        runtime_record.session_id = Some("retained-session".into());
         runtime_record.daemon_pid = None;
         MemberRuntimeStore::save(
             tmp.path(),
@@ -4626,7 +4627,8 @@ fn live_status_provider_snapshot_yields_to_current_pane_loss() {
     let updated = MemberRuntimeStore::load(tmp.path(), "architecture-final", "frontend-dev")
         .expect("reload frontend runtime");
     assert_eq!(updated.health, HealthState::SessionDead);
-    assert_eq!(updated.session_id, None);
+    // Regression: 39eeb33a erased stopped identity; the retained id is still offline.
+    assert_eq!(updated.session_id, frontend_runtime.session_id);
 }
 
 #[test]

@@ -302,7 +302,9 @@ pub(crate) fn resolve_terminal_member(
             }
         };
         for (member, record) in &records {
-            if record.pane_id.as_deref() == Some(pane) {
+            if record.health != crate::coordination::domain::HealthState::SessionDead
+                && record.pane_id.as_deref() == Some(pane)
+            {
                 return Ok(Some((root, team, member.clone())));
             }
         }
@@ -906,6 +908,36 @@ mod tests {
     use super::*;
 
     #[test]
+    fn retained_dead_identity_is_not_a_terminal_attachment() {
+        // Regression: 39eeb33a masked dead attachment admission by erasing identity.
+        use super::super::{MemberRuntimeRecord, MemberRuntimeStore, TeamConfigStore};
+        let tmp = TempDir::new().unwrap();
+        TeamConfigStore::save(
+            tmp.path(),
+            "team",
+            &serde_json::from_value(serde_json::json!({
+                "schema_version": 3, "name": "team", "created_at": chrono::Utc::now(), "members": []
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        MemberRuntimeStore::save(
+            tmp.path(),
+            "team",
+            "seat",
+            &MemberRuntimeRecord {
+                health: crate::coordination::domain::HealthState::SessionDead,
+                pane_id: Some("%1".into()),
+                session_id: Some("retained".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let registry = super::super::team_roots::TeamRootRegistry::new(tmp.path().into());
+        assert!(resolve_terminal_member(&registry, "%1").unwrap().is_none());
+    }
+
+    #[test]
     fn terminal_lookup_skips_unrelated_corruption_but_defers_unknown_attachment() {
         // Regression: 1127823e aborted every stop on one corrupt record, then
         // wrote unlocked when a managed record was transiently absent.
@@ -916,6 +948,7 @@ mod tests {
             "team",
             "seat",
             &MemberRuntimeRecord {
+                health: crate::coordination::domain::HealthState::Healthy,
                 pane_id: Some("%1".into()),
                 ..Default::default()
             },

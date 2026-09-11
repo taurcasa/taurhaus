@@ -6523,7 +6523,7 @@ fn adopting_a_session_after_an_offline_pass_clears_applied_effort() {
     );
 
     // The member's session exits: liveness sees a bare shell and clears the
-    // session id while the level it applied stays recorded.
+    // pane binding while retaining the conversation and its applied level.
     runtime.set_pane_current_command("%21", Some("zsh"));
     orchestrator
         .reconcile_team_liveness("effort-team")
@@ -6531,9 +6531,14 @@ fn adopting_a_session_after_an_offline_pass_clears_applied_effort() {
     let offline =
         MemberRuntimeStore::load(&teams_dir, "effort-team", "builder").expect("runtime record");
     assert_eq!(offline.health, HealthState::SessionDead);
-    assert_eq!(offline.session_id, None);
+    assert!(offline.session_id.is_some());
 
     // The operator restarts `codex` by hand in the same pane.
+    // A new attachment supplies the pane; the stopped record no longer owns it.
+    MemberRuntimeStore::update(&teams_dir, "effort-team", "builder", |r| {
+        r.pane_id = Some("%21".into());
+    })
+    .unwrap();
     runtime.set_pane_current_command("%21", Some("codex"));
     runtime.set_detected_runtime_session(
         "%21",
@@ -6603,7 +6608,8 @@ fn a_hand_restart_seen_before_its_identity_still_clears_applied_effort() {
         "the migration is irreversible",
     );
 
-    // Session exits; liveness marks the record dead and clears the id.
+    // Regression: 39eeb33a erased stopped ids, masking stale effort on revival.
+    // Session exits; liveness clears the pane binding and retains the id.
     runtime.set_pane_current_command("%21", Some("zsh"));
     orchestrator
         .reconcile_team_liveness("effort-team")
@@ -6611,6 +6617,11 @@ fn a_hand_restart_seen_before_its_identity_still_clears_applied_effort() {
 
     // Pass 1: the hand-restarted CLI is visible, but its identity is not yet
     // detectable (no registry entry written) — detection returns no id.
+    // A new attachment supplies the pane; the stopped record no longer owns it.
+    MemberRuntimeStore::update(&teams_dir, "effort-team", "builder", |r| {
+        r.pane_id = Some("%21".into());
+    })
+    .unwrap();
     runtime.set_pane_current_command("%21", Some("codex"));
     runtime.set_detected_runtime_session("%21", CliTool::Codex, None, None);
     orchestrator
