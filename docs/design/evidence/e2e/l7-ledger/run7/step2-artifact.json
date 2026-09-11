@@ -1,0 +1,12 @@
+{
+  "file": "OBSERVATION.md",
+  "bytes": 698,
+  "sha256": "9c6d766a30a7e13df739fe22dd294895927d0ef37d7b47d23038035c78b222fa",
+  "event_id": "0d522cac-9b5f-4c22-92e6-caccbfb009e5",
+  "root_id": "0d522cac-9b5f-4c22-92e6-caccbfb009e5",
+  "author": {
+    "actor_id": "alpha",
+    "authority_ref": "1be24833281e322c4c0c3574ee83fc25b71f7ffe6f470a3889fcb8b21b6ffc25",
+    "member_incarnation_id": "alpha@l7-ledger"
+  }
+}

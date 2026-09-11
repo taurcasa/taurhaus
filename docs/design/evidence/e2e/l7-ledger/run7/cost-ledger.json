@@ -1,5 +1,5 @@
 {
-  "paid_inputs": 2,
+  "paid_inputs": 4,
   "turns": [
     {
       "turn_id": "01a08f17-c9d5-7b11-bbc8-3aff71610f41",
@@ -13,6 +13,28 @@
       "conservative_usd": 0.0689592
     },
     {
+      "turn_id": "01a08f18-2431-7f83-acaa-f1af50cdede5",
+      "usd": 0.005927,
+      "completed": true,
+      "usage": {
+        "input_tokens": 69739,
+        "cached_input_tokens": 49920,
+        "output_tokens": 804
+      },
+      "conservative_usd": 0.0846516
+    },
+    {
+      "turn_id": "01a08f18-d89d-72b2-9707-49dd28e8ad36",
+      "usd": 0.005151520000000001,
+      "completed": true,
+      "usage": {
+        "input_tokens": 60770,
+        "cached_input_tokens": 45056,
+        "output_tokens": 923
+      },
+      "conservative_usd": 0.07403159999999999
+    },
+    {
       "turn_id": "01a08f17-cbe5-7300-a3c2-1b160cc2a68d",
       "usd": null,
       "completed": true,
@@ -20,8 +42,8 @@
     }
   ],
   "metering_complete": false,
-  "api_equivalent_usd": 0.00552268,
-  "conservative_usd": 0.0689592,
+  "api_equivalent_usd": 0.0166012,
+  "conservative_usd": 0.22764239999999997,
   "rates_usd_per_million": {
     "input": 0.2,
     "cached_input": 0.02,
@@ -39,6 +61,12 @@
       "reason": "task assignment",
       "step": 1,
       "at": 1789107115.618256,
+      "generation": 1
+    },
+    {
+      "reason": "step 2 instruction",
+      "step": 2,
+      "at": 1789107164.3759246,
       "generation": 1
     }
   ],
