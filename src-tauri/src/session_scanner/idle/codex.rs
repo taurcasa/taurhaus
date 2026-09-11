@@ -608,7 +608,32 @@ fn codex_identity_scope(
 
 fn unresolved_identity(pid: u32, source: &'static str) -> IdleResult {
     super::codex_readiness::invalidate(pid);
-    tracing::debug!(pid, source, "Codex identity uncertain");
+    static REASONS: OnceLock<Mutex<HashMap<u32, &'static str>>> = OnceLock::new();
+    let reason = source.strip_prefix("codex_identity_").unwrap_or(source);
+    let changed = REASONS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(pid, reason)
+        != Some(reason);
+    if changed {
+        tracing::warn!(
+            event = "codex.identity.unresolved",
+            pid,
+            reason,
+            "Codex identity uncertain"
+        );
+        taurhaus_lib::logging::emit_global(
+            "warn",
+            "session_scanner",
+            "codex.identity.unresolved",
+            Some("Codex identity uncertain".into()),
+            serde_json::Map::from_iter([
+                ("pid".into(), pid.into()),
+                ("reason".into(), reason.into()),
+            ]),
+        );
+    }
     IdleResult::idle()
 }
 
@@ -966,6 +991,43 @@ mod tests {
     use crate::daemon::codex_notify::append_event_at;
     use std::fs::File;
     use std::io::Write;
+
+    #[test]
+    fn unresolved_identity_warns_once_per_pid_reason_change_without_paths() {
+        let _guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("events.jsonl");
+        let sink = taurhaus_lib::logging::LogFileState::new(path.clone()).unwrap();
+        taurhaus_lib::logging::install_global_sink(&sink);
+        for (pid, reason) in [
+            (4294900001, "ambiguous_account"),
+            (4294900001, "ambiguous_account"),
+            (4294900001, "ambiguous_writer_locks"),
+            (4294900002, "ambiguous_account"),
+        ] {
+            let row = unresolved_identity(pid, reason);
+            assert!(row.session_id.is_none());
+            assert_eq!(row.state, SessionState::Idle);
+        }
+        sink.flush_for_test().unwrap();
+        let events: Vec<serde_json::Value> = fs::read_to_string(path)
+            .unwrap()
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .filter(|e: &serde_json::Value| e["event"] == "codex.identity.unresolved")
+            .collect();
+        assert_eq!(events.len(), 3);
+        for (event, (pid, reason)) in events.iter().zip([
+            (4294900001_u32, "ambiguous_account"),
+            (4294900001, "ambiguous_writer_locks"),
+            (4294900002, "ambiguous_account"),
+        ]) {
+            assert_eq!(event["level"], "WARN");
+            assert_eq!(event["pid"], pid);
+            assert_eq!(event["reason"], reason);
+            assert!(!event.to_string().contains('/'));
+        }
+    }
 
     #[cfg(target_os = "linux")]
     struct ResumeProcess(std::process::Child);
