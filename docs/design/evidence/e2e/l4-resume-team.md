@@ -1162,3 +1162,8 @@ completed that same quit without a new TUI or model input.
 `106f06c7`, Mesh `1f7447f`, protocol 27, Codex 0.153.4, Luna/low.
 
 Later step outcomes and post-teardown gates will be appended after execution.
+
+Step 2 **PASS / runtime**: supported `stop_session` ended all three seat panes
+and every Codex process (including the native sibling and hosted child). Only
+the private infrastructure pane remains. Retained team/journal state exists;
+beta attachment advanced to 2. No additional spend.
