@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use super::ActivityObservation as Observation;
 fn sample(
     prompt: Option<bool>,
-    no_rollout: bool,
+    pre_turn: bool,
     notify: Option<&crate::daemon::codex_notify::CodexNotifyRecord>,
     launch: DateTime<Utc>,
     now: DateTime<Utc>,
@@ -13,9 +13,9 @@ fn sample(
     let notify = notify.filter(|record| {
         record.ts >= launch && record.ts <= now && record.event == "agent-turn-complete"
     });
-    // Only a transcript-validated completion is passed here. Before any turn,
+    // Only a transcript-validated completion is passed here. Before completion,
     // the attributed pane decides readiness independently of process polling IO.
-    let (state, source) = match (notify.is_some(), no_rollout, prompt) {
+    let (state, source) = match (notify.is_some(), pre_turn, prompt) {
         (true, _, _) => (SessionState::Idle, "notify"),
         (false, true, Some(true)) => (SessionState::Idle, "launch_ready"),
         (false, true, Some(false)) => (SessionState::Active, "pane_working"),
@@ -73,33 +73,53 @@ fn idle_prompt(text: &str) -> Option<bool> {
 pub(crate) const IDLE_PANE: &str =
     "› Ask Codex to do anything\n\n  gpt-5.6-luna low · <scratch>/project\n";
 
-fn no_turn_yet(path: Option<&str>) -> bool {
-    use std::io::Read;
+fn no_turn_completed_since(path: Option<&str>, launch: DateTime<Utc>) -> bool {
+    use std::io::{Read, Seek, SeekFrom};
     let Some(path) = path else {
         return true;
     };
-    let mut bytes = Vec::new();
-    let Ok(file) = fs::File::open(path) else {
-        return false;
+    let read = || -> Option<bool> {
+        let mut file = fs::File::open(path).ok()?;
+        let start = file.metadata().ok()?.len().saturating_sub(65_536);
+        file.seek(SeekFrom::Start(start)).ok()?;
+        let mut bytes = Vec::new();
+        file.take(65_537).read_to_end(&mut bytes).ok()?;
+        if bytes.len() > 65_536 || (!bytes.is_empty() && !bytes.ends_with(b"\n")) {
+            return None;
+        }
+        let mut lines = bytes.split(|b| *b == b'\n');
+        if start > 0 {
+            lines.next(); // The bounded tail may start inside a row.
+        }
+        // A truncated tail must reach a pre-launch row to rule out a completion
+        // outside the read window. Never infer that boundary from file mtime.
+        let mut covers_launch = start == 0;
+        for line in lines.filter(|line| !line.is_empty()) {
+            let row: serde_json::Value = serde_json::from_slice(line).ok()?;
+            if row["type"] == "session_meta" {
+                continue;
+            }
+            let at = DateTime::parse_from_rfc3339(row["timestamp"].as_str()?).ok()?;
+            covers_launch |= at < launch;
+            if at >= launch
+                && row["type"] == "event_msg"
+                && row["payload"]["type"] == "task_complete"
+            {
+                return Some(false);
+            }
+        }
+        Some(covers_launch)
     };
-    if file.take(65_537).read_to_end(&mut bytes).is_err() || bytes.len() > 65_536 {
-        return false;
-    }
-    bytes
-        .split(|b| *b == b'\n')
-        .filter(|line| !line.is_empty())
-        .all(|line| {
-            serde_json::from_slice::<serde_json::Value>(line)
-                .is_ok_and(|v| v["type"] == "session_meta")
-        })
+    read().unwrap_or(false)
 }
 
 fn prompt_before_first_turn(
     path: Option<&str>,
+    launch: DateTime<Utc>,
     probe: impl FnOnce() -> Option<bool>,
 ) -> (bool, Option<bool>) {
-    let no_rollout = no_turn_yet(path);
-    (no_rollout, no_rollout.then(probe).flatten())
+    let pre_turn = no_turn_completed_since(path, launch);
+    (pre_turn, pre_turn.then(probe).flatten())
 }
 
 struct Seat {
@@ -204,17 +224,21 @@ pub(super) fn refresh(
     }
     // Even an unvalidated completion ends the pre-turn probe. A writer lock
     // alone cannot validate the completion or establish readiness for a later turn.
-    let (no_rollout, prompt) = if completion.is_none() {
+    let (pre_turn, prompt) = if completion.is_none() {
         let socket_text = socket.to_string_lossy();
         let args = ["-S", &socket_text, "capture-pane", "-p", "-t", pane];
-        prompt_before_first_turn(result.jsonl_path.as_deref(), || {
-            super::super::process::run_with_timeout_within(
-                "tmux",
-                &args,
-                Duration::from_millis(200),
-            )
-            .and_then(|text| idle_prompt(&text))
-        })
+        prompt_before_first_turn(
+            result.jsonl_path.as_deref(),
+            record.recovery.reserved_attachment.unwrap_or(launch),
+            || {
+                super::super::process::run_with_timeout_within(
+                    "tmux",
+                    &args,
+                    Duration::from_millis(200),
+                )
+                .and_then(|text| idle_prompt(&text))
+            },
+        )
     } else {
         (false, None)
     };
@@ -234,7 +258,7 @@ pub(super) fn refresh(
     seat.project = project.into();
     seat.pane = pane.clone();
     seat.scanned = now;
-    seat.observation = sample(prompt, no_rollout, notify, notify_since, now);
+    seat.observation = sample(prompt, pre_turn, notify, notify_since, now);
     if let Some(observed) = &seat.observation {
         result.state = observed.state;
         result.authoritative |= observed.source == "notify";
@@ -285,10 +309,118 @@ mod tests {
         assert!(!result.authoritative);
         assert!(observation(pid, project, Some("%resume-floor")).is_none());
         fs::write(&path, "{\"type\":\"session_meta\"}\n").unwrap();
-        let (no_turn, prompt) = prompt_before_first_turn(path.to_str(), || idle_prompt(IDLE_PANE));
+        let (no_turn, prompt) =
+            prompt_before_first_turn(path.to_str(), launch, || idle_prompt(IDLE_PANE));
         let ready = sample(prompt, no_turn, None, launch, now).unwrap();
         assert_eq!(ready.source, "launch_ready");
         invalidate(pid);
+    }
+
+    fn resumed_rollout(path: &Path, launch: DateTime<Utc>) {
+        use std::io::Write;
+        let mut file = fs::File::create(path).unwrap();
+        // A sparse prefix forces readiness to inspect the bounded tail.
+        file.set_len(70_000).unwrap();
+        drop(file);
+        file = fs::OpenOptions::new().append(true).open(path).unwrap();
+        writeln!(file).unwrap();
+        for kind in ["task_started", "task_complete"] {
+            writeln!(
+                file,
+                "{}",
+                serde_json::json!({
+                    "timestamp": (launch - chrono::Duration::seconds(1)).to_rfc3339(),
+                    "type": "event_msg", "payload": {"type": kind}
+                })
+            )
+            .unwrap();
+        }
+    }
+
+    // Regression: resumed-seat-readiness lane, 6398bfa3 (#163) only admitted
+    // new rollouts, deadlocking a resumed TUI that appended to its prior rollout.
+    #[test]
+    fn codex_resumed_prior_turns_allow_launch_ready() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("rollout.jsonl");
+        let launch = Utc::now() - chrono::Duration::seconds(30);
+        resumed_rollout(&path, launch);
+        let notify_path = tmp.path().join("notify.jsonl");
+        append_event_at(
+            &notify_path,
+            r#"{"type":"agent-turn-complete","thread-id":"resumed"}"#,
+            launch - chrono::Duration::seconds(1),
+        )
+        .unwrap();
+        let notify =
+            latest_activity_record_for_session_after(&notify_path, "resumed", launch.into())
+                .filter(|record| record.ts >= launch);
+        assert!(notify.is_none());
+        let (pre_turn, prompt) =
+            prompt_before_first_turn(path.to_str(), launch, || idle_prompt(IDLE_PANE));
+        let observed = sample(prompt, pre_turn, notify.as_ref(), launch, launch)
+            .expect("resumed composer must be ready");
+        assert_eq!(observed.state, SessionState::Idle);
+        assert_eq!(observed.source, "launch_ready");
+        assert_eq!(observed.last_observed_at, launch);
+    }
+
+    // Regression: resumed-seat-readiness lane, 6398bfa3 (#163): a same-rollout
+    // resume must hand readiness to notify after its first post-launch completion.
+    #[test]
+    fn codex_resumed_completion_hands_off_to_notify() {
+        use std::io::Write;
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("rollout.jsonl");
+        let launch = Utc::now() - chrono::Duration::seconds(30);
+        resumed_rollout(&path, launch);
+        let completed = launch + chrono::Duration::seconds(1);
+        writeln!(
+            fs::OpenOptions::new().append(true).open(&path).unwrap(),
+            "{}",
+            serde_json::json!({"timestamp": completed.to_rfc3339(), "type": "event_msg",
+                "payload": {"type": "task_complete", "turn_id": "first-resumed-turn"}})
+        )
+        .unwrap();
+        let (pre_turn, prompt) = prompt_before_first_turn(path.to_str(), launch, || {
+            panic!("completed turn must end the prompt probe")
+        });
+        assert!(sample(prompt, pre_turn, None, launch, completed).is_none());
+        let notify_path = tmp.path().join("notify.jsonl");
+        append_event_at(&notify_path,
+            r#"{"type":"agent-turn-complete","thread-id":"resumed","turn-id":"first-resumed-turn"}"#,
+            completed).unwrap();
+        let notify =
+            latest_activity_record_for_session_after(&notify_path, "resumed", launch.into())
+                .unwrap();
+        let observed = sample(prompt, pre_turn, Some(&notify), launch, completed).unwrap();
+        assert_eq!(observed.state, SessionState::Idle);
+        assert_eq!(observed.source, "notify");
+    }
+
+    // Regression: resumed-seat-readiness lane, 6398bfa3 (#163): opening the
+    // resumed pre-turn window must preserve busy evidence during the first turn.
+    #[test]
+    fn codex_resumed_turn_in_progress_is_not_launch_ready() {
+        use std::io::Write;
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("rollout.jsonl");
+        let launch = Utc::now() - chrono::Duration::seconds(30);
+        resumed_rollout(&path, launch);
+        writeln!(
+            fs::OpenOptions::new().append(true).open(&path).unwrap(),
+            "{}",
+            serde_json::json!({"timestamp": launch.to_rfc3339(), "type": "event_msg",
+                "payload": {"type": "task_started"}})
+        )
+        .unwrap();
+        let (pre_turn, prompt) = prompt_before_first_turn(path.to_str(), launch, || {
+            idle_prompt(&format!("• Working (1s • esc to interrupt)\n{IDLE_PANE}"))
+        });
+        if let Some(observed) = sample(prompt, pre_turn, None, launch, launch) {
+            assert_eq!(observed.state, SessionState::Active);
+            assert_eq!(observed.source, "pane_working");
+        }
     }
 
     // Regression: 36c5da85 collapsed failed/unrecognized captures into pane_working,
@@ -298,7 +430,8 @@ mod tests {
         let now = Utc::now();
         let unknown = "› Ask Codex to do anything\n  local-model";
         for text in [None, Some(""), Some(unknown)] {
-            let (no_turn, prompt) = prompt_before_first_turn(None, || text.and_then(idle_prompt));
+            let (no_turn, prompt) =
+                prompt_before_first_turn(None, Utc::now(), || text.and_then(idle_prompt));
             assert!(sample(prompt, no_turn, None, now, now).is_none());
         }
     }
@@ -519,13 +652,13 @@ mod tests {
         let rollout = tmp.path().join("rollout.jsonl");
         fs::write(&rollout, "{\"type\":\"response_item\"}\n").unwrap();
         assert_eq!(
-            prompt_before_first_turn(rollout.to_str(), || panic!(
+            prompt_before_first_turn(rollout.to_str(), Utc::now(), || panic!(
                 "must not capture a pane after a turn"
             )),
             (false, None)
         );
         assert_eq!(
-            prompt_before_first_turn(None, || Some(true)),
+            prompt_before_first_turn(None, Utc::now(), || Some(true)),
             (true, Some(true))
         );
     }
@@ -591,15 +724,39 @@ mod tests {
 
     // Regression: 664feab6 must not turn unresolved rollout evidence into readiness.
     #[test]
-    fn codex_launch_ready_requires_no_turn() {
+    fn codex_launch_ready_requires_no_completed_turn_since_launch() {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("rollout.jsonl");
-        assert!(!no_turn_yet(path.to_str()));
-        fs::write(&path, "not-json").unwrap();
-        assert!(!no_turn_yet(path.to_str()));
-        fs::write(&path, "{\"type\":\"session_meta\"}\n").unwrap();
-        assert!(no_turn_yet(path.to_str()));
         let now = Utc::now();
+        assert!(!no_turn_completed_since(path.to_str(), now));
+        fs::write(&path, "not-json").unwrap();
+        assert!(!no_turn_completed_since(path.to_str(), now));
+        fs::write(&path, "{\"type\":\"session_meta\"}\n").unwrap();
+        assert!(no_turn_completed_since(path.to_str(), now));
+        // Regression: resumed-seat-readiness lane, 6398bfa3 (#163) treated
+        // historical turns as current; only completions at/after launch close it.
+        for seconds in [-1, 0, 1] {
+            fs::write(
+                &path,
+                format!(
+                    "{}\n",
+                    serde_json::json!({
+                        "timestamp": (now + chrono::Duration::seconds(seconds)).to_rfc3339(),
+                        "type": "event_msg", "payload": {"type": "task_complete"}
+                    })
+                ),
+            )
+            .unwrap();
+            assert_eq!(no_turn_completed_since(path.to_str(), now), seconds < 0);
+        }
+        for row in [
+            "{\"type\":\"response_item\"}\n",
+            "{\"type\":\"event_msg\",\"timestamp\":\"invalid\"}\n",
+            "{\"type\":\"session_meta\"}\n{",
+        ] {
+            fs::write(&path, row).unwrap();
+            assert!(!no_turn_completed_since(path.to_str(), now));
+        }
         assert!(sample(Some(true), false, None, now, now).is_none());
     }
 }
