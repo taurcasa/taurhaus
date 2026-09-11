@@ -1493,7 +1493,13 @@ mod tests {
         });
         assert!(result.error.is_none(), "{:?}", result.error);
         assert_eq!(result.result.unwrap(), serde_json::json!({"ok":true}));
-        assert!(!pane_exists_checked(&pane).unwrap());
+        // Regression: 644ad8c16 restores background tmux teardown; wait for its
+        // completion before dropping the private server and its fixture files.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        while pane_exists_checked(&pane).unwrap() {
+            assert!(std::time::Instant::now() < deadline, "pane did not stop");
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
         let after = saved(&root);
         assert_eq!(after.health, HealthState::SessionDead);
         assert_eq!(after.session_id, before.session_id);
