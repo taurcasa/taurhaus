@@ -61,7 +61,7 @@
     const context = controller.confirmContext
     if (!context) return ''
     if (context.kind === 'disband') return 'Disband team?'
-    if (context.kind === 'stop') return `Stop '${context.memberName}'?`
+    if (context.kind === 'stop') return 'Stop member?'
     if (context.kind === 'remove') return `Remove ${context.memberName}?`
     return 'Confirm Action'
   }
