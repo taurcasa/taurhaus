@@ -1,0 +1,37 @@
+test_hosted_resume_opens_meter_epoch (test_run8.ObserverRegressions.test_hosted_resume_opens_meter_epoch) ... FAIL
+test_null_snapshot_fields_remain_absent (test_run8.ObserverRegressions.test_null_snapshot_fields_remain_absent) ... ERROR
+
+======================================================================
+ERROR: test_null_snapshot_fields_remain_absent (test_run8.ObserverRegressions.test_null_snapshot_fields_remain_absent)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run8/test_run8.py", line 28, in test_null_snapshot_fields_remain_absent
+    actual=controller.clean(value)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run8/controller.py", line 36, in clean
+    return {k:('<signed-read-cursor-redacted>' if k=='cursor' and v else clean(v)) for k,v in value.items() if 'installation' not in k.lower() and k.lower() not in {'auth','accountid','account_id','controlauthtokenhash','accesstoken','refreshtoken','idtoken','access_token','refresh_token','id_token','rate_limits','ratelimits','account_observations'}}
+                                                                         ^^^^^^^^
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run8/controller.py", line 40, in clean
+    try: return json.dumps(clean(json.loads(value)))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run8/controller.py", line 35, in clean
+    if value.get('method','').startswith('account/') or value.get('event','').startswith('usage.'): return None
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute 'startswith'
+
+======================================================================
+FAIL: test_hosted_resume_opens_meter_epoch (test_run8.ObserverRegressions.test_hosted_resume_opens_meter_epoch)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run8/test_run8.py", line 19, in test_hosted_resume_opens_meter_epoch
+    actual=rollout_usage(records,'thread')
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run8/support.py", line 62, in rollout_usage
+    assert all(total.get(k,0)>=baseline.get(k,0) for k in keys.values()), 'unmetered reset token counter'
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: unmetered reset token counter
+
+----------------------------------------------------------------------
+Ran 2 tests in 0.001s
+
+FAILED (failures=1, errors=1)
