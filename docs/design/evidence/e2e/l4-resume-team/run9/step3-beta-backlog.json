@@ -1,0 +1,145 @@
+{
+  "accepted": {
+    "message_id": "5dd02026-67e1-4aa2-9e6b-04a1dcf8ec52",
+    "sequence": 18,
+    "status": "accepted",
+    "projection": "pending",
+    "delivery_targets": [
+      {
+        "delivery_id": "d9a87b81-a973-4c76-8d2c-478cb8d58747",
+        "legacy_acceptance": "unknown",
+        "legacy_id": "1c61bf79-6689-4626-b10c-534a081e2e2a",
+        "member_id": "beta@l4-resume",
+        "read_audience": [
+          {
+            "member_id": "777f2541-8f6a-4f3b-ac32-ab061ea2c62f",
+            "name": "lead"
+          },
+          {
+            "member_id": "beta@l4-resume",
+            "name": "beta"
+          }
+        ],
+        "recipient": "beta",
+        "source_path": "inboxes/beta.json"
+      }
+    ]
+  },
+  "journal": [
+    {
+      "checksum": "6da5b68df9ab436e86a9c0d5b9d79487980479b81e12fc2952272eaadc32c24c",
+      "committed_at": "2026-09-11T01:07:30.650636060+00:00",
+      "event_id": "0a5f659b-7b6e-403c-a114-4fc808b42462",
+      "event_type": "message_accepted",
+      "log_epoch": "117f1dd4-b961-49a0-b77f-b2f448da9dee",
+      "payload": {
+        "acceptance": "canonical",
+        "archive_outcome": "retained",
+        "audience_proof": {
+          "kind": "captured-members",
+          "members": [
+            {
+              "member_id": "777f2541-8f6a-4f3b-ac32-ab061ea2c62f",
+              "name": "lead"
+            },
+            {
+              "member_id": "beta@l4-resume",
+              "name": "beta"
+            }
+          ],
+          "team_id": "264fe4956f1f7dfd00f7a4632039a4cff265c383aac2fda8bdefd35b4204a619"
+        },
+        "author": {
+          "member_id": "777f2541-8f6a-4f3b-ac32-ab061ea2c62f",
+          "name": "lead",
+          "verified": true
+        },
+        "body": "ACTION REQUIRED: Reply exactly L4_pending_beta_141f27. No tools are needed for this marker.",
+        "body_bytes": 91,
+        "body_format": "text/plain",
+        "body_hash": "3b072d68171ecf01f5ea637e104ebf35d437810037cc58c7855494dd2845cbad",
+        "conversation_id": "1a200f07fd44449f3e6ccf818c5850a8a7e01f687cdf55f0d5734e35b825dbbd",
+        "conversation_kind": "dm",
+        "correction_reason": null,
+        "delivery_targets": [
+          {
+            "delivery_id": "d9a87b81-a973-4c76-8d2c-478cb8d58747",
+            "legacy_acceptance": "unknown",
+            "legacy_id": "1c61bf79-6689-4626-b10c-534a081e2e2a",
+            "member_id": "beta@l4-resume",
+            "read_audience": [
+              {
+                "member_id": "777f2541-8f6a-4f3b-ac32-ab061ea2c62f",
+                "name": "lead"
+              },
+              {
+                "member_id": "beta@l4-resume",
+                "name": "beta"
+              }
+            ],
+            "recipient": "beta",
+            "source_path": "inboxes/beta.json"
+          }
+        ],
+        "dispatch_decision": {
+          "expectation": "action",
+          "policy_revision": 1,
+          "provenance": "prefix",
+          "wake_eligible": true
+        },
+        "envelope": {
+          "from": "lead",
+          "id": "1c61bf79-6689-4626-b10c-534a081e2e2a",
+          "read": false,
+          "summary": "L4 pending marker",
+          "text": null,
+          "timestamp": "2026-09-11T01:07:30.642Z"
+        },
+        "idempotency_key": "1c61bf79-6689-4626-b10c-534a081e2e2a",
+        "legacy_acceptance": "unknown",
+        "link": null,
+        "message_id": "5dd02026-67e1-4aa2-9e6b-04a1dcf8ec52",
+        "origin": "authored",
+        "producer": "mesh-send:777f2541-8f6a-4f3b-ac32-ab061ea2c62f",
+        "read_audience": [
+          {
+            "member_id": "777f2541-8f6a-4f3b-ac32-ab061ea2c62f",
+            "name": "lead"
+          },
+          {
+            "member_id": "beta@l4-resume",
+            "name": "beta"
+          }
+        ],
+        "reply_to_message_id": null,
+        "request_digest": "0037fecb6d2a4d82649c5a2ade9b115dfddae61ab48799c958dd093e3ba5b8d7",
+        "response_expectation": {
+          "basis": "producer",
+          "expectation": "action",
+          "kind": "action",
+          "policy_revision": 1,
+          "provenance": "prefix",
+          "wake_eligible": true
+        },
+        "retention_class": "dm",
+        "source_authority": null,
+        "source_event_refs": [],
+        "summary": "L4 pending marker",
+        "supersedes_message_ids": [],
+        "task_links": [],
+        "visibility_policy_id": "captured-members",
+        "visibility_policy_revision": 1,
+        "wake_priority": "urgent"
+      },
+      "schema_version": 1,
+      "sequence": 18,
+      "team_id": "264fe4956f1f7dfd00f7a4632039a4cff265c383aac2fda8bdefd35b4204a619"
+    }
+  ],
+  "health": {
+    "member": "beta",
+    "last_defer_reason": "IO error: delivery: pending: native_host_not_live"
+  },
+  "status_line": "[mesh] delivery beta: root=/tmp/th-l4-run9-9hzri2jl/claude incarnation=264fe4956f1f7dfd00f7a4632039a4cff265c383aac2fda8bdefd35b4204a619 epoch=2 heartbeat=2026-09-11T01:07:30.667243838+00:00 pending_since=none pending_age_secs=unknown stuck=false failures=0 completed=1 error=none deferred=IO error: delivery: pending: native_host_not_live stale=false",
+  "backlogged": true
+}

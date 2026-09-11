@@ -1167,3 +1167,8 @@ Step 2 **PASS / runtime**: supported `stop_session` ended all three seat panes
 and every Codex process (including the native sibling and hosted child). Only
 the private infrastructure pane remains. Retained team/journal state exists;
 beta attachment advanced to 2. No additional spend.
+
+Step 3 **PASS / runtime**: one pending obligation accepted for each stopped
+seat; both have no submitted/consumed/native-enqueued receipt and the matching
+member health refusal. See `step3-alpha-backlog.json` and
+`step3-beta-backlog.json`. No presentation while stopped; no additional spend.
