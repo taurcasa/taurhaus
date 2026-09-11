@@ -1,0 +1,16 @@
+{
+  "stage_removed": true,
+  "worker_roots": {
+    "/tmp/taurhaus-e2e-737-ZvGYWj": {
+      "exists": false,
+      "auth_exists": false
+    }
+  },
+  "surviving_lane_processes": [],
+  "private_daemon_ports": [
+    "20144"
+  ],
+  "surviving_private_listeners": [],
+  "port_17233_contacted": false,
+  "namespace": "private PID namespace was reaped; no child process can survive its init exit"
+}

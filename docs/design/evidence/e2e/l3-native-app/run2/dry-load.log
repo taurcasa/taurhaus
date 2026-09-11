@@ -1,0 +1,12 @@
+
+
+  canonical builder and hosted conversation (paid)
+    ✔ 1. boots the private protocol-27 app and resolves the canonical capability gate
+    ✔ 2. initializes once through the builder with alpha tmux and beta app_server
+    ✔ 3. shows beta startup in its native thread and keeps alpha free of hosted controls
+    ✔ 4. sends one marker in the same thread and clears the draft only after acceptance
+    ✔ 5. interrupts one active ordinary turn and accepts a fresh marker
+    ✔ 6. reopens beta without a new thread, onboarding or host launch, then exports
+
+
+  6 passing (1ms)

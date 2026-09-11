@@ -1,0 +1,80 @@
+[
+  {
+    "command": "just check-quick",
+    "exit_code": 0,
+    "started_at": "2026-09-11T09:19:41Z",
+    "elapsed_seconds": 31.952418327331543,
+    "cargo_admission": [
+      {
+        "at": "2026-09-11T09:19:41Z",
+        "running_cargo": []
+      }
+    ],
+    "last_lines": [
+      "stderr | src/lib/components/MeshTab.test.js > MeshTab > suppresses skipped team folder discovery warnings from the inline availability banner",
+      "[mesh] suppressed internal discovery warning: skipped team folder 'taureval-1773711699719' because config is missing or invalid",
+      "",
+      " \u2713 src/lib/components/MeshTab.test.js (75 tests) 7517ms",
+      "     \u2713 auto-collapses the resume progress tray after completion  5241ms",
+      "",
+      " Test Files  150 passed (150)",
+      "      Tests  2522 passed (2522)",
+      "   Start at  11:20:02",
+      "   Duration  11.53s (transform 44.47s, setup 0ms, import 96.36s, tests 51.70s, environment 46.17s)",
+      "",
+      "Quick check passed."
+    ]
+  },
+  {
+    "command": "just lint",
+    "exit_code": 0,
+    "started_at": "2026-09-11T09:20:13Z",
+    "elapsed_seconds": 36.49239802360535,
+    "cargo_admission": [
+      {
+        "at": "2026-09-11T09:20:13Z",
+        "running_cargo": []
+      }
+    ],
+    "last_lines": [
+      "$ knip",
+      "$ bun run check:node && dependency-cruiser --no-config --include-only '^src' --output-type err-long src",
+      "$ node scripts/check-node-version.mjs",
+      "",
+      "\u2714 no dependency violations found (347 modules, 805 dependencies cruised)",
+      "",
+      "bun scripts/check-workflow-scripts.mjs",
+      "workflow script check passed: 5 script(s) in .claude/workflows",
+      "scripts/check-just-gates.sh",
+      "just check gate guard passed.",
+      "scripts/check-lane-worktree-recipes.sh",
+      "lane worktree recipe guard passed."
+    ]
+  },
+  {
+    "command": "just test-contracts",
+    "exit_code": 0,
+    "started_at": "2026-09-11T09:20:50Z",
+    "elapsed_seconds": 19.518271446228027,
+    "cargo_admission": [
+      {
+        "at": "2026-09-11T09:20:50Z",
+        "running_cargo": []
+      }
+    ],
+    "last_lines": [
+      "test rust_integration_ci_runs_on_every_pull_request ... ok",
+      "test rust_integration_recipe_runs_every_test_binary ... ok",
+      "test scanner_account_memory_never_opens_the_app_database ... ok",
+      "test task_deadline_policy_stays_pure_and_outside_placeholder_health_framework ... ok",
+      "test team_state_write_apis_stay_daemon_or_native_hook_owned ... ok",
+      "test terminal_child_mode_inherits_flock_and_exits_without_daemon_startup ... ok",
+      "test terminal_contract_pins_shared_spelling_and_write_boundaries ... ok",
+      "test the_tmux_focus_path_contains_no_hook_code ... ok",
+      "test transcript_compaction_pipeline_stays_retired ... ok",
+      "",
+      "test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.01s",
+      ""
+    ]
+  }
+]

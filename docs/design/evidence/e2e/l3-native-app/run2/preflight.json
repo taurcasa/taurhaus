@@ -1,0 +1,40 @@
+{
+  "label": "run2",
+  "revision": "1801c6ea1d846103aa696f2d7231f468b310d5b8",
+  "base": "64df9ffd4",
+  "spec_unchanged_since_import_fix": "0c042a162",
+  "spec_sha256": "c5be60eba9bdf5bd5c6bdc23d7ea3aae234a9d0ddf73b510e242570ffd33156c",
+  "mesh_verify_lock": {
+    "command": "MESH_BIN=/home/mstie/.local/bin/mesh just mesh-verify-lock",
+    "exit_code": 0,
+    "contract": {
+      "version": "0.3.0",
+      "git_commit": "9963e2030ced3b4d86bdd904afb9c3ff3cee7171",
+      "git_dirty": false,
+      "build_time_utc": "2026-09-11T08:24:30Z",
+      "protocol_version": 1,
+      "schema_version": 1,
+      "journal_writer": "mesh-journal/2"
+    }
+  },
+  "syntax_load": {
+    "command": "bun run node --check e2e/specs/managed-hosted-builder.js",
+    "exit_code": 0
+  },
+  "dry_module_load": {
+    "command": "bun run node node_modules/mocha/bin/mocha.js --dry-run e2e/specs/managed-hosted-builder.js",
+    "exit_code": 0,
+    "cases_registered": 6,
+    "native_assertions_executed": 0
+  },
+  "load_retries": 0,
+  "build_daemon": {
+    "command": "CARGO_TARGET_DIR=\"$PWD/src-tauri/target\" CARGO_BUILD_JOBS=3 just build-daemon",
+    "exit_code": 0
+  },
+  "binaries": {
+    "src-tauri/target/debug/taurhaus": "15d6721253b699cc6f1e185a8111cc08ebea12392797355879b86fd4a2531647",
+    "src-tauri/target/debug/taurhaus-daemon": "1ee64d98b3c7ab2cc3450752ddce699dce005df733e336ecd502596f9bac7e77",
+    "src-tauri/target/release/taurhaus-daemon": "2f6c2c3f0df1d4a3797428957329c2f1b84303502652ce211ae890851443bee2"
+  }
+}
