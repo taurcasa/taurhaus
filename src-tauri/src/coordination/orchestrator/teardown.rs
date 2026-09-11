@@ -21,8 +21,8 @@ static OWNER_SKIP_EVENTS: OnceLock<Mutex<HashSet<(PathBuf, &'static str)>>> = On
 static TEAM_DAEMON_SKIP_EVENTS: OnceLock<Mutex<HashMap<PathBuf, String>>> = OnceLock::new();
 const DELIVERY_OWNER_UNSET_REASON: &str = "delivery_owner_unset";
 const DELIVERY_OWNED_BY_MEMBERS_REASON: &str = "delivery_owned_by_members";
-const ROLLBACK_PENDING_REASON: &str = "rollback_pending";
-const OWNER_STOPPED_BY_OPERATOR_REASON: &str = "owner_stopped_by_operator";
+pub(super) const ROLLBACK_PENDING_REASON: &str = "rollback_pending";
+pub(super) const OWNER_STOPPED_BY_OPERATOR_REASON: &str = "owner_stopped_by_operator";
 const MISSING_LEAD_CREDENTIAL_REASON: &str = "missing_lead_control_credential";
 const MISSING_LEAD_CONFIG_HASH_REASON: &str = "missing_lead_control_auth_token_hash";
 const INACTIVE_LEAD_REASON: &str = "inactive_lead_control_identity";
@@ -726,7 +726,7 @@ impl CoordinationOrchestrator {
             .join(format!("{operator_name}.json"))
     }
 
-    fn team_daemon_skip_reason(
+    pub(super) fn team_daemon_skip_reason(
         &self,
         team_name: &str,
         operator_name: &str,

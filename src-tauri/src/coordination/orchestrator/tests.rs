@@ -6136,6 +6136,44 @@ fn self_heal_honours_member_owned_delivery() {
 }
 
 #[test]
+fn self_heal_preserves_drifted_owner_when_delivery_ensure_is_refused() {
+    // Regression: b7fcd133/e724a0fb refused canonical owner recovery after the
+    // existing binary-drift path had already stopped the running owner.
+    for (owner, reason) in [
+        (None, "delivery_owner_unset"),
+        (Some("members"), "delivery_owned_by_members"),
+    ] {
+        let tmp = TempDir::new().unwrap();
+        let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+        let team = "drifted-owner";
+        create_resumable_team(&mut orchestrator, &tmp, team, CliTool::Claude);
+        MemberRuntimeStore::update(tmp.path(), team, "team-lead", |record| {
+            record.health = HealthState::Healthy;
+        })
+        .unwrap();
+        let path = tmp.path().join(team).join("config.json");
+        let mut wire: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        wire["messaging_format"] = 2.into();
+        if let Some(owner) = owner {
+            wire["delivery_owner"] = owner.into();
+        } else {
+            wire.as_object_mut().unwrap().remove("delivery_owner");
+        }
+        std::fs::write(path, wire.to_string()).unwrap();
+        runtime.set_team_daemon_current_mesh_binary(team, false);
+
+        let result = orchestrator.trigger_team_self_heal(team).unwrap();
+        assert_eq!(result.team_daemon_skip_reason, Some(reason));
+        assert!(!result.team_daemon_ensured);
+        assert!(!runtime.calls().iter().any(|call| matches!(
+            call,
+            RuntimeCall::StopTeamDaemon { .. } | RuntimeCall::SpawnTeamDaemon { .. }
+        )), "a refused ensure must leave the drifted owner running");
+    }
+}
+
+#[test]
 fn self_heal_reports_unset_delivery_owner() {
     // Regression: 2feb5ade labeled format-2 configs predating delivery_owner
     // as members-owned, obscuring why their owner recovery was skipped.
