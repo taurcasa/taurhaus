@@ -1,0 +1,9 @@
+[
+  {
+    "file": "taurhaus.log.jsonl",
+    "source_sha256": "75109ad630f8874924db390d4954cf8245185626ac2e99dada14d92ef56a0553",
+    "physical_lines": 268,
+    "retained_rows": 268,
+    "all_rows_retained": true
+  }
+]

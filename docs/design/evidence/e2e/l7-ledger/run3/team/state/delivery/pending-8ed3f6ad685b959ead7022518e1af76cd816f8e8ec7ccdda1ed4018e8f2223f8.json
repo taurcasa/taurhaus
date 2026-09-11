@@ -1,0 +1,13 @@
+[
+  {
+    "obligation": {
+      "message_id": "122964b1-1fc0-4cb6-8119-ae6a3bc5eb9f",
+      "delivery_id": "bd2b6f74-e3a0-48b7-9dba-944fee6e89a1",
+      "recipient": "alpha",
+      "source_generation": "3e465545-de4c-477e-bfe1-b1ea61f85283",
+      "source_position": 11,
+      "body": "<message-body-redacted>"
+    },
+    "since": "2026-09-11T01:43:20.061191332+00:00"
+  }
+]

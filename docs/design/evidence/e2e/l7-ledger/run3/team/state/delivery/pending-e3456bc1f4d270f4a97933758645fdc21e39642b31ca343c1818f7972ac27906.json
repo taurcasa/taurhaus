@@ -1,0 +1,24 @@
+[
+  {
+    "obligation": {
+      "message_id": "7097100c-e4e5-407c-ab87-c22a89f6f1d9",
+      "delivery_id": "481ee45d-ad82-4c3f-863c-0f728a0325e1",
+      "recipient": "lead",
+      "source_generation": "3e465545-de4c-477e-bfe1-b1ea61f85283",
+      "source_position": 17,
+      "body": "<message-body-redacted>"
+    },
+    "since": "2026-09-11T01:43:57.108714809+00:00"
+  },
+  {
+    "obligation": {
+      "message_id": "afbe0605-f8b5-4319-bcbf-63afd5763c99",
+      "delivery_id": "1fbd55d3-3445-4be9-a85d-93cc7f477ef4",
+      "recipient": "lead",
+      "source_generation": "3e465545-de4c-477e-bfe1-b1ea61f85283",
+      "source_position": 18,
+      "body": "<message-body-redacted>"
+    },
+    "since": "2026-09-11T01:43:57.194925242+00:00"
+  }
+]

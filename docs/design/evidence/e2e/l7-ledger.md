@@ -1,3 +1,92 @@
+# Lane 7 — INCOMPLETE: step 1 verified; harness delivery check blocked continuation
+
+The third operator-requested trial completed the audit's step 1. Its controller
+then timed out at an additional delivery check before recording that success.
+The raw timeout is retained; the adjudication below follows the audit's actual
+step boundaries. No product defect is established. No artifact intake or offline
+read-back occurred, so the lane does **not** meet the PASS criterion.
+
+| Ordered step | Outcome | Classification / evidence |
+| --- | --- | --- |
+| 1. Create/assign one task; initialize ledger with frozen assignment | **PASS** | **S-runtime**: all three Mesh commands exited 0; immutable assignment, packet, manifest and initialization receipt agree. [Adjudication](l7-ledger/run3/adjudication.json), [assignment](l7-ledger/run3/step1-immutable-assignment.json), [manifest](l7-ledger/run3/step1-manifest.json), [receipt](l7-ledger/run3/step1-init-receipt.json). |
+| 2. Seat note, intake and live render | **NOT RUN** | **Harness** continuation boundary failed: delivery predicate did not recognize assignment exposure. No note was requested. |
+| 3. RESULT source completion and ledger intake | **NOT RUN** | Blocked by the failed boundary; no source commitment or intake rejection. |
+| 4. Ledger-only retry | **NOT RUN** | No completion or ledger retry. |
+| 5. Snapshot and offline read-back | **NOT RUN** | No snapshot or artifact bytes to compare. |
+| 6. Source/ledger reconciliation | **NOT RUN** | Required receipts unavailable; mandatory failure export and teardown separately **PASS**. |
+
+Task `1` has immutable assignment `3f9dd5c7-84d8-4dc5-90b6-a3c13bcd714a`,
+assignment event `43ddfdce-c0b1-47e1-85f0-9b35063c59d4`, and canonical message
+`122964b1-1fc0-4cb6-8119-ae6a3bc5eb9f`. Ledger
+`182cf4d8-2b3f-4503-b3b1-67c4c9f295ea` binds that assignment and the scratch repo
+root. Packet digest: `544da14523b5524eda9979768adb44f9c223dc42b9b37196674394b8e5b01816`.
+The five contract fields are retained in the exact task-create command;
+message bodies in journal and task snapshots are redacted.
+[Commands and exits](l7-ledger/run3/events.jsonl),
+[packet](l7-ledger/run3/step1-packet.json),
+[workflow events](l7-ledger/run3/team/state/workflow_events.jsonl).
+
+The timeout reason, “seat did not accept/start frozen assignment,” is inaccurate:
+alpha accepted at `01:43:32.892Z` and started at `01:43:56.443Z`, and the daemon
+subsequently reported fresh idle. The extra predicate required either an explicit
+read receipt or the **canonical message ID** in a rollout tool-result row after
+transport submission. Assignment transport was submitted, but no explicit read
+receipt or canonical ID appeared. An assignment UUID was observed in one native
+tool-result row during diagnosis; that alone is not proof of the whole delivered
+card. The row was not exported before teardown. Retained evidence therefore does
+**not** establish the spec's alternate card proof, and no subsequent send occurred.
+[Raw controller outcome](l7-ledger/run3/step1-outcome.json),
+[actual task](l7-ledger/run3/tasks/1.json),
+[attributed runtime](l7-ledger/run3/final-runtime-sessions.json),
+[journal](l7-ledger/run3/team/state/messaging-v2/segments/000001.jsonl).
+
+Runtime exited **1** after **172.441 seconds**. The private namespace was torn
+down: **no survivors**, private port closed, scratch root and credential copy
+removed. The complete daemon source was retained as **268 sanitized records from
+268 physical lines**, including the final line. No paid restart followed this
+failure. [Exit](l7-ledger/run3/controller-exit.json),
+[cleanup](l7-ledger/run3/cleanup.json),
+[log manifest](l7-ledger/run3/daemon-log-manifest.json),
+[complete daemon JSONL](l7-ledger/run3/taurhaus.log.jsonl).
+
+Executed source was evidence commit `0915c1fd`, with unchanged product base
+`106f06c7`, Mesh `1f7447f`, protocol 27 and the previously built binaries.
+The actual native Codex runtime remained 0.153.4, gpt-5.6-luna / low. Startup
+completed the onboarding submitted/read/fresh-idle gate before assignment.
+[Candidate](l7-ledger/run3/candidate.json),
+[startup](l7-ledger/run3/startup-ready.json),
+[executed controller](l7-ledger/run3/controller-at-execution.py),
+[executed runtime](l7-ledger/run3/runtime-at-execution.py),
+[executed helpers](l7-ledger/run3/support-at-execution.py).
+
+| Run-3 turn | Known API-equivalent USD | Conservative USD |
+| --- | --- | --- |
+| `01a08e21-f8cc-70b2-b777-51a45cf109c3` — 44,311 input, 32,768 cached, 443 output | **0.00349556** | **0.05370480** |
+| `01a08e22-302b-7132-8050-8a822f46ae91` — 88,396 input, 80,128 cached, 784 output | **0.00419696** | **0.10701600** |
+| `01a08e21-fb15-7083-815d-d6f69fb4dc35` — notify-only | **Unavailable** | **Unavailable** |
+| Claude lead — login-only | **0** | **0** |
+
+Run 3: **3 observed turn identities**, **2 input reservations**, one seat
+attachment generation; known subtotal **USD 0.00769252**, conservative known
+subtotal **USD 0.16072080**, plus one unmetered identity. Across all three trials:
+**7 observed identities**, **5 input reservations**, known **USD 0.01557568**,
+conservative known **USD 0.23931120**, plus **three unmetered identities**.
+The conservative estimate exceeds USD 0.20; actual total spend and dollar-cap
+compliance remain unverified. Metering did not gate a lifecycle operation.
+All rates are inherited estimates, not invoices. Workflow implementer/reviewer
+spend remains separately owned by the orchestrator.
+[Every recorded turn](l7-ledger/run3/cumulative-spend.json),
+[run meter](l7-ledger/run3/cost-ledger.json),
+[native counter excerpts](l7-ledger/run3/native-turn-meter.json).
+
+Post-teardown gates for this continuation are pending. The independent Opus
+evidence lens remains unavailable in this executor. Earlier deviations and
+historical results below remain part of the record; their “no further trial”
+statements describe the end of those earlier turns, before the next explicit
+operator continuation. No plan ledger or product source was changed.
+
+## Historical second trial
+
 # Lane 7 continuation — FAIL at step 1: harness assignment-ID lookup
 
 The authorized second trial passed startup onboarding, created task `1`, and
