@@ -968,6 +968,8 @@ impl CliToolSpec {
                 let mut compressed = path.as_os_str().to_os_string();
                 compressed.push(".zst");
                 matches!(path.try_exists(), Ok(false))
+                    // Defensive: preserve a sibling observed before a concurrent
+                    // parent removal; filesystem probes are not one snapshot.
                     && matches!(std::path::Path::new(&compressed).try_exists(), Ok(false))
                     && path
                         .parent()

@@ -93,7 +93,7 @@ Unified structured logging pipeline:
 - `src-tauri/src/session_scanner/process.rs` (`session_scanner.process_scan.degraded/recovered` — one `degraded` on entry, a bounded 60s reminder while the outage lasts, one `recovered` on exit)
 - `src-tauri/src/session_scanner/launch.rs` (`launch.model.*`, `launch.effort.*`, `launch.flag.deprecated`, `launch.selector.ignored`, `launch.selector.rewritten` — the last one info, emitted where the launch base pinned another account dir)
 - `src-tauri/src/commands/command_center/launching.rs` + `src-tauri/src/coordination/pipelines/helpers.rs` (`launch.command.rendered`, `launch.account.*`, `launch.base.opaque`, `launch.base.unresolved`)
-- `src-tauri/src/coordination/pipelines/members.rs` (`launch.resume.fallback` warn with `reason: rollout_missing` when a saved Codex rollout is missing).
+- `src-tauri/src/coordination/pipelines/members.rs` (`launch.resume.fallback` warn with `reason: rollout_missing` only when the saved Codex rollout, its `.zst` sibling and its parent directory are absent, indicating a deleted home; hosted and rollback seats retain their named-thread fence).
 - `src-tauri/src/coordination/recovery_delivery.rs` + `src-tauri/src/daemon/team_runs.rs` (`onboarding.delivery.observed`, `onboarding.generation.forced`)
 - `src-tauri/src/coordination/hosted.rs` (`compaction.codex_host.received/delivered/deferred/skipped` — bounded team/member/thread/turn/item identities, never card text; `already_recorded` and `different_thread` skip reasons)
 - `src-tauri/src/coordination/compaction_events.rs` (native-hook delivery bookkeeping: `compaction.injected/skipped/failed`)
