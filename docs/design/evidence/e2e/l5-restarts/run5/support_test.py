@@ -205,7 +205,7 @@ class OwnerWindowRegression(unittest.TestCase):
 
 class Run5Regression(unittest.TestCase):
  def test_consumption_without_submission_is_delivered(self):
-  # // Regression: a3d12df4 rejected alpha's legitimate self-read before notification.
+  # // Regression: f95ec193 required submission before read; a3d12df4 retained the run4 failure.
   self.assertTrue(delivered([{'kind':'consumed_by_read','reader_name':'alpha'}],
                            {'state':'idle','age':1,'session_id':'a'},'a'))
  def test_foreign_read_does_not_deliver_to_seat(self):
@@ -213,7 +213,7 @@ class Run5Regression(unittest.TestCase):
   self.assertFalse(delivered([{'stage':'submitted'},{'kind':'consumed_by_read','reader_name':'lead'}],
                             {'state':'idle','age':1,'session_id':'a'},'a',seat='alpha'))
  def test_onboarding_requires_submission_read_and_fresh_idle(self):
-  # // Regression: a3d12df4 sent a baseline during the onboarding mesh read tool call.
+  # // Regression: f95ec193 gated startup on idle alone; a3d12df4 exposed the onboarding read race.
   from support import send_ready
   a={'state':'idle','age':1,'session_id':'a'}
   accepted={'event_type':'message_accepted','payload':{'message_id':'onboard','body':'[taurhaus] recovery_card','delivery_targets':[{'recipient':'alpha'}]}}

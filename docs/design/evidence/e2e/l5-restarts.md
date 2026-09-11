@@ -1,4 +1,17 @@
-# Lane 5 run4 — FAIL step 1 (harness); steps 2–6 NOT RUN
+# Lane 5 run5 — FAIL step 1 (harness); steps 2–6 NOT RUN
+
+Run5 stopped after **180.8 seconds** waiting for beta's onboarding read evidence.
+Alpha passed the onboarding guard. Beta completed its direct hosted startup turn
+and has a runtime `submitted` recovery receipt, but has no `consumed_by_read`
+receipt or card in a rollout **tool-result** row. Its card appears in a user-message
+row. The guard remained closed: **no baseline sends and no restarts** occurred.
+This establishes an unmet harness prerequisite, not a restart-survival result or
+a product defect. All three gates passed after verified teardown.
+**3 inputs; $0.00238148 metered; one unknown-cost input; 195.43 seconds runtime.**
+See [run5 evidence](#run5--fifth-attempt-evidence-step-1-fails-harness).
+Earlier attempts remain historical and do not establish run5 coverage.
+
+## Historical run4 verdict
 
 Run4 stopped on a baseline/startup inbox-read race after the required polling
 window. Neither restart was attempted. All three required gates passed after
@@ -1011,3 +1024,124 @@ exit **128**), so the retained run3 controller and read-only messaging run2 sour
 were reused; the inherited outer wrapper reports zero despite the recorded child
 failure; one input is cost-unknown; independent Opus review is not claimed here.
 There was no paid retry, budget/authorization question, or product repair.
+
+## Run5 — fifth-attempt evidence: step 1 fails (harness)
+
+Candidate: Taurhaus **a7e6db7e**, protocol **27**, this branch/checkout;
+Mesh **310144d**, its enabled 0.153.4 descriptor unchanged. Both native Codex
+siblings were copied into the scratch bin, version checked and hashed. Alpha
+used tmux and beta app_server; both used **gpt-5.6-luna / low**. The Claude lead
+remained login-only with no paid turn. Production `coordination.initialize_team`
+used the builder's canonical policy. [Pins and invocation](l5-restarts/run5/candidate.json),
+[exact controller](l5-restarts/run5/controller.py),
+[ordered assertions](l5-restarts/run5/steps.py),
+[final audit](l5-restarts/run5/final-audit.json).
+
+### Outcomes and classification
+
+| Step | Outcome / classification | Observed result and spend |
+|---|---|---|
+| 1. Initialize; complete/read baselines | **FAIL — harness** | Initialization succeeded. Alpha's onboarding had submission, explicit read and fresh idle. Beta's direct hosted startup had a runtime submission receipt and completed turn, but lacked the required read/tool-result witness. The 180.8-second guard timed out before any baseline send. **3 inputs / $0.00238148 metered + one unknown-cost input.** |
+| 2. Bounded working turns and pending markers | **NOT RUN — blocked by step 1** | No bounded input or pending marker; neither >=30-second window measured. **+0 inputs / $0.** |
+| 3. Normal Taurhaus daemon restart | **NOT RUN — blocked by step 1** | No shutdown/restart, replacement PID/start ticks or recovery operation. **+0 inputs / $0.** |
+| 4. Backlog delivery, identities and no replay | **NOT RUN — blocked by step 1** | No baseline or backlog IDs exist; restart delivery and replay claims unproved. **+0 inputs / $0.** |
+| 5. Fresh pending mail and Mesh restart-self | **NOT RUN — blocked by step 1** | No owner restart. Startup census is retained, but cannot prove exclusion across a restart. **+0 inputs / $0.** |
+| 6. Read/reconcile both boundaries | **NOT RUN — blocked by step 1** | No cross-boundary accounting. Required failure teardown passed separately. **+0 inputs / $0.** |
+
+### Exact blocking evidence
+
+Alpha session `01a08df4-f77c-7ec3-8eb2-ca0ca613290c` received onboarding message
+`fc317780-9d4d-4941-b275-fef20e10c9ac`. Its journal carries `submitted` and
+`consumed_by_read` with `reader_name: alpha`; its rollout contains the card in a
+`custom_tool_call_output`. The guard observed attributed fresh idle and opened.
+
+Beta thread `01a08df4-fc12-78b1-b904-513893ecd1da` completed startup turn
+`01a08df5-0255-7bc1-9a97-b827140edb4e`. Runtime recovery delivery
+`2f4008bb9d88d28f7240d8ed307da967dd88367a63f14eb3e4118b485caf58bb`
+has `stage: submitted`, `path: app_server`; this is a real runtime receipt,
+not a Mesh journal receipt. Beta has **zero journal onboarding messages**,
+**zero tool-result rows**, and its card is a `message` with `role: user`.
+The fifth-attempt ruling permits a card in a **tool-result** row as read proof;
+that evidence did not appear. The journal-based onboarding guard also assumes
+an accepted onboarding message, which this direct hosted path does not create.
+No notification, external read, extra model input or lifecycle operation was
+used to manufacture the missing witness.
+
+The exact failure is `onboarding lacks submitted and seat read receipts plus
+fresh idle beta; polled 180.8s`. That combined assertion does **not** mean beta
+lacked a runtime submission or idle state. Step process, execution wrapper and
+controller each exited **1**. The packet preserves raw outcomes and separately
+classifies the failure as harness in the final audit.
+[Step output](l5-restarts/run5/step1-console.txt),
+[controller output](l5-restarts/run5/controller-console.txt),
+[daemon JSONL](l5-restarts/run5/runtime/taurhaus.log.jsonl),
+[receipt/rollout assessment in final audit](l5-restarts/run5/final-audit.json).
+
+### Every input and spend
+
+| Input / turn ID | Metered generations | Metered USD |
+|---|---|---:|
+| Beta onboarding `01a08df5-0255-7bc1-9a97-b827140edb4e` | 10,997 input / 6,912 cached / 76 output | $0.00104644 |
+| Alpha onboarding `01a08df5-12a1-7731-aab6-5132f350ad7b` | 9,277 / 6,912 / 95; then 10,789 / 8,960 / 54 | $0.00072524 + $0.00060980 = $0.00133504 |
+| Notify-only `01a08df5-14c2-71d2-9acf-d132ad495df3` | No token-usage generation; counted as one input | **Unknown** |
+| **Total: 3 inputs, 3 metered generations** | Fresh caps: <=20 inputs, <=$0.30 metered, <=900 seconds | **$0.00238148 + unknown** |
+
+The conservative estimate for metered generations is **$0.03754560**. These are
+token-based estimates, not an invoice; complete billed spend remains unknown.
+Unknown cost did not block a lifecycle operation. No baseline, bounded turn,
+backlog turn, resume or retry was submitted. Implementer/reviewer metering is
+separate and remains with the invoking orchestrator.
+[Full ledger](l5-restarts/run5/runtime/cost-ledger.json),
+[token and turn events](l5-restarts/run5/runtime/usage-events.json).
+
+### Red, green, gates and retention
+
+Five added offline regressions cover consumed-before-submission delivery,
+foreign-reader rejection, onboarding submission/read/idle prerequisites,
+pending/in-flight send exclusion and consumed-message pending exclusion.
+The inherited logic failed **2 assertions and 3 missing-interface checks**
+(exit **1**); repaired run5 logic passed **27 tests** (exit **0**), including
+the retained run3 owner identity test and both explicit `python3` pacing probes.
+The introducing harness commit is `f95ec193`; run4's `a3d12df4` packet exposed
+the receipt race. [Red](l5-restarts/run5/red.txt),
+[green](l5-restarts/run5/green.txt), [tests](l5-restarts/run5/support_test.py).
+The harness correction was committed before launch as `ca087893`.
+No numbered runtime step became green, so no runtime PASS checkpoint was committed.
+
+| Command (checkout root) | Exit | Timing |
+|---|---:|---|
+| `just ensure-tauri-resources` | 0 | Before trial |
+| `just build-daemon` | 0 | Before trial; checkout-local target |
+| `cargo build --bin mesh` (designated Mesh worktree) | 0 | Before trial; no descriptor edit or Mesh commit |
+| `just check-quick` | **0** | After teardown |
+| `just lint` | **0** | After teardown |
+| `just test-contracts` | **0** | After teardown |
+| `python3 docs/design/evidence/e2e/l5-restarts/run5/verify.py` | **0** | After gates |
+
+Cargo preflight probes are retained in the build/gate sidecars; no probe found
+three existing Cargo processes, so no capacity wait was required. Each build/gate
+used one Cargo build job. No `src-tauri/` diff exists, so the conditional
+`just test-rust-unit` requirement did not apply.
+[Build results](l5-restarts/run5/build/daemon-build.json),
+[gate results](l5-restarts/run5/gates/gate-check-quick.json),
+[verification](l5-restarts/run5/verification.json).
+
+Teardown recorded **no surviving owned processes**, a closed private daemon port,
+auth removal before root deletion, and removal of the scratch root. The private
+PID namespace contained the daemon, hosted child, TUIs, Codex and tmux server;
+no foreign PID was signaled. Gate cleanup also passed. Runtime lasted
+**195.427767 seconds**. The complete sanitized daemon log has **420 JSONL rows**,
+SHA-256 `92f8a3cf6e4593d1f70048d7df4f59bf93910740378808c2df307f080599e3a6`.
+Lossless [snapshots](l5-restarts/run5/runtime/snapshots.json) retain **37 files /
+32 unique payloads**, including `onboarding-assessment.json`, final journal,
+config, seat identities, private environment, generated configs and pane captures
+of <=60 lines. No auth contents, tokens, account usage rows or installation IDs
+are retained. [Cleanup](l5-restarts/run5/runtime/cleanup.json).
+
+Deviations/limits: the referenced attempt9 checkout was absent (`git show` exit
+128), so run4/run3's retained adaptation and the messaging reference were reused.
+Beta's direct startup does not provide the prescribed read witness, leaving the
+lane stopped at step 1. The fresh budget was not a blocker. No product, descriptor,
+plan ledger, installation or release change was made. Independent Opus evidence
+review remains with the invoking orchestrator; this is an implementation/evidence
+handoff, not full workflow acceptance.

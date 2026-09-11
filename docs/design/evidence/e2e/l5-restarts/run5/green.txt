@@ -27,6 +27,6 @@ test_idle_requires_current_daemon_state_and_attribution (support_test.TmuxActivi
 test_only_explicit_busy_refusals_retry_inside_window (support_test.TransientRefusals.test_only_explicit_busy_refusals_retry_inside_window) ... ok
 
 ----------------------------------------------------------------------
-Ran 27 tests in 0.041s
+Ran 27 tests in 0.039s
 
 OK
