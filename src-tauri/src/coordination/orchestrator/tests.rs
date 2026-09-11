@@ -4667,7 +4667,7 @@ fn team_daemon_ensures_live_lead_despite_claude_activity_flag() {
     })
     .unwrap();
     runtime.set_pane_current_command("%1", Some("claude"));
-    assert!(orchestrator.ensure_team_daemon_running_best_effort(team));
+    assert!(orchestrator.ensure_team_daemon_running_best_effort(team).0);
     assert!(orchestrator.ensure_team_daemon_for_wrapper(team).unwrap().0);
     sink.flush_for_test().unwrap();
     // Sibling tests may share the sink under parallel runs: judge only this team's records.
@@ -4699,7 +4699,7 @@ fn team_daemon_ensures_live_lead_despite_claude_activity_flag() {
             "unreadable_lead_runtime_record" => std::fs::write(&path, "broken").unwrap(),
             _ => {}
         }
-        assert!(!orchestrator.ensure_team_daemon_running_best_effort(team));
+        assert!(!orchestrator.ensure_team_daemon_running_best_effort(team).0);
         let (ensured, detail) = orchestrator.ensure_team_daemon_for_wrapper(team).unwrap();
         assert!(!ensured);
         // The wrapper's detail names the reason without depending on the shared log sink.
@@ -6066,6 +6066,7 @@ fn assert_owner_skip(marker: Option<&str>, format: u64, owner: Option<&str>, rea
         let result = orchestrator.trigger_team_self_heal(team).unwrap();
         assert!(result.member_liveness_reconciled);
         assert!(!result.team_daemon_ensured);
+        assert_eq!(result.team_daemon_skip_reason, Some(reason));
     }
     assert!(!runtime
         .calls()

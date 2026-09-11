@@ -835,7 +835,6 @@ fn default_runtime_factory() -> Arc<dyn CoordinationRuntime> {
 
 fn apply_self_heal_result(summary: &mut BackgroundSelfHealPassResult, result: &TeamSelfHealResult) {
     if !result.runtime_candidate_found {
-        summary.teams_skipped += 1;
         return;
     }
 
@@ -844,7 +843,7 @@ fn apply_self_heal_result(summary: &mut BackgroundSelfHealPassResult, result: &T
     }
     if result.team_daemon_ensured {
         summary.team_daemons_ensured += 1;
-    } else {
+    } else if result.team_daemon_skip_reason.is_some() {
         summary.teams_skipped += 1;
     }
 }
@@ -917,11 +916,34 @@ mod tests {
             runtime_candidate_found: true,
             member_liveness_reconciled: true,
             team_daemon_ensured: false,
+            team_daemon_skip_reason: Some("rollback_pending"),
         };
         apply_self_heal_result(&mut summary, &result);
         assert_eq!(summary.teams_skipped, 1);
         assert_eq!(summary.team_daemons_ensured, 0);
         assert_eq!(summary.teams_reconciled, 1);
+    }
+
+    #[test]
+    fn self_heal_without_an_ensure_skip_is_not_counted_as_skipped() {
+        // Regression: b6b0064e counted every false ensure result, including failures
+        // and stopped teams with a recorded pane but no owner to recover.
+        for candidate in [false, true] {
+            let mut summary = BackgroundSelfHealPassResult::default();
+            apply_self_heal_result(
+                &mut summary,
+                &TeamSelfHealResult {
+                    team_name: "no-ensure-skip".into(),
+                    runtime_candidate_found: candidate,
+                    member_liveness_reconciled: candidate,
+                    team_daemon_ensured: false,
+                    team_daemon_skip_reason: None,
+                },
+            );
+            assert_eq!(summary.teams_skipped, 0, "candidate={candidate}");
+            assert_eq!(summary.team_daemons_ensured, 0);
+            assert_eq!(summary.teams_reconciled, usize::from(candidate));
+        }
     }
 
     #[test]
@@ -1105,7 +1127,7 @@ mod tests {
             .expect("self-heal pass");
 
         assert_eq!(result.teams_scanned, 2);
-        assert_eq!(result.teams_skipped, 2);
+        assert_eq!(result.teams_skipped, 0);
     }
 
     fn write_lead_credential(teams_dir: &std::path::Path, team_name: &str) {
@@ -3326,7 +3348,7 @@ mod tests {
             .expect("background pass succeeds");
 
         assert_eq!(summary.teams_scanned, 1);
-        assert_eq!(summary.teams_skipped, 1);
+        assert_eq!(summary.teams_skipped, 0);
         assert_eq!(summary.teams_reconciled, 0);
         assert_eq!(summary.team_daemons_ensured, 0);
         assert_eq!(summary.team_errors, 0);
@@ -3628,6 +3650,10 @@ mod tests {
             .expect("second self-heal pass");
 
         assert_eq!(first.teams_scanned, 1);
+        // Regression: b6b0064e mislabeled a failed owner spawn as a skip.
+        assert_eq!(first.teams_skipped, 0);
+        assert_eq!(first.team_daemons_ensured, 0);
+        assert_eq!(second.team_daemons_ensured, 1);
         assert_eq!(second.teams_scanned, 1);
         assert!(
             runtime.calls().iter().filter(|call| matches!(

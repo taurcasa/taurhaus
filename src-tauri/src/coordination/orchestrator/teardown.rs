@@ -436,7 +436,10 @@ impl CoordinationOrchestrator {
         diagnostics
     }
 
-    pub(crate) fn ensure_team_daemon_running_best_effort(&self, team_name: &str) -> bool {
+    pub(crate) fn ensure_team_daemon_running_best_effort(
+        &self,
+        team_name: &str,
+    ) -> (bool, Option<&'static str>) {
         match self.quarantine_foreign_pane_before_team_daemon(team_name) {
             Ok(Some(reason)) => {
                 tracing::warn!(
@@ -444,7 +447,7 @@ impl CoordinationOrchestrator {
                     reason,
                     "skipping team daemon restart because a member pane is foreign"
                 );
-                return false;
+                return (false, None);
             }
             Ok(None) => {}
             Err(err) => {
@@ -453,7 +456,7 @@ impl CoordinationOrchestrator {
                     error = %err,
                     "failed to verify pane ownership before team daemon restart"
                 );
-                return false;
+                return (false, None);
             }
         }
         let operator_name = match self.team_daemon_operator_name(team_name) {
@@ -464,7 +467,7 @@ impl CoordinationOrchestrator {
                     error = %err,
                     "failed to resolve lead identity for team daemon startup"
                 );
-                return false;
+                return (false, None);
             }
         };
         let skip_reason = match self.team_daemon_skip_reason(team_name, &operator_name) {
@@ -476,12 +479,12 @@ impl CoordinationOrchestrator {
                     error = %err,
                     "failed to verify team daemon authentication state"
                 );
-                return false;
+                return (false, None);
             }
         };
         if let Some(reason) = skip_reason {
             self.emit_team_daemon_skipped_once(team_name, &operator_name, reason);
-            return false;
+            return (false, Some(reason));
         }
         self.clear_team_daemon_skip_state(team_name, &operator_name);
         match self
@@ -495,7 +498,7 @@ impl CoordinationOrchestrator {
                     pid = pid,
                     "team daemon ensured running"
                 );
-                true
+                (true, None)
             }
             Err(err) => {
                 tracing::warn!(
@@ -504,7 +507,7 @@ impl CoordinationOrchestrator {
                     error = %err,
                     "failed to ensure team daemon is running"
                 );
-                false
+                (false, None)
             }
         }
     }
