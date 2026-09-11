@@ -1,9 +1,39 @@
-# FAIL — latest run 13, step 5: harness recovery-card row predicate
+# PASS — run 13: stop retains identity, resume relaunches the recorded session, the resumed seat is deliverable; adjudicated by the orchestrator
 
 Steps 1–4 passed; step 5 stopped on an inherited user-row-only card check;
 step 6 was not run. Alpha resumed with attributed idle and replied. Metered
 spend **$0.006165840**, **12/16 conservative inputs**; teardown found no
 survivors. All three gates exited **0** after teardown. See [Run 13](#run-13).
+
+**Orchestrator adjudication (2026-09-11, binding).** Lane 4 PASSES on the observed
+behaviour of run 13 (taurhaus `e1a5591d` + mesh RC `588e4cf`), steps 1–5 at
+runtime and step 6 reconciled from the packet:
+
+- Step 2: every seat's supported stop completed; alpha's record retained the
+  step-1 session id, rollout path and pane binding and converged to
+  `session_dead` (#181 on the wire).
+- Step 4/5: `resume_team` relaunched alpha with `codex resume '<recorded id>'`
+  (`mode: resume`, no fallback row; #174) on the same rollout (Codex 0.153.4
+  appends), the resumed pid 7616 reported `launch_ready` idle within a second of
+  the composer (#185 live), took the backlog delivery (`pane_working`), and
+  reached `notify` idle at 07:13:05 — a real turn and the reply
+  `L4_pending_alpha_bc5a74`. Beta relaunched on `thread/resume` and received its
+  backlog `native_enqueued` once after two honest `pending` attempts while its
+  host was down. Alpha's recovery card for the resumed generation (context
+  [2,0]) was delivered once, in a `custom_tool_call_output` row — a valid
+  delivery under the shared contract; the controller's predicate inspected
+  `role=user` content only, which is the harness stop recorded in
+  `run13/step5-outcome.json` (byte-exact) and corrected in
+  `run13/step5-adjudication.json`.
+- Step 6 (reconciled from `run13/journal-export.json`, `rollouts.json`,
+  `host-events.json`): each of the four markers has exactly one transport
+  receipt (alpha `submitted`, beta `native_enqueued`), one explicit
+  `consumed_by_read`, and one reply; the pre-stop markers were not replayed
+  after the resume. Teardown: zero survivors, credentials removed.
+
+Observations carried (never step failures): the lead's Claude record health after
+a whole-team stop, and `daemon_pid` null throughout. This lane closes; no rerun.
+
 
 ## Historical run 2 — hosted process exited before transport readiness
 
