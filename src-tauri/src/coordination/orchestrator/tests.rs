@@ -6090,3 +6090,8 @@ fn assert_owner_self_heal_skip(marker: &str, reason: &str) {
 fn self_heal_honours_owner_stopped_marker() {
     assert_owner_self_heal_skip("owner-stopped.json", "owner_stopped_by_operator");
 }
+
+#[test]
+fn self_heal_honours_rollback_handoff() {
+    assert_owner_self_heal_skip("handoff.json", "rollback_pending");
+}
