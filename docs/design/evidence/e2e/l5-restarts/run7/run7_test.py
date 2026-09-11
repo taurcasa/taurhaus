@@ -136,4 +136,23 @@ class Run7(unittest.TestCase):
         self.assertIsInstance(tree.body[-1],ast.If)
         self.assertIn('unittest.main()',ast.unparse(tree.body[-1]))
 
+
+    def test_report_corrects_sealed_attempt_count_verdict_without_mutating_audit(self):
+        # // Regression: 775085af propagated the observer misclassification into the headline.
+        source=Path(__file__).with_name('report.py')
+        tree=ast.parse(source.read_text());prefix=[]
+        for node in tree.body:
+            if isinstance(node,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='rows' for t in node.targets):break
+            prefix.append(node)
+        audit={'verdict':'FAIL step 5 (product (mesh)); later steps NOT RUN','spend':{},
+               'step_outcomes':[{'step':5,'outcome':'FAIL','classification':'product (mesh)','reason':'one-attempt-per-id criterion failed'}],
+               'deviations':['Step 5 failed the explicit one-attempt-per-id requirement.'],
+               'observed_obligation_accounting':[{'label':'mesh-backlog','seat':seat,'accepted_target_count':1,'attempt_count':17,'transport_count':1} for seat in ['alpha','beta']]}
+        namespace={'__file__':str(source)}
+        with patch.object(Path,'read_text',return_value=json.dumps(audit)):
+            exec(compile(ast.Module(body=prefix,type_ignores=[]),'report-prefix','exec'),namespace)
+        self.assertIn('(harness)',namespace['A']['verdict'])
+        self.assertEqual(namespace['A']['step_outcomes'][0]['classification'],'harness')
+        self.assertNotIn('explicit one-attempt-per-id requirement',' '.join(namespace['A']['deviations']))
+
 if __name__=='__main__':unittest.main()

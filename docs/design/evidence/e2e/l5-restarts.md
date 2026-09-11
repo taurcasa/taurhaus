@@ -1,4 +1,4 @@
-# Lane 5 run7 — FAIL step 5 (product (mesh)); later steps NOT RUN
+# Lane 5 run7 — FAIL step 5 (harness); later steps NOT RUN
 
 Run7: 14 inputs; $0.018016400 metered; 2 unknown-cost inputs; 336.60 seconds. All owned runtime processes and scratch authentication removed. See the [run7 packet](#run7--seventh-attempt-evidence).
 
@@ -67,7 +67,7 @@ step, retained evidence, and removed all owned runtime processes and credentials
 Independent Opus review belongs to the invoking small-change orchestrator and is
 not claimed by this implementer.
 
-## Candidate and scope
+## Historical run1 candidate and scope
 
 Taurhaus `a7e6db7e`, protocol **27**, branch `feat/e2e-l5-restarts`;
 Mesh **310144d**, built only in `/home/mstie/projects/mesh-l5`. Its shipped
@@ -84,7 +84,7 @@ The metered amount is below the cap; total billed spend cannot be verified from
 these records. Unknown cost never blocked an operation. No restart, recovery,
 extra model trial, descriptor edit, product change, install or release occurred.
 
-## Ordered outcomes
+## Historical run1 ordered outcomes
 
 | Step | Outcome / classification | Evidence and spend |
 |---|---|---|
@@ -1428,7 +1428,7 @@ without converting the overall lane verdict to PASS.
 
 Taurhaus `a7e6db7e`, protocol **27**; Mesh `310144d`, unchanged enabled Codex **0.153.4** descriptor. Both native siblings copied to the scratch bin. Alpha used tmux, beta app_server; both `gpt-5.6-luna`, effort `low`. Production initialize used the builder canonical policy and a login-only Claude lead.
 
-**FAIL step 5 (product (mesh)); later steps NOT RUN**. Runtime **336.60 s**, **14/20 counted inputs**, **$0.018016400/$0.30 metered estimate**, **2 unknown-cost inputs**. Unknown costs are counted, never treated as free; full billed spend is unverified. No total-lane PASS or release approval is claimed without the independent evidence review.
+**FAIL step 5 (harness); later steps NOT RUN**. Runtime **336.60 s**, **14/20 counted inputs**, **$0.018016400/$0.30 metered estimate**, **2 unknown-cost inputs**. Unknown costs are counted, never treated as free; full billed spend is unverified. No total-lane PASS or release approval is claimed without the independent evidence review.
 
 | Step | Outcome / classification | Evidence |
 |---|---|---|
@@ -1436,7 +1436,7 @@ Taurhaus `a7e6db7e`, protocol **27**; Mesh `310144d`, unchanged enabled Codex **
 | 2 | **PASS — runtime** | [Outcome](l5-restarts/run7/runtime/step2-outcome.json).  |
 | 3 | **PASS — runtime** | [Outcome](l5-restarts/run7/runtime/step3-outcome.json).  |
 | 4 | **PASS — runtime** | [Outcome](l5-restarts/run7/runtime/step4-outcome.json).  |
-| 5 | **FAIL — product (mesh)** | [Outcome](l5-restarts/run7/runtime/step5-outcome.json). Step-5 one-attempt-per-id criterion failed: beta has 17 attempt_started rows and 1 transport receipts |
+| 5 | **FAIL — harness** | [Outcome](l5-restarts/run7/runtime/step5-outcome.json). Observer predicate failed despite one accepted target and one transport exposure per seat; pending owner retries are not duplicate exposure. |
 | 6 | **NOT RUN — blocked by earlier failure** | [Outcome](l5-restarts/run7/runtime/step6-outcome.json).  |
 
 ### Identities and accepted targets
@@ -1456,7 +1456,7 @@ Team incarnation: `9cf87ad7e054dc65dfa8a5245964bfc77d4f0de0348cfcecf64af96752265
 
 Steps 1–4 passed their runtime predicates. Both baseline IDs were read; both first-boundary markers were accepted and unexposed in the same attributed-working sample, immediately followed by normal daemon SIGINT/restart with identical arguments and new PID/start ticks. Beta required supported `resume_member`; logical identities and team incarnation stayed stable, generations did not regress, and both markers were delivered/read once without baseline replay.
 
-Step 5 **FAIL — product (mesh), strict attempt-count criterion**: alpha has one durable attempt and one submitted notification; beta has **17 distinct attempts**, with **16 pending `pre_input_failure: IO error: delivery: thread_active` receipts** followed by **one native_enqueued** receipt and its card in host events. These are Mesh-owned retries, not controller resends. The raw observer timeout says receipt/witness missing, but both witnesses exist: the failed conjunct is exactly-one-attempt accounting. No duplicate exposure or lost obligation is established. Beta also had 19 attempts / one exposure at the first boundary; step 4 only requires delivery once.
+Step 5 **FAIL — harness, observer attempt-count predicate**: alpha has one durable attempt and one submitted notification; beta has **17 distinct attempts**, with **16 pending `pre_input_failure: IO error: delivery: thread_active` receipts** followed by **one native_enqueued** receipt and its card in host events. These are Mesh-owned retries, not controller resends. The raw observer timeout says receipt/witness missing, but both witnesses exist: the failed conjunct is exactly-one-attempt accounting. No duplicate exposure or lost obligation is established. Beta also had 19 attempts / one exposure at the first boundary, accepted by step 4. The corrected observer counts one accepted target and one exposing receipt, paired only with the exposing attempt ID; pending retries are deferral evidence. The observed retry cadence (16 refusals over about 43 seconds) is a separate observation, not the lane verdict.
 
 Step 6 **NOT RUN** under stop-on-failure. Read-only post-teardown accounting finds one transport exposure for each of the six marker IDs; alpha’s final marker has a read receipt, beta’s final marker does not. This offline accounting does not substitute for the required explicit final reads. The cursor-following step-6 implementation is offline-tested, not runtime-certified here.
 
@@ -1466,7 +1466,7 @@ Owner epoch **2 → 3**, PID **71538 → 103340**; the old owner was gone before
 
 ### Runtime evidence
 
-[Exact controller](l5-restarts/run7/controller.py), [ordered assertions](l5-restarts/run7/steps.py), [commands/RPCs and exits](l5-restarts/run7/runtime/events.jsonl), [complete daemon JSONL](l5-restarts/run7/runtime/taurhaus.log.jsonl), [host events](l5-restarts/run7/runtime/host-events.jsonl), [owner census](l5-restarts/run7/runtime/owner-observations.jsonl), [lossless snapshots](l5-restarts/run7/runtime/snapshots.json), [final audit](l5-restarts/run7/final-audit.json). Snapshot filenames map to SHA-256-keyed exact payloads; `pack.unpack` restores them. Pane captures contain at most 60 lines. Acceptance, transport delivery, explicit read and model action remain separate.
+[Controller with offline review corrections](l5-restarts/run7/controller.py), [ordered assertions](l5-restarts/run7/steps.py), [commands/RPCs and exits](l5-restarts/run7/runtime/events.jsonl), [complete daemon JSONL](l5-restarts/run7/runtime/taurhaus.log.jsonl), [host events](l5-restarts/run7/runtime/host-events.jsonl), [owner census](l5-restarts/run7/runtime/owner-observations.jsonl), [lossless snapshots](l5-restarts/run7/runtime/snapshots.json), [review-corrected audit](l5-restarts/run7/final-audit.json). Only the interpreted step-5 classification is corrected; raw journal, daemon JSONL and snapshot observations remain unchanged. Commit `775085af` retains the original verdict and executed controller sources; the linked sources include offline fixes. Snapshot filenames map to SHA-256-keyed exact payloads; `pack.unpack` restores them. Pane captures contain at most 60 lines. Acceptance, transport delivery, explicit read and model action remain separate.
 
 Daemon JSONL: **898 complete rows**, SHA-256 `e84a0850f6004a5316288fb4ac6496320cff4dcda0c3f55d982ff91105eb3aa3`. Controller exit **1**. Controller transient busy refusal episodes: **0**; the controller retries only named `host member busy` / `lock busy` refusals within a 65-second deadline.
 
@@ -1522,12 +1522,22 @@ All gates ran **after teardown**, with credential-free scratch roots and real ha
 
 [Cleanup](l5-restarts/run7/runtime/cleanup.json): survivors `[]`, private port closed `True`, auth copy explicitly removed `True`, root removed `True`. [Gate cleanup](l5-restarts/run7/gates/gate-cleanup.json) records reaped commands and removed scratch roots. No foreign process was signaled.
 
+### Offline review correction (no new paid attempt)
+
+Verified both major findings against the retained journal and native witnesses: the corrected transport predicate proves alpha (1 attempt / 1 exposure) and beta (17 attempts / 1 exposure). Step 5 remains FAIL — harness, because the original observer stopped there; step 6 remains NOT RUN. No runtime PASS is inferred. Historical run1 scope/outcome headings are now explicit.
+
+Test-first evidence: `python3 -m unittest discover -s docs/design/evidence/e2e/l5-restarts/run7 -p '*test.py'` initially ran 42 tests and exited 1 with six assertion failures (transport retry acceptance, step-6 retry accounting, diagnostic classification, census deadline, and direct test entrypoint). The report regression then failed separately (43 tests, exit 1), reproducing the product headline. After correction all 43 tests passed, exit 0; `python3 docs/design/evidence/e2e/l5-restarts/run7/support_test.py` ran all 27 checks, exit 0. Six new tests retain Regression comments naming `540f23ea` or `775085af`.
+
+Re-run after teardown: `just check-quick` exit 0 (19.11 s), `just lint` exit 0 (6.58 s), `just test-contracts` exit 0 (8.03 s). The existing isolated gate wrapper used a credential-free home, blocked real harness executables, one Cargo job and this checkout’s own target. Each Cargo preflight found two existing processes, so no wait was required. Gate cleanup confirmed children reaped and scratch roots removed. No Rust diff; Rust unit execution was not required.
+
+This review adds **0 Codex inputs / $0 seat spend**; all original measured spends and unknown costs above are retained. No paid rerun was performed in this local correction round. Deadline-based sampling reduces scan-plus-sleep drift but cannot erase or excuse the retained 1.713-second gap. The optional run3 credential-literal redaction is deferred: those historical files are untouched, and their old allowlist tests intentionally encode those literals; no token material is present.
+
 ### Deviations and limits
 
 - Spec-referenced integration checkout absent (git show exit 128); inspected its retained attempt9 sources here and messaging run2 sources read-only.
 - Unknown-cost inputs counted separately; metered estimate is not an invoice or complete billed spend.
 - Independent Opus evidence lens and implementer/reviewer metering belong to invoking orchestrator; Opus unavailable in this tool surface.
-- Step 5 failed the explicit one-attempt-per-id requirement: beta has 17 durable attempt_started rows (16 pending thread_active refusals, one native_enqueued). Both transports nevertheless exposed their markers once. Step 6 was not run.
+- Step 5 stopped on a harness observer predicate that counted pending retries as exposures; step 6 was not run.
 - The original beta turn at the Taurhaus boundary was interrupted before python3 began; its >=30-second continuous window is unproved. The resumed task is not substituted as original-turn evidence.
 - The passive owner census saw at most one owner and old-owner departure before delivery, but its 1.713-second maximum gap exceeds the <=1-second requirement; sampling cadence coverage is unproved (harness).
 - No product, Mesh descriptor, installation, release, plan-ledger, or other Taurhaus checkout change. Only the specified Mesh worktree was built; no Mesh commit.

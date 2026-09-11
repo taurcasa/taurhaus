@@ -1,5 +1,5 @@
 {
-  "verdict": "FAIL step 5 (product (mesh)); later steps NOT RUN",
+  "verdict": "FAIL step 5 (harness); later steps NOT RUN",
   "step_outcomes": [
     {
       "step": 1,
@@ -28,11 +28,11 @@
     {
       "step": 5,
       "outcome": "FAIL",
-      "classification": "product (mesh)",
-      "reason": "Step-5 one-attempt-per-id criterion failed: beta has 17 attempt_started rows and 1 transport receipts",
+      "classification": "harness",
+      "reason": "Observer predicate failed despite one accepted target and one transport exposure per seat; pending owner retries are not duplicate exposure.",
       "at": 1789092715.6944115,
       "observer_reason": "transport receipt and native witness missing mesh-backlog beta; polled 180.7s",
-      "limitation": "Pending pre-input thread_active refusals were retried by Mesh. One eventual native exposure is observed; this is not duplicate model delivery or lost mail."
+      "limitation": "No duplicate exposure or lost obligation established. Native witnesses, owner census and explicit step-6 reads remain separate requirements; no retrospective PASS."
     },
     {
       "step": 6,
@@ -8440,7 +8440,7 @@
     "Spec-referenced integration checkout absent (git show exit 128); inspected its retained attempt9 sources here and messaging run2 sources read-only.",
     "Unknown-cost inputs counted separately; metered estimate is not an invoice or complete billed spend.",
     "Independent Opus evidence lens and implementer/reviewer metering belong to invoking orchestrator; Opus unavailable in this tool surface.",
-    "Step 5 failed the explicit one-attempt-per-id requirement: beta has 17 durable attempt_started rows (16 pending thread_active refusals, one native_enqueued). Both transports nevertheless exposed their markers once. Step 6 was not run.",
+    "Step 5 stopped on a harness observer predicate that counted pending retries as exposures; step 6 was not run.",
     "The original beta turn at the Taurhaus boundary was interrupted before python3 began; its >=30-second continuous window is unproved. The resumed task is not substituted as original-turn evidence.",
     "The passive owner census saw at most one owner and old-owner departure before delivery, but its 1.713-second maximum gap exceeds the <=1-second requirement; sampling cadence coverage is unproved (harness)."
   ]
