@@ -1,0 +1,30 @@
+.FFE
+======================================================================
+ERROR: test_step5_transport_does_not_require_read_reply_or_idle (run7_test.Run7.test_step5_transport_does_not_require_read_reply_or_idle)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/run7/run7_test.py", line 17, in test_step5_transport_does_not_require_read_reply_or_idle
+    self.assertTrue(support.transport_proven(accepted,receipts,seat,transport,True))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'support' has no attribute 'transport_proven'
+
+======================================================================
+FAIL: test_scratch_instruction_requires_cursor_completion (run7_test.Run7.test_scratch_instruction_requires_cursor_completion)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/run7/run7_test.py", line 52, in test_scratch_instruction_requires_cursor_completion
+    self.assertIn(text,instruction)
+AssertionError: 'done: false' not found in 'Reply briefly. When a message assigns you a task, run exactly the mesh lifecycle commands the message names, in order, then reply with the task id and the word done. Never modify files.'
+
+======================================================================
+FAIL: test_step5_calls_transport_settle (run7_test.Run7.test_step5_calls_transport_settle)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/run7/run7_test.py", line 29, in test_step5_calls_transport_settle
+    self.assertIn("transport_settle('mesh-backlog', seat)",source)
+AssertionError: "transport_settle('mesh-backlog', seat)" not found in "checkpoint('5-before')\nbacklog('mesh-backlog', 'restart_mesh')\ndef changed_owner():\n    snap()\n    return read('team/state/delivery/epoch.json') != read('step5-before-identity.json')['epoch']\nwait(changed_owner, 'delivery owner epoch did not change')\nfor seat in ['alpha', 'beta']:\n    settle('mesh-backlog', seat)\nunchanged(5)\ncheckpoint(5)\nobservations = complete_rows((OUT / 'owner-observations.jsonl').read_text())\nstart = next((e['at'] for e in complete_rows((OUT / 'events.jsonl').read_text()) if e['kind'] == 'normal_mesh_restart_initiated'))\nbefore = read('step5-before-identity.json')['processes']\nafter = read('step5-identity.json')['processes']\nowner = lambda ids: next((i['pid'] for i in ids if 'team-daemon' in i['argv'] and 'start' in i['argv']))\ndeliveries = [datetime.datetime.fromisoformat(r['committed_at']).timestamp() for r in rows() if r.get('payload', {}).get('message_id') in [read('mesh-backlog-' + s + '-message.json')['message_id'] for s in ['alpha', 'beta']] and r['payload'].get('stage') in ['submitted', 'native_enqueued']]\nend = time.time()\nwait(lambda: complete_rows((OUT / 'owner-observations.jsonl').read_text())[-1]['at'] >= end, 'owner observer did not cover window end', 65)\nobservations = complete_rows((OUT / 'owner-observations.jsonl').read_text())\ncensus = owner_window_evidence(observations, start, end, owner(before), owner(after), min(deliveries))\nsave('step5-owner-census.json', census)\nassert census['outcome'] == 'PASS', census['classification'] + ': ' + census['reason']"
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.009s
+
+FAILED (failures=2, errors=1)
