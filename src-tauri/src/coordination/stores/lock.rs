@@ -286,7 +286,9 @@ fn terminal_write_for_pane_with_runtime<T>(
     write: impl FnOnce() -> Result<T, String>,
 ) -> Result<T, String> {
     let registry = super::team_roots::TeamRootRegistry::new(teams_dir.to_path_buf());
-    if let Some((root, team, member)) = resolve_terminal_member(&registry, pane)? {
+    if let Some((root, team, member)) =
+        resolve_terminal_member_with_runtime(&registry, pane, _runtime)?
+    {
         // Windows app fallback must not create lock/holder state on the UNC volume.
         #[cfg(target_os = "windows")]
         {
@@ -322,9 +324,22 @@ fn terminal_write_for_pane_with_runtime<T>(
 }
 
 /// Shared resolution fence: a positive binding wins over unrelated unreadable records.
+#[cfg(test)]
 pub(crate) fn resolve_terminal_member(
     registry: &super::team_roots::TeamRootRegistry,
     pane: &str,
+) -> Result<Option<(PathBuf, String, String)>, String> {
+    resolve_terminal_member_with_runtime(
+        registry,
+        pane,
+        &crate::coordination::runtime::SystemCoordinationRuntime,
+    )
+}
+
+fn resolve_terminal_member_with_runtime(
+    registry: &super::team_roots::TeamRootRegistry,
+    pane: &str,
+    runtime: &dyn crate::coordination::runtime::CoordinationRuntime,
 ) -> Result<Option<(PathBuf, String, String)>, String> {
     let deferred = |e| format!("terminal write deferred: attachment lookup: {e}");
     let mut uncertain = false;
@@ -338,6 +353,22 @@ pub(crate) fn resolve_terminal_member(
         };
         for (member, record) in &records {
             if record.pane_id.as_deref() == Some(pane) {
+                if record.health == crate::coordination::domain::HealthState::SessionDead {
+                    use crate::coordination::runtime::{pane_belongs_to_member, PaneOwnership};
+                    if !runtime
+                        .live_pane(pane)
+                        .map_err(deferred)?
+                        .is_some_and(|live| {
+                            live.is_dead
+                                || pane_belongs_to_member(record, &live) == PaneOwnership::Owned
+                        })
+                    {
+                        // A recycled id may belong to a later record. If no owner
+                        // is found, retain the fence against an unlocked write.
+                        uncertain = true;
+                        continue;
+                    }
+                }
                 return Ok(Some((root, team, member.clone())));
             }
         }
@@ -941,32 +972,50 @@ mod tests {
     use super::*;
 
     #[test]
-    fn retained_dead_identity_is_not_a_terminal_attachment() {
-        // Regression: 39eeb33a masked dead attachment admission by erasing identity.
+    fn recycled_pane_stop_skips_stale_dead_record_and_locks_live_owner() {
+        // Regression: 0d5c16bf let the first stale dead binding shadow a recycled
+        // pane's live owner, so the in-lock ownership check refused its stop.
         use super::super::{MemberRuntimeRecord, MemberRuntimeStore, TeamConfigStore};
+        use crate::coordination::{domain::HealthState, runtime::RecordingCoordinationRuntime};
         let tmp = TempDir::new().unwrap();
-        TeamConfigStore::save(
-            tmp.path(),
-            "team",
-            &serde_json::from_value(serde_json::json!({
-                "schema_version": 3, "name": "team", "created_at": chrono::Utc::now(), "members": []
-            }))
-            .unwrap(),
-        )
-        .unwrap();
-        MemberRuntimeStore::save(
-            tmp.path(),
-            "team",
-            "seat",
-            &MemberRuntimeRecord {
-                health: crate::coordination::domain::HealthState::SessionDead,
-                session_id: Some("retained".into()),
-                ..Default::default()
-            },
-        )
-        .unwrap();
-        let registry = super::super::team_roots::TeamRootRegistry::new(tmp.path().into());
-        assert!(resolve_terminal_member(&registry, "%1").unwrap().is_none());
+        TeamConfigStore::save(tmp.path(), "team", &serde_json::from_value(
+            serde_json::json!({"schema_version": 3, "name": "team", "created_at": chrono::Utc::now(), "members": []})
+        ).unwrap()).unwrap();
+        let runtime = RecordingCoordinationRuntime::default();
+        runtime.set_pane_exists("%1", true);
+        runtime.set_pane_identity("%1", Some(901), Some(42));
+        for (pid, start) in [(902, 42), (901, 43)] {
+            for (member, health, pid, start) in [
+                ("a-stale", HealthState::SessionDead, pid, start),
+                ("z-owner", HealthState::Healthy, 901, 42),
+            ] {
+                MemberRuntimeStore::save(
+                    tmp.path(),
+                    "team",
+                    member,
+                    &MemberRuntimeRecord {
+                        health,
+                        pane_id: Some("%1".into()),
+                        pane_pid: Some(pid),
+                        pane_start_time: Some(start),
+                        terminal_contract: 1,
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+            }
+            terminal_write_for_pane_with_runtime(tmp.path(), "%1", "stop", &runtime, || {
+                let owner_lock =
+                    File::open(tmp.path().join("team/state/terminal/z-owner.lock")).unwrap();
+                assert!(
+                    owner_lock.try_lock_exclusive().is_err(),
+                    "stop must hold the live owner's lock"
+                );
+                assert!(!tmp.path().join("team/state/terminal/a-stale.lock").exists());
+                Ok(())
+            })
+            .unwrap();
+        }
     }
 
     #[test]
