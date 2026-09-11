@@ -1,0 +1,16 @@
+{
+  "ready": true,
+  "onboarding_message_id": "b7591441-9d21-4c62-863c-b5fdcae3b40e",
+  "onboarding_submitted": true,
+  "onboarding_read": true,
+  "pending_delivery_ids": [],
+  "fresh_idle": true,
+  "terminal_lock": {
+    "path": "/tmp/th-l1-runtime-3_nj_m4h/claude/teams/l1-claude-lead/state/terminal/alpha.lock",
+    "complete": true,
+    "held": false,
+    "fdinfo": [],
+    "inode": 1641083
+  },
+  "observed_at": 1789086460.0170357
+}

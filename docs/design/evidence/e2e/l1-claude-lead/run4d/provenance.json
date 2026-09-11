@@ -1,0 +1,19 @@
+{
+  "taurhaus_base": "1db4f9bf",
+  "controller_commit": "faaa8a9e68f217e820e60dadbb8c10815e3564b4",
+  "mesh_commit": "ed591876fdbe9832d18ab7992ce7583c80bc8c64",
+  "mesh_status": "",
+  "protocol": {
+    "data_root": "/tmp/th-l1-runtime-sb6xigyx/data",
+    "protocol_version": 27,
+    "uptime_secs": 0,
+    "version": "0.9.7"
+  },
+  "actual_claude": "2.1.267 / claude-haiku-4-5-20251001",
+  "actual_codex": "0.153.4 / gpt-5.6-luna / low",
+  "binaries": {
+    "daemon-build": "9dfc9daacbe21380405cec063c37a433becfdb32b2fffffd20813879f679f590",
+    "mesh-build": "e825ede65875b5eae314def776d24f7790bfe25dd15aa0e396577f9836ecf98a"
+  },
+  "descriptor": "Unchanged production: hosted and ordinary/compact drain entries disabled; existing production Claude recovery hook remains registered."
+}

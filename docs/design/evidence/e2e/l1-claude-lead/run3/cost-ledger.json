@@ -1,0 +1,120 @@
+{
+  "controller_inputs": {
+    "claude": 3,
+    "codex": 5
+  },
+  "claude_generations": [
+    {
+      "input_tokens": 10,
+      "output_tokens": 543,
+      "cache_read_input_tokens": 0,
+      "cache_creation_input_tokens": 11291,
+      "message_id": "msg_011Ceun6U8dRzxqFwYcs3Tm5",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "f83f5821-a979-4172-8ae4-50d4ac761c28",
+      "usd": 0.01683875,
+      "upper_usd": 0.05922
+    },
+    {
+      "input_tokens": 10,
+      "output_tokens": 375,
+      "cache_read_input_tokens": 11291,
+      "cache_creation_input_tokens": 755,
+      "message_id": "msg_011Ceun99XmgEs7oKndsPMEk",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "f83f5821-a979-4172-8ae4-50d4ac761c28",
+      "usd": 0.003957850000000001,
+      "upper_usd": 0.062155
+    },
+    {
+      "input_tokens": 8,
+      "output_tokens": 91,
+      "cache_read_input_tokens": 12046,
+      "cache_creation_input_tokens": 925,
+      "message_id": "msg_011Ceun9RtmfNndPH9YwBb5J",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "f83f5821-a979-4172-8ae4-50d4ac761c28",
+      "usd": 0.0028238500000000006,
+      "upper_usd": 0.06535
+    },
+    {
+      "input_tokens": 10,
+      "output_tokens": 365,
+      "cache_read_input_tokens": 12971,
+      "cache_creation_input_tokens": 134,
+      "message_id": "msg_011Ceun9ZGXaqJU7kNbqTaWi",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "f83f5821-a979-4172-8ae4-50d4ac761c28",
+      "usd": 0.0032996,
+      "upper_usd": 0.0674
+    }
+  ],
+  "codex_turns": [
+    {
+      "turn_id": "01a08b58-2ddf-75e1-99c9-1a113e000cfd",
+      "rollout": "rollout-2026-09-10T14-43-16-01a08b58-0628-7fc0-9ba4-db3ae587c5e0.jsonl"
+    },
+    {
+      "turn_id": "01a08b58-385f-7720-a635-ae7149616265",
+      "rollout": "rollout-2026-09-10T14-43-16-01a08b58-0628-7fc0-9ba4-db3ae587c5e0.jsonl"
+    },
+    {
+      "turn_id": "01a08b58-a4cc-7ab2-8c0e-90ac842968ae",
+      "rollout": "rollout-2026-09-10T14-43-16-01a08b58-0628-7fc0-9ba4-db3ae587c5e0.jsonl"
+    },
+    {
+      "turn_id": "01a08b58-cb58-7970-ac48-da9806cb7993",
+      "rollout": "rollout-2026-09-10T14-43-16-01a08b58-0628-7fc0-9ba4-db3ae587c5e0.jsonl"
+    }
+  ],
+  "codex_usage_by_rollout": {
+    "rollout-2026-09-10T14-43-16-01a08b58-0628-7fc0-9ba4-db3ae587c5e0.jsonl": {
+      "input_tokens": 135432,
+      "cached_input_tokens": 114176,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 1065,
+      "reasoning_output_tokens": 318,
+      "total_tokens": 136497
+    }
+  },
+  "seat_usd_estimate": 0.10193487,
+  "seat_usd_upper_rate": 1.0758178,
+  "rates_per_million": {
+    "claude": [
+      1,
+      0.1,
+      1.25,
+      5
+    ],
+    "codex": [
+      0.2,
+      0.02,
+      1.2
+    ]
+  },
+  "metering_complete": true,
+  "prior_preflight_spend_usd": 0,
+  "current_inputs": {
+    "claude": 2,
+    "codex": 5
+  },
+  "prior_trial": {
+    "controller_inputs": {
+      "claude": 0,
+      "codex": 0
+    },
+    "seat_usd_estimate": 0.0672021,
+    "seat_usd_upper_rate": 0.6578964,
+    "historical_cap_inputs": {
+      "claude": 5,
+      "codex": 6
+    },
+    "scope": "Operator-authorized third run: fresh run input/runtime caps; historical spend remains charged. Not a controller retry."
+  },
+  "claude_usd_by_input": {
+    "6fba352d-304b-4215-a27f-82341027395c": 0.01683875,
+    "80590999-e9b2-4205-a77e-80bda9e55556": 0.006781700000000002,
+    "4d2d2558-0217-437e-9635-0beb74856bb4": 0.0032996
+  },
+  "claude_cap_times_max_observed_input_usd": 0.13471
+}

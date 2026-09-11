@@ -1,0 +1,161 @@
+{
+  "status": "unavailable",
+  "stopped_before_step": 1,
+  "classification": "harness",
+  "commands": [
+    {
+      "argv": [
+        "bwrap",
+        "--die-with-parent",
+        "--unshare-pid",
+        "--unshare-net",
+        "--ro-bind",
+        "/",
+        "/",
+        "--tmpfs",
+        "/home",
+        "--tmpfs",
+        "/tmp",
+        "--tmpfs",
+        "/run",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+        "--bind",
+        "/tmp/th-l1-preflight-ylbh8bvg",
+        "/tmp/th-l1-preflight-ylbh8bvg",
+        "--chdir",
+        "/tmp/th-l1-preflight-ylbh8bvg/project",
+        "/tmp/th-l1-preflight-ylbh8bvg/home/.local/bin/claude",
+        "--version"
+      ],
+      "pid": 2806516,
+      "exit": 0,
+      "output": "2.1.267 (Claude Code)\n"
+    },
+    {
+      "argv": [
+        "bwrap",
+        "--die-with-parent",
+        "--unshare-pid",
+        "--unshare-net",
+        "--ro-bind",
+        "/",
+        "/",
+        "--tmpfs",
+        "/home",
+        "--tmpfs",
+        "/tmp",
+        "--tmpfs",
+        "/run",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+        "--bind",
+        "/tmp/th-l1-preflight-ylbh8bvg",
+        "/tmp/th-l1-preflight-ylbh8bvg",
+        "--chdir",
+        "/tmp/th-l1-preflight-ylbh8bvg/project",
+        "/tmp/th-l1-preflight-ylbh8bvg/home/.local/bin/claude",
+        "--help"
+      ],
+      "pid": 2806524,
+      "exit": 0,
+      "output": "  --max-budget-usd <amount>             Maximum dollar amount to spend on API"
+    },
+    {
+      "argv": [
+        "bwrap",
+        "--die-with-parent",
+        "--unshare-pid",
+        "--unshare-net",
+        "--ro-bind",
+        "/",
+        "/",
+        "--tmpfs",
+        "/home",
+        "--tmpfs",
+        "/tmp",
+        "--tmpfs",
+        "/run",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+        "--bind",
+        "/tmp/th-l1-preflight-ylbh8bvg",
+        "/tmp/th-l1-preflight-ylbh8bvg",
+        "--chdir",
+        "/tmp/th-l1-preflight-ylbh8bvg/project",
+        "/tmp/th-l1-preflight-ylbh8bvg/home/.local/bin/codex",
+        "--version"
+      ],
+      "pid": 2806544,
+      "exit": 0,
+      "output": "codex-cli 0.153.4\n"
+    }
+  ],
+  "binaries": [
+    {
+      "name": "claude",
+      "sha256": "0399c793ff571d5946ef923d80b4f330d05ac4b6842a6b0775468f5d389403c0"
+    },
+    {
+      "name": "codex",
+      "sha256": "56ef98ab4032d317ab26e9b5e5a175650717351edb16ed9cde0cb6d1734d62da"
+    }
+  ],
+  "credentials_copied": [],
+  "daemon_launched": false,
+  "tmux_server_launched": false,
+  "initialize_calls": 0,
+  "cost_ledger": {
+    "claude_inputs": 0,
+    "codex_inputs": 0,
+    "generations": 0,
+    "compact_inputs": 0,
+    "turns": [],
+    "seat_spend_usd": 0
+  },
+  "environment": {
+    "PATH": "/tmp/th-l1-preflight-ylbh8bvg/home/.local/bin:/usr/bin:/bin",
+    "HOME": "/tmp/th-l1-preflight-ylbh8bvg/home",
+    "CLAUDE_CONFIG_DIR": "/tmp/th-l1-preflight-ylbh8bvg/claude",
+    "CLAUDE_DIR": "/tmp/th-l1-preflight-ylbh8bvg/claude",
+    "TAURHAUS_CLAUDE_DIR": "/tmp/th-l1-preflight-ylbh8bvg/claude",
+    "CODEX_HOME": "/tmp/th-l1-preflight-ylbh8bvg/codex",
+    "GROK_HOME": "/tmp/th-l1-preflight-ylbh8bvg/grok",
+    "TAURHAUS_AGY_DIR": "/tmp/th-l1-preflight-ylbh8bvg/gemini",
+    "GEMINI_CLI_HOME": "/tmp/th-l1-preflight-ylbh8bvg/gemini",
+    "TAURHAUS_DATA_DIR": "/tmp/th-l1-preflight-ylbh8bvg/data",
+    "TMPDIR": "/tmp/th-l1-preflight-ylbh8bvg/tmp",
+    "TMUX_TMPDIR": "/tmp/th-l1-preflight-ylbh8bvg/tmux",
+    "XDG_CONFIG_HOME": "/tmp/th-l1-preflight-ylbh8bvg/config",
+    "XDG_CACHE_HOME": "/tmp/th-l1-preflight-ylbh8bvg/cache",
+    "XDG_DATA_HOME": "/tmp/th-l1-preflight-ylbh8bvg/data",
+    "LANG": "C.UTF-8",
+    "TERM": "xterm-256color",
+    "DISABLE_AUTOUPDATER": "1",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
+  },
+  "launch_allowed": false,
+  "reason": "Independent managed TUI and /compact dollar enforcement is unverified.",
+  "help_excerpt": [
+    "  --max-budget-usd <amount>             Maximum dollar amount to spend on API"
+  ],
+  "cleanup": {
+    "child_exit_codes": [
+      0,
+      0,
+      0
+    ],
+    "all_owned_children_reaped": true,
+    "scratch_root_removed": true,
+    "credential_copies_remaining": 0,
+    "listeners_started": 0,
+    "daemon_or_tmux_survivors": 0
+  },
+  "controller_exit": 2
+}

@@ -1,0 +1,311 @@
+{
+  "review_manifest": {
+    "candidate": "2a38c109 + run7 runtime evidence through 5df747da; current report",
+    "rubric": "run7 spec and binding first-failure stop; truthful attribution, spend, cleanup; one independent tool-free Opus lens",
+    "stopping_condition": "one evidence review, no paid lane rerun; at most one report fix round"
+  },
+  "report": "# Run7 \u2014 step 1 PASS; step 2 UNAVAILABLE (harness); steps 3\u20136 NOT RUN\n\nRun7 executed once on Taurhaus base `a7e6db7e`, protocol 27, and Mesh `310144d`. Runtime was 90.540 seconds. The required first-failure stop occurred before the marker sends. No operational publication, assignment, `/compact`, or FERN input ran. The requested app-publication addition is implemented and offline-tested, but **not exercised live**. This is not an E2E PASS.\n\n| Step | Outcome / classification | Evidence |\n|---|---|---|\n| 1. Initialize; authenticated and team-bound Claude; production hook | PASS | `step1-outcome.json`, initialization/config/runtime snapshots, native Haiku generation, SessionStart(compact) hook. |\n| 2. Claude marker sends and recipient exposure | UNAVAILABLE \u2014 harness prerequisite | `step2-native-ready/pane-2.txt`, `submission-step2-2-*`, transcript and journal. Onboarding card was not read during 65 seconds; no marker sends ran. |\n| 3. Seat reads/replies and native Claude uptake | NOT RUN \u2014 dependency on 2 | No AMBER/BIRCH replies or native round trip claimed. |\n| 4. Explicit Claude read/mark | NOT RUN \u2014 dependency on 2 | No lead read receipt. |\n| 5. Real assignment publication and ordinary compact | NOT RUN \u2014 dependency on 2 | Zero publication requests, assignment commands, compactions, or compact hook deliveries. |\n| 6. FERN after recovery | NOT RUN \u2014 dependency on 2 | Zero FERN sends; export/cleanup performed separately. |\n\n## Observed failure and limits of attribution\n\nThe raw controller recorded `FAIL / taurhaus / alpha onboarding card never delivered`. That automatic pending-card classification is retained unchanged in `result.json`; the final evidence classification is **harness unavailable**, because the inherited controller altered the pending onboarding input and explicitly prohibited the read its own gate required. This does not exonerate the preceding product transport behavior or prove the controller caused that earlier event.\n\nJournal sequence 2 accepted alpha's baseline card: message `70337135-035a-40b3-856e-9d1a1ede7e5e`, delivery `c751f8e6-ca11-49b3-a9cb-b9e9b6c00480`. Sequence 3 began the tmux attempt; sequence 4 at 23:11:54.110 UTC recorded `outcome_unknown`, evidence `paste may be present; post-wait validation failed; submit withheld`. This was **before** the controller's input, not caused by it. There is no submitted or consumed/read receipt for alpha's card. Initial transport ownership remains unresolved; no product fix or broader product verdict is made.\n\nAt 23:12:06.404 UTC `prepare_alpha` found no `task_started` and typed its existing setup instruction without checking for pending composer text. The retained pane/native user row concatenates Mesh's inbox notification and `alphaController setup check. Reply READY only. Do not execute tools, read messages, or send messages.` Codex replied READY and performed no tools. Submission confirmation was 23:12:08.751 UTC; the subsequent card-exposure window allowed the full 65 seconds. The controller then waited for card text in tool results despite having forbidden its read. No retry or paid replacement run followed.\n\nAlpha retained its own session `01a08d97-88aa-7171-80d1-d59861a7af66`, attributed high-confidence idle, with `source: notify` in the exported activity. Its completion notify and a foreign ephemeral notify are both retained. The early `attributed_idle: false` observation predates complete runtime identity/path capture; the final independent runtime-session snapshot shows the attribution. No decay to uncertain/source-none is established in this run. The daemon's edge log shows active transitions and launch-ready idle; there is **no logged notify-to-idle transition**, so the full PR #172 acceptance claim remains unproved here.\n\nLead `inboxes/lead.json` exists. Its startup card has `native_enqueued` from `native-mailbox/1`; no terminal receipt targets Claude. This is startup projection evidence, not step-3 replies or post-compact recovery evidence. All six journal rows are retained as the complete segment snapshot; the early stop reached no paginated journal-reader step.\n\n## Run7 controller addition and red/green\n\nThe two new generated-data tests failed before implementation: missing publication method and rejected run7 route (exit 1). Green: 48 discovered tests plus 11 controller regressions, both exit 0. Tests use generated scratch task data and a mocked RPC, never credentials or real CLIs.\n\nThe real Mesh assignment description gains five explicit operational footer lines: execution mode, file-ownership boundary, adjacent-fix policy, validation expectation and response expectation. Its original objective/deliverable/first-action/completion/review contract remains. The controller reads the persisted task file after assignment, verifies assignment identity/owner/status, copies footer values and id/subject/status/owner/assigned_at verbatim, and prepares one production `coordination.publish_operational_snapshots` request for lead. The daemon remains the snapshot writer and the native hook remains the sole recovery-card producer. The controller records the task and exact request/response, then the unchanged snapshot poll precedes compact. No recovery snapshot/card/hook payload is synthesized.\n\nThe wire task includes `owner` as required by the run7 ruling; the current Rust `OperationalTaskSnapshot` does not store an owner field. This serde omission does not alter the outbound request and was not exercised in this stopped run. Footer text lives in the real assignment before publication, rather than being invented during publication. Run6 evidence and historical ledgers are unchanged. The only runtime adaptation is this addition plus run7 routing; no product/descriptor edit, hosted seat, install, release, fault injection or alternate checkout.\n\n## Spend, builds, gates and teardown\n\n| Current attempt spend | USD |\n|---|---:|\n| Claude generation `msg_011Cevc2vNS3W2Bvf4657tEX` | 0.01114540 |\n| Codex sole metered native turn | 0.00193560 |\n| Known seats | 0.01308100 |\n| All-token upper-rate amount | 0.07127460 |\n\nController reservations: Claude **1/8** (startup, zero typed Claude inputs), Codex **2/12** (startup plus one typed setup input); one actual metered Codex turn. Claude cap \u00d7 largest observed input: $0.08916320; next-turn reserve $0.50. Zero compactions, so compact spend is not applicable. Foreign ephemeral notify usage is separately **unknown**, not free; the controller's metering-complete flag only covers retained rollouts. No complete attempt-dollar proof is claimed. Earlier runs are history, excluded from this fresh admission budget; `admission-ledger.json` and `spend-summary.json` retain them. Implementer/orchestrator usage is unavailable. Reviewer spend is separate and recorded below after the independent evidence lens.\n\nBuild exits: `just build-daemon` **0**, lane-local `cargo build --bin mesh` **0**, production hook adapter **0**. Binary digests are in build results and `events.jsonl`; actual Claude 2.1.267 / claude-haiku-4-5-20251001, Codex 0.153.4 / gpt-5.6-luna / low, with both native siblings copied together. Cargo admission followed the three-process limit and used checkout-local targets.\n\nRequired gates run after runtime teardown, from this checkout root inside the credential-free namespace: **`just check-quick` 0; `just lint` 0; `just test-contracts` 0** (wrapper 0). No `src-tauri/` diff; conditional `just test-rust-unit` does not apply.\n\nRuntime cleanup confirmed zero survivors, private listener closed, scratch root and Codex auth copy removed, Claude mount placeholder zero bytes. Claude auth was exposed only by a single read-only bind, never copied. All started children were waited; -15 is normal namespace teardown. Complete sanitized daemon JSONL is retained. Gate and independent reviewer cleanup are recorded separately. Sidecars are deduplicated after the run, never as a runtime abort condition.\n",
+  "disposition": {
+    "outcome": "UNAVAILABLE",
+    "classification": "harness",
+    "failed_step": 2,
+    "steps": [
+      {
+        "step": 1,
+        "outcome": "PASS",
+        "classification": null,
+        "evidence": "step1-outcome.json"
+      },
+      {
+        "step": 2,
+        "outcome": "UNAVAILABLE",
+        "classification": "harness",
+        "reason": "Onboarding exposure timed out after the controller appended a no-read setup instruction to a pending Mesh notification; initial product outcome_unknown precedes that input and its ownership is unresolved."
+      },
+      {
+        "step": 3,
+        "outcome": "NOT RUN",
+        "classification": "first-failure stop"
+      },
+      {
+        "step": 4,
+        "outcome": "NOT RUN",
+        "classification": "first-failure stop"
+      },
+      {
+        "step": 5,
+        "outcome": "NOT RUN",
+        "classification": "first-failure stop"
+      },
+      {
+        "step": 6,
+        "outcome": "NOT RUN",
+        "classification": "first-failure stop"
+      }
+    ],
+    "raw_controller_result": {
+      "outcome": "FAIL",
+      "classification": "taurhaus",
+      "step": 2,
+      "reason": "alpha onboarding card never delivered"
+    },
+    "runtime_seconds": 90.53956707601901,
+    "driver_exit": 2,
+    "controller_exit": 2,
+    "ordered_step_exits": [
+      0,
+      1
+    ],
+    "gate_exits": {
+      "check-quick": 0,
+      "lint": 0,
+      "test-contracts": 0
+    },
+    "tests": {
+      "red_exit": 1,
+      "green_exits": [
+        0,
+        0
+      ],
+      "green_counts": [
+        48,
+        11
+      ]
+    },
+    "deviations": [
+      "Run7 stopped at step2: steps3\u20136, publication, assignment, compact and FERN were not executed.",
+      "Raw controller result FAIL/taurhaus is preserved; evidence-reviewed disposition is UNAVAILABLE/harness. Initial product post-paste validation failure predates controller input and remains unresolved.",
+      "Inherited prepare_alpha inserted its no-read setup prompt into the existing notification composer; no offline runtime fix or paid rerun after failure.",
+      "Real assignment description gains explicit operational footer lines to support verbatim publication; the addition has offline coverage only in this attempt.",
+      "Publication request includes owner per spec; current Rust OperationalTaskSnapshot does not store owner. Not reached live.",
+      "Alpha exported notify-sourced idle and final runtime attribution; a logged notify-to-idle transition was absent, so the full PR172 runtime claim remains unproved.",
+      "Foreign startup-notify usage unknown; controller completeness flag covers retained rollout accounting only.",
+      "Journal retained as full six-row segment snapshot; no journal-reader pagination reached before stop.",
+      "Inherited startup gate has no separate preflight event; model/footer, empty composer and confirmed input are retained.",
+      "No product, descriptor, plan-ledger, branch, or other Taurhaus-checkout edits; mesh-l1 build only, no Mesh commit."
+    ]
+  },
+  "spend": {
+    "claude_metered_usd": 0.0111454,
+    "codex_metered_usd": 0.0019356,
+    "known_seats_usd": 0.013081,
+    "metered_upper_rate_usd": 0.07127460000000001,
+    "controller_inputs": {
+      "claude": 1,
+      "codex": 2
+    },
+    "claude_generations": [
+      {
+        "input_tokens": 10,
+        "output_tokens": 662,
+        "cache_read_input_tokens": 5479,
+        "cache_creation_input_tokens": 5822,
+        "message_id": "msg_011Cevc2vNS3W2Bvf4657tEX",
+        "model": "claude-haiku-4-5-20251001",
+        "session_id": "e4c7f117-c07b-4d78-a9f0-7327782573d9",
+        "usd": 0.0111454,
+        "upper_usd": 0.059865
+      }
+    ],
+    "codex_usage_by_rollout": {
+      "rollout-2026-09-11T01-11-53-01a08d97-88aa-7171-80d1-d59861a7af66.jsonl": {
+        "input_tokens": 9474,
+        "cached_input_tokens": 0,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 34,
+        "reasoning_output_tokens": 27,
+        "total_tokens": 9508
+      }
+    },
+    "claude_cap_times_max_observed_input_usd": 0.0891632,
+    "controller_metering_complete": true,
+    "compactions": 0,
+    "current_review_usd": "pending",
+    "offline_and_build_paid_seat_usd": 0,
+    "implementer_orchestrator_usd": "unavailable",
+    "basis": "API-equivalent estimates at retained rates, not invoices. Foreign startup-notify usage unverified; no complete attempt spend proof."
+  },
+  "cleanup": {
+    "survivors": [],
+    "private_port_closed": true,
+    "scratch_roots_removed": true,
+    "codex_auth_copy_removed": true,
+    "claude_credential_never_copied": true,
+    "claude_mount_placeholder_zero_bytes": true,
+    "runtime_children_waited": true,
+    "gate_children_waited": true
+  },
+  "raw_result": {
+    "outcome": "FAIL",
+    "classification": "taurhaus",
+    "step": 2,
+    "reason": "alpha onboarding card never delivered"
+  },
+  "pane": "\u256d\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\n\u2502 >_ OpenAI Codex (v0.153.4)            \u2502\n\u2502                                       \u2502\n\u2502 model:     loading   /model to change \u2502\n\u2502 directory: loading                    \u2502\n\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f\n\n\n\u203a Ask Codex to do anything\n\n  ? for shortcuts\n\n\u256d\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\n\u2502 \u2728\u200aUpdate available! 0.153.4 -> 0.154.0                       \u2502\n\u2502 See https://github.com/openai/codex for installation options. \u2502\n\u2502                                                               \u2502\n\u2502 See full release notes:                                       \u2502\n\u2502 https://github.com/openai/codex/releases/latest               \u2502\n\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f\n\n\u26a0 `--dangerously-bypass-hook-trust` is enabled. Enabled hooks may run without review for this invocation.\n\n\u256d\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\n\u2502 >_ OpenAI Codex (v0.153.4)                       \u2502\n\u2502                                                  \u2502\n\u2502 model:       gpt-5.6-luna low   /model to change \u2502\n\u2502 directory:   /tmp/th-l1-runtime-m8o6nmjx/project \u2502\n\u2502 permissions: YOLO mode                           \u2502\n\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f\n\n  Tip: This is GPT-6, a new generation of intelligence. Astra is state-of-the-art in coding, computer use, science, and professional work.\n  Give it a hard problem, a half-formed idea, or anything you've been meaning to build. See where it takes you.\n\n\u26a0 `--dangerously-bypass-hook-trust` is enabled. Enabled hooks may run without review for this invocation.\n\n[quota banner redacted]\n\n\n\u203a [mesh] You are \"alpha\" on team \"l1-claude-lead\". Inbox update from lead. Check inbox and act if the message requests it: mesh read\n  --unread --mark-read --team l1-claude-lead --name alphaController setup check. Reply READY only. Do not execute tools, read messages, or\n  send messages.\n\n\n\u2022 READY\n\n\n\u203a Ask Codex to do anything\n\n  gpt-5.6-luna low \u00b7 /tmp/th-l1-runtime-m8o6nmjx/project\n\n\n\n\n\n\n\n\n\n\n\n",
+  "codex_turn_rows": [
+    {
+      "timestamp": "2026-09-10T23:12:07.438Z",
+      "ordinal": 1,
+      "type": "event_msg",
+      "payload": {
+        "type": "task_started",
+        "turn_id": "01a08d97-befb-79a0-8be0-65f006de8655",
+        "started_at": 1789081927,
+        "model_context_window": 258400,
+        "collaboration_mode_kind": "default"
+      }
+    },
+    {
+      "timestamp": "2026-09-10T23:12:09.905Z",
+      "ordinal": 14,
+      "type": "event_msg",
+      "payload": {
+        "type": "task_complete",
+        "turn_id": "01a08d97-befb-79a0-8be0-65f006de8655",
+        "last_agent_message": "READY",
+        "started_at": 1789081927,
+        "completed_at": 1789081929,
+        "duration_ms": 2479,
+        "time_to_first_token_ms": 2387
+      }
+    }
+  ],
+  "codex_tool_calls": [],
+  "inputs": [
+    {
+      "at": 1789081912.230992,
+      "step": 1,
+      "kind": "onboarding_reservation",
+      "inputs": {
+        "claude": 1,
+        "codex": 1
+      }
+    },
+    {
+      "at": 1789081926.4038386,
+      "step": 2,
+      "kind": "controller_input",
+      "tool": "codex",
+      "pane": "%2",
+      "text": "Controller setup check. Reply READY only. Do not execute tools, read messages, or send messages.",
+      "count": 2,
+      "reserve_usd": 0.5
+    },
+    {
+      "at": 1789081928.750522,
+      "step": 2,
+      "kind": "codex_submission_confirmed",
+      "pane": "%2",
+      "composer_empty": true,
+      "new_turn_started": true,
+      "opportunity_seconds": 65,
+      "opportunity_available": true,
+      "evidence": "submission-step2-2"
+    }
+  ],
+  "journal": [
+    {
+      "sequence": 1,
+      "event_type": "message_accepted",
+      "payload": {
+        "message_id": "646c0eb7-1c85-4a75-b575-d90320d9b4d4"
+      }
+    },
+    {
+      "sequence": 2,
+      "event_type": "message_accepted",
+      "payload": {
+        "message_id": "70337135-035a-40b3-856e-9d1a1ede7e5e"
+      }
+    },
+    {
+      "sequence": 3,
+      "event_type": "delivery_attempt",
+      "payload": {
+        "adapter": "tmux/1",
+        "delivery_id": "c751f8e6-ca11-49b3-a9cb-b9e9b6c00480",
+        "evidence": "durable claim",
+        "message_id": "70337135-035a-40b3-856e-9d1a1ede7e5e",
+        "observed_at": "2026-09-10T23:11:53.925454752+00:00",
+        "recipient": "alpha",
+        "stage": "attempt_started"
+      }
+    },
+    {
+      "sequence": 4,
+      "event_type": "receipt",
+      "payload": {
+        "adapter": "tmux/1",
+        "delivery_id": "c751f8e6-ca11-49b3-a9cb-b9e9b6c00480",
+        "evidence": "paste may be present; post-wait validation failed; submit withheld",
+        "message_id": "70337135-035a-40b3-856e-9d1a1ede7e5e",
+        "observed_at": "2026-09-10T23:11:54.110718863+00:00",
+        "recipient": "alpha",
+        "stage": "outcome_unknown"
+      }
+    },
+    {
+      "sequence": 5,
+      "event_type": "delivery_attempt",
+      "payload": {
+        "adapter": "native-mailbox/1",
+        "delivery_id": "32ba11e8-2355-4f52-a423-75ad1cdbd610",
+        "evidence": "durable claim",
+        "message_id": "646c0eb7-1c85-4a75-b575-d90320d9b4d4",
+        "observed_at": "2026-09-10T23:11:56.001966509+00:00",
+        "recipient": "lead",
+        "stage": "attempt_started"
+      }
+    },
+    {
+      "sequence": 6,
+      "event_type": "receipt",
+      "payload": {
+        "adapter": "native-mailbox/1",
+        "delivery_id": "32ba11e8-2355-4f52-a423-75ad1cdbd610",
+        "evidence": "durable native mailbox projection; uptake unobserved",
+        "message_id": "646c0eb7-1c85-4a75-b575-d90320d9b4d4",
+        "observed_at": "2026-09-10T23:11:56.061524475+00:00",
+        "recipient": "lead",
+        "stage": "native_enqueued"
+      }
+    }
+  ],
+  "final_activity": {
+    "version": 1,
+    "observed_at": "2026-09-10T23:13:13.078569027+00:00",
+    "stall_recent_activity": false,
+    "stall_no_output": true,
+    "stall_no_active_process": false,
+    "active_non_shell_process": true,
+    "recent_io": false,
+    "pane_alive": true,
+    "pane_foreign": false,
+    "last_output_age_secs": 63,
+    "activity_confidence": "idle",
+    "confidence": "high",
+    "last_observed_at": "2026-09-10T23:13:13.075521388+00:00",
+    "source": "notify",
+    "state": "idle"
+  },
+  "final_runtime_identity": {
+    "session_id": "01a08d97-88aa-7171-80d1-d59861a7af66",
+    "jsonl_path": "/tmp/th-l1-runtime-m8o6nmjx/codex/sessions/2026/09/11/rollout-2026-09-11T01-11-53-01a08d97-88aa-7171-80d1-d59861a7af66.jsonl"
+  },
+  "notify_rows": [
+    {
+      "ts": "2026-09-10T23:12:09.904827446Z",
+      "session_id": "01a08d97-88aa-7171-80d1-d59861a7af66",
+      "event": "agent-turn-complete",
+      "turn_id": "01a08d97-befb-79a0-8be0-65f006de8655"
+    },
+    {
+      "ts": "2026-09-10T23:12:10.354430080Z",
+      "session_id": "01a08d97-c0af-7430-bf29-3c4dfff8191b",
+      "event": "agent-turn-complete",
+      "turn_id": "01a08d97-c0cc-7233-a5f3-e57596b26b6b"
+    }
+  ],
+  "publication_calls": [],
+  "daemon_rows": 211
+}

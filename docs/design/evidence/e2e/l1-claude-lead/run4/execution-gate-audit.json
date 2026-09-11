@@ -1,0 +1,50 @@
+{
+  "commands": {
+    "check-quick": {
+      "command": [
+        "just",
+        "check-quick"
+      ],
+      "exit": 0,
+      "seconds": 29.839775590982754
+    },
+    "lint": {
+      "command": [
+        "just",
+        "lint"
+      ],
+      "exit": 0,
+      "seconds": 24.029040705994703
+    },
+    "test-contracts": {
+      "command": [
+        "just",
+        "test-contracts"
+      ],
+      "exit": 0,
+      "seconds": 20.718878930958454
+    }
+  },
+  "wrapper_exit": 0,
+  "trial_ids": {
+    "runtime": "th-l1-runtime-fwsclfr8",
+    "gates": "th-int-gates-j6sylqbc",
+    "build": "th-int-gates-lw3ulvt3",
+    "review": "th-l1-opus-k3u3ttmf"
+  },
+  "independent_survivors": {
+    "runtime": [],
+    "gates": [],
+    "build": [],
+    "review": []
+  },
+  "scratch_roots_removed": {
+    "runtime": true,
+    "gates": true,
+    "build": true,
+    "review": true
+  },
+  "no_src_tauri_diff": true,
+  "review_exit": 0,
+  "runtime_driver_exit": 2
+}

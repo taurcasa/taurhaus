@@ -1,0 +1,15 @@
+{
+  "forbidden_evidence": [],
+  "survivors": [],
+  "scratch_roots_still_exist": {
+    "th-l1-runtime-hlboibtm": false,
+    "th-int-gates-5g2ay9l": false,
+    "th-l1-opus-w0hxtyus": false,
+    "th-int-gates-ufc9n73y": false
+  },
+  "daemon_rows": 338,
+  "daemon_sha256": "7537e0cfefff59aa186c0cff68eea08a8b2be5d5dd99d551dfdecf6804d20707",
+  "snapshot_aliases": 714,
+  "unique_snapshots": 202,
+  "scope": "runtime, build, gate and review trial IDs only; no foreign process signalled"
+}

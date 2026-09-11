@@ -1,0 +1,24 @@
+{
+  "argv": [
+    "task",
+    "assign",
+    "1",
+    "--owner",
+    "lead",
+    "--status",
+    "in_progress",
+    "--json",
+    "--description",
+    "Preserve the lead role and this assignment across ordinary compaction, then handle the fresh native reply once.",
+    "--deliverable",
+    "A brief native text response distinguishing the fresh reply after recovery; no files or tools.",
+    "--first-step",
+    "Keep this assignment active through the controller compact; observe the next native teammate reply without tools.",
+    "--completion-signal",
+    "Respond once in native text when the fresh reply arrives; the controller records completion.",
+    "--review-route",
+    "Measure; controller acceptance with one independent Opus evidence review."
+  ],
+  "exit": 0,
+  "output": "[mesh] warning [LEGACY_LANE_METADATA]: task #1 has no lane metadata; one-active-lane guardrails are partially degraded\n{\"assignment_id\":\"9dc5a16c-798e-4bff-8326-9a7d5261b1ed\",\"delivered\":true,\"id\":\"29943de4-f836-4031-8095-a53a12607934\",\"task_id\":\"1\"}\n"
+}

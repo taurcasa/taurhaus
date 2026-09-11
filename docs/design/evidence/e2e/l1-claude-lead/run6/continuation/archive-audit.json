@@ -1,0 +1,12 @@
+{
+  "violations": 0,
+  "panes_checked": 33,
+  "max_pane_lines": 60,
+  "daemon_rows": 407,
+  "daemon_sha256": "23a4d4ed15be58b5bc636974cf971cb20a24c53c8ce5496a4003b0ab97ab7c84",
+  "final_scan_violations": 0,
+  "review_attempts_included": 2,
+  "snapshot_paths": 804,
+  "unique_objects": 224,
+  "original_files_unchanged": 77
+}

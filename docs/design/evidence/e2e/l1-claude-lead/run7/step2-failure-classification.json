@@ -1,0 +1,12 @@
+{
+  "classification": "taurhaus",
+  "facts": {
+    "daemon_alive": true,
+    "runtime_readable": true,
+    "activity_fresh": true,
+    "session_attributed": true,
+    "card_pending": true,
+    "card_exposed": false,
+    "observed_at": 1789082000.0551317
+  }
+}

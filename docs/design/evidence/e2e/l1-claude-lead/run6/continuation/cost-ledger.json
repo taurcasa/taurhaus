@@ -1,0 +1,266 @@
+{
+  "controller_inputs": {
+    "claude": 3,
+    "codex": 4
+  },
+  "claude_generations": [
+    {
+      "input_tokens": 10,
+      "output_tokens": 789,
+      "cache_read_input_tokens": 5479,
+      "cache_creation_input_tokens": 5801,
+      "message_id": "msg_011CevZV7hh4XKHUpBq3oprU",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "4f568461-7a51-467c-af25-68617f505107",
+      "usd": 0.01175415,
+      "upper_usd": 0.060395
+    },
+    {
+      "input_tokens": 10,
+      "output_tokens": 465,
+      "cache_read_input_tokens": 11280,
+      "cache_creation_input_tokens": 1001,
+      "message_id": "msg_011CevZXh7fiU3M9FmJcGTYQ",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "4f568461-7a51-467c-af25-68617f505107",
+      "usd": 0.00471425,
+      "upper_usd": 0.06378
+    },
+    {
+      "input_tokens": 8,
+      "output_tokens": 63,
+      "cache_read_input_tokens": 12281,
+      "cache_creation_input_tokens": 1025,
+      "message_id": "msg_011CevZXvjUHyFq67Pi6Po7o",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "4f568461-7a51-467c-af25-68617f505107",
+      "usd": 0.0028323500000000004,
+      "upper_usd": 0.066885
+    },
+    {
+      "input_tokens": 10,
+      "output_tokens": 159,
+      "cache_read_input_tokens": 13306,
+      "cache_creation_input_tokens": 153,
+      "message_id": "msg_011CevZZcRCqT9L7ggGgivE5",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "4f568461-7a51-467c-af25-68617f505107",
+      "usd": 0.0023268500000000005,
+      "upper_usd": 0.06814
+    },
+    {
+      "input_tokens": 10,
+      "output_tokens": 212,
+      "cache_read_input_tokens": 13459,
+      "cache_creation_input_tokens": 269,
+      "message_id": "msg_011CevZaH7N4ZhrmW4iAz4bU",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "4f568461-7a51-467c-af25-68617f505107",
+      "usd": 0.00275215,
+      "upper_usd": 0.06975
+    },
+    {
+      "input_tokens": 8,
+      "output_tokens": 209,
+      "cache_read_input_tokens": 13728,
+      "cache_creation_input_tokens": 3029,
+      "message_id": "msg_011CevZaX5kgk9SQr6rKTNG4",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "4f568461-7a51-467c-af25-68617f505107",
+      "usd": 0.00621205,
+      "upper_usd": 0.08487
+    },
+    {
+      "input_tokens": 10,
+      "output_tokens": 916,
+      "cache_read_input_tokens": 16757,
+      "cache_creation_input_tokens": 490,
+      "message_id": "msg_011CevZawb9EhBD3peuWcdBh",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "4f568461-7a51-467c-af25-68617f505107",
+      "usd": 0.0068782,
+      "upper_usd": 0.090865
+    }
+  ],
+  "codex_turns": [
+    {
+      "turn_id": "01a08d79-0134-7323-971e-f5d263acb181",
+      "rollout": "rollout-2026-09-11T00-38-31-01a08d78-fbbf-7cb3-bcb2-6b06ca77fb25.jsonl"
+    },
+    {
+      "turn_id": "01a08d79-9ccc-76a0-90f3-6ad094fcd688",
+      "rollout": "rollout-2026-09-11T00-38-31-01a08d78-fbbf-7cb3-bcb2-6b06ca77fb25.jsonl"
+    },
+    {
+      "turn_id": "01a08d79-c4bc-7850-ac96-b240b821c703",
+      "rollout": "rollout-2026-09-11T00-38-31-01a08d78-fbbf-7cb3-bcb2-6b06ca77fb25.jsonl"
+    }
+  ],
+  "codex_usage_by_rollout": {
+    "rollout-2026-09-11T00-38-31-01a08d78-fbbf-7cb3-bcb2-6b06ca77fb25.jsonl": {
+      "input_tokens": 151839,
+      "cached_input_tokens": 131072,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 1618,
+      "reasoning_output_tokens": 583,
+      "total_tokens": 153457
+    }
+  },
+  "seat_usd_estimate": 0.04618644,
+  "seat_usd_upper_rate": 0.6888334,
+  "rates_per_million": {
+    "claude": [
+      1,
+      0.1,
+      1.25,
+      5
+    ],
+    "codex": [
+      0.2,
+      0.02,
+      1.2
+    ]
+  },
+  "metering_complete": true,
+  "prior_preflight_spend_usd": 0,
+  "current_inputs": {
+    "claude": 3,
+    "codex": 4
+  },
+  "prior_trial": {
+    "attempt": "run6/continuation",
+    "controller_inputs": {
+      "claude": 0,
+      "codex": 0
+    },
+    "cap_inputs": {
+      "claude": 0,
+      "codex": 0
+    },
+    "seat_usd_estimate": 0,
+    "seat_usd_upper_rate": 0,
+    "prior_runtime_seconds": 0,
+    "standing_budget_rule": "(A) BUDGET: EVERY attempt starts with a FRESH budget of <= 8 Claude inputs (including the `/compact`), <= 12 Codex inputs and <= USD 2 of metered spend; the cumulative admission ledger of earlier runs is history (recorded, never counted); enforce the caps within this attempt (stop before the next input if spend plus one more turn could exceed a cap); never stop for a budget, metering or authorization question \u2014 this paragraph is the answer. Claude budget enforcement is TURN COUNTING by the controller (every Claude input is a controller `tmux send-keys`); the seat runs `claude-haiku-4-5-20251001` with role instructions forbidding tools beyond the named `mesh` commands; the dollar bound is the input cap \u00d7 per-turn usage read from `<CLAUDE_CONFIG_DIR>/projects/**/*.jsonl`. ",
+    "closed_runs_history": {
+      "runs_1_to_3_seats_usd": 0.10193487,
+      "run4_interrupted_seats_usd": "unknown",
+      "run4c_seats_usd": 0.01691088,
+      "run4d_seats_usd": 0.02511108,
+      "completed_reviews_usd": 1.4195,
+      "timed_out_review_usd": "unknown",
+      "implementer_orchestrator_usd": "unavailable",
+      "run5": {
+        "claude_metered_usd": 0.03495185,
+        "codex_metered_usd": 0.0128478,
+        "known_seats_usd": 0.04779965,
+        "metered_upper_rate_usd": 0.6032976,
+        "compact_usd": "unknown: no distinct usage-bearing generation retained for the compaction summarizer",
+        "complete_attempt_spend_usd": null,
+        "complete_attempt_metering": false,
+        "controller_metering_complete_flag": true,
+        "controller_inputs_including_onboarding": {
+          "claude": 4,
+          "codex": 4
+        },
+        "claude_typed_inputs": 3,
+        "claude_native_reply_batches": 1,
+        "claude_transcript_string_user_rows": 9,
+        "codex_actual_turns": 3,
+        "codex_reserved_inputs": 4,
+        "compactions": 1,
+        "current_review_usd": 0.156075,
+        "implementer_orchestrator_usd": "unavailable",
+        "history": {
+          "runs_1_to_3_seats_usd": 0.10193487,
+          "run4_interrupted_seats_usd": "unknown",
+          "run4c_seats_usd": 0.01691088,
+          "run4d_seats_usd": 0.02511108,
+          "completed_reviews_usd": 1.4195,
+          "timed_out_review_usd": "unknown",
+          "implementer_orchestrator_usd": "unavailable"
+        },
+        "basis": "API-equivalent token estimates at retained controller rates, not invoices. Complete compact metering not established; no zero-cost claim.",
+        "known_current_seats_plus_review_usd": 0.20387465
+      },
+      "run6_initial": {
+        "claude_metered_usd": 0.03456175,
+        "codex_metered_usd": 0.0115218,
+        "known_seats_usd": 0.04608355,
+        "metered_upper_rate_usd": 0.7083718,
+        "claude_cap_times_max_observed_input_usd": 0.0993032,
+        "controller_inputs_including_onboarding": {
+          "claude": 3,
+          "codex": 4
+        },
+        "claude_typed_inputs": 2,
+        "codex_typed_inputs": 1,
+        "codex_actual_turns": 3,
+        "claude_api_generations": 7,
+        "claude_native_alpha_reply_batches": 2,
+        "compactions": 0,
+        "compact_usd": "not run",
+        "assignment_native_wake_usd": "unknown: native assignment at 22:22:57.393Z; final pane thinking; no usage row before teardown",
+        "complete_attempt_spend_usd": null,
+        "complete_attempt_metering": false,
+        "current_review_usd": 0.192415,
+        "offline_tests_and_builds_paid_seat_usd": 0,
+        "implementer_orchestrator_usd": "unavailable",
+        "history": {
+          "runs_1_to_3_seats_usd": 0.10193487,
+          "run4_interrupted_seats_usd": "unknown",
+          "run4c_seats_usd": 0.01691088,
+          "run4d_seats_usd": 0.02511108,
+          "completed_reviews_usd": 1.4195,
+          "timed_out_review_usd": "unknown",
+          "implementer_orchestrator_usd": "unavailable",
+          "run5": {
+            "claude_metered_usd": 0.03495185,
+            "codex_metered_usd": 0.0128478,
+            "known_seats_usd": 0.04779965,
+            "metered_upper_rate_usd": 0.6032976,
+            "compact_usd": "unknown: no distinct usage-bearing generation retained for the compaction summarizer",
+            "complete_attempt_spend_usd": null,
+            "complete_attempt_metering": false,
+            "controller_metering_complete_flag": true,
+            "controller_inputs_including_onboarding": {
+              "claude": 4,
+              "codex": 4
+            },
+            "claude_typed_inputs": 3,
+            "claude_native_reply_batches": 1,
+            "claude_transcript_string_user_rows": 9,
+            "codex_actual_turns": 3,
+            "codex_reserved_inputs": 4,
+            "compactions": 1,
+            "current_review_usd": 0.156075,
+            "implementer_orchestrator_usd": "unavailable",
+            "history": {
+              "runs_1_to_3_seats_usd": 0.10193487,
+              "run4_interrupted_seats_usd": "unknown",
+              "run4c_seats_usd": 0.01691088,
+              "run4d_seats_usd": 0.02511108,
+              "completed_reviews_usd": 1.4195,
+              "timed_out_review_usd": "unknown",
+              "implementer_orchestrator_usd": "unavailable"
+            },
+            "basis": "API-equivalent token estimates at retained controller rates, not invoices. Complete compact metering not established; no zero-cost claim.",
+            "known_current_seats_plus_review_usd": 0.20387465
+          }
+        },
+        "basis": "API-equivalent token estimates at the inherited controller rates, not invoices. No unmetered in-flight usage is claimed free.",
+        "known_current_seats_plus_review_usd": 0.23849855
+      }
+    },
+    "run6_ruling": " (binding; do not refuse on it). Run 5 PASSED steps 1\u20134 on `a7e6db7e` + mesh `310144d`: the signed-in lead with the production compact hook; alpha attributed to ITS session with notify-sourced idle after its first turn while a foreign ephemeral notify record arrived (PR #172 proven live); both marker sends `submitted` and explicitly read; both replies received by Claude Code as NATIVE teammate messages before any explicit read; the explicit read/mark producing `consumed_by_read`. Step 5 stopped on two HARNESS faults, both corrected for run 6: (1) INPUT COUNTING: Claude inputs are counted ONLY from the controller's own submissions (`tmux send-keys` into the Claude pane, each reserved before it is sent); the transcript is read for USAGE/cost only and never for counting \u2014 the `/compact`'s generated rows (summary, local-command caveat, command echo, local-command output) and the native teammate reply batch are NOT inputs (run 5's `cumulative()` took the maximum of the controller count and every string-valued transcript user row and inflated 4 to 9). The `/compact` itself counts as one input. (2) RESUMABLE ASSIGNMENT FIXTURE: the production hook injects a recovery card only when the member's operational snapshot carries a task with id + subject and status `pending` or `in_progress` (`CompactionReinjectionService::snapshot_has_resumable_task`); run 5's lead had no task, so the hook correctly skipped with `no_resumable_task_context`. Before step 5, the controller must give the lead a real assignment through mesh \u2014 `mesh task create` with a subject and `mesh task assign --owner lead` with the five-line assignment card (run as the lead's own mesh identity from the controller, no model turn, not counted as a Claude input), status `in_progress` (accept it the same way if the audit's role/assignment identity needs it) \u2014 and record the resulting operational snapshot (task id, subject, status, role) BEFORE the `/compact`. This is the audit's \"role/assignment context\", never a hand-written recovery snapshot. Then step 5: one `/compact`; require the real hook boundary (`compaction.claude_hook.received/resolved/delivered`), a new context generation and card identity, and the recovery card in Claude's native context/transcript naming the current role/assignment identity; observation window >= 120 s. Step 6: one fresh reply marker (FERN) from alpha; Claude receives and acts on it exactly once after recovery, with no terminal-delivery receipt for Claude and no drain descriptor enabled; export; teardown. Run 6 keeps the fresh budget (<= 8 Claude inputs incl. the compact, <= 12 Codex inputs, <= USD 2 metered; compact spend recorded as unknown if the summarizer has no usage row \u2014 unknown is never a stop); earlier attempts' spend is history; never stop for a budget, metering or authorization question. Evidence under `l1-claude-lead/run6/`; headline = the latest verdict; mark run 5's headline as superseded by run 6.\n",
+    "continuation_request": "Continue from the current tree: commit any green step that is already complete, then proceed step by step, committing after each; run the gates; commit with the trailers.",
+    "resumption": "Original scratch sessions were destroyed by required teardown. The renewed execution request uses a fresh isolated attempt under the standing EVERY-attempt budget ruling. Preserve original run6 bytes; re-establish steps1-4 in new sessions before step5."
+  },
+  "claude_usd_by_input": {
+    "1790e302-8d13-46b2-8e4a-667d544193cc": 0.01175415,
+    "d094edd2-72bd-4059-834c-d407b69d395f": 0.0075466000000000005,
+    "bca14b9b-ff24-4210-b0f3-1d5e17a7ff8a": 0.0023268500000000005,
+    "f5ab9731-bb40-4455-a2d9-372e83cf6dda": 0.0089642,
+    "8059052f-1ec3-41a7-b65b-32c1150d7f14": 0.0068782
+  },
+  "claude_cap_times_max_observed_input_usd": 0.0940332
+}

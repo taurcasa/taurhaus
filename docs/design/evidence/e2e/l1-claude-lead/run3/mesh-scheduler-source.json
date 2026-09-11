@@ -1,0 +1,41 @@
+{
+  "worktree": "/home/mstie/projects/mesh-l1",
+  "commit": "fcb9647",
+  "path": "src/delivery/scheduler.rs",
+  "sha256": "f88c11d9c5cd1b34320a9d9f1fbe5f7812d7c8c53a0a8134326937828407a805",
+  "excerpts": [
+    {
+      "start_line": 139,
+      "lines": [
+        "    let mut names = std::collections::BTreeSet::new();",
+        "    for member in crate::config::list_members(&paths.config())? {",
+        "        if member.is_active == Some(false) {",
+        "            continue;",
+        "        }",
+        "        crate::validate::validate_name(&member.name)?;",
+        "        if !names.insert(member.name) || names.len() > 16 {",
+        "            return Err(refused(\"duplicate_recipient_or_worker_budget\"));",
+        "        }",
+        "    }",
+        "    Ok(names)"
+      ]
+    },
+    {
+      "start_line": 255,
+      "lines": [
+        "        last_defer_reason: None,",
+        "        failures: 0,",
+        "        completed: 0,",
+        "    };",
+        "    while !stop.load(Ordering::Acquire) {",
+        "        if !matches!(requested(owner.paths()), Ok(true))",
+        "            || !matches!(roster(owner.paths()), Ok(names) if names.contains(&state.member))",
+        "        {",
+        "            break;",
+        "        }",
+        "        state.heartbeat = chrono::Utc::now().to_rfc3339();",
+        "        state.error = None;"
+      ]
+    }
+  ]
+}

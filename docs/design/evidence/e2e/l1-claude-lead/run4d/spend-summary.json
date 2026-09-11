@@ -1,0 +1,36 @@
+{
+  "claude_usd": 0.0204022,
+  "codex_usd": 0.00470888,
+  "current_seats_usd": 0.02511108,
+  "upper_rate_usd": 0.2884584,
+  "inputs": {
+    "claude": 2,
+    "codex": 3
+  },
+  "controller_typed_inputs": {
+    "claude": 1,
+    "codex": 0
+  },
+  "onboarding_reservations": {
+    "claude": 1,
+    "codex": 1
+  },
+  "codex_reserved_marker_exposures": 2,
+  "codex_actual_turns": 1,
+  "claude_api_generations": 3,
+  "compactions": 0,
+  "metering_complete": true,
+  "claude_cap_times_max_observed_input_usd": 0.0931132,
+  "closed_runs_1_3_seats_usd": 0.10193487,
+  "earlier_run4_interrupted_startup_usd": "unknown; history only",
+  "run4c_seats_usd": 0.01691088,
+  "earlier_completed_reviews_usd": 1.075705,
+  "earlier_timed_out_review_usd": "unknown",
+  "current_review_usd": 0.343795,
+  "implementer_orchestrator_usd": "unavailable",
+  "basis": "Token-metered API-equivalent estimates, not invoices; rates unchanged from the controller. Fresh run4d ledger excludes all history.",
+  "current_review_failed_usd": 0.24587,
+  "current_review_successful_usd": 0.097925,
+  "current_seats_plus_review_usd": 0.36890608,
+  "unstarted_review_setup_usd": 0
+}

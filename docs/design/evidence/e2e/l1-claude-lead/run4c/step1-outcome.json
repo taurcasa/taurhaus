@@ -1,0 +1,5 @@
+{
+  "outcome": "PASS",
+  "step": 1,
+  "evidence": "initialize/result, runtime, native Claude transcript and hook registration"
+}

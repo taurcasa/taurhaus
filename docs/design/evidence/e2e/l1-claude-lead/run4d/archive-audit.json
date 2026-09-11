@@ -1,0 +1,11 @@
+{
+  "files_checked": 87,
+  "issues": [],
+  "max_pane_lines": 60,
+  "snapshot_aliases": 401,
+  "snapshot_objects": 112,
+  "daemon_complete_rows": 299,
+  "daemon_sha256": "d9c226aa4f2ee8025a2282bec0517e1b44517287440720cff44ad98bab76250e",
+  "path_audit_note": "Anchored absolute paths; scratch /tmp/.../home is allowed.",
+  "scope": "Final packet including both paid review invocations and prelaunch failure; generated red-test fixtures exempted from quota-value check."
+}

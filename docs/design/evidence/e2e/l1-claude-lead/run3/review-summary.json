@@ -1,0 +1,227 @@
+{
+  "receipts": [
+    {
+      "sequence": 1,
+      "event_type": "message_accepted",
+      "message_id": "19d06480-1122-46f9-a518-bd2512042c7e"
+    },
+    {
+      "sequence": 2,
+      "event_type": "message_accepted",
+      "message_id": "4f4f9fad-bc68-4f1b-b6ac-6b1ccf18b958"
+    },
+    {
+      "sequence": 3,
+      "event_type": "delivery_attempt",
+      "message_id": "19d06480-1122-46f9-a518-bd2512042c7e",
+      "delivery_id": "ffe0d824-465e-43ef-bb69-b6ac1dd1ecc5",
+      "stage": "attempt_started",
+      "recipient": "lead"
+    },
+    {
+      "sequence": 4,
+      "event_type": "receipt",
+      "message_id": "19d06480-1122-46f9-a518-bd2512042c7e",
+      "delivery_id": "ffe0d824-465e-43ef-bb69-b6ac1dd1ecc5",
+      "stage": "native_enqueued",
+      "recipient": "lead"
+    },
+    {
+      "sequence": 5,
+      "event_type": "delivery_attempt",
+      "message_id": "4f4f9fad-bc68-4f1b-b6ac-6b1ccf18b958",
+      "delivery_id": "d8d80e24-47d9-4228-b3ea-b47a0b2fa2ab",
+      "stage": "attempt_started",
+      "recipient": "alpha"
+    },
+    {
+      "sequence": 6,
+      "event_type": "receipt",
+      "message_id": "4f4f9fad-bc68-4f1b-b6ac-6b1ccf18b958",
+      "delivery_id": "d8d80e24-47d9-4228-b3ea-b47a0b2fa2ab",
+      "stage": "submitted",
+      "recipient": "alpha"
+    },
+    {
+      "sequence": 7,
+      "event_type": "receipt",
+      "message_id": "4f4f9fad-bc68-4f1b-b6ac-6b1ccf18b958",
+      "delivery_id": "d8d80e24-47d9-4228-b3ea-b47a0b2fa2ab",
+      "kind": "consumed_by_read",
+      "reader_name": "alpha",
+      "context": "explicit-mesh-cli"
+    },
+    {
+      "sequence": 8,
+      "event_type": "message_accepted",
+      "message_id": "bced46a9-2cfd-4e9d-97e9-9ab61b9a9aef"
+    },
+    {
+      "sequence": 9,
+      "event_type": "delivery_attempt",
+      "message_id": "bced46a9-2cfd-4e9d-97e9-9ab61b9a9aef",
+      "delivery_id": "736fcf8a-7614-407e-9ab2-502f440edc4e",
+      "stage": "attempt_started",
+      "recipient": "lead"
+    },
+    {
+      "sequence": 10,
+      "event_type": "receipt",
+      "message_id": "bced46a9-2cfd-4e9d-97e9-9ab61b9a9aef",
+      "delivery_id": "736fcf8a-7614-407e-9ab2-502f440edc4e",
+      "stage": "native_enqueued",
+      "recipient": "lead"
+    },
+    {
+      "sequence": 11,
+      "event_type": "message_accepted",
+      "message_id": "f77e936f-1813-4e10-a6c4-5c653525abac"
+    },
+    {
+      "sequence": 12,
+      "event_type": "message_accepted",
+      "message_id": "54f4905b-64a8-4f8f-a543-6ddabaab1cb9"
+    },
+    {
+      "sequence": 13,
+      "event_type": "delivery_attempt",
+      "message_id": "f77e936f-1813-4e10-a6c4-5c653525abac",
+      "delivery_id": "bf94b6e1-3cb8-49be-9d92-0db86e613308",
+      "stage": "attempt_started",
+      "recipient": "alpha"
+    },
+    {
+      "sequence": 14,
+      "event_type": "delivery_attempt",
+      "message_id": "54f4905b-64a8-4f8f-a543-6ddabaab1cb9",
+      "delivery_id": "e21bdcc0-476a-4f69-a2c0-7f87f3da91c1",
+      "stage": "attempt_started",
+      "recipient": "alpha"
+    },
+    {
+      "sequence": 15,
+      "event_type": "receipt",
+      "message_id": "f77e936f-1813-4e10-a6c4-5c653525abac",
+      "delivery_id": "bf94b6e1-3cb8-49be-9d92-0db86e613308",
+      "stage": "submitted",
+      "recipient": "alpha"
+    },
+    {
+      "sequence": 16,
+      "event_type": "receipt",
+      "message_id": "54f4905b-64a8-4f8f-a543-6ddabaab1cb9",
+      "delivery_id": "e21bdcc0-476a-4f69-a2c0-7f87f3da91c1",
+      "stage": "submitted",
+      "recipient": "alpha"
+    },
+    {
+      "sequence": 17,
+      "event_type": "receipt",
+      "message_id": "f77e936f-1813-4e10-a6c4-5c653525abac",
+      "delivery_id": "bf94b6e1-3cb8-49be-9d92-0db86e613308",
+      "kind": "consumed_by_read",
+      "reader_name": "alpha",
+      "context": "explicit-mesh-cli"
+    },
+    {
+      "sequence": 18,
+      "event_type": "receipt",
+      "message_id": "54f4905b-64a8-4f8f-a543-6ddabaab1cb9",
+      "delivery_id": "e21bdcc0-476a-4f69-a2c0-7f87f3da91c1",
+      "kind": "consumed_by_read",
+      "reader_name": "alpha",
+      "context": "explicit-mesh-cli"
+    },
+    {
+      "sequence": 19,
+      "event_type": "message_accepted",
+      "message_id": "a7d4d849-ebd1-4110-8fc1-fb92b1441a50"
+    },
+    {
+      "sequence": 20,
+      "event_type": "message_accepted",
+      "message_id": "e25b9530-9aa8-4b2b-ae34-2b1c392e81d1"
+    }
+  ],
+  "lead_mailbox": {
+    "exists": true,
+    "rows": []
+  },
+  "lead_health_present_final": false,
+  "native_window": {
+    "started_at": 1789044260.7685063,
+    "seconds": 65,
+    "remaining_outer_seconds": 831.914883246005,
+    "monotonic_deadline": 264863.562920687
+  },
+  "alpha_activity": {
+    "version": 1,
+    "observed_at": "2026-09-10T12:43:48.406202470+00:00",
+    "stall_recent_activity": false,
+    "stall_no_output": true,
+    "stall_no_active_process": false,
+    "active_non_shell_process": true,
+    "recent_io": false,
+    "pane_alive": true,
+    "pane_foreign": false,
+    "last_output_age_secs": 0,
+    "activity_confidence": "idle",
+    "confidence": "high",
+    "last_observed_at": "2026-09-10T12:43:48.403100223+00:00",
+    "source": "notify",
+    "state": "idle"
+  },
+  "source_inference": {
+    "worktree": "/home/mstie/projects/mesh-l1",
+    "commit": "fcb9647",
+    "path": "src/delivery/scheduler.rs",
+    "sha256": "f88c11d9c5cd1b34320a9d9f1fbe5f7812d7c8c53a0a8134326937828407a805",
+    "excerpts": [
+      {
+        "start_line": 139,
+        "lines": [
+          "    let mut names = std::collections::BTreeSet::new();",
+          "    for member in crate::config::list_members(&paths.config())? {",
+          "        if member.is_active == Some(false) {",
+          "            continue;",
+          "        }",
+          "        crate::validate::validate_name(&member.name)?;",
+          "        if !names.insert(member.name) || names.len() > 16 {",
+          "            return Err(refused(\"duplicate_recipient_or_worker_budget\"));",
+          "        }",
+          "    }",
+          "    Ok(names)"
+        ]
+      },
+      {
+        "start_line": 255,
+        "lines": [
+          "        last_defer_reason: None,",
+          "        failures: 0,",
+          "        completed: 0,",
+          "    };",
+          "    while !stop.load(Ordering::Acquire) {",
+          "        if !matches!(requested(owner.paths()), Ok(true))",
+          "            || !matches!(roster(owner.paths()), Ok(names) if names.contains(&state.member))",
+          "        {",
+          "            break;",
+          "        }",
+          "        state.heartbeat = chrono::Utc::now().to_rfc3339();",
+          "        state.error = None;"
+        ]
+      }
+    ]
+  },
+  "gates": {
+    "check-quick": 0,
+    "lint": 0,
+    "test-contracts": 0
+  },
+  "prior_review_failure": {
+    "exit": 1,
+    "terminal_reason": "budget_exhausted",
+    "actual_usd": 0.23627,
+    "configured_usd": 0.2,
+    "verdict": null
+  }
+}

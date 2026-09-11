@@ -1,0 +1,22 @@
+{
+  "deadline_seconds": 65,
+  "elapsed_seconds": 0.7510892950231209,
+  "samples": [
+    {
+      "elapsed_seconds": 0.0,
+      "hooks": {
+        "SessionStart": [
+          {
+            "matcher": "compact",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "bash '/tmp/th-l1-runtime-hlboibtm/claude/hooks/taurhaus-session-start-compact.sh'"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

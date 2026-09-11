@@ -1,0 +1,16 @@
+{
+  "taurhaus_base": "a7e6db7e",
+  "taurhaus_head": "a8904ebd94fa65d7db1a1aedd385885cb7ec52d4",
+  "branch": "feat/e2e-l1-claude-lead",
+  "mesh_commit": "310144de1f7939e7fbb2d80ab42ebd00580ce15d",
+  "descriptor": "unchanged; only tmux seats; no hosted seat",
+  "protocol_expected": 27,
+  "binaries": {
+    "taurhaus-daemon": {
+      "sha256": "eb64b4b7153a796630eff5c49b5e6d3589cd46d9da20b7b25ba7b063b13b6aeb"
+    },
+    "mesh": {
+      "sha256": "b85cb4dc8152e95d6a0541adce326d6306ecac60f9e9cdb85bb55df55771383c"
+    }
+  }
+}

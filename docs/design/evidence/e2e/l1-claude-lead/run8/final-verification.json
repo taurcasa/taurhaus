@@ -1,0 +1,31 @@
+{
+  "post_pack_offline_suites": [
+    {
+      "suite": "discovered",
+      "tests": 53,
+      "exit": 0
+    },
+    {
+      "suite": "controller.ReviewRegressionTests",
+      "tests": 11,
+      "exit": 0
+    }
+  ],
+  "gate_commands": [
+    {
+      "command": "just check-quick",
+      "exit": 0
+    },
+    {
+      "command": "just lint",
+      "exit": 0
+    },
+    {
+      "command": "just test-contracts",
+      "exit": 0
+    }
+  ],
+  "no_rust_diff": true,
+  "review_verdict": "approve",
+  "runtime_result": "UNAVAILABLE step1; steps2-6 NOT RUN"
+}

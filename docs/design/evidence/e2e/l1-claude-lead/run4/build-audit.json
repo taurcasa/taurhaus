@@ -1,0 +1,30 @@
+{
+  "wrapper_exit": 0,
+  "commands": {
+    "daemon-build": {
+      "command": [
+        "just",
+        "build-daemon"
+      ],
+      "exit": 0,
+      "sha256": "9dfc9daacbe21380405cec063c37a433becfdb32b2fffffd20813879f679f590"
+    },
+    "mesh-build": {
+      "command": [
+        "cargo",
+        "build",
+        "--bin",
+        "mesh"
+      ],
+      "exit": 0,
+      "sha256": "8944e5ac81822f42c3a4944300e2b8ceebefeed1859a239bfecf5560b7709cc4"
+    }
+  },
+  "trial_id": "th-int-gates-ehax8eo0",
+  "surviving_processes": [],
+  "scratch_root_removed": true,
+  "credentials_provisioned": false,
+  "runtime_daemon_tmux_model_processes_started": 0,
+  "mesh_descriptor_unchanged": true,
+  "no_src_tauri_diff": true
+}

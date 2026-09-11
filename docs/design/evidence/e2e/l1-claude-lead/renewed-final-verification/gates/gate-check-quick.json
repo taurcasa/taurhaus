@@ -1,0 +1,40 @@
+{
+  "command": [
+    "just",
+    "check-quick"
+  ],
+  "exit": 0,
+  "seconds": 26.510520542011363,
+  "cargo_preflight": [
+    {
+      "exit": 0,
+      "output": "3688536 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo check --all-targets\n"
+    },
+    {
+      "exit": 1,
+      "output": ""
+    }
+  ],
+  "last_lines": [
+    " \u001b[32m\u2713\u001b[39m src/lib/components/meshBuilderUtils.test.js \u001b[2m(\u001b[22m\u001b[2m1 test\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 2\u001b[2mms\u001b[22m\u001b[39m",
+    " \u001b[32m\u2713\u001b[39m src/test/visual/ipcMockCoverage.test.js \u001b[2m(\u001b[22m\u001b[2m2 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 2\u001b[2mms\u001b[22m\u001b[39m",
+    " \u001b[32m\u2713\u001b[39m src/lib/components/meshTabRuntime.warnings.test.js \u001b[2m(\u001b[22m\u001b[2m2 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 1\u001b[2mms\u001b[22m\u001b[39m",
+    " \u001b[32m\u2713\u001b[39m src/lib/ipc/templates.test.js \u001b[2m(\u001b[22m\u001b[2m1 test\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 2\u001b[2mms\u001b[22m\u001b[39m",
+    " \u001b[32m\u2713\u001b[39m src/visual-host/registry.test.js \u001b[2m(\u001b[22m\u001b[2m4 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 3\u001b[2mms\u001b[22m\u001b[39m",
+    " \u001b[32m\u2713\u001b[39m scripts/workflow-procedures.test.mjs \u001b[2m(\u001b[22m\u001b[2m226 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[33m 8390\u001b[2mms\u001b[22m\u001b[39m",
+    "     \u001b[33m\u001b[2m\u2713\u001b[22m\u001b[39m kills the whole detached group when its owner stops refreshing the lease \u001b[33m 2220\u001b[2mms\u001b[22m\u001b[39m",
+    "     \u001b[33m\u001b[2m\u2713\u001b[22m\u001b[39m leaves a run alone while its owner keeps the lease fresh \u001b[33m 6028\u001b[2mms\u001b[22m\u001b[39m",
+    "\u001b[90mstderr\u001b[2m | src/lib/components/MeshTab.test.js\u001b[2m > \u001b[22m\u001b[2mMeshTab\u001b[2m > \u001b[22m\u001b[2msuppresses skipped team folder discovery warnings from the inline availability banner",
+    "\u001b[22m\u001b[39m[mesh] suppressed internal discovery warning: skipped team folder 'taureval-1773711699719' because config is missing or invalid",
+    "",
+    " \u001b[32m\u2713\u001b[39m src/lib/components/MeshTab.test.js \u001b[2m(\u001b[22m\u001b[2m72 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[33m 7546\u001b[2mms\u001b[22m\u001b[39m",
+    "     \u001b[33m\u001b[2m\u2713\u001b[22m\u001b[39m auto-collapses the resume progress tray after completion \u001b[33m 5245\u001b[2mms\u001b[22m\u001b[39m",
+    "",
+    "\u001b[2m Test Files \u001b[22m \u001b[1m\u001b[32m150 passed\u001b[39m\u001b[22m\u001b[90m (150)\u001b[39m",
+    "\u001b[2m      Tests \u001b[22m \u001b[1m\u001b[32m2495 passed\u001b[39m\u001b[22m\u001b[90m (2495)\u001b[39m",
+    "\u001b[2m   Start at \u001b[22m 11:01:27",
+    "\u001b[2m   Duration \u001b[22m 11.75s\u001b[2m (transform 44.40s, setup 0ms, import 97.86s, tests 51.91s, environment 48.47s)\u001b[22m",
+    "",
+    "Quick check passed."
+  ]
+}

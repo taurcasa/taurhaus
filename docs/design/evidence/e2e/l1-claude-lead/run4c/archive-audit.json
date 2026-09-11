@@ -1,0 +1,12 @@
+{
+  "secrets_pattern_matches": 0,
+  "disallowed_operator_paths": 0,
+  "scan_correction": "Initial scan falsely matched /home inside /tmp/<trial>/home; standalone absolute-path boundary scan passes without evidence edits.",
+  "bounded_panes_max_lines": 60,
+  "daemon_jsonl_rows": 226,
+  "daemon_jsonl_sha256": "1592a0409d06bff2eb47f5827dfcf3efb1c91e7a0d769bd75ccba39c8c3200c1",
+  "snapshot_aliases": 301,
+  "unique_objects": 99,
+  "offline_tests": 33,
+  "controller_regressions": 4
+}

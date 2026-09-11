@@ -1,0 +1,193 @@
+[
+  {
+    "pid": 2704483,
+    "start_ticks": "30378215",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-l1-runtime-7osr_3kc",
+      "/tmp/th-l1-runtime-7osr_3kc",
+      "--ro-bind",
+      "<operator-path>",
+      "/tmp/th-l1-runtime-7osr_3kc/claude/.credentials.json",
+      "--chdir",
+      "/tmp/th-l1-runtime-7osr_3kc/project",
+      "/bin/bash",
+      "/tmp/th-l1-runtime-7osr_3kc/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 2704484,
+    "start_ticks": "30378215",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-l1-runtime-7osr_3kc",
+      "/tmp/th-l1-runtime-7osr_3kc",
+      "--ro-bind",
+      "<operator-path>",
+      "/tmp/th-l1-runtime-7osr_3kc/claude/.credentials.json",
+      "--chdir",
+      "/tmp/th-l1-runtime-7osr_3kc/project",
+      "/bin/bash",
+      "/tmp/th-l1-runtime-7osr_3kc/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 2704485,
+    "start_ticks": "30378215",
+    "argv": [
+      "/bin/bash",
+      "/tmp/th-l1-runtime-7osr_3kc/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 2704486,
+    "start_ticks": "30378215",
+    "argv": [
+      "tmux",
+      "-D",
+      "-f",
+      "/dev/null",
+      ""
+    ]
+  },
+  {
+    "pid": 2704544,
+    "start_ticks": "30378226",
+    "argv": [
+      "/bin/bash",
+      ""
+    ]
+  },
+  {
+    "pid": 2704547,
+    "start_ticks": "30378226",
+    "argv": [
+      "/tmp/th-l1-runtime-7osr_3kc/home/.local/bin/taurhaus-daemon",
+      "--port",
+      "45489",
+      "--data-dir",
+      "/tmp/th-l1-runtime-7osr_3kc/data",
+      ""
+    ]
+  },
+  {
+    "pid": 2705037,
+    "start_ticks": "30378277",
+    "argv": [
+      "/bin/bash",
+      "-ic",
+      "cd '/tmp/th-l1-runtime-7osr_3kc/project' && CLAUDE_DIR='/tmp/th-l1-runtime-7osr_3kc/claude' CLAUDE_CONFIG_DIR='/tmp/th-l1-runtime-7osr_3kc/claude' CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions --tools Bash --allowedTools \"Bash(mesh *)\" --model 'claude-haiku-4-5-20251001' --team-name 'l1-claude-lead' --agent-name 'lead' --agent-id 'lead@l1-claude-lead' --agent-type 'orchestrator' -n 'lead'; exec \"$SHELL\"",
+      ""
+    ]
+  },
+  {
+    "pid": 2705040,
+    "start_ticks": "30378277",
+    "argv": [
+      "claude",
+      "--dangerously-skip-permissions",
+      "--tools",
+      "Bash",
+      "--allowedTools",
+      "Bash(mesh *)",
+      "--model",
+      "claude-haiku-4-5-20251001",
+      "--team-name",
+      "l1-claude-lead",
+      "--agent-name",
+      "lead",
+      "--agent-id",
+      "lead@l1-claude-lead",
+      "--agent-type",
+      "orchestrator",
+      "-n",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 2705060,
+    "start_ticks": "30378283",
+    "argv": [
+      "/bin/bash",
+      "-ic",
+      "cd '/tmp/th-l1-runtime-7osr_3kc/project' && CLAUDE_DIR='/tmp/th-l1-runtime-7osr_3kc/claude' CODEX_HOME='/tmp/th-l1-runtime-7osr_3kc/codex' codex --yolo --dangerously-bypass-hook-trust -c 'notify=[\"/tmp/th-l1-runtime-7osr_3kc/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]' -m 'gpt-5.6-luna' -c 'model_reasoning_effort=\"low\"'; exec \"$SHELL\"",
+      ""
+    ]
+  },
+  {
+    "pid": 2705063,
+    "start_ticks": "30378283",
+    "argv": [
+      "codex",
+      "--yolo",
+      "--dangerously-bypass-hook-trust",
+      "-c",
+      "notify=[\"/tmp/th-l1-runtime-7osr_3kc/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]",
+      "-m",
+      "gpt-5.6-luna",
+      "-c",
+      "model_reasoning_effort=\"low\"",
+      ""
+    ]
+  },
+  {
+    "pid": 2705120,
+    "start_ticks": "30378294",
+    "argv": [
+      "/tmp/th-l1-runtime-7osr_3kc/home/.local/bin/mesh",
+      "team-daemon",
+      "start",
+      "--team",
+      "l1-claude-lead",
+      "--name",
+      "lead",
+      "--claude-dir",
+      "/tmp/th-l1-runtime-7osr_3kc/claude",
+      ""
+    ]
+  },
+  {
+    "pid": 2708323,
+    "start_ticks": "30378936",
+    "argv": [
+      "/tmp/th-l1-runtime-7osr_3kc/home/.local/bin/codex-code-mode-host",
+      ""
+    ]
+  }
+]

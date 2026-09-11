@@ -1,0 +1,20 @@
+...F..
+======================================================================
+FAIL: test_run4c_routes_to_its_own_fresh_admission (test_run4.Run4Tests.test_run4c_routes_to_its_own_fresh_admission)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/test_run4.py", line 18, in test_run4c_routes_to_its_own_fresh_admission
+    driver = runpy.run_path(str(controller.BASE / 'run3_driver.py'))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen runpy>", line 286, in run_path
+  File "<frozen runpy>", line 98, in _run_module_code
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/run3_driver.py", line 15, in <module>
+    assert LABEL in ('run3', 'run4')
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.002s
+
+FAILED (failures=1)

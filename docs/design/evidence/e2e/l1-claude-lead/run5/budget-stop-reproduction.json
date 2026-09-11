@@ -1,0 +1,8 @@
+{
+  "offline_only": true,
+  "observed_string_user_rows": 9,
+  "actual_claude_controller_inputs": 4,
+  "false_excess": true,
+  "cause": "controller.ledger passes all string user rows into cumulative max; compact adds summary, caveat, command echo and command output",
+  "introduced_in": "existing run4d controller; no fix in this lane"
+}

@@ -1,0 +1,21 @@
+{
+  "red_command": "python3 -m unittest discover -s docs/design/evidence/e2e/l1-claude-lead -p test_run3.py",
+  "red_exit": 1,
+  "red_observed": "4 AttributeError errors: installed_codex_bundle, codex_submitted, opportunity_deadline, alpha_attributed_idle missing",
+  "green_command": "python3 -m unittest discover -s docs/design/evidence/e2e/l1-claude-lead -p 'test_*.py'",
+  "green_exit": 0,
+  "tests": 27,
+  "fixtures": "generated temp files and mocked functions; no real credential or CLI access",
+  "additional_red": {
+    "test": "test_read_receipt_must_be_explicit_and_from_lead",
+    "exit": 1,
+    "reason": "AttributeError: explicit_lead_read missing",
+    "green_exit": 0
+  },
+  "post_run_red": {
+    "test": "test_opaque_model_internals_are_not_retained",
+    "exit": 1,
+    "reason": "AssertionError: opaque encrypted_content and signature retained",
+    "green_exit": 0
+  }
+}

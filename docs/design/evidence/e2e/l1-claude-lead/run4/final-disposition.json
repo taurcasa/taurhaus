@@ -1,0 +1,52 @@
+{
+  "outcome": "UNAVAILABLE",
+  "classification": "harness",
+  "step": 1,
+  "steps": [
+    {
+      "step": 1,
+      "outcome": "FAIL",
+      "classification": "harness",
+      "reason": "immediate session_id assertion after initialize; no 60-second attribution opportunity"
+    },
+    {
+      "step": 2,
+      "outcome": "NOT RUN",
+      "classification": "dependency on failed step 1"
+    },
+    {
+      "step": 3,
+      "outcome": "NOT RUN",
+      "classification": "dependency on failed step 1"
+    },
+    {
+      "step": 4,
+      "outcome": "NOT RUN",
+      "classification": "dependency on failed step 1"
+    },
+    {
+      "step": 5,
+      "outcome": "NOT RUN",
+      "classification": "dependency on failed step 1"
+    },
+    {
+      "step": 6,
+      "outcome": "NOT RUN",
+      "classification": "dependency on failed step 1"
+    }
+  ],
+  "reason": "step1.py:23 asserted lead session_id before scanner attribution. Driver fallback claude_auth_unavailable is unsupported, preserved only as raw execution evidence. No product diagnosis possible after 6.33 seconds.",
+  "evidence": [
+    "step1-driver.log",
+    "step1-observation-end/team/runtime/lead.json",
+    "initialize-result.json",
+    "claude-transcript.json",
+    "final/pane-1.txt",
+    "cost-ledger.json",
+    "taurhaus.log.jsonl"
+  ],
+  "paid_retry": false,
+  "runtime_controller_commit": "bbe8fdc4",
+  "offline_fix_commit": "ccc62453",
+  "full_lane_pass": false
+}

@@ -1,0 +1,9 @@
+{
+  "exit": 1,
+  "outcome": "timeout",
+  "timeout_seconds": 180,
+  "verdict": null,
+  "reported_cost_usd": null,
+  "configured_max_budget_usd": 0.65,
+  "note": "No JSON response returned; do not count as approval or zero spend."
+}

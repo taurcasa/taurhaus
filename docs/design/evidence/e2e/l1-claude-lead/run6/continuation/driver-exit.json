@@ -1,0 +1,50 @@
+{
+  "controller_exit": 2,
+  "steps": [
+    {
+      "step": 1,
+      "command": [
+        "/usr/bin/python3",
+        "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/step1.py"
+      ],
+      "exit": 0
+    },
+    {
+      "step": 2,
+      "command": [
+        "/usr/bin/python3",
+        "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/steps.py",
+        "2"
+      ],
+      "exit": 0
+    },
+    {
+      "step": 3,
+      "command": [
+        "/usr/bin/python3",
+        "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/steps.py",
+        "3"
+      ],
+      "exit": 0
+    },
+    {
+      "step": 4,
+      "command": [
+        "/usr/bin/python3",
+        "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/steps.py",
+        "4"
+      ],
+      "exit": 0
+    },
+    {
+      "step": 5,
+      "command": [
+        "/usr/bin/python3",
+        "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/steps.py",
+        "5"
+      ],
+      "exit": 1
+    }
+  ],
+  "children_waited": true
+}

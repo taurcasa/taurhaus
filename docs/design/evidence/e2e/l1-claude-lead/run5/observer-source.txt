@@ -1,0 +1,52 @@
+"""Passive run5 evidence sampler around the unchanged run4d controller."""
+import json, os, signal, subprocess, sys, time
+from pathlib import Path
+sys.path.insert(0, str(Path.cwd()/'docs/design/evidence/e2e/l1-claude-lead'))
+from controller_support import sanitize
+B=Path.cwd()/'docs/design/evidence/e2e/l1-claude-lead'; O=B/'run5'
+child=None; seen={}; root=None; startup=False; next_capture=0
+
+def save(name,value):
+    text=json.dumps(sanitize(value),sort_keys=True)
+    if seen.get(name)==text:return
+    seen[name]=text
+    with (O/name).open('a') as f:f.write(json.dumps({'observed_at':time.time(),'value':sanitize(value)})+'\n')
+def interrupt(signum,frame):raise RuntimeError('observer interrupted')
+for sig in (signal.SIGTERM,signal.SIGINT):signal.signal(sig,interrupt)
+try:
+    with (O/'driver-console.log').open('w') as log:
+        child=subprocess.Popen([sys.executable,str(B/'run3_driver.py'),'<operator-path>','<operator-path>'],env={**os.environ,'TRIAL_EVIDENCE_LABEL':'run5'},stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
+        while child.poll() is None:
+            try:
+                isolation=json.loads((O/'isolation.json').read_text()); env=isolation['env'];root=Path(env['TAURHAUS_DATA_DIR']).parent
+                team=root/'claude/teams/l1-claude-lead'
+                for name,path in [('alpha-activity-observations.jsonl',team/'state/activity/alpha.json'),('alpha-runtime-observations.jsonl',team/'runtime/alpha.json')]:
+                    if path.exists():save(name,json.loads(path.read_text()))
+                save('codex-session-files.jsonl',sorted(str(p.relative_to(root/'codex')) for p in (root/'codex').rglob('*') if p.is_file() and ('rollout-' in p.name or 'lock' in p.name)))
+                if not startup or time.monotonic()>=next_capture:
+                    proc=subprocess.run(['/usr/bin/tmux','capture-pane','-p','-t','%2'],env=env,capture_output=True,text=True,timeout=5)
+                    pane='\n'.join(proc.stdout.splitlines()[-60:]);ready=any(l.strip().startswith('›') for l in pane.splitlines()) and 'gpt-5.6-luna' in pane
+                    if ready and not startup:
+                        startup=True;save('startup-preflight.jsonl',{'ready':True,'criterion':'composer and model footer','pane':pane,'exit':proc.returncode})
+                    if time.monotonic()>=next_capture:
+                        save('startup-pane-captures.jsonl',{'pane':pane,'exit':proc.returncode});next_capture=time.monotonic()+30
+                if not startup:
+                    for path in (root/'codex/log').glob('*'):
+                        if path.is_file():
+                            (O/('startup-'+path.name)).write_text(sanitize(path.read_text(errors='replace')))
+            except (OSError,ValueError,subprocess.SubprocessError):pass
+            time.sleep(.5)
+        print('driver exit',child.returncode,flush=True)
+finally:
+    if child and child.poll() is None:
+        os.killpg(child.pid,signal.SIGTERM)
+        try:child.wait(timeout=30)
+        except subprocess.TimeoutExpired:os.killpg(child.pid,signal.SIGKILL);child.wait()
+    survivors=[]
+    if root:
+        for p in Path('/proc').iterdir():
+            if not p.name.isdigit():continue
+            try:
+                if (b'TAURHAUS_TRIAL_ID='+root.name.encode()+b'\0') in (p/'environ').read_bytes():survivors.append({'pid':int(p.name),'start_ticks':(p/'stat').read_text().rsplit(')',1)[1].split()[19]})
+            except (OSError,PermissionError):pass
+    (O/'teardown-audit.json').write_text(json.dumps({'driver_exit':child.returncode if child else None,'driver_waited':True,'survivors':survivors,'scratch_root_removed':root is not None and not root.exists(),'startup_preflight_observed':startup},indent=2)+'\n')

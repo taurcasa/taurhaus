@@ -1,0 +1,20 @@
+{
+  "initial_head": "027bc5e5ea6d0aaeec3170f38a59a970944811f5",
+  "original_tree_clean": true,
+  "already_committed_steps": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "routing_red_exit": 1,
+  "offline_tests": [
+    46,
+    11
+  ],
+  "green_exits": [
+    0,
+    0
+  ],
+  "runtime_logic": "Unchanged from committed parser fix; only evidence/driver/reviewer continuation routing added."
+}

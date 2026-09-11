@@ -1,0 +1,24 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "is_error": false,
+  "result": "```json\n{\n  \"verdict\": \"approve\",\n  \"findings\": [\n    {\n      \"severity\": \"minor\",\n      \"finding\": \"Sanitizer over-redaction: `sanitize()` strips dict keys containing 'auth', which silently removed the `claude_authenticated_and_team_bound` subcheck from result.json (4 keys) while step1.py emitted 5. The UNAVAILABLE outcome is unaffected, and the cause is mechanically explained by controller_support.py line 11, but the stored evidence diverges from the emitting code without annotation.\",\n      \"fix\": \"Either rename the subcheck key to avoid the 'auth' substring (e.g., `claude_session_bound`) or exempt the `subchecks` dict from the auth-key filter so result.json faithfully records what step1.py emitted.\"\n    },\n    {\n      \"severity\": \"minor\",\n      \"finding\": \"The USD-estimate formula in `claude_usage` uses a $1/M input rate (`input_tokens * 1 / 1e6`) while the report table header says '$1 input \u2026 per million'. For Haiku 4.5 the actual published rate is $0.80/M input. The discrepancy is conservative (overcharges by 25%) and the upper-rate column already charges everything at $5/M, so no budget breach is possible, but the estimate column mislabels itself as Haiku-rate when it uses a round-up rate.\",\n      \"fix\": \"Document that the estimate uses a deliberately rounded-up $1/M input rate, or switch to the published $0.80/M Haiku rate.\"\n    }\n  ]\n}\n```\n\n**Summary:** The report is truthful and conservative. UNAVAILABLE/harness is the correct classification \u2014 the daemon-only initialize path genuinely omits desktop hook reconciliation, so the compaction hook was never registered, and the controller stopped before step 2 without retrying or fabricating evidence. Spend ($0.064 upper bound vs $2 cap), cleanup (no survivors, port closed, root removed, credentials cleared), and secret handling (read-only mount, post-log auth injection, aggressive sanitizer) all check out. No step is claimed green. Both findings are minor evidence-hygiene items with no impact on the outcome or safety properties.",
+  "total_cost_usd": 0.28025500000000003,
+  "num_turns": 1,
+  "modelUsage": {
+    "claude-opus-4-6": {
+      "inputTokens": 2,
+      "outputTokens": 3651,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 18897,
+      "webSearchRequests": 0,
+      "costUSD": 0.28025500000000003,
+      "contextWindow": 200000,
+      "maxOutputTokens": 64000,
+      "thinkingTokens": 3109,
+      "canonicalModel": "claude-opus-4-6",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "secret_path_pattern_violations": 0,
+  "panes_checked": 33,
+  "max_pane_lines": 60,
+  "daemon_jsonl_rows": 282,
+  "excluded_usage_rows": 0,
+  "final_scan_violations": 0,
+  "snapshot_paths": 781,
+  "unique_snapshot_objects": 212,
+  "daemon_sha256": "86025294ca490e64c93917a248f9e61758d1a43185dfa50bbd00d42a5ff09e21",
+  "review_included": true
+}

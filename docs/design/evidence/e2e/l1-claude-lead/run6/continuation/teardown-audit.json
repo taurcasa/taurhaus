@@ -1,0 +1,11 @@
+{
+  "survivors": [],
+  "private_port_closed": true,
+  "scratch_root_removed": true,
+  "codex_auth_copy_removed": true,
+  "claude_credential_never_copied": true,
+  "claude_mount_placeholder_zero_bytes": true,
+  "runtime_children_waited": true,
+  "gate_children_waited": true,
+  "gate_root_removed": true
+}

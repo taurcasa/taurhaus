@@ -1,0 +1,5 @@
+{"observed_at": 1789077055.9136696, "value": ["tmp/arg0/codex-arg0RWxPup/.lock"]}
+{"observed_at": 1789077056.4174395, "value": ["tmp/arg0/codex-arg0foCoBA/.lock"]}
+{"observed_at": 1789077057.425253, "value": ["thread-writer-locks/.coordination.lock", "thread-writer-locks/01a08d4d-6eb8-7700-b6b5-8c7ae4f11ce6.lock", "tmp/arg0/codex-arg0foCoBA/.lock"]}
+{"observed_at": 1789077057.9300373, "value": ["sessions/2026/09/10/rollout-2026-09-10T23-50-57-01a08d4d-6eb8-7700-b6b5-8c7ae4f11ce6.jsonl", "thread-writer-locks/.coordination.lock", "thread-writer-locks/01a08d4d-6eb8-7700-b6b5-8c7ae4f11ce6.lock", "tmp/arg0/codex-arg0foCoBA/.lock"]}
+{"observed_at": 1789077164.2673914, "value": []}

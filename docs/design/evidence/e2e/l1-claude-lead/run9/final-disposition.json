@@ -1,0 +1,68 @@
+{
+  "outcome": "UNAVAILABLE",
+  "classification": "harness",
+  "failed_step": 5,
+  "steps": [
+    {
+      "step": 1,
+      "outcome": "PASS",
+      "classification": "runtime",
+      "note": "Registry absence exception applied"
+    },
+    {
+      "step": 2,
+      "outcome": "PASS",
+      "classification": "runtime",
+      "note": "Native runtime evidence retained"
+    },
+    {
+      "step": 3,
+      "outcome": "PASS",
+      "classification": "runtime",
+      "note": "Native runtime evidence retained"
+    },
+    {
+      "step": 4,
+      "outcome": "PASS",
+      "classification": "runtime",
+      "note": "Native runtime evidence retained"
+    },
+    {
+      "step": 5,
+      "outcome": "UNAVAILABLE",
+      "classification": "harness",
+      "note": "Native recovery observed, inherited observer rejects attachment rows"
+    },
+    {
+      "step": 6,
+      "outcome": "NOT RUN",
+      "classification": "first-failure stop",
+      "note": "No FERN input"
+    }
+  ],
+  "raw_controller_result": {
+    "outcome": "FAIL",
+    "classification": "product-owner-pending-evidence-review",
+    "step": 5,
+    "reason": "missing real compaction boundary/generation/native recovery card"
+  },
+  "deviations": [
+    "Claude wrote a host-PID .key but no PID .json session registry: claude_registry_absent, harness/environment; continued under explicit run9 ruling. Lead daemon session_id remained null.",
+    "During the original step1 window the passive registry index was corrected to list JSON registry entries separately from all directory files; peerToken was removed from retained key metadata before the first evidence commit. Live index correction preceded the generated-data red/green helper fix; no native state or model input changed.",
+    "Removing the PID namespace required PID/start-time-validated cleanup of owned descendants; no unrelated process was signalled.",
+    "Step5 inherited collector/predicate excludes Claude native attachment rows. It timed out after 120 seconds despite real delivered additional context; raw FAIL/product-owner-pending-evidence-review is retained and superseded by UNAVAILABLE/harness after examining native attachments. No step5 assertion rewrite or runtime retry; FERN step6 NOT RUN.",
+    "Compaction summarizer and foreign startup-notify usage unknown. Complete dollar-spend proof unavailable; metered subtotal remains below the fresh cap. No budget/authorization question or budget stop.",
+    "No product, descriptor, plan-ledger, branch, alternate Taurhaus checkout or Mesh-source change; no Mesh commit."
+  ],
+  "gates": {
+    "check-quick": 0,
+    "lint": 0,
+    "test-contracts": 0
+  },
+  "review": {
+    "model": "claude-opus-4-6",
+    "verdict": "approve",
+    "exit": 0,
+    "usd": 0.116055
+  }
+}

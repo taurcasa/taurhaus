@@ -1,0 +1,30 @@
+{
+  "verdict": {
+    "verdict": "approve",
+    "findings": [
+      {
+        "severity": "minor",
+        "finding": "The -15 (SIGTERM) child exit code is unexplained in the report but consistent with normal cleanup of a long-running process; no evidence of orphan or leak.",
+        "fix": "Consider annotating the SIGTERM exit in future reports for completeness."
+      },
+      {
+        "severity": "minor",
+        "finding": "earlier_timed_out_review_usd listed as 'unknown' \u2014 acceptable given fresh ledger scope but leaves total program spend unverifiable.",
+        "fix": "No action required for this review; note for future accounting."
+      }
+    ]
+  },
+  "successful_review_exit": 0,
+  "failed_review_exit": 1,
+  "failed_review_subtype": "error_max_budget_usd",
+  "failed_review_usd": 0.24587,
+  "successful_review_usd": 0.097925,
+  "total_review_usd": 0.343795,
+  "setup_failure": {
+    "exit": 1,
+    "paid_child_started": false,
+    "usd": 0,
+    "reason": "oversized local draft was not written; review reader exited before Popen; corrected compact brief"
+  },
+  "response_to_minors": "SIGTERM -15 is owned namespace cleanup after first-failure stop, not fault injection. Unknown historical spend remains unknown, so no total-program cost claim."
+}

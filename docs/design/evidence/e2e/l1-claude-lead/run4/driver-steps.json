@@ -1,0 +1,10 @@
+[
+  {
+    "step": 1,
+    "command": [
+      "/usr/bin/python3",
+      "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/step1.py"
+    ],
+    "exit": 1
+  }
+]

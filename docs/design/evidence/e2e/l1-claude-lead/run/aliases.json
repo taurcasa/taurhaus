@@ -1,0 +1,4 @@
+{
+  "identities.json": "cleanup-before.json",
+  "step1-outcome.json": "result.json"
+}

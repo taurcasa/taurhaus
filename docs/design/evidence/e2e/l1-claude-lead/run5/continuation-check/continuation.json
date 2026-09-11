@@ -1,0 +1,49 @@
+{
+  "starting_commit": "8794545f",
+  "starting_tree_clean": true,
+  "completed_step_commits": {
+    "1": "a8904ebd",
+    "2": "4b4895d8",
+    "3": "e7d550e8",
+    "4": "b5818f86"
+  },
+  "runtime_outcome": "UNAVAILABLE",
+  "classification": "harness",
+  "unfinished_steps": {
+    "5": "false input count after compact; no resumable assignment in reused fixture",
+    "6": "not run; requires successful recovery"
+  },
+  "runtime_restarted": false,
+  "controller_changed": false,
+  "new_seat_spend_usd": 0,
+  "new_reviewer_spend_usd": 0,
+  "implementer_spend_usd": "unavailable",
+  "offline_tests": {
+    "discovered": 41,
+    "controller_regressions": 11,
+    "exit_codes": [
+      0,
+      0
+    ]
+  },
+  "rust_diff": false,
+  "binding_constraints": [
+    "REUSE run 4d controller unchanged except evidence label",
+    "any step that FAILS: stop, record exact step and reason"
+  ],
+  "reason_no_runtime_continuation": "Run5 scratch root was removed by mandatory teardown; a new attempt with corrected input counting and assigned context would change the frozen controller/fixture. No such change is made in this verification continuation.",
+  "gate": {
+    "check-quick": 0,
+    "lint": 0,
+    "test-contracts": 0
+  },
+  "gate_wrapper_exit": 0,
+  "cleanup": {
+    "wrapper": {
+      "children_waited": true,
+      "root_removed": true
+    },
+    "independent_survivors": [],
+    "scratch_root_removed": true
+  }
+}

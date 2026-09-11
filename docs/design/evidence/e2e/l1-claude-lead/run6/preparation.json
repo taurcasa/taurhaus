@@ -1,0 +1,11 @@
+{
+  "red_exit": 1,
+  "red": "Three checks: counter 9 != 4, absent assignment helper, missing run6 route",
+  "green_discovered": 44,
+  "green_controller": 11,
+  "green_exits": [
+    0,
+    0
+  ],
+  "scope": "Run5 reuse: controller-only counting and real resumable assignment, plus run6 routing. No product changes."
+}

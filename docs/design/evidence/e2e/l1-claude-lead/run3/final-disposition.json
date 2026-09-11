@@ -1,0 +1,80 @@
+{
+  "outcome": "FAIL",
+  "classification": "product: unresolved owner (taurhaus | mesh | claude-code); Mesh scheduler exclusion is the proximate mechanism",
+  "step": 3,
+  "steps": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "FAIL — product owner unresolved (taurhaus | mesh | claude-code)",
+    "4": "NOT RUN",
+    "5": "NOT RUN",
+    "6": "NOT RUN"
+  },
+  "reason": "Accepted alpha replies at journal sequences 19/20 have no delivery_attempt or native_enqueued receipt and neither marker occurs in a native Claude input after 65 seconds. No external or Claude mesh read of lead inbox occurred. Empty lead.json snapshots are non-discriminating: sequences 9/10 native-mailbox/1 delivery and the 12:43:58.753 Claude transcript input demonstrate successful native consumption elsewhere in this run.",
+  "narrowing": "Mesh roster exclusion (src/delivery/scheduler.rs:138–148,261) is the proximate mechanism, not the proven trigger. The team-daemon stayed alive to teardown (cleanup-before.json:170–186, PID 1212168). The inactive-flag writer is unresolved, explicitly including claude-code; investigate the writer and Taurhaus recovery gate, not scheduler exclusion alone.",
+  "runtime_exit": 2,
+  "step3_driver_exit": 1,
+  "review": {
+    "model": "claude-opus-4-6",
+    "verdict": "approve",
+    "minors": 2,
+    "majors": 0,
+    "usd": 0.151525,
+    "first_request_usd": 0.23627,
+    "first_request_exit": 1
+  },
+  "gate_exits": {
+    "just check-quick": 0,
+    "just lint": 0,
+    "just test-contracts": 0
+  },
+  "classification_evidence": {
+    "flip_interval": "12:43:20–12:43:24 UTC: snapshots.json aliases step1-observation-end/team/config.json (true) and step1/team/config.json (false). First controller_input in events.jsonl is 12:43:26.057 UTC, after the flip; automatic Claude startup had already run.",
+    "taurhaus_recovery": "taurhaus.log.jsonl:132, 12:43:49.512 UTC coordination.team_daemon.skipped, operator lead, inactive_lead_control_identity. self_heal.pass.completed team_daemons_ensured goes 1 -> 0: daemon-events.json:803 vs 2412,4033,5199,5965 (first zero also JSONL line 133). src-tauri/src/coordination/orchestrator/teardown.rs:723–726 skips the mesh team-daemon start ensure in runtime/system.rs:388–408; that path cannot recover this state. This is not proof Taurhaus wrote the flag.",
+    "claude_code_candidate": "src-tauri/src/coordination/stores/config.rs:944–951 documents an external writer; its live non-lead qualification does not establish this lead writer. snapshots.json latest/team/inboxes/team-lead.json records a native from:lead idle notification with msgV/msg_id at 12:43:22.869 UTC. runtime-session-snapshot.json shows --team-name l1-claude-lead --agent-name lead. These narrow claude-code as a third candidate in the same tree/window; no retained process-attributed config-write trace proves it."
+  },
+  "review_round_1": {
+    "scope": "offline correction; no paid rerun or product change",
+    "findings": "all verified; none skipped",
+    "admission_deviation": "Run 3 enforced fresh input counts, violating the shared cumulative contract; realized cumulative counts 8 Claude / 11 Codex breached neither ceiling but leave no Claude headroom. cap_inputs restored in prior-spend.json for future admission; original execution fields/ledgers retained. Any continuation must include run-3 usage too.",
+    "submission_evidence": "Both events survive; only the last original pane/confirmation survives. Future submissions retain per-step/input sidecars and save confirmation before an insufficient-window stop.",
+    "additional_seat_usd": 0,
+    "additional_reviewer_usd": 0,
+    "verification": {
+      "offline_tests": {
+        "exit": 0,
+        "passed": 31,
+        "existing": 27,
+        "added": 4,
+        "red_exit": 1,
+        "red_failures": 4
+      },
+      "gate_exits": {
+        "just check-quick": 0,
+        "just lint": 0,
+        "just test-contracts": 0
+      },
+      "contract_first_exit": 101,
+      "contract_first_failure": "retired_gemini_tool_literal_does_not_return treated generated gate-isolation.json in .check-logs as source. Retained gate records under .json.log suffixes; reran only just test-contracts. No test/product change or bypass.",
+      "contract_passed": {
+        "cli_renderers": 15,
+        "harness_conformance": 20,
+        "module_boundary_assertions": 33
+      },
+      "frontend_passed": 2509,
+      "gate_logs": [
+        ".check-logs/l1-review-round1/",
+        ".check-logs/l1-review-round1-contracts-retry/"
+      ],
+      "admission_restart": "Initial waiting wrapper exited 1 on handled SIGTERM 15 before launching any gate; cleanup passed. Restarted with 2-second polling and the original first-admission 30-minute cutoff. Subsequent wrappers exited 0.",
+      "cleanup": {
+        "children_waited": true,
+        "scratch_roots_removed": true,
+        "trial_id_survivors": 0,
+        "real_model_clis_invoked": false,
+        "credential_access": false
+      },
+      "rust_unit": "not applicable: no src-tauri/ changes in this correction"
+    }
+  }
+}

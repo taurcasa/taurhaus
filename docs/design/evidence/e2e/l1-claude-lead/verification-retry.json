@@ -1,0 +1,88 @@
+[
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "exit": 1,
+    "polls": 3,
+    "wait_seconds": 20.03,
+    "meaning": "no Cargo process at build admission"
+  },
+  {
+    "command": "just build-daemon",
+    "cwd": "/home/mstie/projects/taurhaus-l1-claude-lead",
+    "exit": 0,
+    "target": "/home/mstie/projects/taurhaus-l1-claude-lead/src-tauri/target",
+    "build_jobs": 2,
+    "elapsed_seconds": 134.59,
+    "last_lines": [
+      "   Compiling taurhaus v0.9.7 (/home/mstie/projects/taurhaus-l1-claude-lead/src-tauri)",
+      "   Compiling tauri-plugin-dialog v2.6.0",
+      "   Compiling ctrlc v3.5.1",
+      "   Compiling reqwest v0.13.2",
+      "   Compiling ignore v0.4.25",
+      "   Compiling tauri-plugin-opener v2.5.3",
+      "   Compiling tauri-plugin-window-state v2.4.1",
+      "   Compiling socket2 v0.5.10",
+      "   Compiling fs2 v0.4.3",
+      "    Finished `release` profile [optimized] target(s) in 2m 14s"
+    ],
+    "binary_sha256": "28c1937eb99b8495814654d113b3642fd63b051c1550a0e6610662abac4184cd"
+  },
+  {
+    "command": "just check-quick",
+    "cwd": "/home/mstie/projects/taurhaus-l1-claude-lead",
+    "exit": 0,
+    "target": "/home/mstie/projects/taurhaus-l1-claude-lead/src-tauri/target",
+    "build_jobs": 2,
+    "elapsed_seconds": 26.17,
+    "last_lines": [
+      " \u2713 src/test/visual/ipcMockCoverage.test.js (2 tests) 2ms",
+      " \u2713 src/lib/ipc/templates.test.js (1 test) 2ms",
+      " \u2713 src/lib/components/meshBuilderUtils.test.js (1 test) 2ms",
+      " \u2713 src/lib/windowsNsisPayloadHash.test.js (4 tests) 3ms",
+      " \u2713 src/visual-host/registry.test.js (4 tests) 3ms",
+      " \u2713 scripts/workflow-procedures.test.mjs (226 tests) 8411ms",
+      "     \u2713 kills the whole detached group when its owner stops refreshing the lease  2221ms",
+      "     \u2713 leaves a run alone while its owner keeps the lease fresh  6044ms",
+      "stderr | src/lib/components/MeshTab.test.js > MeshTab > suppresses skipped team folder discovery warnings from the inline availability banner",
+      "[mesh] suppressed internal discovery warning: skipped team folder 'taureval-1773711699719' because config is missing or invalid",
+      "",
+      " \u2713 src/lib/components/MeshTab.test.js (72 tests) 7510ms",
+      "     \u2713 auto-collapses the resume progress tray after completion  5238ms",
+      "",
+      " Test Files  150 passed (150)",
+      "      Tests  2495 passed (2495)",
+      "   Start at  10:13:21",
+      "   Duration  12.01s (transform 47.68s, setup 0ms, import 103.98s, tests 53.69s, environment 48.56s)",
+      "",
+      "Quick check passed."
+    ]
+  },
+  {
+    "command": "just lint",
+    "cwd": "/home/mstie/projects/taurhaus-l1-claude-lead",
+    "exit": 0,
+    "target": "/home/mstie/projects/taurhaus-l1-claude-lead/src-tauri/target",
+    "build_jobs": 2,
+    "elapsed_seconds": 23.83,
+    "last_lines": [
+      "cd src-tauri && cargo clippy --all-targets -- -D warnings",
+      "   Compiling taurhaus v0.9.7 (/home/mstie/projects/taurhaus-l1-claude-lead/src-tauri)",
+      "    Finished `dev` profile [unoptimized + debuginfo] target(s) in 16.95s",
+      "bun run lint",
+      "$ bun run lint:structure",
+      "$ bun run lint:knip && bun run lint:deps",
+      "$ knip",
+      "$ bun run check:node && dependency-cruiser --no-config --include-only '^src' --output-type err-long src",
+      "$ node scripts/check-node-version.mjs",
+      "",
+      "\u2714 no dependency violations found (347 modules, 798 dependencies cruised)",
+      "",
+      "bun scripts/check-workflow-scripts.mjs",
+      "workflow script check passed: 5 script(s) in .claude/workflows",
+      "scripts/check-just-gates.sh",
+      "just check gate guard passed.",
+      "scripts/check-lane-worktree-recipes.sh",
+      "lane worktree recipe guard passed."
+    ]
+  }
+]

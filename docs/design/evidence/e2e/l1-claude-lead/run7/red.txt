@@ -1,0 +1,29 @@
+EF
+======================================================================
+ERROR: test_publishes_real_assignment_once_without_recovery_state (test_run7.Run7Tests.test_publishes_real_assignment_once_without_recovery_state)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/test_run7.py", line 40, in test_publishes_real_assignment_once_without_recovery_state
+    trial.publish_assignment({'task_id': '9', 'assignment_id': 'real-assignment'})
+    ^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Trial' object has no attribute 'publish_assignment'
+
+======================================================================
+FAIL: test_run7_routes_to_fresh_attempt (test_run7.Run7Tests.test_run7_routes_to_fresh_attempt)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/test_run7.py", line 16, in test_run7_routes_to_fresh_attempt
+    driver = runpy.run_path(str(controller.BASE / 'run3_driver.py'))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen runpy>", line 286, in run_path
+  File "<frozen runpy>", line 98, in _run_module_code
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/run3_driver.py", line 15, in <module>
+    assert LABEL in ('run3', 'run4', 'run4c', 'run4d', 'run5', 'run6', 'run6/continuation')
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError
+
+----------------------------------------------------------------------
+Ran 2 tests in 0.003s
+
+FAILED (failures=1, errors=1)

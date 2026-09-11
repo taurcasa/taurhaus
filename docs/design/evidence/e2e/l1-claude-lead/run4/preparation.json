@@ -1,0 +1,13 @@
+{
+  "checkout": "/home/mstie/projects/taurhaus-l1-claude-lead",
+  "branch": "feat/e2e-l1-claude-lead",
+  "controller_commit": "6622862a8fc32343aa683bcab368d5efdd8a2b0f",
+  "taurhaus_base": "1db4f9bf",
+  "base_is_ancestor": true,
+  "protocol": 27,
+  "mesh_worktree": "/home/mstie/projects/mesh-l1",
+  "mesh_commit": "ed591876fdbe9832d18ab7992ce7583c80bc8c64",
+  "mesh_descriptor": "unchanged",
+  "credential_access": false,
+  "paid_seats_started": 0
+}

@@ -1,0 +1,42 @@
+{
+  "command": [
+    "just",
+    "lint"
+  ],
+  "exit": 0,
+  "seconds": 26.48622284596786,
+  "cargo_preflight": [
+    {
+      "exit": 0,
+      "output": "42058 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib native_mailbox\n"
+    },
+    {
+      "exit": 0,
+      "output": "44799 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib native_mailbox\n"
+    },
+    {
+      "exit": 1,
+      "output": ""
+    }
+  ],
+  "last_lines": [
+    "cd src-tauri && cargo clippy --all-targets -- -D warnings",
+    "   Compiling taurhaus v0.9.7 (/home/mstie/projects/taurhaus-l1-claude-lead/src-tauri)",
+    "    Finished `dev` profile [unoptimized + debuginfo] target(s) in 20.58s",
+    "bun run lint",
+    "$ bun run lint:structure",
+    "$ bun run lint:knip && bun run lint:deps",
+    "$ knip",
+    "$ bun run check:node && dependency-cruiser --no-config --include-only '^src' --output-type err-long src",
+    "$ node scripts/check-node-version.mjs",
+    "",
+    "\u2714 no dependency violations found (347 modules, 805 dependencies cruised)",
+    "",
+    "bun scripts/check-workflow-scripts.mjs",
+    "workflow script check passed: 5 script(s) in .claude/workflows",
+    "scripts/check-just-gates.sh",
+    "just check gate guard passed.",
+    "scripts/check-lane-worktree-recipes.sh",
+    "lane worktree recipe guard passed."
+  ]
+}

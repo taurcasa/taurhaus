@@ -1,0 +1,9 @@
+{
+  "red_command": "python3 docs/design/evidence/e2e/l1-claude-lead/test_controller.py",
+  "red_observed": "Traceback (most recent call last):\n  File \"/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/test_controller.py\", line 3, in <module>\n    from controller_support import claude_usage, admit_input, complete_rows, sanitize\nModuleNotFoundError: No module named 'controller_support'\n",
+  "green_command": "python3 docs/design/evidence/e2e/l1-claude-lead/test_controller.py",
+  "green_exit": 0,
+  "tests": 6,
+  "real_cli_invoked": false,
+  "credential_access": false
+}

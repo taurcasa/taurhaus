@@ -1,0 +1,19 @@
+{
+  "preparation_red_exit": 1,
+  "preparation_red": "9 != 4; missing assignment helper; missing run6 route",
+  "preparation_green": [
+    44,
+    11
+  ],
+  "fix_round_red_exit": 1,
+  "fix_round_red": "JSONDecodeError on merged warning; erroneous product classification",
+  "fix_round_green": [
+    45,
+    11
+  ],
+  "green_exits": [
+    0,
+    0
+  ],
+  "real_cli_or_credentials_used_by_offline_tests": false
+}

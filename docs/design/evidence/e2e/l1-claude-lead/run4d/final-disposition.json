@@ -1,0 +1,70 @@
+{
+  "outcome": "FAIL",
+  "classification": "taurhaus",
+  "failed_step": 2,
+  "reason": "Both Claude marker sends accepted; neither exposed to alpha after full 65-second opportunity. Native alpha onboarding completed, session attributed; uncertain activity export keeps Mesh pending. Ownership is an evidence-backed routing inference, not a proved deeper root cause.",
+  "steps": [
+    {
+      "step": 1,
+      "outcome": "PASS",
+      "classification": null,
+      "evidence": "step1-outcome.json; snapshots.json step1/; claude-transcript.json"
+    },
+    {
+      "step": 2,
+      "outcome": "FAIL",
+      "classification": "taurhaus",
+      "evidence": "review-excerpts.json; snapshots.json final/; step2-window-3.json; claude-transcript.json; codex-transcript.json"
+    },
+    {
+      "step": 3,
+      "outcome": "NOT RUN",
+      "classification": "dependency on failed step 2",
+      "evidence": "driver-steps.json; no input submitted"
+    },
+    {
+      "step": 4,
+      "outcome": "NOT RUN",
+      "classification": "dependency on failed step 2",
+      "evidence": "driver-steps.json; no input submitted"
+    },
+    {
+      "step": 5,
+      "outcome": "NOT RUN",
+      "classification": "dependency on failed step 2",
+      "evidence": "driver-steps.json; no input submitted"
+    },
+    {
+      "step": 6,
+      "outcome": "NOT RUN",
+      "classification": "dependency on failed step 2",
+      "evidence": "driver-steps.json; no input submitted"
+    }
+  ],
+  "product_changes": false,
+  "descriptor_edits": false,
+  "paid_retries": 0,
+  "review": "approve; independent Opus lens, no required fix",
+  "deviations": [
+    "Two markers target sole alpha, replacing alpha/beta as explicitly ruled; no hosted seat.",
+    "Required derived attributed-idle observation absent; corrected native readiness gate continued and actual marker delivery then failed.",
+    "Steps 3\u20136 stopped under binding first-failure rule; no compaction/native reply round trip claimed.",
+    "No journal pagination was reached: complete on-disk segment retained (9 rows), not claimed as paginated read coverage.",
+    "Claude input confirmation reconstructed from native user/tool/assistant transcript and final empty composer; reused controller explicitly records new-turn/composer confirmation only for typed Codex inputs (none this attempt).",
+    "Quota redaction corrected offline after run, with generated regression; no runtime rerun or product edits. Earlier checkpoint contains pre-redaction quota metadata; final packet is scrubbed.",
+    "First gate wrapper is isolated, credential-free; no src-tauri diff so test-rust-unit not applicable.",
+    "First Opus review exited 1/error_max_budget_usd after $0.245870, above its CLI $0.20 setting; no verdict. A prelaunch brief-file failure started no model ($0). Corrected brief review exited 0, approved, $0.097925. Both paid invocations retained; no lane-seat restart."
+  ],
+  "review_findings": [
+    {
+      "severity": "minor",
+      "finding": "The -15 (SIGTERM) child exit code is unexplained in the report but consistent with normal cleanup of a long-running process; no evidence of orphan or leak.",
+      "fix": "Consider annotating the SIGTERM exit in future reports for completeness."
+    },
+    {
+      "severity": "minor",
+      "finding": "earlier_timed_out_review_usd listed as 'unknown' \u2014 acceptable given fresh ledger scope but leaves total program spend unverifiable.",
+      "fix": "No action required for this review; note for future accounting."
+    }
+  ]
+}

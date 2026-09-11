@@ -1,0 +1,33 @@
+{
+  "claude_metered_usd": 0.03495185,
+  "codex_metered_usd": 0.0128478,
+  "known_seats_usd": 0.04779965,
+  "metered_upper_rate_usd": 0.6032976,
+  "compact_usd": "unknown: no distinct usage-bearing generation retained for the compaction summarizer",
+  "complete_attempt_spend_usd": null,
+  "complete_attempt_metering": false,
+  "controller_metering_complete_flag": true,
+  "controller_inputs_including_onboarding": {
+    "claude": 4,
+    "codex": 4
+  },
+  "claude_typed_inputs": 3,
+  "claude_native_reply_batches": 1,
+  "claude_transcript_string_user_rows": 9,
+  "codex_actual_turns": 3,
+  "codex_reserved_inputs": 4,
+  "compactions": 1,
+  "current_review_usd": 0.156075,
+  "implementer_orchestrator_usd": "unavailable",
+  "history": {
+    "runs_1_to_3_seats_usd": 0.10193487,
+    "run4_interrupted_seats_usd": "unknown",
+    "run4c_seats_usd": 0.01691088,
+    "run4d_seats_usd": 0.02511108,
+    "completed_reviews_usd": 1.4195,
+    "timed_out_review_usd": "unknown",
+    "implementer_orchestrator_usd": "unavailable"
+  },
+  "basis": "API-equivalent token estimates at retained controller rates, not invoices. Complete compact metering not established; no zero-cost claim.",
+  "known_current_seats_plus_review_usd": 0.20387465
+}

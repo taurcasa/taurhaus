@@ -1,0 +1,22 @@
+{
+  "command": [
+    "cargo",
+    "build",
+    "--bin",
+    "mesh"
+  ],
+  "exit": 0,
+  "seconds": 3.1748182799783535,
+  "cargo_preflight": [
+    {
+      "exit": 1,
+      "output": ""
+    }
+  ],
+  "last_lines": [
+    "bwrap: Only the last --chdir option will take effect",
+    "   Compiling mesh v0.2.29 (<operator-path>",
+    "    Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.15s"
+  ],
+  "sha256": "c1e1156364668abdb03fc46fbee2df91df5a9d50194cf633993c1d31dd507e03"
+}

@@ -1,0 +1,37 @@
+{
+  "scope": "Run 4 only; runs 1\u20133 closed by quoted ruling in admission-ledger.json",
+  "inputs": {
+    "claude_reserved_onboarding": 1,
+    "codex_reserved_onboarding": 1,
+    "controller_typed_model_inputs": 0,
+    "compactions": 0
+  },
+  "claude": {
+    "session_id": "e0d73e8d-b9b5-4998-98a8-f9828b526724",
+    "usage_generations": 0,
+    "usd": null,
+    "status": "unmetered interrupted startup"
+  },
+  "codex": {
+    "turns": [
+      {
+        "turn_id": "01a08c2e-ab5b-7873-bb59-518ebb12df15",
+        "rollout": "rollout-2026-09-10T18-37-42-01a08c2e-a66c-7040-8387-e3e1180ecfa2.jsonl"
+      }
+    ],
+    "usage_rows": 0,
+    "usd": null,
+    "status": "unmetered interrupted startup"
+  },
+  "seat_total_usd": null,
+  "dollar_cap_verified": false,
+  "raw_zero_counters_are_not_free_usage": true,
+  "review_usd": 0.11181,
+  "review_status": "complete, independent Opus evidence lens approved; separate from seat cap",
+  "historical_seats_estimate_usd": 0.10193487,
+  "historical_completed_reviews_estimate_usd": 0.798975,
+  "historical_timed_out_review_usd": null,
+  "implementer_orchestrator_usd": null,
+  "run4_seats_plus_review_usd": null,
+  "known_historical_seats_plus_completed_reviews_plus_current_review_usd": 1.01271987
+}

@@ -1,0 +1,15 @@
+{
+  "red_exit": 1,
+  "red": "four run5 setup tests failed before changes",
+  "green_exit": 0,
+  "tests_passed": 52,
+  "runtime_logic": "run4d unchanged; only product revision constants changed",
+  "setup_changes": [
+    "run5 driver/review routing",
+    "Cargo admission below three existing jobs",
+    "required commit trailer"
+  ],
+  "discovered_tests": 41,
+  "controller_regressions": 11,
+  "hook_admission_red_exit": 1
+}

@@ -1,0 +1,54 @@
+{
+  "outcome": "AWAITING_INPUT_CAP_CHANGE",
+  "classification": "harness",
+  "runtime_started": false,
+  "prior_ledger": "continued-run/final-cost-ledger.json",
+  "prior_cap_inputs": {
+    "claude": 5,
+    "codex": 6
+  },
+  "unchanged_caps": {
+    "claude": 8,
+    "codex": 12,
+    "seat_usd": 2,
+    "runtime_seconds": 900
+  },
+  "remaining_claude_inputs": 3,
+  "minimum_claude_inputs_to_complete_from_teardown": 6,
+  "minimum_inputs_explanation": [
+    "new lead onboarding",
+    "step 2 sends",
+    "step 3 native replies, assuming one batch",
+    "step 4 explicit read",
+    "step 5 compact",
+    "step 6 fresh native reply"
+  ],
+  "requested_claude_cap": 12,
+  "requested_cap_authorized": false,
+  "additional_paid_inputs": 0,
+  "additional_seat_spend_usd": 0,
+  "additional_reviewer_spend_usd": 0,
+  "cumulative_seat_estimate_usd": 0.0672021,
+  "cumulative_seat_upper_rate_usd": 0.6578964,
+  "prior_runtime_seconds": 451.759904,
+  "codex_companion": {
+    "name": "codex-code-mode-host",
+    "regular_file": true,
+    "sha256": "3e85d67471825f73d02ff5f7e047ca1f6ca8caa3f59e4c6e8d9ca6ca7302cb45"
+  },
+  "offline_tests": {
+    "new": 4,
+    "all": 21,
+    "red_exit": 1,
+    "red_errors": [
+      "KeyError: controller_inputs",
+      "missing codex_bundle",
+      "missing submit_input",
+      "missing codex_ready"
+    ],
+    "green_exit": 0
+  },
+  "new_claude_credential_mounts": 0,
+  "new_credential_copies": 0,
+  "new_runtime_processes": 0
+}

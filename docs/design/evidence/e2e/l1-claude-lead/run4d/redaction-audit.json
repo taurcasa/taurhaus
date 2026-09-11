@@ -1,0 +1,13 @@
+{
+  "changed_paths": [
+    "events.jsonl",
+    "codex-transcript.json",
+    "final/pane-2.txt",
+    "step2-alpha-observation/pane-2.txt",
+    "step2-failure/pane-2.txt",
+    "step2-native-ready/pane-2.txt",
+    "step1/pane-2.txt"
+  ],
+  "reason": "Remove quota banner and rate_limits; preserve per-turn usage and all daemon rows.",
+  "history_note": "The local step-1 checkpoint predates final redaction; final tracked packet is scrubbed. No credentials were printed or retained."
+}

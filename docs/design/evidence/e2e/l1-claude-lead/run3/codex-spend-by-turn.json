@@ -1,0 +1,50 @@
+[
+  {
+    "turn_id": "01a08b58-2ddf-75e1-99c9-1a113e000cfd",
+    "delta_usage": {
+      "input_tokens": 9410,
+      "cached_input_tokens": 0,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 5,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 9415
+    },
+    "usd_estimate": 0.001888
+  },
+  {
+    "turn_id": "01a08b58-385f-7720-a635-ae7149616265",
+    "delta_usage": {
+      "input_tokens": 44085,
+      "cached_input_tokens": 39936,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 567,
+      "reasoning_output_tokens": 237,
+      "total_tokens": 44652
+    },
+    "usd_estimate": 0.00230892
+  },
+  {
+    "turn_id": "01a08b58-a4cc-7ab2-8c0e-90ac842968ae",
+    "delta_usage": {
+      "input_tokens": 24926,
+      "cached_input_tokens": 22016,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 161,
+      "reasoning_output_tokens": 44,
+      "total_tokens": 25087
+    },
+    "usd_estimate": 0.0012155199999999999
+  },
+  {
+    "turn_id": "01a08b58-cb58-7970-ac48-da9806cb7993",
+    "delta_usage": {
+      "input_tokens": 57011,
+      "cached_input_tokens": 52224,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 332,
+      "reasoning_output_tokens": 37,
+      "total_tokens": 57343
+    },
+    "usd_estimate": 0.0024002800000000003
+  }
+]

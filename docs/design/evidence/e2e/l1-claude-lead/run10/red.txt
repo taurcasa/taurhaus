@@ -1,0 +1,65 @@
+FFF.
+======================================================================
+FAIL: test_run10_driver_uses_fresh_label (test_run10.Run10Tests.test_run10_driver_uses_fresh_label)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/test_run10.py", line 74, in test_run10_driver_uses_fresh_label
+    driver = runpy.run_path(str(controller.BASE/'run3_driver.py'))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen runpy>", line 286, in run_path
+  File "<frozen runpy>", line 98, in _run_module_code
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/run3_driver.py", line 15, in <module>
+    assert LABEL in ('run3', 'run4', 'run4c', 'run4d', 'run5', 'run6', 'run6/continuation', 'run7', 'run8', 'run9')
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError
+
+======================================================================
+FAIL: test_snapshot_retains_native_hook_attachment (test_run10.Run10Tests.test_snapshot_retains_native_hook_attachment)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/test_run10.py", line 35, in test_snapshot_retains_native_hook_attachment
+    self.assertEqual(saved['claude-transcript.json'], [attachment()])
+AssertionError: Lists differ: [] != [{'type': 'attachment', 'attachment': {'ty[232 chars]}'}}]
+
+Second list contains 1 additional elements.
+First extra element 0:
+{'type': 'attachment', 'attachment': {'type': 'hook_success', 'hookName': 'SessionStart:compact', 'stdout': '{"hookSpecificOutput": {"additionalContext": "[taurhaus] recovery_card\\nIdentity: lead on l1-claude-lead\\nCurrent task: #1 \\u2014 Run10 native mailbox recovery"}}'}}
+
+- []
++ [{'attachment': {'hookName': 'SessionStart:compact',
++                  'stdout': '{"hookSpecificOutput": {"additionalContext": '
++                            '"[taurhaus] recovery_card\\nIdentity: lead on '
++                            'l1-claude-lead\\nCurrent task: #1 \\u2014 Run10 '
++                            'native mailbox recovery"}}',
++                  'type': 'hook_success'},
++   'type': 'attachment'}]
+
+======================================================================
+FAIL: test_step5_accepts_hook_success_as_native_context (test_run10.Run10Tests.test_step5_accepts_hook_success_as_native_context)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/test_run10.py", line 63, in test_step5_accepts_hook_success_as_native_context
+    self.check_recovery(attachment())
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/test_run10.py", line 59, in check_recovery
+    steps.main(5)
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/steps.py", line 187, in main
+    wait(recovered,'missing real compaction boundary/generation/native recovery card',timeout=120)
+  File "/usr/lib/python3.12/unittest/mock.py", line 1134, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1138, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1199, in _execute_mock_call
+    result = effect(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/test_run10.py", line 58, in <lambda>
+    patch.object(steps, 'wait', side_effect=lambda predicate, *a, **k: self.assertEqual(predicate(), expected)):
+                                                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False != True
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.037s
+
+FAILED (failures=3)

@@ -1,0 +1,21 @@
+{
+  "first_request": {
+    "exit": 1,
+    "verdict": null,
+    "reason": "budget_exhausted",
+    "configured_usd": 0.2,
+    "metered_usd": 0.23627
+  },
+  "shorter_request": {
+    "exit": 0,
+    "model": "claude-opus-4-6",
+    "verdict": "approve",
+    "minors": 2,
+    "majors": 0,
+    "metered_usd": 0.151525
+  },
+  "fix_round": "Clarified controller/native input counts; preserved unknown isActive writer caveat. No product fix or paid seat retry.",
+  "run3_seats_plus_reviews_usd": 0.42252777,
+  "known_all_runs_seats_plus_completed_reviews_usd": 0.90090987,
+  "historical_unreported_review": "unknown; configured ceiling USD 0.65"
+}

@@ -1,0 +1,798 @@
+You are the independent Opus evidence reviewer for a small-change trial. Review the actual UNAVAILABLE step-1 report, not whether it passes the full E2E lane. No tools. Return JSON {"verdict":"approve"|"fix_required","findings":[{"severity":"major"|"minor","finding":"...","fix":"..."}]}. fix_required requires a major. Assess truthful failure classification, spend, cleanup, secrets, evidence discipline. Missing runtime steps are intentional first-failure stop, not a pass claim. Be concise. One fix round may correct the report; no paid seat rerun is allowed.
+
+FILE ../l1-claude-lead.md
+# L1 — UNAVAILABLE at step 1: missing Claude compaction hook registration
+
+Continuation of preflight commits `7b281653`, `f804e2d4`, `2bc5069e`.
+The prior budget/credential refusals are superseded by the operator's explicit
+turn-counting and read-only credential-mount decisions. This continuation
+**ran the real managed Claude seat**, authenticated successfully, and observed
+its native startup-card response. It did not establish the complete lane.
+
+| Ordered audit step | Outcome / classification | Evidence |
+|---|---|---|
+| 1. Initialize, authenticated team-bound lead, roots/owner/hooks | **UNAVAILABLE — harness** | Sole production initialize completed; canonical format 2, owner `team`, managed `%1` Claude and `%2` Codex. Claude Haiku consumed its startup recovery card and responded. Scratch Claude hook map remained empty throughout a 65-second poll. The daemon-only controller omitted the desktop post-initialize hook reconciliation. |
+| 2. Claude sends two distinct markers | **NOT RUN — dependency on 1** | No marker sends or retry inputs. |
+| 3. Seat reads/replies; Claude native uptake | **NOT RUN — dependency on 1** | No seat replies. Startup-card uptake does not prove canonical seat-reply projection. |
+| 4. Claude explicit read/mark | **NOT RUN — dependency on 1** | No `mesh read` from Claude or an external lead reader. |
+| 5. Ordinary `/compact` and genuine recovery card | **NOT RUN — dependency on 1** | No compact input, no post-compact generation claimed. |
+| 6. Fresh native reply after recovery; teardown | **MAIL NOT RUN; cleanup recorded separately** | No post-recovery reply or receipt claimed. |
+
+The missing hook is a **harness prerequisite failure**, not evidence that
+Claude Code failed compaction. Production hook installation occurs in
+`commands/coordination.rs::maybe_ensure_compact_hooks_for_team`; the daemon-only
+initialize path used here did not invoke that desktop wrapper. Startup
+reconciliation installs hooks only if a managed Claude team already exists;
+this daemon started with an empty scratch root. No product files were changed,
+no hook/card was fabricated, and initialize was not repeated.
+
+## Runtime evidence
+
+Packet: [run/result.json](l1-claude-lead/run/result.json),
+[initialize result](l1-claude-lead/run/initialize-result.json),
+[hook poll](l1-claude-lead/run/step1-hook-poll.json),
+[native transcript](l1-claude-lead/run/claude-transcript.json),
+[commands/RPC exits](l1-claude-lead/run/events.jsonl).
+
+- Initialize run: `init_8629c6968ccd43528eb8aa2055d1c01f`.
+- Claude session: `7c44e455-db6d-4dcd-ac4b-52203520c966`, attachment 1,
+  context generation `0`, named `lead`, managed LaunchNew `%1`.
+- Claude model actually reported: `claude-haiku-4-5-20251001`, Code `2.1.267`.
+  Pane banner: `Haiku 4.5 · Claude Max`; native input: `Message from @lead`.
+- Claude response: “I've received the recovery card and understand the instruction
+  set. I'm in an unassigned state and ready to proceed when a task is assigned.”
+- Codex actually launched: `0.153.4`, `gpt-5.6-luna low`, tmux `%2`.
+  No Codex task-start event or paid generation observed. Its runtime session ID
+  remained null; no onboarding uptake is claimed for alpha.
+- Lead baseline canonical message `03fcf9eb-d289-4dc1-9b7c-dde11e8e0239`,
+  delivery `bcbfbd20-7bff-46e4-bf47-270b5829cf42`, sequence 1.
+  Alpha baseline message `5057da84-8475-489a-9fad-3fee0e4b2928`,
+  delivery `e92cdd6d-d76d-4ed1-8d94-4720bdca7ffe`, sequence 2.
+- Lead `inboxes/lead.json` existed and was empty after native startup consumption.
+  This startup path is distinct from the untested canonical seat replies.
+  No explicit-read receipt is inferred from native consumption.
+
+The packet retains complete journal rows, runtime/config/health/activity records,
+passive lock observations and panes limited to 60 lines. It does not execute
+journal reader pagination or census because step 1 failed before those actions.
+Direct segment snapshots are not represented as paginated reader coverage.
+
+## Spend and hard caps
+
+[Transcript-derived ledger](l1-claude-lead/run/cost-ledger.json).
+Previous preflight: **0 inputs, $0 seat spend**. Continuation: reserve/count
+**1 Claude onboarding input and 1 Codex onboarding start**, **0 additional
+controller inputs**, **0 compactions**. One actual Claude API message generation;
+zero observed Codex generations. Limits: 8 Claude / 12 Codex inputs, $2 seats,
+15 minutes. No further input was admitted.
+
+| Claude generation | Input | Cache creation | Cache read | Output | USD estimate | Upper-rate USD |
+|---|---:|---:|---:|---:|---:|---:|
+| `msg_011CeuTT5xm5RFjXHzAnkrUq` | 10 | 11,245 | 0 | 1,577 | **0.02195125** | **0.06416000** |
+| Codex | 0 observed | — | — | 0 observed | **0** | **0** |
+
+Estimates use Haiku $1 input / $0.10 cache read / $1.25 cache creation / $5
+output per million; the upper rate charges every token $5/M. Luna's inherited
+trial rates are $0.20/$0.02/$1.20; no Luna generation occurred. These are token
+estimates, not invoices. The controller reserves $0.50 per next input before
+any measured turn, thereafter at least the largest observed upper-rate
+message. Production onboarding is reserved before initialize. No external
+interactive dollar guard was required or claimed. The bound for arbitrary
+future turns is not proven by this failed one-generation run.
+
+## Controller, builds, gates and cleanup
+
+Exact executed controller: [controller.py](l1-claude-lead/controller.py),
+[step1.py](l1-claude-lead/step1.py),
+[actions.py](l1-claude-lead/actions.py),
+[pure helpers](l1-claude-lead/controller_support.py).
+Credential source arguments are deliberately represented symbolically:
+
+```sh
+python3 docs/design/evidence/e2e/l1-claude-lead/build_gates.py --build
+python3 docs/design/evidence/e2e/l1-claude-lead/controller.py \
+  --claude-credential "$AUTHORIZED_CLAUDE_SINGLE_FILE" \
+  --codex-auth "$AUTHORIZED_CODEX_SINGLE_FILE" \
+  --claude-binary "$PINNED_CLAUDE_BINARY" --codex-binary "$PINNED_CODEX_BINARY"
+python3 docs/design/evidence/e2e/l1-claude-lead/actions.py '{"op":"capture","label":"step1-authenticated"}'
+python3 docs/design/evidence/e2e/l1-claude-lead/step1.py
+python3 docs/design/evidence/e2e/l1-claude-lead/build_gates.py
+```
+
+Both builds exited **0** after polling `pgrep -af '(^|/)cargo( |$)'`, waiting
+at most 30 minutes. Daemon source base **6f61f611**, protocol **27**, release
+SHA256 `28c1937eb99b8495814654d113b3642fd63b051c1550a0e6610662abac4184cd`.
+Mesh **a6ee29681a44a472c0ce7b33b9630d4865c93012**, built only in
+`/home/mstie/projects/mesh-l1/target`; binary digest is in
+[build evidence](l1-claude-lead/continuation-verification/gates/gate-mesh-build.json).
+Descriptors stayed unchanged. No global installation or release.
+
+Required gates and independent Opus evidence review are recorded below after
+completion. No `src-tauri/` diff, so `just test-rust-unit` is not applicable.
+Six new offline tests first failed with `ModuleNotFoundError:
+controller_support`, then passed; they generate data in memory, invoke no CLI
+and access no credential roots. This lane makes no regression/product fix.
+
+Cleanup uses the owned Bubblewrap PID namespace and tracked children, then
+verifies survivors, private-port closure, removal of the Codex auth copy and
+the zero-byte Claude mount placeholder. The Claude credential was never copied.
+See [cleanup](l1-claude-lead/run/cleanup.json).
+
+## Deviations and limits
+
+1. The operator overrides the audit's beta hosted seat: only lead + alpha tmux
+   were initialized. Two markers would have targeted alpha; step 2 was not run.
+2. Explicit operator credential sources supersede the older audit prohibition:
+   one Codex auth file copied mode 0600; one Claude credential read-only bound.
+3. This controller omitted production desktop hook reconciliation, stopping
+   step 1. No product conclusion about compaction or canonical lead replies.
+4. Scratch role text mistakenly says `--root`; this Mesh version spells that
+   selector `--claude-dir`. No model executed a Mesh command, so no rejected
+   command or paid retry occurred. Retained unchanged as executed.
+5. The sanitizer also obscured some `/home/.local/bin` suffixes inside scratch
+   paths. Exact launch flags and separate binary digests remain available;
+   those obscured strings are not reconstructed as observed evidence.
+6. No later numbered green steps or per-step success commits are fabricated.
+   This report retains the failed step and its cleanup as one evidence commit.
+
+
+FILE controller.py
+"""Lane-1 runtime controller. Explicit credentials arguments; no fallback.
+
+All model input is serialized through input(); initialize reserves onboarding.
+Steps are operator-controller actions, never automatically retried. No product edits.
+"""
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import secrets
+import shlex
+import shutil
+import signal
+import socket
+import subprocess
+import tempfile
+import time
+from controller_support import complete_rows, sanitize, claude_usage, admit_input
+
+CHECKOUT=Path('/home/mstie/projects/taurhaus-l1-claude-lead')
+MESH=Path('/home/mstie/projects/mesh-l1')
+BASE=Path(__file__).resolve().parent
+TEAM='l1-claude-lead'
+
+class Trial:
+    def __init__(self,args):
+        self.args=args; self.children=[]; self.started=time.monotonic(); self.step=1
+        self.inputs={'claude':0,'codex':0}; self.root=None; self.port=None; self.seen={}; self.count=0
+        self.out=BASE/'run'; self.out.mkdir(exist_ok=False)
+        self.result={'outcome':'UNAVAILABLE','classification':'harness','step':1}
+    def save(self,name,value):
+        text=value if isinstance(value,str) else json.dumps(sanitize(value),indent=2)+'\n'
+        text=sanitize(text); digest=hashlib.sha256(text.encode()).hexdigest()
+        if self.seen.get(name)==digest: return
+        self.seen[name]=digest
+        path=self.out/name; path.parent.mkdir(parents=True,exist_ok=True); path.write_text(text)
+    def event(self,kind,**value):
+        row=sanitize({'at':time.time(),'step':self.step,'kind':kind,**value})
+        with (self.out/'events.jsonl').open('a') as f: f.write(json.dumps(row)+'\n')
+    def run(self,argv,check=True):
+        child=subprocess.Popen(argv,env=self.env,cwd=self.root/'project',stdout=subprocess.PIPE,stderr=subprocess.STDOUT,start_new_session=True)
+        self.children.append(child)
+        data=child.communicate(timeout=60)[0].decode(errors='replace')
+        self.event('command',argv=argv,exit=child.returncode,output='\n'.join(data.splitlines()[-60:]))
+        if check and child.returncode: raise RuntimeError(f'command exit {child.returncode}: {data[-1500:]}')
+        return data
+    def rpc(self,method,params):
+        request={'id':secrets.token_hex(8),'method':method,'params':params}
+        # Log before adding the private RPC token.
+        self.event('rpc_request',request=request)
+        request['auth']=(self.root/'data/daemon.token').read_text().strip()
+        with socket.create_connection(('127.0.0.1',self.port),timeout=15) as sock:
+            sock.sendall(json.dumps(request).encode()+b'\n'); stream=sock.makefile('rb')
+            while True:
+                response=json.loads(stream.readline())
+                if response.get('id')==request['id']: break
+        self.event('rpc_response',response=response)
+        if 'error' in response: raise RuntimeError(str(response['error']))
+        return response['result']
+    def rows(self,glob):
+        return [r for p in self.root.glob(glob) for r in complete_rows(p.read_text())]
+    def ledger(self):
+        c=claude_usage(self.rows('claude/projects/**/*.jsonl'))
+        turns={}; totals={}
+        for path in (self.root/'codex').rglob('rollout-*.jsonl'):
+            for row in complete_rows(path.read_text()):
+                p=row.get('payload',{})
+                if row.get('type')!='event_msg': continue
+                if p.get('type')=='task_started': turns[p['turn_id']]={'turn_id':p['turn_id'],'rollout':path.name}
+                if p.get('type')=='token_count' and p.get('info'):
+                    usage=p['info'].get('total_token_usage',{})
+                    prev=totals.get(path.name,{})
+                    totals[path.name]={k:max(v,prev.get(k,0)) for k,v in usage.items() if isinstance(v,(int,float))}
+        usd=sum(x['usd'] for x in c); upper=sum(x['upper_usd'] for x in c)
+        for u in totals.values():
+            usd+=(max(0,u.get('input_tokens',0)-u.get('cached_input_tokens',0))*.2+u.get('cached_input_tokens',0)*.02+u.get('output_tokens',0)*1.2)/1e6
+            upper+=(u.get('input_tokens',0)+u.get('output_tokens',0))*1.2/1e6
+        value={'controller_inputs':self.inputs,'claude_generations':c,'codex_turns':list(turns.values()),'codex_usage_by_rollout':totals,'seat_usd_estimate':usd,'seat_usd_upper_rate':upper,'rates_per_million':{'claude':[1,.1,1.25,5],'codex':[.2,.02,1.2]},'metering_complete':len(totals)>=len({t['rollout'] for t in turns.values()}),'prior_preflight_spend_usd':0}
+        self.save('cost-ledger.json',value)
+        if upper>2 or len(turns)>12: raise RuntimeError('seat budget exceeded; stop')
+        return value
+    def identities(self):
+        found=[]
+        if not self.root: return found
+        for proc in Path('/proc').iterdir():
+            if not proc.name.isdigit(): continue
+            try:
+                if (b'TAURHAUS_TRIAL_ID='+self.root.name.encode()+b'\0') not in (proc/'environ').read_bytes(): continue
+                stat=(proc/'stat').read_text().rsplit(')',1)[1].split()
+                found.append({'pid':int(proc.name),'start_ticks':stat[19],'argv':(proc/'cmdline').read_bytes().decode(errors='replace').split('\0')})
+            except (FileNotFoundError,ProcessLookupError,PermissionError): pass
+        return found
+    def snapshot(self,label='latest'):
+        if not self.root: return
+        team=self.root/'claude/teams'/TEAM
+        for pattern in ['config.json','runtime/*.json','state/**/*.json','state/**/*.jsonl','inboxes/*.json']:
+            for path in team.glob(pattern):
+                try: value=json.loads(path.read_text()) if path.suffix=='.json' else complete_rows(path.read_text())
+                except (OSError,ValueError): continue
+                self.save(label+'/team/'+str(path.relative_to(team)),value)
+        self.save(label+'/lead-projection.json',{'exists':(team/'inboxes/lead.json').exists(),'rows':json.loads((team/'inboxes/lead.json').read_text()) if (team/'inboxes/lead.json').exists() else None})
+        for p in (self.root/'claude').glob('settings.json'):
+            self.save(label+'/claude-hooks.json',json.loads(p.read_text()).get('hooks',{}))
+        transcripts=[]
+        for r in self.rows('claude/projects/**/*.jsonl'):
+            if r.get('type') in ('assistant','user','system'): transcripts.append(r)
+        self.save('claude-transcript.json',transcripts)
+        self.save('codex-transcript.json',[r for r in self.rows('codex/**/rollout-*.jsonl') if r.get('type') in ('response_item','event_msg','turn_context')])
+        logs=[]
+        for p in (self.root/'data').glob('*.jsonl'):
+            logs += [r for r in complete_rows(p.read_text()) if not str(r.get('event','')).startswith(('usage.','account.'))]
+        self.save('daemon-events.json',logs)
+        if (self.root/'daemon.log').exists():
+            self.save('daemon-tail.txt','\n'.join((self.root/'daemon.log').read_text().splitlines()[-60:]))
+        self.save('identities.json',self.identities()); self.ledger()
+        # Passive locks only; never acquire any product lock.
+        self.save('locks.txt','\n'.join(l for l in Path('/proc/locks').read_text().splitlines() if any(str(i['pid']) in l.split() for i in self.identities())))
+    def capture(self,label):
+        listing=self.run(['tmux','list-panes','-a','-F','#{pane_id} #{pane_current_command}'],False)
+        self.save(label+'/panes.txt',listing)
+        for line in listing.splitlines():
+            pane=line.split()[0]
+            if not pane.startswith('%'): continue
+            text=self.run(['tmux','capture-pane','-p','-S','-12','-t',pane],False)
+            self.save(label+'/pane-'+pane[1:]+'.txt','\n'.join(text.splitlines()[-60:])+'\n')
+        self.snapshot(label)
+    def input(self,tool,pane,text):
+        ledger=self.ledger()
+        # Before the first metered turn reserve $0.50; thereafter use the larger
+        # of that reserve and the most expensive observed generation at upper rates.
+        reserve=max([.5]+[x['upper_usd'] for x in ledger['claude_generations']])
+        if not ledger['metering_complete']: raise ValueError('unverified metering before next input')
+        admit_input(tool,self.inputs['claude'],self.inputs['codex'],ledger['seat_usd_upper_rate'],reserve)
+        self.inputs[tool]+=1; self.event('controller_input',tool=tool,pane=pane,text=text,count=self.inputs[tool],reserve_usd=reserve)
+        self.ledger()
+        self.run(['tmux','send-keys','-t',pane,'-l',text]); self.run(['tmux','send-keys','-t',pane,'Enter'])
+    def setup(self):
+        os.umask(0o077)
+        self.root=Path(tempfile.mkdtemp(prefix='th-l1-runtime-'))
+        for d in ['home/.local/bin','claude','codex','grok','gemini','data','tmp','tmux','project','cache','config']: (self.root/d).mkdir(parents=True,exist_ok=True)
+        self.bin=self.root/'home/.local/bin'
+        self.env={'HOME':str(self.root/'home'),'PATH':f'{self.bin}:/usr/bin:/bin','SHELL':'/bin/bash','LANG':'C.UTF-8','TERM':'xterm-256color','RUST_LOG':'info','TAURHAUS_TRIAL_ID':self.root.name,'DISABLE_AUTOUPDATER':'1','CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC':'1','CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS':'1','CLAUDE_CODE_SKIP_DANGEROUS_MODE_PERMISSION_PROMPT':'1'}
+        for key,d in {'CLAUDE_CONFIG_DIR':'claude','CLAUDE_DIR':'claude','TAURHAUS_CLAUDE_DIR':'claude','CODEX_HOME':'codex','GROK_HOME':'grok','GEMINI_CLI_HOME':'gemini','TAURHAUS_AGY_DIR':'gemini','TAURHAUS_DATA_DIR':'data','TMPDIR':'tmp','TMUX_TMPDIR':'tmux','XDG_CONFIG_HOME':'config','XDG_CACHE_HOME':'cache','XDG_DATA_HOME':'data'}.items(): self.env[key]=str(self.root/d)
+        for p in [self.args.claude_credential,self.args.codex_auth]:
+            if not p.is_file() or p.is_symlink(): raise RuntimeError('explicit credential source is not regular')
+        # Only this Codex file is copied; the Claude file is only a mount source.
+        shutil.copyfile(self.args.codex_auth,self.root/'codex/auth.json'); (self.root/'codex/auth.json').chmod(0o600)
+        (self.root/'claude/.credentials.json').touch()
+        for name,source in [('claude',self.args.claude_binary),('codex',self.args.codex_binary),('mesh',MESH/'target/debug/mesh'),('taurhaus-daemon',CHECKOUT/'src-tauri/target/release/taurhaus-daemon')]:
+            shutil.copyfile(source,self.bin/name); (self.bin/name).chmod(0o700)
+            self.event('binary',name=name,sha256=hashlib.sha256((self.bin/name).read_bytes()).hexdigest())
+        for name in ['agy','grok','gemini']:
+            (self.bin/name).write_text('#!/bin/sh\nexit 77\n'); (self.bin/name).chmod(0o700)
+        for rc in ['.bashrc','.profile','.zshrc']: (self.root/'home'/rc).write_text('export PATH="$HOME/.local/bin:/usr/bin:/bin"\n')
+        instructions='Isolated bounded messaging trial. Reply in at most two short sentences. Never modify files. Only execute mesh who, mesh send, mesh read, or the exact mesh lifecycle commands explicitly named in a task. Every mesh command must include --root "$CLAUDE_CONFIG_DIR" --team l1-claude-lead --name YOUR_MEMBER_NAME. Never use other tools or commands. Lead must never execute mesh read until the controller explicitly requests step 4. When asked for a reply, read/mark your own inbox then send the short reply through mesh. Do not send unsolicited messages.'
+        (self.root/'project/AGENTS.md').write_text(instructions+'\n')
+        (self.root/'project/CLAUDE.md').write_text(instructions.replace('YOUR_MEMBER_NAME','lead')+'\n')
+        self.run(['git','init','-q']); self.run(['git','add','AGENTS.md','CLAUDE.md']); self.run(['git','-c','user.name=Trial','-c','user.email=trial@example.invalid','commit','-qm','scratch instructions'])
+        (self.root/'claude/.claude.json').write_text(json.dumps({'hasCompletedOnboarding':True,'theme':'dark','bypassPermissionsModeAccepted':True,'projects':{str(self.root/'project'):{'hasTrustDialogAccepted':True,'hasCompletedProjectOnboarding':True}}}))
+        (self.root/'codex/config.toml').write_text('model="gpt-5.6-luna"\nmodel_reasoning_effort="low"\napproval_policy="never"\nsandbox_mode="danger-full-access"\nweb_search="disabled"\n[projects.'+json.dumps(str(self.root/'project'))+']\ntrust_level="trusted"\n')
+        with socket.socket() as probe:
+            probe.bind(('127.0.0.1',0)); self.port=probe.getsockname()[1]
+        assert self.port!=17233
+        self.env['TAURHAUS_DAEMON_PORT']=str(self.port)
+        self.bw=['bwrap','--die-with-parent','--unshare-pid','--ro-bind','/','/','--tmpfs','/home','--tmpfs','/tmp','--tmpfs','/run','--proc','/proc','--dev','/dev','--bind',str(self.root),str(self.root),'--ro-bind',str(self.args.claude_credential),str(self.root/'claude/.credentials.json'),'--chdir',str(self.root/'project')]
+        self.save('isolation.json',{'env':self.env,'wrapper':self.bw,'claude_credential_rule':'single file read-only mount, never copied','codex_copy_mode':oct((self.root/'codex/auth.json').stat().st_mode & 0o777),'descriptor':'unchanged production','mesh_commit':'a6ee29681a44a472c0ce7b33b9630d4865c93012','taurhaus_base':'6f61f611'})
+        for name in ['claude','codex','mesh']: self.run(self.bw+[str(self.bin/name),'--version'])
+        boot=self.root/'boot.sh'; boot.write_text('#!/bin/bash\nset -eu\ntmux -D -f /dev/null &\nfor i in {1..100}; do test -S "$TMUX_TMPDIR/tmux-$(id -u)/default" && break; sleep .1; done\ntmux set-option -g default-shell /bin/bash\ntmux new-session -d -s taurhaus -x 140 -y 48 /bin/bash\n'+shlex.join([str(self.bin/'taurhaus-daemon'),'--port',str(self.port),'--data-dir',str(self.root/'data')])+' &\nwait $!\n')
+        self.save('boot.sh',boot.read_text()); self.event('spawn',argv=self.bw+['/bin/bash',str(boot)])
+        with (self.root/'daemon.log').open('w') as f:
+            child=subprocess.Popen(self.bw+['/bin/bash',str(boot)],env=self.env,stdout=f,stderr=subprocess.STDOUT,start_new_session=True)
+        self.children.append(child)
+        end=time.monotonic()+60
+        while not (self.root/'data/daemon.token').exists():
+            if child.poll() is not None or time.monotonic()>end: raise RuntimeError('private daemon unavailable')
+            time.sleep(.25)
+        self.save('ping.json',self.rpc('ping',{}))
+        policy=json.loads(re.search(r'DEFAULT_CANONICAL_POLICY = Object.freeze\((\{.*?\})\)',(CHECKOUT/'src/lib/components/meshTabUtils.js').read_text(),re.S)[1])
+        lead={'name':'lead','cli_tool':'claude','model':'claude-haiku-4-5-20251001','delivery':'tmux','project_id':str(self.root/'project'),'instructions':instructions.replace('YOUR_MEMBER_NAME','lead')}
+        alpha={'name':'alpha','cli_tool':'codex','model':'gpt-5.6-luna','reasoning_effort':'low','delivery':'tmux','project_id':str(self.root/'project'),'instructions':instructions.replace('YOUR_MEMBER_NAME','alpha')}
+        claude='claude --dangerously-skip-permissions --tools Bash --allowedTools "Bash(mesh *)"'
+        commands={name:{'fresh':base,'continue_cmd':base,'resume':base+' resume'} for name,base in [('claude',claude),('codex','codex --yolo')]}
+        request={'request':{'team_name':TEAM,'team_description':'Lane 1 native lead trial','lead_mode':'launch_new','lead':lead,'agents':[alpha],'messaging':{'mode':'canonical','retentionPolicy':policy}},'cli_commands':commands,'tmux_layout':'new_window'}
+        # Reserve both production onboarding starts before the sole initialize call.
+        self.inputs={'claude':1,'codex':1}; self.event('onboarding_reservation',inputs=self.inputs)
+        self.save('initialize-request.json',request)
+        accepted=self.rpc('coordination.initialize_team',request); self.save('initialize-accepted.json',accepted)
+        end=time.monotonic()+120
+        while time.monotonic()<end:
+            status=self.rpc('coordination.initialize_status',{'run_id':accepted['run_id']})
+            if status['outcome']['status']!='running': break
+            self.ledger(); time.sleep(1)
+        self.save('initialize-result.json',status); self.capture('initialize')
+        if status['outcome']['status']!='completed' or status['outcome']['report'].get('failed_step'): raise RuntimeError('production initialize failed')
+        self.event('ready_for_controller_actions',root=str(self.root))
+    def loop(self):
+        while time.monotonic()-self.started<900:
+            self.snapshot()
+            path=self.out/'action.json'
+            if not path.exists(): time.sleep(1); continue
+            action=json.loads(path.read_text()); path.unlink(); self.step=action.get('step',self.step)
+            self.event('action',action=action)
+            op=action['op']
+            if op=='input': self.input(action['tool'],action['pane'],action['text'])
+            elif op=='capture': self.capture(action['label'])
+            elif op=='pass':
+                self.capture('step'+str(self.step)); self.save('step'+str(self.step)+'-outcome.json',{'outcome':'PASS','step':self.step,'evidence':action['evidence']})
+            elif op=='stop':
+                self.result=action['result']; self.save('step'+str(self.step)+'-outcome.json',self.result); return
+            elif op=='ui':
+                # Non-model setup keys are still counted in the hard input ceiling.
+                self.inputs[action['tool']]+=1
+                if self.inputs[action['tool']] > (8 if action['tool']=='claude' else 12): raise ValueError('UI input cap')
+                self.run(['tmux','send-keys','-t',action['pane']]+action['keys'])
+            else: raise ValueError('unknown action')
+            self.event('action_done',op=op)
+        raise RuntimeError('15 minute runtime deadline')
+    def cleanup(self):
+        if self.root:
+            try: self.capture('final')
+            except Exception as error: self.event('final_capture_error',error=str(error))
+        before=self.identities(); self.save('cleanup-before.json',before)
+        for child in reversed(self.children):
+            if child.poll() is None:
+                os.killpg(child.pid,signal.SIGTERM)
+                try: child.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    os.killpg(child.pid,signal.SIGKILL); child.wait(timeout=5)
+        time.sleep(.3)
+        survivors=self.identities()
+        closed=True
+        if self.port:
+            with socket.socket() as s: s.settimeout(.2); closed=s.connect_ex(('127.0.0.1',self.port))!=0
+        placeholder=self.root/'claude/.credentials.json' if self.root else None
+        zero=placeholder is not None and placeholder.exists() and placeholder.stat().st_size==0
+        if self.root: shutil.rmtree(self.root)
+        self.save('cleanup.json',{'survivors':survivors,'private_port_closed':closed,'children_exit_codes':[p.returncode for p in self.children],'root_removed':not self.root or not self.root.exists(),'codex_copy_removed':not self.root or not (self.root/'codex/auth.json').exists(),'claude_mount_placeholder_zero_bytes':zero,'claude_credential_copied':False})
+        self.save('result.json',self.result)
+        if survivors or not closed: raise RuntimeError('cleanup failure')
+
+def main():
+    parser=argparse.ArgumentParser()
+    for option in ['claude-credential','codex-auth','claude-binary','codex-binary']: parser.add_argument('--'+option,type=Path,required=True)
+    args=parser.parse_args(); assert Path.cwd()==CHECKOUT
+    trial=Trial(args)
+    def interrupted(signum,_frame): raise RuntimeError(f'controller interrupted {signum}')
+    for sig in [signal.SIGTERM,signal.SIGINT]: signal.signal(sig,interrupted)
+    code=1
+    try: trial.setup(); trial.loop(); code=0 if trial.result.get('outcome')=='PASS' else 2
+    except BaseException as error:
+        trial.result={'outcome':'UNAVAILABLE','classification':'harness','step':trial.step,'reason':str(error)}; trial.event('stopped',error=str(error))
+    finally: trial.cleanup()
+    trial.save('controller-exit.json',{'exit':code}); return code
+if __name__=='__main__': raise SystemExit(main())
+
+
+FILE controller_support.py
+"""Pure bounded-trial accounting and evidence helpers (no runtime side effects)."""
+import json
+import re
+
+WORKTREES=('/home/mstie/projects/taurhaus-l1-claude-lead','/home/mstie/projects/mesh-l1')
+
+def complete_rows(text):
+    rows=[]
+    for line in text.splitlines(keepends=True):
+        if not line.endswith('\n'): continue
+        try: rows.append(json.loads(line))
+        except ValueError: continue
+    return rows
+
+def sanitize(value):
+    if isinstance(value,dict):
+        return {k:sanitize(v) for k,v in value.items() if not any(w in k.lower() for w in ('auth','token_secret','account','installation','email'))}
+    if isinstance(value,list): return [sanitize(v) for v in value]
+    if not isinstance(value,str): return value
+    for i,p in enumerate(WORKTREES): value=value.replace(p+'/',f'<worktree{i}>/').replace(p+'"',f'<worktree{i}>"')
+    for i,p in enumerate(WORKTREES):
+        if value==p: return p
+    value=re.sub(r'/home/[^\s\"\'<>;]+','<operator-path>',value)
+    for i,p in enumerate(WORKTREES): value=value.replace(f'<worktree{i}>',p)
+    value=re.sub(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}', '<email>',value)
+    value=re.sub(r'(?:sk-ant-|sk-proj-|eyJ)[A-Za-z0-9_.-]+','<secret-redacted>',value)
+    return value
+
+def claude_usage(rows):
+    messages={}
+    for row in rows:
+        if row.get('type')!='assistant': continue
+        msg=row.get('message',{}); usage=msg.get('usage')
+        if not msg.get('id') or not usage: raise ValueError('Claude usage unverified')
+        fields={k:usage.get(k,0) for k in ('input_tokens','output_tokens','cache_read_input_tokens','cache_creation_input_tokens')}
+        if sum(fields.values())==0: raise ValueError('Claude usage unverified')
+        old=messages.get(msg['id'],{})
+        fields={k:max(v,old.get(k,0)) for k,v in fields.items()}
+        fields.update(message_id=msg['id'],model=msg.get('model'),session_id=row.get('sessionId'))
+        fields['usd']=(fields['input_tokens']+5*fields['output_tokens']+.1*fields['cache_read_input_tokens']+1.25*fields['cache_creation_input_tokens'])/1e6
+        fields['upper_usd']=sum(fields[k] for k in ('input_tokens','output_tokens','cache_read_input_tokens','cache_creation_input_tokens'))*5/1e6
+        messages[msg['id']]=fields
+    return list(messages.values())
+
+def admit_input(tool,claude_inputs,codex_inputs,spent,next_turn):
+    count,limit=(claude_inputs,8) if tool=='claude' else (codex_inputs,12)
+    if count>=limit: raise ValueError(tool+' input cap')
+    if next_turn<=0 or spent+next_turn>2: raise ValueError('unverified dollar headroom')
+    return True
+
+
+FILE step1.py
+"""Execute step 1 assertions, then stop at the first unmet prerequisite."""
+import json
+from pathlib import Path
+import time
+from actions import action
+from controller_support import complete_rows
+OUT=Path(__file__).resolve().parent/'run'
+start=time.monotonic(); samples=[]
+while time.monotonic()-start<65:
+    p=OUT/'latest/claude-hooks.json'
+    try: hooks=json.loads(p.read_text()) if p.exists() else {}
+    except ValueError: continue
+    samples.append({'elapsed_seconds':round(time.monotonic()-start,3),'hooks':hooks})
+    if hooks.get('SessionStart'): break
+    time.sleep(1)
+action({'op':'capture','step':1,'label':'step1-observation-end'})
+(OUT/'step1-hook-poll.json').write_text(json.dumps({'deadline_seconds':65,'elapsed_seconds':time.monotonic()-start,'samples':samples},indent=2)+'\n')
+status=json.loads((OUT/'initialize-result.json').read_text())
+assert status['outcome']['status']=='completed'
+config=json.loads((OUT/'latest/team/config.json').read_text())
+assert config['messaging_format']==2 and config['delivery_owner']=='team'
+lead=json.loads((OUT/'latest/team/runtime/lead.json').read_text())
+assert lead['session_id'] and lead['paneId']=='%1'
+transcript=json.loads((OUT/'claude-transcript.json').read_text())
+assert any(r.get('type')=='assistant' and r.get('message',{}).get('model')=='claude-haiku-4-5-20251001' for r in transcript)
+if not hooks.get('SessionStart'):
+    action({'op':'stop','step':1,'result':{'outcome':'UNAVAILABLE','classification':'harness','step':1,'reason':'claude_compaction_hook_unregistered: production daemon initialize completed and Claude authenticated/consumed its startup card, but scratch Claude settings have no SessionStart(compact) hook after a 65-second poll. Controller used daemon initialize without the desktop post-initialize hook reconciliation. Stop before step 2; no synthetic hook/card, no retry.','subchecks':{'initialize_once':'PASS','canonical_format_2':'PASS','delivery_owner_team':'PASS','claude_authenticated_and_team_bound':'PASS','claude_compaction_hook_registration':'FAIL'}}})
+    raise SystemExit(2)
+action({'op':'pass','step':1,'evidence':'initialize/result, runtime, native Claude transcript and hook registration'})
+
+
+FILE run/result.json
+{
+  "outcome": "UNAVAILABLE",
+  "classification": "harness",
+  "step": 1,
+  "reason": "claude_compaction_hook_unregistered: production daemon initialize completed and Claude authenticated/consumed its startup card, but scratch Claude settings have no SessionStart(compact) hook after a 65-second poll. Controller used daemon initialize without the desktop post-initialize hook reconciliation. Stop before step 2; no synthetic hook/card, no retry.",
+  "subchecks": {
+    "initialize_once": "PASS",
+    "canonical_format_2": "PASS",
+    "delivery_owner_team": "PASS",
+    "claude_compaction_hook_registration": "FAIL"
+  }
+}
+
+
+FILE run/cleanup.json
+{
+  "survivors": [],
+  "private_port_closed": true,
+  "children_exit_codes": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    -15,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "root_removed": true,
+  "codex_copy_removed": true,
+  "claude_mount_placeholder_zero_bytes": true,
+  "claude_credential_copied": false
+}
+
+
+FILE run/cost-ledger.json
+{
+  "controller_inputs": {
+    "claude": 1,
+    "codex": 1
+  },
+  "claude_generations": [
+    {
+      "input_tokens": 10,
+      "output_tokens": 1577,
+      "cache_read_input_tokens": 0,
+      "cache_creation_input_tokens": 11245,
+      "message_id": "msg_011CeuTT5xm5RFjXHzAnkrUq",
+      "model": "claude-haiku-4-5-20251001",
+      "session_id": "7c44e455-db6d-4dcd-ac4b-52203520c966",
+      "usd": 0.02195125,
+      "upper_usd": 0.06416
+    }
+  ],
+  "codex_turns": [],
+  "codex_usage_by_rollout": {},
+  "seat_usd_estimate": 0.02195125,
+  "seat_usd_upper_rate": 0.06416,
+  "rates_per_million": {
+    "claude": [
+      1,
+      0.1,
+      1.25,
+      5
+    ],
+    "codex": [
+      0.2,
+      0.02,
+      1.2
+    ]
+  },
+  "metering_complete": true,
+  "prior_preflight_spend_usd": 0
+}
+
+
+FILE run/initialize-result.json
+{
+  "outcome": {
+    "report": {
+      "failed_step": null,
+      "message": "team initialized",
+      "retryable": false,
+      "steps": [
+        {
+          "message": "configuration validated",
+          "status": "succeeded",
+          "step": "validate_configuration"
+        },
+        {
+          "message": "team created",
+          "status": "succeeded",
+          "step": "create_team"
+        },
+        {
+          "message": "lead added",
+          "status": "succeeded",
+          "step": "add_lead"
+        },
+        {
+          "message": "panes opened and sessions started",
+          "status": "succeeded",
+          "step": "create_panes"
+        },
+        {
+          "message": "launched sessions verified",
+          "status": "succeeded",
+          "step": "launch_sessions"
+        },
+        {
+          "message": "mesh joined",
+          "status": "succeeded",
+          "step": "join_mesh"
+        },
+        {
+          "message": "mesh daemons started",
+          "status": "succeeded",
+          "step": "start_daemons"
+        },
+        {
+          "message": "team delivery enabled",
+          "status": "succeeded",
+          "step": "opt_in_delivery"
+        },
+        {
+          "message": "onboarding messages sent",
+          "status": "succeeded",
+          "step": "send_onboarding"
+        }
+      ],
+      "succeeded_steps": [
+        "validate_configuration",
+        "create_team",
+        "add_lead",
+        "create_panes",
+        "launch_sessions",
+        "join_mesh",
+        "start_daemons",
+        "opt_in_delivery",
+        "send_onboarding"
+      ],
+      "team_name": "l1-claude-lead"
+    },
+    "status": "completed"
+  },
+  "run_id": "init_8629c6968ccd43528eb8aa2055d1c01f",
+  "steps": [
+    {
+      "message": null,
+      "status": "running",
+      "step": "validate_configuration"
+    },
+    {
+      "message": "configuration validated",
+      "status": "succeeded",
+      "step": "validate_configuration"
+    },
+    {
+      "message": null,
+      "status": "running",
+      "step": "create_team"
+    },
+    {
+      "message": "team created",
+      "status": "succeeded",
+      "step": "create_team"
+    },
+    {
+      "message": null,
+      "status": "running",
+      "step": "add_lead"
+    },
+    {
+      "message": "lead added",
+      "status": "succeeded",
+      "step": "add_lead"
+    },
+    {
+      "message": null,
+      "status": "running",
+      "step": "create_panes"
+    },
+    {
+      "message": "panes opened and sessions started",
+      "status": "succeeded",
+      "step": "create_panes"
+    },
+    {
+      "message": null,
+      "status": "running",
+      "step": "launch_sessions"
+    },
+    {
+      "message": "launched sessions verified",
+      "status": "succeeded",
+      "step": "launch_sessions"
+    },
+    {
+      "message": null,
+      "status": "running",
+      "step": "join_mesh"
+    },
+    {
+      "message": "mesh joined",
+      "status": "succeeded",
+      "step": "join_mesh"
+    },
+    {
+      "message": null,
+      "status": "running",
+      "step": "start_daemons"
+    },
+    {
+      "message": "mesh daemons started",
+      "status": "succeeded",
+      "step": "start_daemons"
+    },
+    {
+      "message": null,
+      "status": "running",
+      "step": "opt_in_delivery"
+    },
+    {
+      "message": "team delivery enabled",
+      "status": "succeeded",
+      "step": "opt_in_delivery"
+    },
+    {
+      "message": null,
+      "status": "running",
+      "step": "send_onboarding"
+    },
+    {
+      "message": "onboarding messages sent",
+      "status": "succeeded",
+      "step": "send_onboarding"
+    }
+  ]
+}
+
+
+FILE run/step1-observation-end/claude-hooks.json
+{}
+
+
+FILE run/step1-observation-end/pane-1.txt
+
+ ▐▛███▛█   Claude Code v2.1.267
+▝▜██████▀  Haiku 4.5 · Claude Max
+  ▝▝ ▝▝    /tmp/th-l1-runtime-uyo0vm4m/project
+
+
+
+› Message from @lead (ctrl+o to expand)
+
+● I've received the recovery card and understand the instruction set. I'm in an unassigned state and ready to proceed when a task is
+  assigned. Awaiting next instructions.
+
+✻ Baked for 16s · done 10:39 AM
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── @lead ─
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents
+
+
+FILE run/step1-observation-end/lead-projection.json
+{
+  "exists": true,
+  "rows": []
+}

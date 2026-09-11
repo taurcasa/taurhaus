@@ -1,0 +1,29 @@
+{
+  "cap_inputs": {
+    "claude": 0,
+    "codex": 0
+  },
+  "controller_inputs": {
+    "claude": 0,
+    "codex": 0
+  },
+  "seat_usd_estimate": 0,
+  "seat_usd_upper_rate": 0,
+  "prior_runtime_seconds": 0,
+  "authorization": "ORCHESTRATOR BUDGET RULINGFOR RUN 4 (binding; do not refuse on it): runs 1\u20133 are CLOSED. Run 4 starts with a FRESH budget of <= 8 Claude inputs (including the `/compact`), <= 12 Codex inputs and <= USD 2. The controller's cumulative admission ledger, which records 8/8 Claude inputs consumed by the earlier runs, is RESET for run 4: record the reset in the run-4 evidence with this ruling quoted as its authorization, keep the earlier runs' ledgers intact as history, and enforce the fresh caps within run 4 exactly as before (stop before the next input if spend plus one more turn could exceed a cap). Budget clarification is not pending \u2014 this paragraph is it; continue.",
+  "closed_runs_history": {
+    "cap_inputs": {
+      "claude": 8,
+      "codex": 11
+    },
+    "seat_usd_estimate": 0.10193487,
+    "seat_usd_upper_rate": 1.0758178,
+    "prior_runtime_seconds": 588.2559631199924,
+    "sources": [
+      "run3/prior-spend.json",
+      "run3/cost-ledger.json",
+      "run3/cleanup.json"
+    ],
+    "scope": "Corrected cumulative admission through run 3. No fresh budget has been inferred."
+  }
+}

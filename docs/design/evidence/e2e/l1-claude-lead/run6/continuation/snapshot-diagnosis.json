@@ -1,0 +1,107 @@
+{
+  "classification": "harness",
+  "inference": "Task-to-operational synchronization is app-DB-derived, then published through a daemon intent; this controller only launched the daemon and seats and never exercised that task persistence/publication path.",
+  "runtime_methods": [
+    "coordination.initialize_status",
+    "coordination.initialize_team",
+    "ping"
+  ],
+  "publication_rpc_observed": false,
+  "operational_task": {
+    "id": "",
+    "subject": "",
+    "status": ""
+  },
+  "mesh_task_projection": [
+    {
+      "taskId": "1",
+      "subject": "Run6 native mailbox recovery",
+      "descriptionState": "unknown",
+      "description": null,
+      "descriptionMissingReason": "intentionally_blank",
+      "creationPayloadComplete": true,
+      "taskStatus": "in_progress",
+      "owner": "lead",
+      "assignmentId": "dadd2fb3-0fad-4cae-b52d-5facf68de6c4",
+      "supersedesAssignmentId": null,
+      "assignmentLineageComplete": true,
+      "assignedBy": "lead",
+      "assignedTo": "lead",
+      "assignedAt": "2026-09-10T22:39:49.398Z",
+      "firstStep": "Keep this assignment active through the controller compact; observe the next native teammate reply without tools.",
+      "deliverable": "A brief native text response distinguishing the fresh reply after recovery; no files or tools.",
+      "completionSignal": "Respond once in native text when the fresh reply arrives; the controller records completion.",
+      "deliveryState": "pending",
+      "deliveredAt": null,
+      "seenAt": null,
+      "acknowledgedAt": null,
+      "acceptedAt": null,
+      "startedAt": null,
+      "activeForm": null,
+      "lastProgressSummary": null,
+      "lastProgressAt": null,
+      "blockedReason": null,
+      "blockedBy": [],
+      "blockedAt": null,
+      "reviewSummary": null,
+      "reviewRequestedAt": null,
+      "completionSummary": null,
+      "completedAt": null,
+      "closedAt": null,
+      "closeReason": null,
+      "lastAssignmentMessageId": "b5ffce5f-6ed0-4bab-8a9c-8f0e33dffd45",
+      "lastNudgeAt": null,
+      "lastEscalationAt": null,
+      "attentionState": "active",
+      "recoveryState": "in_progress",
+      "pendingRead": true,
+      "pendingAck": true
+    }
+  ],
+  "source_base": "a7e6db7e",
+  "source_excerpts": [
+    {
+      "file": "src-tauri/src/coordination/operational_context.rs",
+      "start_line": 29,
+      "end_line": 50,
+      "text": "\n/// Build the app-DB-derived snapshots carried by a daemon initialization\n/// intent. This performs no team-store writes; the daemon publishes the\n/// snapshots only after the pipeline succeeds.\npub(crate) fn prepare_initialize_snapshots(\n    conn: &Connection,\n    request: &crate::coordination::requests::InitializeTeamRequest,\n) -> Result<Vec<OperationalContextSnapshot>, CoordinationError> {\n    std::iter::once(&request.lead)\n        .chain(request.agents.iter())\n        .map(|member| {\n            let tasks = load_project_tasks(conn, &member.project_id)?;\n            let (task, effort, task_state_changed_at) =\n                latest_owned_task_from_tasks(&tasks, &member.name);\n            Ok(build_member_snapshot(\n                None,\n                &request.team_name,\n                &member.name,\n                &member.project_id,\n                task,\n                effort,\n                task_state_changed_at,"
+    },
+    {
+      "file": "src-tauri/src/coordination/operational_context.rs",
+      "start_line": 357,
+      "end_line": 364,
+      "text": "fn load_project_tasks(\n    conn: &Connection,\n    project_path: &str,\n) -> Result<Vec<taurhaus_lib::db::task_queries::PersistedTask>, CoordinationError> {\n    taurhaus_lib::db::task_queries::get_tasks_for_project(conn, project_path)\n        .map_err(|err| CoordinationError::StoreError(err.to_string()))\n}\n"
+    },
+    {
+      "file": "src-tauri/src/services/task_sync.rs",
+      "start_line": 202,
+      "end_line": 246,
+      "text": "        operational_teams_dir.to_path_buf(),\n    )\n    .team_locations()\n    {\n        Ok(team_locations) => team_locations,\n        Err(err) => {\n            tracing::warn!(\n                project_path = %normalized_path,\n                error = %err,\n                \"failed to resolve team roots after task persistence\"\n            );\n            return;\n        }\n    };\n    let prepared = match crate::coordination::operational_context::prepare_project_task_snapshots_for_team_locations(\n        &team_locations,\n        conn,\n        normalized_path,\n    ) {\n        Ok(prepared) => prepared,\n        Err(err) => {\n            tracing::warn!(\n                project_path = %normalized_path,\n                error = %err,\n                \"failed to prepare operational snapshots after task persistence\"\n            );\n            return;\n        }\n    };\n    if prepared.is_empty() {\n        return;\n    }\n    let params = crate::daemon::protocol::CoordinationPublishOperationalSnapshotsParams {\n        publications: prepared\n            .into_iter()\n            .map(|(snapshot, task_state_changed_at)| {\n                crate::daemon::protocol::CoordinationOperationalSnapshotPublication {\n                    snapshot,\n                    task_state_changed_at,\n                }\n            })\n            .collect(),\n    };\n    if let Err(err) = publish(params) {\n        if mark_snapshot_publication_degraded(generation_state, normalized_path) {"
+    },
+    {
+      "file": "src-tauri/src/services/task_sync.rs",
+      "start_line": 274,
+      "end_line": 280,
+      "text": "    let request = crate::daemon::protocol::DaemonRequest::new(\n        format!(\"snapshot-publish-{}\", uuid::Uuid::new_v4().simple()),\n        crate::daemon::protocol::method::COORDINATION_PUBLISH_OPERATIONAL_SNAPSHOTS,\n        params,\n    );\n    let response = daemon\n        .send_status_request_within("
+    },
+    {
+      "file": "src-tauri/src/bootstrap.rs",
+      "start_line": 602,
+      "end_line": 638,
+      "text": "                continue;\n            }\n        }\n\n        // Scan tasks from files (daemon or local)\n        let scan_result = services::task_sync::scan_tasks_from_files(\n            app,\n            &provider_state,\n            &project.path,\n            Some(context.cycle_id),\n            Some(&context.sessions),\n            Some(&context.claude_index),\n        );\n\n        // Normalize path for DB storage\n        let normalized_path = provider::path::normalize_project_path(&project.path);\n\n        let (before_sig, after_sig) = {\n            let conn = match db_state.0.lock() {\n                Ok(c) => c,\n                Err(e) => {\n                    tracing::warn!(error = %e, \"task scan: db lock poisoned, skipping project\");\n                    continue;\n                }\n            };\n            let before = load_active_task_signature(&conn, &normalized_path);\n            services::task_sync::persist_task_scan_with_generation(\n                &conn,\n                &normalized_path,\n                &scan_result,\n                generation_state.inner(),\n                context.cycle_id,\n                provider_state.daemon.as_ref(),\n            );\n            let after = load_active_task_signature(&conn, &normalized_path);\n            (before, after)\n        };"
+    },
+    {
+      "file": "src-tauri/src/daemon/handlers.rs",
+      "start_line": 1192,
+      "end_line": 1224,
+      "text": "pub(crate) fn handle_get_project_tasks(\n    id: &str,\n    params: &serde_json::Value,\n    project_task_scan_cache: &ProjectTaskScanCacheState,\n) -> DaemonResponse {\n    let params: protocol::ProjectTasksParams = match serde_json::from_value(params.clone()) {\n        Ok(p) => p,\n        Err(_) => match serde_json::from_value::<protocol::PathParams>(params.clone()) {\n            Ok(p) => protocol::ProjectTasksParams {\n                path: p.path,\n                scan_cycle_id: None,\n            },\n            Err(e) => return DaemonResponse::err(id, \"INVALID_PARAMS\", e.to_string()),\n        },\n    };\n\n    let (all_sessions, claude_index) =\n        load_project_task_scan_inputs(params.scan_cycle_id, project_task_scan_cache);\n    let project_sessions: Vec<crate::session_scanner::RuntimeSession> = all_sessions\n        .into_iter()\n        .filter(|s| s.project_path == params.path)\n        .collect();\n\n    let result = crate::task_scanner::get_tasks_for_project_with_index(\n        &params.path,\n        &project_sessions,\n        Some(&claude_index),\n    );\n    #[cfg(feature = \"mesh-bridged-backend\")]\n    record_terminal_task_observations(&result, &claude_index, project_task_scan_cache);\n    DaemonResponse::ok(id, result)\n}\n"
+    },
+    {
+      "file": "src-tauri/src/daemon/protocol.rs",
+      "start_line": 729,
+      "end_line": 744,
+      "text": "/// One app-DB-derived operational snapshot publication. The task timestamp is\n/// carried separately so the daemon can preserve deadline marker semantics.\n#[cfg(feature = \"mesh-bridged-backend\")]\n#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]\npub struct CoordinationOperationalSnapshotPublication {\n    pub snapshot: crate::coordination::stores::OperationalContextSnapshot,\n    #[serde(default)]\n    pub task_state_changed_at: Option<chrono::DateTime<chrono::Utc>>,\n}\n\n#[cfg(feature = \"mesh-bridged-backend\")]\n#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]\npub struct CoordinationPublishOperationalSnapshotsParams {\n    pub publications: Vec<CoordinationOperationalSnapshotPublication>,\n}\n"
+    }
+  ],
+  "scope_limit": "Does not assert an independently exercised task scan failed; no product defect established."
+}

@@ -1,0 +1,18 @@
+{
+  "survivors": [],
+  "all_five_scratch_roots_removed": true,
+  "credential_or_secret_pattern_violations": [],
+  "pane_files_checked": 9,
+  "pane_line_max": 60,
+  "daemon_rows": 197,
+  "retained_rows": 197,
+  "excluded_usage_rows": 0,
+  "rust_diff": false,
+  "mesh_commit": "310144d",
+  "mesh_diff_empty": true,
+  "post_runtime_controller_fixes": 0,
+  "review_invocation_exits": [
+    1,
+    0
+  ]
+}

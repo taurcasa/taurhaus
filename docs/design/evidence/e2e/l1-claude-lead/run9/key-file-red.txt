@@ -1,0 +1,20 @@
+F
+======================================================================
+FAIL: test_key_file_is_not_a_registry_and_peer_token_is_not_evidence (test_run9.Run9Tests.test_key_file_is_not_a_registry_and_peer_token_is_not_evidence)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/test_run9.py", line 49, in test_key_file_is_not_a_registry_and_peer_token_is_not_evidence
+    self.assertEqual(saved['sessions/index.json']['files'],[])
+AssertionError: Lists differ: ['42.hash.key'] != []
+
+First list contains 1 additional elements.
+First extra element 0:
+'42.hash.key'
+
+- ['42.hash.key']
++ []
+
+----------------------------------------------------------------------
+Ran 1 test in 0.002s
+
+FAILED (failures=1)

@@ -1,0 +1,13 @@
+{
+  "trial_id": "th-l1-runtime-fwsclfr8",
+  "survivors_independent_scan": [],
+  "runtime_seconds": 6.333125289995223,
+  "root_removed": true,
+  "private_port_closed": true,
+  "codex_copy_removed": true,
+  "claude_mount_placeholder_zero_bytes": true,
+  "claude_credential_copied": false,
+  "controller_exit": 2,
+  "driver_exit": 2,
+  "step1_exit": 1
+}

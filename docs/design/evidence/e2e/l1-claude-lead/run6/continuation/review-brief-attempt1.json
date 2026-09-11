@@ -1,0 +1,780 @@
+{
+  "candidate": "3b76f69a05188d218568cca3a23bcae306f5d36a",
+  "contract": "The renewed user asked to continue step by step with commits and gates. Original sessions were destroyed; a fresh isolated continuation preserved old evidence. First failure stops each attempt. No synthetic operational snapshot or product change. Review this stopped-run report, not a completion claim.",
+  "report": "# Run6 requested continuation \u2014 steps 1\u20134 PASS; step 5 UNAVAILABLE (harness)\n\nThe renewed user request was executed from the clean tree at `027bc5e5`. Every earlier green step was already committed. Because required teardown had destroyed the original sessions, a fresh isolated continuation re-established steps 1\u20134, then reached a new step-5 fixture limitation. The initial run6 packet is byte-for-byte preserved (77 files, `preservation-audit.json`). **Step 6 is NOT RUN; no compaction recovery or complete E2E PASS is claimed.**\n\n## Ordered S-runtime results\n\n| Step | Outcome / classification | Evidence |\n|---|---|---|\n| 1. Initialize and authenticate bound lead, register production hook | **PASS** | `initialize-request.json`, `initialize-result.json`, `production-hooks-before-launch.json`, `step1/`, native Claude transcript. Canonical format 2, team owner, launch-new signed-in Haiku lead and alpha tmux seat. |\n| 2. Two Claude sends and alpha exposure | **PASS** | AMBER message `b49808d9-1e73-4fa3-bd70-e83ddf6476a3`, BIRCH `177586fa-4e6d-49ce-9589-d4c74a45d48d`; journal sequences 8/9 accepted, 14/15 submitted, 16/17 consumed_by_read. Both bodies appear in Codex TOOL RESULT rows. AMBER first had a failed batch admission before presentation (sequence 11); the production scheduler retried within the window. The controller made no paid retry. |\n| 3. Seat explicit read/replies, native Claude uptake and response | **PASS** | Replies `c11f5239-ed69-4c67-9e04-abf21df398e8` / `9dae7475-6726-40b2-8078-a67759a615fa` accepted at 18/19, native_enqueued at 22/23. Claude transcript row 13 contains both native teammate messages at 22:39:32.807Z; row 15 distinguishes both at 22:39:35.755Z. Real lead inbox projection retained before explicit read. |\n| 4. Claude explicit read/mark | **PASS** | Claude Bash `mesh read --unread --json --mark-read`, output done=true; canonical consumed_by_read rows 24\u201326 name lead and explicit-mesh-cli. Native uptake is not relabeled an explicit read. |\n| 5. Real assignment context before compact | **UNAVAILABLE \u2014 harness** | Both Mesh commands exit 0. Task #1 \u201cRun6 native mailbox recovery\u201d, owner lead, status in_progress; assignment `dadd2fb3-0fad-4cae-b52d-5facf68de6c4`, five-line card delivered natively and acknowledged. The fixed parser accepts the warning-prefixed JSON. However, operational task id/subject/status remain empty through the full 65-second prerequisite window (`step5-window-8.json`, failure/final snapshots). No `/compact` submitted. |\n| 6. FERN after recovery | **NOT RUN \u2014 first-failure stop** | No compact generation/card or FERN input. Failure export and teardown completed; that does not satisfy post-recovery behavior. |\n\nJournal references are sequence numbers; transcript indices are zero-based. Directory references resolve through `snapshots.json`. `review-excerpts.json` retains exact commands, IDs, receipt distinctions, native messages, tool-result exposure and passive activity evidence.\n\n## Why step 5 is a fixture gap\n\nCanonical task projection `final/team/state/projections/taurhaus_workflow.json` records the in-progress assignment. Claude received its native card at 22:39:50.815Z and completed a metered response at 22:39:59.431Z. The separate `state/operational/lead.json` remained at its initialization timestamp with empty task fields; the controller timed out rather than fabricating a snapshot or bypassing its prerequisite.\n\nSource inspection on base `a7e6db7e` explains the missing fixture path: operational snapshots are **app-DB-derived** (`src-tauri/src/coordination/operational_context.rs:29`, task DB read at line 357). Task persistence prepares changed snapshots and sends `coordination.publish_operational_snapshots` (`src-tauri/src/services/task_sync.rs:202`, line 274), with scan/persist orchestration in `src-tauri/src/bootstrap.rs:607` and `src-tauri/src/commands/tasks.rs:273`. The daemon publication endpoint consumes those prepared snapshots (`src-tauri/src/daemon/handlers.rs:314`); daemon `get_project_tasks` scans and returns results rather than performing that app persistence/publication (`handlers.rs:1192`).\n\nThis controller started only the daemon and seats and never exercised that path. `snapshot-diagnosis.json` retains source excerpts, canonical task projection, empty operational task and observed RPC methods. Therefore the omitted production task synchronization is a **harness prerequisite**, not evidence that a correctly exercised product sync failed. The raw result's provisional product-owner-pending-evidence-review label is preserved and superseded by `final-disposition.json`. No product code or snapshot was written. A contemplated read-only task observation found teardown already complete and issued no RPC.\n\n## Identity, spend and cleanup\n\nAlpha stayed attributed to session `01a08d78-fbbf-7cb3-bcb2-6b06ca77fb25`, with high-confidence notify-sourced idle at 22:39:01.456Z, despite foreign startup notify `01a08d79-02f4-7391-a0c1-2d121a3d584c`. Claude session `4f568461-7a51-467c-af25-68617f505107` received native mailbox replies. No lead terminal-adapter receipt, hosted seat or enabled drain descriptor. Native composer and Luna/low footer are retained; inherited controller lacks a dedicated startup-preflight/Claude composer-confirmation event.\n\nRuntime **148.533 seconds**, controller/driver **2/2**, ordered step exits **0, 0, 0, 0, 1**. The controller allowed the full 65-second assignment prerequisite window; the 120-second compact window was never reached. Passing steps committed individually: **999449d8**, **1bdf9005**, **bcc64a1c**, **bf7ee51a**. All **407 complete daemon JSONL rows** and four Codex notifications remain direct sidecars, zero excluded account/usage rows. Independent cleanup confirms zero runtime/gate survivors, closed private port, removed roots and Codex auth copy, Claude credential never copied and zero-byte read-only mount placeholder. No process outside this attempt was killed.\n\nKnown seat charges: **Claude $0.03747000**, **Codex $0.00871644**, total **$0.04618644**. Metered upper-rate amount **$0.68883340**; eight times maximum observed Claude input cost **$0.09403320**. Counts **3/8 Claude reservations** (production onboarding, typed send instruction, typed read instruction), **4/12 Codex reservations**, three observed native Codex turns, seven Claude API generations. The assignment response is included at **$0.00687820**; it is a native input, not another controller submission. Zero compactions. The foreign startup notify has no separately retained usage-bearing rollout, so its cost is unknown rather than zero. These are API-equivalent estimates, not invoice totals. Implementer/orchestrator usage is unavailable; offline tests/builds add no seat spend.\n\nPrevious attempts are history under the standing fresh-attempt ruling. `spend-summary.json` preserves every earlier amount and unknown, including initial run6 known seats **$0.04608355**, review **$0.192415**, plus unknown unfinished response. No budget or authorization question stopped this continuation. Current review accounting follows below.\n\n## Builds, gates and scope\n\nExecuted controller **0e11693a**; Taurhaus **a7e6db7e**, protocol **27**, version **0.9.7**. Daemon SHA256 `eb64b4b7153a796630eff5c49b5e6d3589cd46d9da20b7b25ba7b063b13b6aeb`. Designated Mesh worktree **310144d**, binary SHA256 `6c368aef8786c5374029c9ef94c9c81c49c0059a4dc3d84bc42632bb490fc208`. Actual Claude **2.1.267 / claude-haiku-4-5-20251001**, Codex **0.153.4 / gpt-5.6-luna / low**, both native Codex siblings provisioned. Private homes, namespace, tmux, port and single-file credential rules preserved; no descriptor edit, Mesh commit, install or product change.\n\nExact gates from this checkout root, in a credential-free namespace: **just check-quick 0; just lint 0; just test-contracts 0**. Daemon build, Mesh build and production hook adapter **0**. Required Cargo admission used the specified pgrep, 30-second polls only at three or more existing processes, and checkout-local targets. No Rust diff; just test-rust-unit inapplicable.\n\nContinuation routing failed red (exit 1), then **46 discovered + 11 controller tests passed**, exits **0/0**, using generated observations without real CLIs/credentials. Runtime logic is unchanged from the previously committed parser correction. No second fix or further paid restart followed this new first failure. The outstanding fixture work is to exercise the production task scan/persist/publication path before compact; a hand-written operational snapshot is prohibited.\n",
+  "disposition": {
+    "outcome": "UNAVAILABLE",
+    "classification": "harness",
+    "failed_step": 5,
+    "steps": [
+      {
+        "step": 1,
+        "outcome": "PASS",
+        "classification": null,
+        "evidence": "step1-outcome.json"
+      },
+      {
+        "step": 2,
+        "outcome": "PASS",
+        "classification": null,
+        "evidence": "step2-outcome.json"
+      },
+      {
+        "step": 3,
+        "outcome": "PASS",
+        "classification": null,
+        "evidence": "step3-outcome.json"
+      },
+      {
+        "step": 4,
+        "outcome": "PASS",
+        "classification": null,
+        "evidence": "step4-outcome.json"
+      },
+      {
+        "step": 5,
+        "outcome": "UNAVAILABLE",
+        "classification": "harness",
+        "reason": "Assignment succeeded and reached Claude, but the daemon-only fixture omitted the app task persistence/snapshot-publication path. Operational task stayed empty through the 65-second prerequisite window."
+      },
+      {
+        "step": 6,
+        "outcome": "NOT RUN",
+        "classification": "first-failure stop"
+      }
+    ],
+    "raw_result": "result.json preserves provisional product-owner-pending-evidence-review; this source-backed fixture classification supersedes it.",
+    "runtime_seconds": 148.53328185895225,
+    "driver_exit": 2,
+    "controller_exit": 2,
+    "ordered_step_exits": [
+      0,
+      0,
+      0,
+      0,
+      1
+    ],
+    "gate_exits": {
+      "check-quick": 0,
+      "lint": 0,
+      "test-contracts": 0
+    },
+    "deviations": [
+      "Renewed user request required new isolated seats because initial run6 teardown destroyed the sessions; original packet preserved, fresh attempt ledger.",
+      "No app-side scan/persist/publish path was run; canonical Mesh assignment alone did not update the operational snapshot.",
+      "Step5 stopped before /compact; step6 not run; no recovery or E2E PASS claimed.",
+      "AMBER had a failed batch admission before presentation; production scheduler retried within the same window and both markers were submitted/read.",
+      "Lead replied to the native assignment with a short acknowledgment contrary to its no-acknowledgment text; metered and retained.",
+      "Inherited controller has no dedicated startup-preflight or Claude composer-confirmation event; native pane/model footer and executed tools retained.",
+      "Foreign startup-notify cost separately unknown; all retained model usage itemized.",
+      "A contemplated read-only get_project_tasks observation found runtime already stopped and made no RPC."
+    ]
+  },
+  "spend": {
+    "claude_metered_usd": 0.03747,
+    "codex_metered_usd": 0.00871644,
+    "known_seats_usd": 0.04618644,
+    "metered_upper_rate_usd": 0.6888334,
+    "claude_cap_times_max_observed_input_usd": 0.0940332,
+    "controller_inputs_including_onboarding": {
+      "claude": 3,
+      "codex": 4
+    },
+    "claude_typed_inputs": 2,
+    "codex_typed_inputs": 1,
+    "codex_actual_turns": 3,
+    "claude_api_generations": 7,
+    "compactions": 0,
+    "compact_usd": "not run",
+    "assignment_response_usd": 0.0068782,
+    "foreign_startup_notify_usage": "unknown: no separately retained usage-bearing rollout; not claimed free",
+    "complete_attempt_spend_usd": null,
+    "controller_metering_complete": true,
+    "current_review_usd": "pending",
+    "offline_and_build_paid_seat_usd": 0,
+    "implementer_orchestrator_usd": "unavailable",
+    "basis": "API-equivalent estimates at retained controller rates, not invoices. Controller completeness flag does not independently prove foreign startup notification cost."
+  },
+  "cleanup": {
+    "survivors": [],
+    "private_port_closed": true,
+    "scratch_root_removed": true,
+    "codex_auth_copy_removed": true,
+    "claude_credential_never_copied": true,
+    "claude_mount_placeholder_zero_bytes": true,
+    "runtime_children_waited": true,
+    "gate_children_waited": true,
+    "gate_root_removed": true
+  },
+  "task_assign": {
+    "argv": [
+      "task",
+      "assign",
+      "1",
+      "--owner",
+      "lead",
+      "--status",
+      "in_progress",
+      "--json",
+      "--description",
+      "Preserve the lead role and this assignment across ordinary compaction, then handle the fresh native reply once.",
+      "--deliverable",
+      "A brief native text response distinguishing the fresh reply after recovery; no files or tools.",
+      "--first-step",
+      "Keep this assignment active through the controller compact; observe the next native teammate reply without tools.",
+      "--completion-signal",
+      "Respond once in native text when the fresh reply arrives; the controller records completion.",
+      "--review-route",
+      "Measure; controller acceptance with one independent Opus evidence review."
+    ],
+    "exit": 0,
+    "output": "[mesh] warning [LEGACY_LANE_METADATA]: task #1 has no lane metadata; one-active-lane guardrails are partially degraded\n{\"assignment_id\":\"dadd2fb3-0fad-4cae-b52d-5facf68de6c4\",\"delivered\":true,\"id\":\"b5ffce5f-6ed0-4bab-8a9c-8f0e33dffd45\",\"task_id\":\"1\"}\n"
+  },
+  "task_create": {
+    "argv": [
+      "task",
+      "create",
+      "--subject",
+      "Run6 native mailbox recovery",
+      "--json"
+    ],
+    "exit": 0,
+    "output": "{\n  \"id\": \"1\",\n  \"subject\": \"Run6 native mailbox recovery\",\n  \"status\": \"pending\"\n}\n"
+  },
+  "operational_task": {
+    "id": "",
+    "subject": "",
+    "status": ""
+  },
+  "operational_updated_at": "2026-09-10T22:38:30.620883924Z",
+  "wait": {
+    "started_at": 1789079990.1435394,
+    "seconds": 65,
+    "remaining_outer_seconds": 818.9776887210319,
+    "monotonic_deadline": 300592.937953519
+  },
+  "compact_inputs": [],
+  "claude_hook_events": [],
+  "native_and_action_rows": [
+    {
+      "index": 13,
+      "row": {
+        "parentUuid": "cfdfb7b2-d6b0-4f66-866e-1dbe09d08a74",
+        "isSidechain": false,
+        "teamName": "l1-claude-lead",
+        "agentName": "lead",
+        "promptId": "69fc8d40-7e3a-4547-bf4b-a73bf45dcac6",
+        "type": "user",
+        "message": {
+          "role": "user",
+          "content": "<teammate-message teammate_id=\"alpha\" summary=\"L1 reply A\">\nRESULT: L1_AMBER_42 received by alpha.\n</teammate-message>\n\n<teammate-message teammate_id=\"alpha\" summary=\"L1 reply B\">\nRESULT: L1_BIRCH_73 received by alpha.\n</teammate-message>"
+        },
+        "uuid": "bca14b9b-ff24-4210-b0f3-1d5e17a7ff8a",
+        "timestamp": "2026-09-10T22:39:32.807Z",
+        "userType": "external",
+        "entrypoint": "cli",
+        "cwd": "/tmp/th-l1-runtime-z5az44y8/project",
+        "sessionId": "4f568461-7a51-467c-af25-68617f505107",
+        "version": "2.1.267",
+        "gitBranch": "master"
+      }
+    },
+    {
+      "index": 15,
+      "row": {
+        "parentUuid": "f7d5bf85-8770-416c-9bd8-8c9fb390f23c",
+        "isSidechain": false,
+        "teamName": "l1-claude-lead",
+        "agentName": "lead",
+        "message": {
+          "model": "claude-haiku-4-5-20251001",
+          "id": "msg_011CevZZcRCqT9L7ggGgivE5",
+          "type": "message",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Marker L1_AMBER_42 confirmed. Marker L1_BIRCH_73 confirmed."
+            }
+          ],
+          "container": null,
+          "stop_reason": "end_turn",
+          "stop_sequence": null,
+          "stop_details": null,
+          "usage": {
+            "input_tokens": 10,
+            "cache_creation_input_tokens": 153,
+            "cache_read_input_tokens": 13306,
+            "output_tokens": 159,
+            "output_tokens_details": {
+              "thinking_tokens": 128
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            },
+            "service_tier": "standard",
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 153,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "inference_geo": "not_available",
+            "iterations": [],
+            "speed": "standard"
+          },
+          "diagnostics": null,
+          "context_management": null
+        },
+        "apiBlockIndex": 1,
+        "requestId": "req_011CevZZbyA6X56n8fzUaEbA",
+        "type": "assistant",
+        "uuid": "acb463fc-e742-492a-a0ff-fdd8a633bb7b",
+        "timestamp": "2026-09-10T22:39:35.755Z",
+        "perTurnEffort": null,
+        "session_id": "4f568461-7a51-467c-af25-68617f505107",
+        "userType": "external",
+        "entrypoint": "cli",
+        "cwd": "/tmp/th-l1-runtime-z5az44y8/project",
+        "sessionId": "4f568461-7a51-467c-af25-68617f505107",
+        "version": "2.1.267",
+        "gitBranch": "master"
+      }
+    },
+    {
+      "index": 22,
+      "row": {
+        "parentUuid": "3f3eca20-5a1d-424e-8859-75034ef4e910",
+        "isSidechain": false,
+        "teamName": "l1-claude-lead",
+        "agentName": "lead",
+        "message": {
+          "model": "claude-haiku-4-5-20251001",
+          "id": "msg_011CevZaX5kgk9SQr6rKTNG4",
+          "type": "message",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Read acknowledgments:\n- Recovery card from lead: marked read.\n- L1_AMBER_42 receipt from alpha: marked read.\n- L1_BIRCH_73 receipt from alpha: marked read.\n- No further unread messages; done."
+            }
+          ],
+          "container": null,
+          "stop_reason": "end_turn",
+          "stop_sequence": null,
+          "stop_details": null,
+          "usage": {
+            "input_tokens": 8,
+            "cache_creation_input_tokens": 3029,
+            "cache_read_input_tokens": 13728,
+            "output_tokens": 209,
+            "output_tokens_details": {
+              "thinking_tokens": 144
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            },
+            "service_tier": "standard",
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 3029,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "inference_geo": "not_available",
+            "iterations": [],
+            "speed": "standard"
+          },
+          "diagnostics": null,
+          "context_management": null
+        },
+        "apiBlockIndex": 1,
+        "requestId": "req_011CevZaWQKm2CAqMZ1zRpQk",
+        "type": "assistant",
+        "uuid": "1310b579-a097-43ba-a280-536d11a04b95",
+        "timestamp": "2026-09-10T22:39:48.396Z",
+        "perTurnEffort": null,
+        "session_id": "4f568461-7a51-467c-af25-68617f505107",
+        "userType": "external",
+        "entrypoint": "cli",
+        "cwd": "/tmp/th-l1-runtime-z5az44y8/project",
+        "sessionId": "4f568461-7a51-467c-af25-68617f505107",
+        "version": "2.1.267",
+        "gitBranch": "master"
+      }
+    },
+    {
+      "index": 24,
+      "row": {
+        "parentUuid": "37fe2daf-2891-4069-8952-aead49c6b5d7",
+        "isSidechain": false,
+        "teamName": "l1-claude-lead",
+        "agentName": "lead",
+        "promptId": "950cef61-52c8-4f22-bae0-ff55f91b817b",
+        "type": "user",
+        "message": {
+          "role": "user",
+          "content": "<teammate-message teammate_id=\"lead\" summary=\"task #1 assignment\">\n[#1 Run6 native mailbox recovery \u00b7 owner: lead \u00b7 team: l1-claude-lead]\nAssignment: dadd2fb3-0fad-4cae-b52d-5facf68de6c4 \u00b7 issued by lead at 2026-09-10T22:39:49.398Z\nACTION REQUIRED: Start permitted action: Keep this assignment active through the controller compact; observe the next native teammate reply without tools.\nExecution: RECORDED status=in_progress; stage=in_progress\nObjective: Preserve the lead role and this assignment across ordinary compaction, then handle the fresh native reply once.\nDeliverable: A brief native text response distinguishing the fresh reply after recovery; no files or tools.\nFirst action: Keep this assignment active through the controller compact; observe the next native teammate reply without tools.\nCompletion signal: Respond once in native text when the fresh reply arrives; the controller records completion.\nReview route: Measure; controller acceptance with one independent Opus evidence review.\nNo pure acknowledgment. Follow the completion signal; report an execution blocker as specified.\n</teammate-message>"
+        },
+        "uuid": "8059052f-1ec3-41a7-b65b-32c1150d7f14",
+        "timestamp": "2026-09-10T22:39:50.815Z",
+        "userType": "external",
+        "entrypoint": "cli",
+        "cwd": "/tmp/th-l1-runtime-z5az44y8/project",
+        "sessionId": "4f568461-7a51-467c-af25-68617f505107",
+        "version": "2.1.267",
+        "gitBranch": "master"
+      }
+    },
+    {
+      "index": 26,
+      "row": {
+        "parentUuid": "2838d5e7-818e-48cf-9601-298c8866c857",
+        "isSidechain": false,
+        "teamName": "l1-claude-lead",
+        "agentName": "lead",
+        "message": {
+          "model": "claude-haiku-4-5-20251001",
+          "id": "msg_011CevZawb9EhBD3peuWcdBh",
+          "type": "message",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Assignment dadd2fb3-0fad-4cae-b52d-5facf68de6c4 received and held active. Ready to observe next native teammate reply without tools."
+            }
+          ],
+          "container": null,
+          "stop_reason": "end_turn",
+          "stop_sequence": null,
+          "stop_details": null,
+          "usage": {
+            "input_tokens": 10,
+            "cache_creation_input_tokens": 490,
+            "cache_read_input_tokens": 16757,
+            "output_tokens": 916,
+            "output_tokens_details": {
+              "thinking_tokens": 867
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            },
+            "service_tier": "standard",
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 490,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "inference_geo": "not_available",
+            "iterations": [],
+            "speed": "standard"
+          },
+          "diagnostics": null,
+          "context_management": null
+        },
+        "apiBlockIndex": 1,
+        "requestId": "req_011CevZavvTbVJHsUYdsLXHL",
+        "type": "assistant",
+        "uuid": "92f7664e-4e3f-40e9-ba91-b7ab04e5f293",
+        "timestamp": "2026-09-10T22:39:59.431Z",
+        "perTurnEffort": null,
+        "session_id": "4f568461-7a51-467c-af25-68617f505107",
+        "userType": "external",
+        "entrypoint": "cli",
+        "cwd": "/tmp/th-l1-runtime-z5az44y8/project",
+        "sessionId": "4f568461-7a51-467c-af25-68617f505107",
+        "version": "2.1.267",
+        "gitBranch": "master"
+      }
+    }
+  ],
+  "source_diagnosis": {
+    "classification": "harness",
+    "inference": "Task-to-operational synchronization is app-DB-derived, then published through a daemon intent; this controller only launched the daemon and seats and never exercised that task persistence/publication path.",
+    "runtime_methods": [
+      "coordination.initialize_status",
+      "coordination.initialize_team",
+      "ping"
+    ],
+    "publication_rpc_observed": false,
+    "operational_task": {
+      "id": "",
+      "subject": "",
+      "status": ""
+    },
+    "source_base": "a7e6db7e",
+    "source_excerpts": [
+      {
+        "file": "src-tauri/src/coordination/operational_context.rs",
+        "start_line": 29,
+        "end_line": 50,
+        "text": "\n/// Build the app-DB-derived snapshots carried by a daemon initialization\n/// intent. This performs no team-store writes; the daemon publishes the\n/// snapshots only after the pipeline succeeds.\npub(crate) fn prepare_initialize_snapshots(\n    conn: &Connection,\n    request: &crate::coordination::requests::InitializeTeamRequest,\n) -> Result<Vec<OperationalContextSnapshot>, CoordinationError> {\n    std::iter::once(&request.lead)\n        .chain(request.agents.iter())\n        .map(|member| {\n            let tasks = load_project_tasks(conn, &member.project_id)?;\n            let (task, effort, task_state_changed_at) =\n                latest_owned_task_from_tasks(&tasks, &member.name);\n            Ok(build_member_snapshot(\n                None,\n                &request.team_name,\n                &member.name,\n                &member.project_id,\n                task,\n                effort,\n                task_state_changed_at,"
+      },
+      {
+        "file": "src-tauri/src/coordination/operational_context.rs",
+        "start_line": 357,
+        "end_line": 364,
+        "text": "fn load_project_tasks(\n    conn: &Connection,\n    project_path: &str,\n) -> Result<Vec<taurhaus_lib::db::task_queries::PersistedTask>, CoordinationError> {\n    taurhaus_lib::db::task_queries::get_tasks_for_project(conn, project_path)\n        .map_err(|err| CoordinationError::StoreError(err.to_string()))\n}\n"
+      },
+      {
+        "file": "src-tauri/src/services/task_sync.rs",
+        "start_line": 202,
+        "end_line": 246,
+        "text": "        operational_teams_dir.to_path_buf(),\n    )\n    .team_locations()\n    {\n        Ok(team_locations) => team_locations,\n        Err(err) => {\n            tracing::warn!(\n                project_path = %normalized_path,\n                error = %err,\n                \"failed to resolve team roots after task persistence\"\n            );\n            return;\n        }\n    };\n    let prepared = match crate::coordination::operational_context::prepare_project_task_snapshots_for_team_locations(\n        &team_locations,\n        conn,\n        normalized_path,\n    ) {\n        Ok(prepared) => prepared,\n        Err(err) => {\n            tracing::warn!(\n                project_path = %normalized_path,\n                error = %err,\n                \"failed to prepare operational snapshots after task persistence\"\n            );\n            return;\n        }\n    };\n    if prepared.is_empty() {\n        return;\n    }\n    let params = crate::daemon::protocol::CoordinationPublishOperationalSnapshotsParams {\n        publications: prepared\n            .into_iter()\n            .map(|(snapshot, task_state_changed_at)| {\n                crate::daemon::protocol::CoordinationOperationalSnapshotPublication {\n                    snapshot,\n                    task_state_changed_at,\n                }\n            })\n            .collect(),\n    };\n    if let Err(err) = publish(params) {\n        if mark_snapshot_publication_degraded(generation_state, normalized_path) {"
+      },
+      {
+        "file": "src-tauri/src/services/task_sync.rs",
+        "start_line": 274,
+        "end_line": 280,
+        "text": "    let request = crate::daemon::protocol::DaemonRequest::new(\n        format!(\"snapshot-publish-{}\", uuid::Uuid::new_v4().simple()),\n        crate::daemon::protocol::method::COORDINATION_PUBLISH_OPERATIONAL_SNAPSHOTS,\n        params,\n    );\n    let response = daemon\n        .send_status_request_within("
+      },
+      {
+        "file": "src-tauri/src/bootstrap.rs",
+        "start_line": 602,
+        "end_line": 638,
+        "text": "                continue;\n            }\n        }\n\n        // Scan tasks from files (daemon or local)\n        let scan_result = services::task_sync::scan_tasks_from_files(\n            app,\n            &provider_state,\n            &project.path,\n            Some(context.cycle_id),\n            Some(&context.sessions),\n            Some(&context.claude_index),\n        );\n\n        // Normalize path for DB storage\n        let normalized_path = provider::path::normalize_project_path(&project.path);\n\n        let (before_sig, after_sig) = {\n            let conn = match db_state.0.lock() {\n                Ok(c) => c,\n                Err(e) => {\n                    tracing::warn!(error = %e, \"task scan: db lock poisoned, skipping project\");\n                    continue;\n                }\n            };\n            let before = load_active_task_signature(&conn, &normalized_path);\n            services::task_sync::persist_task_scan_with_generation(\n                &conn,\n                &normalized_path,\n                &scan_result,\n                generation_state.inner(),\n                context.cycle_id,\n                provider_state.daemon.as_ref(),\n            );\n            let after = load_active_task_signature(&conn, &normalized_path);\n            (before, after)\n        };"
+      },
+      {
+        "file": "src-tauri/src/daemon/handlers.rs",
+        "start_line": 1192,
+        "end_line": 1224,
+        "text": "pub(crate) fn handle_get_project_tasks(\n    id: &str,\n    params: &serde_json::Value,\n    project_task_scan_cache: &ProjectTaskScanCacheState,\n) -> DaemonResponse {\n    let params: protocol::ProjectTasksParams = match serde_json::from_value(params.clone()) {\n        Ok(p) => p,\n        Err(_) => match serde_json::from_value::<protocol::PathParams>(params.clone()) {\n            Ok(p) => protocol::ProjectTasksParams {\n                path: p.path,\n                scan_cycle_id: None,\n            },\n            Err(e) => return DaemonResponse::err(id, \"INVALID_PARAMS\", e.to_string()),\n        },\n    };\n\n    let (all_sessions, claude_index) =\n        load_project_task_scan_inputs(params.scan_cycle_id, project_task_scan_cache);\n    let project_sessions: Vec<crate::session_scanner::RuntimeSession> = all_sessions\n        .into_iter()\n        .filter(|s| s.project_path == params.path)\n        .collect();\n\n    let result = crate::task_scanner::get_tasks_for_project_with_index(\n        &params.path,\n        &project_sessions,\n        Some(&claude_index),\n    );\n    #[cfg(feature = \"mesh-bridged-backend\")]\n    record_terminal_task_observations(&result, &claude_index, project_task_scan_cache);\n    DaemonResponse::ok(id, result)\n}\n"
+      },
+      {
+        "file": "src-tauri/src/daemon/protocol.rs",
+        "start_line": 729,
+        "end_line": 744,
+        "text": "/// One app-DB-derived operational snapshot publication. The task timestamp is\n/// carried separately so the daemon can preserve deadline marker semantics.\n#[cfg(feature = \"mesh-bridged-backend\")]\n#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]\npub struct CoordinationOperationalSnapshotPublication {\n    pub snapshot: crate::coordination::stores::OperationalContextSnapshot,\n    #[serde(default)]\n    pub task_state_changed_at: Option<chrono::DateTime<chrono::Utc>>,\n}\n\n#[cfg(feature = \"mesh-bridged-backend\")]\n#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]\npub struct CoordinationPublishOperationalSnapshotsParams {\n    pub publications: Vec<CoordinationOperationalSnapshotPublication>,\n}\n"
+      }
+    ],
+    "scope_limit": "Does not assert an independently exercised task scan failed; no product defect established."
+  },
+  "canonical_task": {
+    "taskId": "1",
+    "subject": "Run6 native mailbox recovery",
+    "taskStatus": "in_progress",
+    "owner": "lead",
+    "assignmentId": "dadd2fb3-0fad-4cae-b52d-5facf68de6c4",
+    "assignedAt": "2026-09-10T22:39:49.398Z"
+  },
+  "journal": [
+    {
+      "sequence": 1,
+      "event": "message_accepted",
+      "message_id": "1e184eb3-0656-4b37-b785-74a06ea9e225",
+      "summary": null
+    },
+    {
+      "sequence": 2,
+      "event": "message_accepted",
+      "message_id": "f85df0c8-8351-438a-848e-0daf106fb06b",
+      "summary": null
+    },
+    {
+      "sequence": 3,
+      "event": "delivery_attempt",
+      "adapter": "native-mailbox/1",
+      "attempt_id": "675d676b-388a-4477-92e0-147d0999a130",
+      "delivery_id": "5a072e10-cbcf-4679-99e6-c7dc60d57229",
+      "evidence": "durable claim",
+      "message_id": "1e184eb3-0656-4b37-b785-74a06ea9e225",
+      "recipient": "lead",
+      "stage": "attempt_started"
+    },
+    {
+      "sequence": 4,
+      "event": "receipt",
+      "adapter": "native-mailbox/1",
+      "attempt_id": "675d676b-388a-4477-92e0-147d0999a130",
+      "delivery_id": "5a072e10-cbcf-4679-99e6-c7dc60d57229",
+      "evidence": "durable native mailbox projection; uptake unobserved",
+      "message_id": "1e184eb3-0656-4b37-b785-74a06ea9e225",
+      "recipient": "lead",
+      "stage": "native_enqueued"
+    },
+    {
+      "sequence": 5,
+      "event": "delivery_attempt",
+      "adapter": "tmux/1",
+      "attempt_id": "ce9b2573-8631-491d-b768-b8ed6c56ff61",
+      "delivery_id": "9efcff29-7498-4897-acd4-dd0bb7daf24b",
+      "evidence": "durable claim",
+      "message_id": "f85df0c8-8351-438a-848e-0daf106fb06b",
+      "recipient": "alpha",
+      "stage": "attempt_started"
+    },
+    {
+      "sequence": 6,
+      "event": "receipt",
+      "adapter": "tmux/1",
+      "attempt_id": "ce9b2573-8631-491d-b768-b8ed6c56ff61",
+      "delivery_id": "9efcff29-7498-4897-acd4-dd0bb7daf24b",
+      "evidence": "literal paste and harness submit exited 0; model uptake unobserved",
+      "message_id": "f85df0c8-8351-438a-848e-0daf106fb06b",
+      "recipient": "alpha",
+      "stage": "submitted"
+    },
+    {
+      "sequence": 7,
+      "event": "receipt",
+      "context": "explicit-mesh-cli",
+      "delivery_id": "9efcff29-7498-4897-acd4-dd0bb7daf24b",
+      "kind": "consumed_by_read",
+      "message_id": "f85df0c8-8351-438a-848e-0daf106fb06b",
+      "reader_name": "alpha"
+    },
+    {
+      "sequence": 8,
+      "event": "message_accepted",
+      "message_id": "b49808d9-1e73-4fa3-bd70-e83ddf6476a3",
+      "summary": "L1 marker A"
+    },
+    {
+      "sequence": 9,
+      "event": "message_accepted",
+      "message_id": "177586fa-4e6d-49ce-9589-d4c74a45d48d",
+      "summary": "L1 marker B"
+    },
+    {
+      "sequence": 10,
+      "event": "delivery_attempt",
+      "adapter": "tmux/1",
+      "attempt_id": "ec6cc9f2-77f8-4183-b430-4c4aeb1e62b3",
+      "delivery_id": "72614ca8-41c7-4d11-af35-bf314326efa3",
+      "evidence": "durable claim",
+      "message_id": "b49808d9-1e73-4fa3-bd70-e83ddf6476a3",
+      "recipient": "alpha",
+      "stage": "attempt_started"
+    },
+    {
+      "sequence": 11,
+      "event": "receipt",
+      "adapter": "tmux/1",
+      "attempt_id": "ec6cc9f2-77f8-4183-b430-4c4aeb1e62b3",
+      "delivery_id": "72614ca8-41c7-4d11-af35-bf314326efa3",
+      "evidence": "batch admission failed before presentation",
+      "message_id": "b49808d9-1e73-4fa3-bd70-e83ddf6476a3",
+      "recipient": "alpha",
+      "stage": "failed"
+    },
+    {
+      "sequence": 12,
+      "event": "delivery_attempt",
+      "adapter": "tmux/1",
+      "attempt_id": "1f0dd851-b1f8-49f4-9c6c-a118ecf126ec",
+      "delivery_id": "72614ca8-41c7-4d11-af35-bf314326efa3",
+      "evidence": "durable claim",
+      "message_id": "b49808d9-1e73-4fa3-bd70-e83ddf6476a3",
+      "recipient": "alpha",
+      "stage": "attempt_started"
+    },
+    {
+      "sequence": 13,
+      "event": "delivery_attempt",
+      "adapter": "tmux/1",
+      "attempt_id": "c983aa58-3813-4dce-8971-fcc33357ad77",
+      "delivery_id": "6c38d861-413d-4fa4-b74e-b1d70626dcd7",
+      "evidence": "durable claim",
+      "message_id": "177586fa-4e6d-49ce-9589-d4c74a45d48d",
+      "recipient": "alpha",
+      "stage": "attempt_started"
+    },
+    {
+      "sequence": 14,
+      "event": "receipt",
+      "adapter": "tmux/1",
+      "attempt_id": "1f0dd851-b1f8-49f4-9c6c-a118ecf126ec",
+      "delivery_id": "72614ca8-41c7-4d11-af35-bf314326efa3",
+      "evidence": "literal paste and harness submit exited 0; model uptake unobserved",
+      "message_id": "b49808d9-1e73-4fa3-bd70-e83ddf6476a3",
+      "recipient": "alpha",
+      "stage": "submitted"
+    },
+    {
+      "sequence": 15,
+      "event": "receipt",
+      "adapter": "tmux/1",
+      "attempt_id": "c983aa58-3813-4dce-8971-fcc33357ad77",
+      "delivery_id": "6c38d861-413d-4fa4-b74e-b1d70626dcd7",
+      "evidence": "literal paste and harness submit exited 0; model uptake unobserved",
+      "message_id": "177586fa-4e6d-49ce-9589-d4c74a45d48d",
+      "recipient": "alpha",
+      "stage": "submitted"
+    },
+    {
+      "sequence": 16,
+      "event": "receipt",
+      "context": "explicit-mesh-cli",
+      "delivery_id": "72614ca8-41c7-4d11-af35-bf314326efa3",
+      "kind": "consumed_by_read",
+      "message_id": "b49808d9-1e73-4fa3-bd70-e83ddf6476a3",
+      "reader_name": "alpha"
+    },
+    {
+      "sequence": 17,
+      "event": "receipt",
+      "context": "explicit-mesh-cli",
+      "delivery_id": "6c38d861-413d-4fa4-b74e-b1d70626dcd7",
+      "kind": "consumed_by_read",
+      "message_id": "177586fa-4e6d-49ce-9589-d4c74a45d48d",
+      "reader_name": "alpha"
+    },
+    {
+      "sequence": 18,
+      "event": "message_accepted",
+      "message_id": "c11f5239-ed69-4c67-9e04-abf21df398e8",
+      "summary": "L1 reply A"
+    },
+    {
+      "sequence": 19,
+      "event": "message_accepted",
+      "message_id": "9dae7475-6726-40b2-8078-a67759a615fa",
+      "summary": "L1 reply B"
+    },
+    {
+      "sequence": 20,
+      "event": "delivery_attempt",
+      "adapter": "native-mailbox/1",
+      "attempt_id": "1d6cd61d-5668-4650-8925-de013e83f7c4",
+      "delivery_id": "92c99733-97aa-41ed-bca1-3464e1182c16",
+      "evidence": "durable claim",
+      "message_id": "c11f5239-ed69-4c67-9e04-abf21df398e8",
+      "recipient": "lead",
+      "stage": "attempt_started"
+    },
+    {
+      "sequence": 21,
+      "event": "delivery_attempt",
+      "adapter": "native-mailbox/1",
+      "attempt_id": "00da704f-b482-4093-aa44-e1999f9a19e3",
+      "delivery_id": "cea4c20f-27bb-4690-96f3-7436c9288158",
+      "evidence": "durable claim",
+      "message_id": "9dae7475-6726-40b2-8078-a67759a615fa",
+      "recipient": "lead",
+      "stage": "attempt_started"
+    },
+    {
+      "sequence": 22,
+      "event": "receipt",
+      "adapter": "native-mailbox/1",
+      "attempt_id": "1d6cd61d-5668-4650-8925-de013e83f7c4",
+      "delivery_id": "92c99733-97aa-41ed-bca1-3464e1182c16",
+      "evidence": "durable native mailbox projection; uptake unobserved",
+      "message_id": "c11f5239-ed69-4c67-9e04-abf21df398e8",
+      "recipient": "lead",
+      "stage": "native_enqueued"
+    },
+    {
+      "sequence": 23,
+      "event": "receipt",
+      "adapter": "native-mailbox/1",
+      "attempt_id": "00da704f-b482-4093-aa44-e1999f9a19e3",
+      "delivery_id": "cea4c20f-27bb-4690-96f3-7436c9288158",
+      "evidence": "durable native mailbox projection; uptake unobserved",
+      "message_id": "9dae7475-6726-40b2-8078-a67759a615fa",
+      "recipient": "lead",
+      "stage": "native_enqueued"
+    },
+    {
+      "sequence": 24,
+      "event": "receipt",
+      "context": "explicit-mesh-cli",
+      "delivery_id": "5a072e10-cbcf-4679-99e6-c7dc60d57229",
+      "kind": "consumed_by_read",
+      "message_id": "1e184eb3-0656-4b37-b785-74a06ea9e225",
+      "reader_name": "lead"
+    },
+    {
+      "sequence": 25,
+      "event": "receipt",
+      "context": "explicit-mesh-cli",
+      "delivery_id": "92c99733-97aa-41ed-bca1-3464e1182c16",
+      "kind": "consumed_by_read",
+      "message_id": "c11f5239-ed69-4c67-9e04-abf21df398e8",
+      "reader_name": "lead"
+    },
+    {
+      "sequence": 26,
+      "event": "receipt",
+      "context": "explicit-mesh-cli",
+      "delivery_id": "cea4c20f-27bb-4690-96f3-7436c9288158",
+      "kind": "consumed_by_read",
+      "message_id": "9dae7475-6726-40b2-8078-a67759a615fa",
+      "reader_name": "lead"
+    },
+    {
+      "sequence": 27,
+      "event": "message_accepted",
+      "message_id": "a69b8dc4-e559-40cb-a438-637448b2cf99",
+      "summary": "task #1 assignment"
+    },
+    {
+      "sequence": 28,
+      "event": "delivery_attempt",
+      "adapter": "native-mailbox/1",
+      "attempt_id": "2732e213-17e7-48c0-8f8d-f4075a327908",
+      "delivery_id": "b5ffce5f-6ed0-4bab-8a9c-8f0e33dffd45",
+      "evidence": "durable claim",
+      "message_id": "a69b8dc4-e559-40cb-a438-637448b2cf99",
+      "recipient": "lead",
+      "stage": "attempt_started"
+    },
+    {
+      "sequence": 29,
+      "event": "receipt",
+      "adapter": "native-mailbox/1",
+      "attempt_id": "2732e213-17e7-48c0-8f8d-f4075a327908",
+      "delivery_id": "b5ffce5f-6ed0-4bab-8a9c-8f0e33dffd45",
+      "evidence": "durable native mailbox projection; uptake unobserved",
+      "message_id": "a69b8dc4-e559-40cb-a438-637448b2cf99",
+      "recipient": "lead",
+      "stage": "native_enqueued"
+    }
+  ],
+  "alpha_activity": {
+    "version": 1,
+    "observed_at": "2026-09-10T22:39:01.459162461+00:00",
+    "stall_recent_activity": false,
+    "stall_no_output": true,
+    "stall_no_active_process": false,
+    "active_non_shell_process": true,
+    "recent_io": false,
+    "pane_alive": true,
+    "pane_foreign": false,
+    "last_output_age_secs": 0,
+    "activity_confidence": "idle",
+    "confidence": "high",
+    "last_observed_at": "2026-09-10T22:39:01.456497168+00:00",
+    "source": "notify",
+    "state": "idle"
+  },
+  "notify": [
+    {
+      "ts": "2026-09-10T22:38:36.667159327Z",
+      "session_id": "01a08d79-02f4-7391-a0c1-2d121a3d584c",
+      "event": "agent-turn-complete",
+      "turn_id": "01a08d79-030e-74d2-bf7f-019bb8e0e550"
+    },
+    {
+      "ts": "2026-09-10T22:39:01.301451657Z",
+      "session_id": "01a08d78-fbbf-7cb3-bcb2-6b06ca77fb25",
+      "event": "agent-turn-complete",
+      "turn_id": "01a08d79-0134-7323-971e-f5d263acb181"
+    },
+    {
+      "ts": "2026-09-10T22:39:18.935867519Z",
+      "session_id": "01a08d78-fbbf-7cb3-bcb2-6b06ca77fb25",
+      "event": "agent-turn-complete",
+      "turn_id": "01a08d79-9ccc-76a0-90f3-6ad094fcd688"
+    },
+    {
+      "ts": "2026-09-10T22:39:33.047731153Z",
+      "session_id": "01a08d78-fbbf-7cb3-bcb2-6b06ca77fb25",
+      "event": "agent-turn-complete",
+      "turn_id": "01a08d79-c4bc-7850-ac96-b240b821c703"
+    }
+  ],
+  "original_packet": {
+    "original_files_checked": 77,
+    "changed_original_files": 0
+  },
+  "offline_tests": "New continuation route observed red exit1, then 46 discovered +11 controller tests green, no real CLI/credential access."
+}

@@ -1,0 +1,32 @@
+{
+  "model": "claude-opus-4-6",
+  "exit": 0,
+  "verdict": {
+    "verdict": "approve",
+    "findings": [
+      {
+        "severity": "minor",
+        "finding": "The report correctly classifies the overall outcome as UNAVAILABLE (not PASS). Steps 1\u20134 are individually marked PASS with cited evidence; step 5 is UNAVAILABLE/harness; step 6 is NOT RUN. No E2E PASS is claimed.",
+        "fix": "None required."
+      },
+      {
+        "severity": "minor",
+        "finding": "Compact spend is explicitly marked unknown rather than zero; complete attempt spend is null with metering flagged incomplete. This is honest accounting.",
+        "fix": "None required."
+      },
+      {
+        "severity": "minor",
+        "finding": "Cleanup evidence shows zero survivors, credential never copied, port closed, scratch removed. Consistent with teardown-audit.",
+        "fix": "None required."
+      }
+    ]
+  },
+  "total_cost_usd": 0.156075,
+  "requests": 1,
+  "scope": "approves truthful partial/unavailable evidence report, not E2E PASS",
+  "cleanup": {
+    "child_exit": 0,
+    "root_removed": true,
+    "credential_placeholder_zero_bytes": true
+  }
+}

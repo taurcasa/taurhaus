@@ -1,0 +1,5 @@
+{"observed_at": 1789084749.173184, "value": ["tmp/arg0/codex-arg0IXJvNR/.lock"]}
+{"observed_at": 1789084749.6770065, "value": ["tmp/arg0/codex-arg0aEtF00/.lock"]}
+{"observed_at": 1789084750.1802564, "value": ["tmp/arg0/codex-arg0rijlVp/.lock"]}
+{"observed_at": 1789084751.6932006, "value": ["thread-writer-locks/.coordination.lock", "thread-writer-locks/01a08dc2-d697-75a3-b917-ca24413ee259.lock", "tmp/arg0/codex-arg0rijlVp/.lock"]}
+{"observed_at": 1789084753.7067091, "value": ["sessions/2026/09/11/rollout-2026-09-11T01-59-11-01a08dc2-d697-75a3-b917-ca24413ee259.jsonl", "thread-writer-locks/.coordination.lock", "thread-writer-locks/01a08dc2-d697-75a3-b917-ca24413ee259.lock", "tmp/arg0/codex-arg0rijlVp/.lock"]}

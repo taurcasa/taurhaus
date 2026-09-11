@@ -1,0 +1,36 @@
+E.F.
+======================================================================
+ERROR: test_assignment_is_created_through_mesh_before_snapshot (test_run6.Run6Tests.test_assignment_is_created_through_mesh_before_snapshot)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/test_run6.py", line 42, in test_assignment_is_created_through_mesh_before_snapshot
+    result = steps.prepare_resumable_assignment()
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/steps.py", line 110, in prepare_resumable_assignment
+    assignment = json.loads(assigned['output'])
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/decoder.py", line 355, in raw_decode
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+json.decoder.JSONDecodeError: Expecting value: line 1 column 2 (char 1)
+
+======================================================================
+FAIL: test_json_parse_error_is_harness_even_with_healthy_product (test_run6.Run6Tests.test_json_parse_error_is_harness_even_with_healthy_product)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/test_run6.py", line 59, in test_json_parse_error_is_harness_even_with_healthy_product
+    self.assertEqual(steps.classify_failure(error, facts), 'harness')
+AssertionError: 'product-owner-pending-evidence-review' != 'harness'
+- product-owner-pending-evidence-review
++ harness
+
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.002s
+
+FAILED (failures=1, errors=1)

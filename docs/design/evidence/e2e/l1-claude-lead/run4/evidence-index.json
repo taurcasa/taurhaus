@@ -1,0 +1,222 @@
+{
+  "initialize-result.json": {
+    "bytes": 3616,
+    "sha256": "4581cbc680767b1b2967eba5e916365a9160a3732c895b406c7dc17676e14a46"
+  },
+  "claude-transcript.json": {
+    "bytes": 3724,
+    "sha256": "914adfc86c0bc4d7ec87632c3f4e23bc86fbe6f035f689116a5da4ca05bc395e"
+  },
+  "teardown-audit.json": {
+    "bytes": 351,
+    "sha256": "2299005a4e5b70121be9db1f19693660079de7be38a0508b884bc985d33acd63"
+  },
+  "events.jsonl": {
+    "bytes": 30141,
+    "sha256": "3b9f0e95a39b7cbf20ae9b9a8514689826ce9137435dece0622c46c950b0c39b"
+  },
+  "ping.json": {
+    "bytes": 122,
+    "sha256": "58dd72531c634eafc9375f3b27ed564b7011250345240fbc0e41bf834f669ea7"
+  },
+  "initialize-request.json": {
+    "bytes": 3405,
+    "sha256": "0a3ced32a226681b685ba60cca8dae5d727d266b1391cfb9750e72f4ad611c66"
+  },
+  "driver-command.json": {
+    "bytes": 502,
+    "sha256": "eb4a77ba2607d43855f3add321280eb7139aaeea0f42af5bfc0c149a45d5de24"
+  },
+  "log-retention.json": {
+    "bytes": 49,
+    "sha256": "13061d3594a8eea991cfd4ac674ef99ef50e512f0a9fa22041683212d0f0e5ef"
+  },
+  "cost-ledger.json": {
+    "bytes": 1412,
+    "sha256": "f1e954969564f1348e2f740900e9bd4be0a0456651b9f2c53f8ce9a2a18fc5c6"
+  },
+  "identities.json": {
+    "bytes": 4219,
+    "sha256": "0ff1fb28d428205ceecbd01cf0ec740e0bc4fd51ad08bec1f914f37a7a5f2dea"
+  },
+  "offline-red.txt": {
+    "bytes": 742,
+    "sha256": "72b15b65465740541eb02a986130d72e72f72d09c83f70835e95af284a050441"
+  },
+  "step1-outcome.json": {
+    "bytes": 114,
+    "sha256": "a5e969411496212058a418bf4a44bb3050187e31091e46764eff46e7c6550913"
+  },
+  "preparation.json": {
+    "bytes": 451,
+    "sha256": "471e25e02f6f876b9e45ccc515ab8111a61a8b4d7379ccbe05c726d7a22183a2"
+  },
+  "locks.txt": {
+    "bytes": 919,
+    "sha256": "042edd6e0a3f81c622a6a3229a535a82f564c1b58fb91fbfc13d438c3245ee79"
+  },
+  "controller-exit.json": {
+    "bytes": 16,
+    "sha256": "53da999bb286317daf1a665b745c8dc5dd169424aec9763f629103b3a9f2409d"
+  },
+  "admission-ledger.json": {
+    "bytes": 1336,
+    "sha256": "c54340aad87312d251810749dc20649a9311464336a5a1eb3bf43d8499b914d5"
+  },
+  "gate-audit.json": {
+    "bytes": 283,
+    "sha256": "96236b5a86e75bc7fedecb8ad2cde5bd6de25d2540670ffab19c2f5335f8a1c0"
+  },
+  "pre-ruling-final-disposition.json": {
+    "bytes": 1918,
+    "sha256": "04100ce3f595e9cfa2e072ca7ed44194355340b12d784ae24aeeead8fff533af"
+  },
+  "reset-green.txt": {
+    "bytes": 230,
+    "sha256": "da5916a74764b63c4414b1b2d3240ce2e635cc6b48ef2efb3d6320c64f5877b7"
+  },
+  "review-excerpts.json": {
+    "bytes": 2833,
+    "sha256": "32180adb344b44609cbbb1fd73a83e590cc4941f60da367c01814b3368dde045"
+  },
+  "initialize-accepted.json": {
+    "bytes": 56,
+    "sha256": "8e8efb7b53f8845bceba0a7e33e830688cf67b1220c81f87291c44a3d89925c2"
+  },
+  "driver-steps.json": {
+    "bytes": 193,
+    "sha256": "d090fb9896d2c6b4d45ececc9fb51bb026c2b1ea6e007fac2ef564c2fcefd474"
+  },
+  "offline-green.txt": {
+    "bytes": 229,
+    "sha256": "b87321b792ee051fa644df0a9179a4c041bea5cb064848d3f5503f35812785ff"
+  },
+  "step1-fix-green.txt": {
+    "bytes": 232,
+    "sha256": "d7f3f597a484bd636a535f0c7a8dd5ab6ea5ef7cf442d3de7b759619ece6f309"
+  },
+  "result.json": {
+    "bytes": 114,
+    "sha256": "a5e969411496212058a418bf4a44bb3050187e31091e46764eff46e7c6550913"
+  },
+  "daemon-events.json": {
+    "bytes": 22392,
+    "sha256": "3c6756505b6a25731b5422ee4f76e482b1932474b5035c2689982144dadd31e9"
+  },
+  "report.md": {
+    "bytes": 10147,
+    "sha256": "6216bf83fd6020aa30932a33166df95d12152f771358b64dea43e75db777a230"
+  },
+  "execution-archive-audit.json": {
+    "bytes": 378,
+    "sha256": "6c90602638645d0031e667091a24298352942de7ceb8129f3f7294f42520aa5a"
+  },
+  "step1-driver.log": {
+    "bytes": 285,
+    "sha256": "255623a2c4f23c29832728b25d513995c933fc26867a352f94452762b7bf0960"
+  },
+  "daemon-tail.txt": {
+    "bytes": 14384,
+    "sha256": "cdb2d33103d56826bfd2fc1452a5b25d9d166c0c6d6458714ac2b45857f0af97"
+  },
+  "driver-exit.json": {
+    "bytes": 277,
+    "sha256": "465307e4581fd522daeb8b5fdb8733476f2c04e91d8680192fa2009bb039011a"
+  },
+  "admission.json": {
+    "bytes": 1241,
+    "sha256": "26d253e82edecabd9808de58e35ef1a179aead3da063668ed6fd6a39daf12efc"
+  },
+  "step1-fix-red.txt": {
+    "bytes": 1479,
+    "sha256": "eb2e5583a3f1dec07f21dc1c6c65c08120180234f2760484ea3916ea82229801"
+  },
+  "cleanup-before.json": {
+    "bytes": 4219,
+    "sha256": "0ff1fb28d428205ceecbd01cf0ec740e0bc4fd51ad08bec1f914f37a7a5f2dea"
+  },
+  "cleanup.json": {
+    "bytes": 404,
+    "sha256": "d9b49a2ba7d36811c165ab803a55b2b50e1273b0b7b44d1b76ba07e660c54320"
+  },
+  "codex-transcript.json": {
+    "bytes": 30937,
+    "sha256": "886543a633aa663d620989cd3182bf073143d0e867bd999a5c07709ca747d90c"
+  },
+  "isolation.json": {
+    "bytes": 2041,
+    "sha256": "2b291846eeeaada21119ec99ec7ff3fe611950d1cd705e85e905d3dcb67191ce"
+  },
+  "spend-summary.json": {
+    "bytes": 1243,
+    "sha256": "7f283f5c2d2a9d8ea97be217223d2bc21c430f1ca71fab733fe8aa3fe6bdeb50"
+  },
+  "step1-hook-poll.json": {
+    "bytes": 466,
+    "sha256": "62e00708448e6427b954428b78ba5d3073da9e8a3aca0b90071faa66965a4d8b"
+  },
+  "snapshots.json": {
+    "bytes": 423980,
+    "sha256": "52f9ae1fc6b40622360e432b9577afcffb8ffead5fd16e0ef0b4413251a65d74"
+  },
+  "review-summary.json": {
+    "bytes": 522,
+    "sha256": "606f07d959f9bf66d66c6e397b6a8cdc7a032bb6212f2d488e0f9c6f80c9a447"
+  },
+  "final-disposition.json": {
+    "bytes": 1433,
+    "sha256": "1dd522c20e496af276ac8acb5d021e8e71751aa8333602783097b87f89c5da70"
+  },
+  "prior-spend.json": {
+    "bytes": 373,
+    "sha256": "3597c4f542a53840849e063ed1fe2c542b10f533eb8ba3cd8d3e6e5424b8dc14"
+  },
+  "archive-audit.json": {
+    "bytes": 168,
+    "sha256": "4c0940d4313e5591bee0c553842d7c926830d2303074ecda6d468d354366a71f"
+  },
+  "boot.sh": {
+    "bytes": 360,
+    "sha256": "cd9b39f5a0e688a0f6162b12c94185576170b1cb64d69097de25ecfb401d3db6"
+  },
+  "hook-build.json": {
+    "bytes": 14689,
+    "sha256": "1bb0d1a6f62d7263747504493d3a9fa5a4ad88a354c1ac787f3f9288dee3a57f"
+  },
+  "build-audit.json": {
+    "bytes": 715,
+    "sha256": "2ccc23b9358fab0aca6d5d1d3d0398a16e768f1c90f78c9ee27d1d9266ec592f"
+  },
+  "taurhaus.log.jsonl": {
+    "bytes": 19557,
+    "sha256": "1013ddce114ec58601e63dfd4701447e4b13ccabf35b05d419a16f503f703571"
+  },
+  "driver.log": {
+    "bytes": 15,
+    "sha256": "e00fb7592deffd5f1ee03c1ec3240c675136b75e96e2bdc419d130b4ddec6e6b"
+  },
+  "review-driver.log": {
+    "bytes": 19,
+    "sha256": "9c3afe1139958dc4a1c526830d67ec9421f11011fbddb34631234bb020dc5627"
+  },
+  "execution-gate-audit.json": {
+    "bytes": 945,
+    "sha256": "f6a2a6525cb9335b917aa4af28688db816b706f6d9e1c402bca5a7c174a31be9"
+  },
+  "runtime-session-snapshot.json": {
+    "bytes": 4005,
+    "sha256": "3a28c256b6d8a927094c6ac7a74d4ee8b44e8d78718d19f3082ee7ce291a3354"
+  },
+  "reset-red.txt": {
+    "bytes": 734,
+    "sha256": "241bac66aafdaa2ad850716ab8a04a146fd52bb04b92bd26716a250d9a64d008"
+  },
+  "gate-driver.log": {
+    "bytes": 140,
+    "sha256": "da25c738bd6a0b42a2bd6646403d758bfa263f9dfedab86841349c624a3c040f"
+  },
+  "production-hooks-before-launch.json": {
+    "bytes": 247,
+    "sha256": "680c9892a0ac444c2e6936aaceb599214023d60820644e4d6aed5981bb389fb6"
+  }
+}

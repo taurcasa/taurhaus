@@ -1,0 +1,23 @@
+{
+  "taurhaus_head": "68cd3999c9f9bdecc02d31ab8926814aa236bfe1",
+  "required_base": "6398bfa3",
+  "protocol": 27,
+  "mesh_head": "fcb9647f46deef7c298df472f5550bf1c59e182f",
+  "descriptor": "unchanged production; no hosted seat",
+  "source_sha256": {
+    "controller.py": "040d35fed00785a6b4b6fd9d8bcf30b2213a666201f391cecb2bc86dadee9a3f",
+    "controller_support.py": "3d378daec86f21953f27656679a612d3f232c4c6876994723cdc2eeb13a21661",
+    "continuation_support.py": "c3aa3094de63b0d75f56e7911f7548591585baf41f1e6f55995f462cbccdb906",
+    "actions.py": "5f65e40c914c9bfd2bc06378dcd64d4fcf6b967637725dbd6c70c4546ea23763",
+    "step1.py": "7b4ebeefb1a5ad9a728da18a88fa6bb2728932b838cf9b13b37e072afd721684",
+    "steps.py": "419f2a8063ecc9148a9d4fc2197c5338d94ea96f9f33e380254941d1304fc193",
+    "run3_driver.py": "9157c5fbc3904fdf2d78a0f7be580cf7fa0c7ad89ca4a8fc2d06786b0b4da11c"
+  },
+  "runtime_caps": {
+    "claude_inputs": 8,
+    "codex_inputs": 12,
+    "seconds": 900,
+    "usd_including_historical_seat_upper_rate": 2
+  },
+  "setup_exception": "Two distinct markers to alpha; no beta hosted, as explicitly required by run-3 work order."
+}

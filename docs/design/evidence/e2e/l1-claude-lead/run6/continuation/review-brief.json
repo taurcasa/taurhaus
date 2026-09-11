@@ -1,0 +1,213 @@
+{
+  "candidate": "3b76f69a05188d218568cca3a23bcae306f5d36a",
+  "contract": "The renewed user asked to continue step by step with commits and gates. Original sessions were destroyed; a fresh isolated continuation preserved old evidence. First failure stops each attempt. No synthetic operational snapshot or product change. Review this stopped-run report, not a completion claim.",
+  "reported_outcome": "Steps 1-4 PASS; step5 UNAVAILABLE harness; step6 NOT RUN. Real assignment succeeded, but daemon-only fixture did not exercise app task DB persistence and operational-snapshot publication. No compact input, forged snapshot, product fix or recovery claim.",
+  "runtime": {
+    "seconds": 148.53328185895225,
+    "driver_exit": 2,
+    "steps": [
+      0,
+      0,
+      0,
+      0,
+      1
+    ],
+    "compact_inputs": [],
+    "hook_events": [],
+    "operational_task": {
+      "id": "",
+      "subject": "",
+      "status": ""
+    },
+    "wait_seconds": 65
+  },
+  "task_assign": {
+    "argv": [
+      "task",
+      "assign",
+      "1",
+      "--owner",
+      "lead",
+      "--status",
+      "in_progress",
+      "--json",
+      "--description",
+      "Preserve the lead role and this assignment across ordinary compaction, then handle the fresh native reply once.",
+      "--deliverable",
+      "A brief native text response distinguishing the fresh reply after recovery; no files or tools.",
+      "--first-step",
+      "Keep this assignment active through the controller compact; observe the next native teammate reply without tools.",
+      "--completion-signal",
+      "Respond once in native text when the fresh reply arrives; the controller records completion.",
+      "--review-route",
+      "Measure; controller acceptance with one independent Opus evidence review."
+    ],
+    "exit": 0,
+    "output": "[mesh] warning [LEGACY_LANE_METADATA]: task #1 has no lane metadata; one-active-lane guardrails are partially degraded\n{\"assignment_id\":\"dadd2fb3-0fad-4cae-b52d-5facf68de6c4\",\"delivered\":true,\"id\":\"b5ffce5f-6ed0-4bab-8a9c-8f0e33dffd45\",\"task_id\":\"1\"}\n"
+  },
+  "canonical_task": {
+    "taskId": "1",
+    "subject": "Run6 native mailbox recovery",
+    "taskStatus": "in_progress",
+    "owner": "lead",
+    "assignmentId": "dadd2fb3-0fad-4cae-b52d-5facf68de6c4",
+    "assignedAt": "2026-09-10T22:39:49.398Z"
+  },
+  "source_evidence": [
+    {
+      "file": "src-tauri/src/coordination/operational_context.rs:29",
+      "code": "Build the app-DB-derived snapshots carried by a daemon initialization intent."
+    },
+    {
+      "file": "src-tauri/src/coordination/operational_context.rs:357",
+      "code": "load_project_tasks(conn, project_path) calls db::task_queries::get_tasks_for_project(conn, project_path)"
+    },
+    {
+      "file": "src-tauri/src/services/task_sync.rs:216",
+      "code": "After task DB upsert: prepare_project_task_snapshots_for_team_locations(&team_locations, conn, normalized_path); wrap publications; publish(params)."
+    },
+    {
+      "file": "src-tauri/src/services/task_sync.rs:274",
+      "code": "DaemonRequest::new(..., COORDINATION_PUBLISH_OPERATIONAL_SNAPSHOTS, params)"
+    },
+    {
+      "file": "src-tauri/src/bootstrap.rs:607",
+      "code": "app scan_tasks_from_files then persist_task_scan_with_generation at line628"
+    },
+    {
+      "file": "src-tauri/src/daemon/handlers.rs:1192",
+      "code": "get_project_tasks scans and returns TaskResult; does not persist to app DB or publish operational snapshots"
+    }
+  ],
+  "runtime_methods": [
+    "coordination.initialize_status",
+    "coordination.initialize_team",
+    "ping"
+  ],
+  "publication_rpc_observed": false,
+  "step2": {
+    "accepted": [
+      8,
+      9
+    ],
+    "submitted": [
+      14,
+      15
+    ],
+    "consumed_by_read": [
+      16,
+      17
+    ],
+    "transient_failed_receipt": {
+      "sequence": 11,
+      "evidence": "batch admission failed before presentation"
+    },
+    "marker_tool_results_count": 1
+  },
+  "step3": {
+    "native_time": "22:39:32.807Z",
+    "native_row": 13,
+    "response_time": "22:39:35.755Z",
+    "response_text": "Marker L1_AMBER_42 confirmed. Marker L1_BIRCH_73 confirmed.",
+    "receipt_stages": [
+      "native_enqueued",
+      "native_enqueued"
+    ],
+    "explicit_read_later": true
+  },
+  "step4": {
+    "receipts": [
+      24,
+      25,
+      26
+    ],
+    "reader": "lead",
+    "context": "explicit-mesh-cli",
+    "tool_command": "mesh read --unread --json --mark-read",
+    "tool_done": true
+  },
+  "activity": {
+    "version": 1,
+    "observed_at": "2026-09-10T22:39:01.459162461+00:00",
+    "stall_recent_activity": false,
+    "stall_no_output": true,
+    "stall_no_active_process": false,
+    "active_non_shell_process": true,
+    "recent_io": false,
+    "pane_alive": true,
+    "pane_foreign": false,
+    "last_output_age_secs": 0,
+    "activity_confidence": "idle",
+    "confidence": "high",
+    "last_observed_at": "2026-09-10T22:39:01.456497168+00:00",
+    "source": "notify",
+    "state": "idle"
+  },
+  "notify": [
+    {
+      "ts": "2026-09-10T22:38:36.667159327Z",
+      "session_id": "01a08d79-02f4-7391-a0c1-2d121a3d584c",
+      "event": "agent-turn-complete",
+      "turn_id": "01a08d79-030e-74d2-bf7f-019bb8e0e550"
+    },
+    {
+      "ts": "2026-09-10T22:39:01.301451657Z",
+      "session_id": "01a08d78-fbbf-7cb3-bcb2-6b06ca77fb25",
+      "event": "agent-turn-complete",
+      "turn_id": "01a08d79-0134-7323-971e-f5d263acb181"
+    },
+    {
+      "ts": "2026-09-10T22:39:18.935867519Z",
+      "session_id": "01a08d78-fbbf-7cb3-bcb2-6b06ca77fb25",
+      "event": "agent-turn-complete",
+      "turn_id": "01a08d79-9ccc-76a0-90f3-6ad094fcd688"
+    },
+    {
+      "ts": "2026-09-10T22:39:33.047731153Z",
+      "session_id": "01a08d78-fbbf-7cb3-bcb2-6b06ca77fb25",
+      "event": "agent-turn-complete",
+      "turn_id": "01a08d79-c4bc-7850-ac96-b240b821c703"
+    }
+  ],
+  "spend": {
+    "claude": 0.03747,
+    "codex": 0.00871644,
+    "known_seats": 0.04618644,
+    "upper_rate": 0.6888334,
+    "counts": {
+      "claude": 3,
+      "codex": 4
+    },
+    "claude_count_basis": "onboarding reservation plus typed send/read instructions; native replies/assignment excluded",
+    "compact": 0,
+    "foreign_notify_usage": "unknown, not free",
+    "implementer": "unavailable",
+    "prior_reviews_not_charged_to_fresh_attempt": true,
+    "this_failed_review_cost": 0.2134
+  },
+  "cleanup": {
+    "survivors": [],
+    "private_port_closed": true,
+    "scratch_root_removed": true,
+    "codex_auth_copy_removed": true,
+    "claude_credential_never_copied": true,
+    "claude_mount_placeholder_zero_bytes": true,
+    "runtime_children_waited": true,
+    "gate_children_waited": true,
+    "gate_root_removed": true
+  },
+  "gates": {
+    "check-quick": 0,
+    "lint": 0,
+    "test-contracts": 0
+  },
+  "offline_tests": 57,
+  "archive": {
+    "daemon_rows": 407,
+    "excluded_usage_rows": 0,
+    "max_pane_lines": 60,
+    "prohibited_pattern_scan": 0,
+    "original_files_unchanged": 77
+  },
+  "limits": "Source-backed classification is a fixture omission, not proof an independently exercised product sync failed. Raw provisional product label preserved with a superseding disposition. Initial review exceeded invocation cap and returned no verdict; cost retained. Judge this bounded evidence packet; no further seat action requested."
+}

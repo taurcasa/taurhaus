@@ -1,0 +1,69 @@
+FEEEF
+======================================================================
+ERROR: test_later_pending_delivery_idle_and_terminal_lock (test_run8.Run8Tests.test_later_pending_delivery_idle_and_terminal_lock)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/test_run8.py", line 46, in test_later_pending_delivery_idle_and_terminal_lock
+    facts, args = self.facts()
+                  ^^^^^^^^^^^^
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/test_run8.py", line 15, in facts
+    from run8_guard import delivery_input_facts
+ModuleNotFoundError: No module named 'run8_guard'
+
+======================================================================
+ERROR: test_passive_lock_sample_uses_fdinfo (test_run8.Run8Tests.test_passive_lock_sample_uses_fdinfo)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/test_run8.py", line 73, in test_passive_lock_sample_uses_fdinfo
+    from run8_guard import passive_terminal_lock
+ModuleNotFoundError: No module named 'run8_guard'
+
+======================================================================
+ERROR: test_pending_unknown_and_unread_onboarding_block_input (test_run8.Run8Tests.test_pending_unknown_and_unread_onboarding_block_input)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/test_run8.py", line 33, in test_pending_unknown_and_unread_onboarding_block_input
+    facts, args = self.facts()
+                  ^^^^^^^^^^^^
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/test_run8.py", line 15, in facts
+    from run8_guard import delivery_input_facts
+ModuleNotFoundError: No module named 'run8_guard'
+
+======================================================================
+FAIL: test_guard_precedes_any_codex_input_or_budget_reservation (test_run8.Run8Tests.test_guard_precedes_any_codex_input_or_budget_reservation)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/test_run8.py", line 62, in test_guard_precedes_any_codex_input_or_budget_reservation
+    trial.input('codex', '%2', 'READY')
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/controller.py", line 181, in input
+    ledger=self.ledger()
+           ^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1134, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1138, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1193, in _execute_mock_call
+    raise effect
+AssertionError: input admitted before guard
+
+======================================================================
+FAIL: test_run8_routing_and_assignment_publication (test_run8.Run8Tests.test_run8_routing_and_assignment_publication)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/test_run8.py", line 67, in test_run8_routing_and_assignment_publication
+    driver = runpy.run_path(str(controller.BASE/'run3_driver.py'))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen runpy>", line 286, in run_path
+  File "<frozen runpy>", line 98, in _run_module_code
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/run3_driver.py", line 15, in <module>
+    assert LABEL in ('run3', 'run4', 'run4c', 'run4d', 'run5', 'run6', 'run6/continuation', 'run7')
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.005s
+
+FAILED (failures=2, errors=3)

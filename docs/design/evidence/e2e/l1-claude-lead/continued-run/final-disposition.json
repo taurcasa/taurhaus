@@ -1,0 +1,9 @@
+{
+  "outcome": "UNAVAILABLE",
+  "classification": "harness",
+  "step": 2,
+  "reason": "Both Claude sends accepted, but alpha exposure was absent. Codex companion executable missing; only 27.98 seconds after corrected Enter before stop, less than required 60 seconds. No product-failure conclusion.",
+  "step1": "PASS",
+  "steps3_to_6": "NOT RUN",
+  "additional_paid_retry": false
+}

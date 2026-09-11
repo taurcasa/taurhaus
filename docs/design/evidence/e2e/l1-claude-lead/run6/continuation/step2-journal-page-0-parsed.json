@@ -1,0 +1,405 @@
+{
+  "body_refs": "immutable full bodies retained; no truncation",
+  "bytes_read": 35613,
+  "coverage": {
+    "expired_bytes_deleted": false,
+    "known_gaps": [
+      "native-foreign-writers-excluded",
+      "taurhaus-writer-legacy",
+      "task-workflow-atomicity-unavailable",
+      "review-proof-unavailable"
+    ],
+    "last_gap_sequence": null,
+    "observed_gap_count": 0,
+    "purge_implemented": false,
+    "status": "partial"
+  },
+  "coverage_scope": "scanned-delta",
+  "cursor": "7b226c6173745f73657175656e6365223a31372c226c6f675f65706f6368223a2231353166616538612d383738642d346363642d386537632d666635663538386438373139222c226e6578745f62797465223a33353631332c22706f6c696379223a2233343239393666633235636333346630306266383435393834613139316632303565376632363537333065316363633138666366306130663362396364333837222c2270726f6a656374696f6e223a312c22726561646572223a2237326638663630632d306137612d346331662d616436352d333738656565663430303363222c22726f6f745f6964656e74697479223a5b323039362c3739343837315d2c227365676d656e74223a302c227365676d656e745f6964656e74697479223a5b323039362c3739353239325d2c227365676d656e745f7374616d70223a5b33353631332c313738393037393935372c3230313934303936395d2c22736f75726365223a226d6573736167696e672d7632222c227461736b223a6e756c6c2c227465616d5f6964223a2233386665356165393832646131346362333332356163613063363739366565343832333865613435663831616336383966343036316437646535386131376330227d.426b28a5cb1894d83e2fc2c817542b6b381a0b648cbc13a7a37087e5bc0c1c0b",
+  "done": true,
+  "log_epoch": "151fae8a-878d-4ccd-8e7c-ff5f588d8719",
+  "messages": [
+    {
+      "acceptance": "canonical",
+      "archive_outcome": "retained",
+      "audience_proof": {
+        "kind": "captured-members",
+        "members": [
+          {
+            "member_id": "72f8f60c-0a7a-4c1f-ad65-378eeef4003c",
+            "name": "lead"
+          }
+        ],
+        "team_id": "38fe5ae982da14cb3325aca0c6796ee48238ea45f81ac689f4061d7de58a17c0"
+      },
+      "author": {
+        "claimed_sender": "lead",
+        "service": "taurhaus-daemon",
+        "verified": true
+      },
+      "body": "[taurhaus] recovery_card\nIdentity: lead on l1-claude-lead; key={\"card_schema\":1,\"recipient\":[\"38fe5ae982da14cb3325aca0c6796ee48238ea45f81ac689f4061d7de58a17c0\",\"966b0639-b396-4f66-9ccb-0c01afc239b4\"],\"context\":[1,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-l1-runtime-z5az44y8/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-l1-runtime-z5az44y8/claude\",\"harness_account_root\":\"/tmp/th-l1-runtime-z5az44y8/claude\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-l1-runtime-z5az44y8/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"7cdf1bc8c16c86ec27f2e1a27e2720303026d9dd7aea62397c03f7c540390bb6\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: e64cb00213898c94259f39f012eccff038ae55f5004f78c970e73492ec993049; source=a8d97ad61031cbcac3988f3b68c520a8a5a4cb0a780f3e3a2fe21bf4bef83bf2; audience=unavailable\nProject cwd: /tmp/th-l1-runtime-z5az44y8/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: unavailable; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-10 22:38:30.638407299 UTC\nCurrent task: # \u2014 \nExecution mode: ; Validation expectation: ; Response expectation: ; Adjacent fix policy: ; Override allowed: false; Override reason: none\nFocal files: unavailable\nRole: unavailable\nPurpose: Isolated bounded messaging trial. Reply in at most two short sentences. Never modify files. Only execute mesh who, mesh send, mesh read, or the exact mesh lifecycle commands explicitly named in a task. Every mesh command must include --claude-dir \"$CLAUDE_CONFIG_DIR\" --team l1-claude-lead --name lead. Never use other tools or commands. Lead must never execute mesh read until the controller explicitly requests step 4. When asked for a reply, read/mark your own inbox then send the short reply through mesh. Do not send unsolicited messages. Startup: say READY only, do not send any wait-state or status message to yourself or anyone. On native teammate replies, distinguish each marker in a brief text response without tools. These trial limits override generated startup suggestions to send wait-state messages.\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.",
+      "body_bytes": 3062,
+      "body_format": "text/plain",
+      "body_hash": "458695040e94333dfaffe7e4ef0f7d2254877419fea936c130047a642f5244f7",
+      "conversation_id": "006721dd35313a7e35c7a5dafd511e86f8ff3f76609de55ec346203bf8cbd27b",
+      "conversation_kind": "dm",
+      "correction_reason": null,
+      "delivery_targets": [
+        {
+          "delivery_id": "5a072e10-cbcf-4679-99e6-c7dc60d57229",
+          "legacy_acceptance": "unknown",
+          "legacy_id": "23c83611-65e5-4361-ae97-f1fba390a4fd",
+          "member_id": "72f8f60c-0a7a-4c1f-ad65-378eeef4003c",
+          "read_audience": [
+            {
+              "member_id": "72f8f60c-0a7a-4c1f-ad65-378eeef4003c",
+              "name": "lead"
+            }
+          ],
+          "recipient": "lead",
+          "source_path": "inboxes/lead.json"
+        }
+      ],
+      "dispatch_decision": {
+        "expectation": "unknown/legacy",
+        "policy_revision": 1,
+        "provenance": "legacy_default",
+        "wake_eligible": true
+      },
+      "envelope": {
+        "from": "lead",
+        "read": false,
+        "text": null,
+        "timestamp": "2026-09-10T22:38:30.688547033+00:00"
+      },
+      "idempotency_key": "taurhaus-daemon:85e1ea45d559dd7b528274ee93237c052c09ccdde9f0176cebd68a73d856a5b3",
+      "legacy_acceptance": "unknown",
+      "link": null,
+      "message_id": "1e184eb3-0656-4b37-b785-74a06ea9e225",
+      "origin": "generated",
+      "producer": "taurhaus-daemon:taurhaus-daemon",
+      "read_audience": [
+        {
+          "member_id": "72f8f60c-0a7a-4c1f-ad65-378eeef4003c",
+          "name": "lead"
+        }
+      ],
+      "reply_to_message_id": null,
+      "request_digest": "77f3aa904d5c3e1e2e2dbf7202565d9cd764347af53a10009e484477fed343ed",
+      "response_expectation": {
+        "basis": "producer-context-unavailable",
+        "expectation": "unknown/legacy",
+        "kind": "unavailable",
+        "policy_revision": 1,
+        "provenance": "legacy_default",
+        "wake_eligible": true
+      },
+      "retention_class": "dm",
+      "source_authority": null,
+      "source_event_refs": [],
+      "summary": null,
+      "supersedes_message_ids": [],
+      "task_links": [],
+      "visibility_policy_id": "captured-members",
+      "visibility_policy_revision": 1,
+      "wake_priority": "urgent"
+    },
+    {
+      "acceptance": "canonical",
+      "archive_outcome": "retained",
+      "audience_proof": {
+        "kind": "captured-members",
+        "members": [
+          {
+            "member_id": "72f8f60c-0a7a-4c1f-ad65-378eeef4003c",
+            "name": "lead"
+          },
+          {
+            "member_id": "alpha@l1-claude-lead",
+            "name": "alpha"
+          }
+        ],
+        "team_id": "38fe5ae982da14cb3325aca0c6796ee48238ea45f81ac689f4061d7de58a17c0"
+      },
+      "author": {
+        "claimed_sender": "lead",
+        "service": "taurhaus-daemon",
+        "verified": true
+      },
+      "body": "[taurhaus] recovery_card\nIdentity: alpha on l1-claude-lead; key={\"card_schema\":1,\"recipient\":[\"38fe5ae982da14cb3325aca0c6796ee48238ea45f81ac689f4061d7de58a17c0\",\"319120ab-91f7-4662-b334-39ce05857f1d\"],\"context\":[1,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-l1-runtime-z5az44y8/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-l1-runtime-z5az44y8/claude\",\"harness_account_root\":\"/tmp/th-l1-runtime-z5az44y8/codex\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-l1-runtime-z5az44y8/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"c348f355caa5ad7f604cde59e72bb8e33363d27c978c918c7617e6c3f514cdf2\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: f92160517b98fe986f44bfcabcf111c6a1d876fd0c4c368dca1e0c3f81f01afb; source=682540e4a3f9cfbca660a5add5db7fa379ff474f5fe7c2f18798f74d7e72c755; audience=unavailable\nProject cwd: /tmp/th-l1-runtime-z5az44y8/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: low; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-10 22:38:30.813794316 UTC\nCurrent task: # \u2014 \nExecution mode: ; Validation expectation: ; Response expectation: ; Adjacent fix policy: ; Override allowed: false; Override reason: none\nFocal files: unavailable\nRole: unavailable\nPurpose: Isolated bounded messaging trial. Reply in at most two short sentences. Never modify files. Only execute mesh who, mesh send, mesh read, or the exact mesh lifecycle commands explicitly named in a task. Every mesh command must include --claude-dir \"$CLAUDE_CONFIG_DIR\" --team l1-claude-lead --name alpha. Never use other tools or commands. Lead must never execute mesh read until the controller explicitly requests step 4. When asked for a reply, read/mark your own inbox then send the short reply through mesh. Do not send unsolicited messages. Startup: say READY only, do not send any wait-state or status message to yourself or anyone. On native teammate replies, distinguish each marker in a brief text response without tools. These trial limits override generated startup suggestions to send wait-state messages.\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.",
+      "body_bytes": 3055,
+      "body_format": "text/plain",
+      "body_hash": "4110f104c82d3f72b5f9d137f4ba1cc1347505f0173c772d4c2420377730d346",
+      "conversation_id": "41a93b923d087895542e91e5e7fce367d32e94310e456b78354e07ca4c5638be",
+      "conversation_kind": "dm",
+      "correction_reason": null,
+      "delivery_targets": [
+        {
+          "delivery_id": "9efcff29-7498-4897-acd4-dd0bb7daf24b",
+          "legacy_acceptance": "unknown",
+          "legacy_id": "4d0f182d-1877-4782-ab6d-fedc47a5e4aa",
+          "member_id": "alpha@l1-claude-lead",
+          "read_audience": [
+            {
+              "member_id": "72f8f60c-0a7a-4c1f-ad65-378eeef4003c",
+              "name": "lead"
+            },
+            {
+              "member_id": "alpha@l1-claude-lead",
+              "name": "alpha"
+            }
+          ],
+          "recipient": "alpha",
+          "source_path": "inboxes/alpha.json"
+        }
+      ],
+      "dispatch_decision": {
+        "expectation": "unknown/legacy",
+        "policy_revision": 1,
+        "provenance": "legacy_default",
+        "wake_eligible": true
+      },
+      "envelope": {
+        "from": "lead",
+        "read": false,
+        "text": null,
+        "timestamp": "2026-09-10T22:38:30.836553805+00:00"
+      },
+      "idempotency_key": "taurhaus-daemon:246b22d14dc464bf6af7deac663f38c578d4cc666ef31197ad5cfca1f9b4a9b9",
+      "legacy_acceptance": "unknown",
+      "link": null,
+      "message_id": "f85df0c8-8351-438a-848e-0daf106fb06b",
+      "origin": "generated",
+      "producer": "taurhaus-daemon:taurhaus-daemon",
+      "read_audience": [
+        {
+          "member_id": "72f8f60c-0a7a-4c1f-ad65-378eeef4003c",
+          "name": "lead"
+        },
+        {
+          "member_id": "alpha@l1-claude-lead",
+          "name": "alpha"
+        }
+      ],
+      "reply_to_message_id": null,
+      "request_digest": "ad10d8b831a5f23f72fb60200af7b8132132bd4b8e653cc9ad58fc1059be065e",
+      "response_expectation": {
+        "basis": "producer-context-unavailable",
+        "expectation": "unknown/legacy",
+        "kind": "unavailable",
+        "policy_revision": 1,
+        "provenance": "legacy_default",
+        "wake_eligible": true
+      },
+      "retention_class": "dm",
+      "source_authority": null,
+      "source_event_refs": [],
+      "summary": null,
+      "supersedes_message_ids": [],
+      "task_links": [],
+      "visibility_policy_id": "captured-members",
+      "visibility_policy_revision": 1,
+      "wake_priority": "urgent"
+    },
+    {
+      "acceptance": "canonical",
+      "archive_outcome": "retained",
+      "audience_proof": {
+        "kind": "captured-members",
+        "members": [
+          {
+            "member_id": "72f8f60c-0a7a-4c1f-ad65-378eeef4003c",
+            "name": "lead"
+          },
+          {
+            "member_id": "alpha@l1-claude-lead",
+            "name": "alpha"
+          }
+        ],
+        "team_id": "38fe5ae982da14cb3325aca0c6796ee48238ea45f81ac689f4061d7de58a17c0"
+      },
+      "author": {
+        "member_id": "72f8f60c-0a7a-4c1f-ad65-378eeef4003c",
+        "name": "lead",
+        "verified": true
+      },
+      "body": "ACTION REQUIRED: Remember marker L1_AMBER_42. Do not run tools or send a reply yet; the controller will request step 3.",
+      "body_bytes": 119,
+      "body_format": "text/plain",
+      "body_hash": "81da7f5e3a8c5e8d5f8025c28e9617e7dac6e2356ba1af6a4fc5803f994856b8",
+      "conversation_id": "41a93b923d087895542e91e5e7fce367d32e94310e456b78354e07ca4c5638be",
+      "conversation_kind": "dm",
+      "correction_reason": null,
+      "delivery_targets": [
+        {
+          "delivery_id": "72614ca8-41c7-4d11-af35-bf314326efa3",
+          "legacy_acceptance": "unknown",
+          "legacy_id": "7677d0ce-2133-4d29-a62c-45502f551aa2",
+          "member_id": "alpha@l1-claude-lead",
+          "read_audience": [
+            {
+              "member_id": "72f8f60c-0a7a-4c1f-ad65-378eeef4003c",
+              "name": "lead"
+            },
+            {
+              "member_id": "alpha@l1-claude-lead",
+              "name": "alpha"
+            }
+          ],
+          "recipient": "alpha",
+          "source_path": "inboxes/alpha.json"
+        }
+      ],
+      "dispatch_decision": {
+        "expectation": "action",
+        "policy_revision": 1,
+        "provenance": "prefix",
+        "wake_eligible": true
+      },
+      "envelope": {
+        "from": "lead",
+        "id": "7677d0ce-2133-4d29-a62c-45502f551aa2",
+        "read": false,
+        "summary": "L1 marker A",
+        "text": null,
+        "timestamp": "2026-09-10T22:39:09.531Z"
+      },
+      "idempotency_key": "7677d0ce-2133-4d29-a62c-45502f551aa2",
+      "legacy_acceptance": "unknown",
+      "link": null,
+      "message_id": "b49808d9-1e73-4fa3-bd70-e83ddf6476a3",
+      "origin": "authored",
+      "producer": "mesh-send:72f8f60c-0a7a-4c1f-ad65-378eeef4003c",
+      "read_audience": [
+        {
+          "member_id": "72f8f60c-0a7a-4c1f-ad65-378eeef4003c",
+          "name": "lead"
+        },
+        {
+          "member_id": "alpha@l1-claude-lead",
+          "name": "alpha"
+        }
+      ],
+      "reply_to_message_id": null,
+      "request_digest": "cdb6a37350e924b50faec41e6cc3cde5a22c15ba0c799b3663d45144c104ee33",
+      "response_expectation": {
+        "basis": "producer",
+        "expectation": "action",
+        "kind": "action",
+        "policy_revision": 1,
+        "provenance": "prefix",
+        "wake_eligible": true
+      },
+      "retention_class": "dm",
+      "source_authority": null,
+      "source_event_refs": [],
+      "summary": "L1 marker A",
+      "supersedes_message_ids": [],
+      "task_links": [],
+      "visibility_policy_id": "captured-members",
+      "visibility_policy_revision": 1,
+      "wake_priority": "urgent"
+    },
+    {
+      "acceptance": "canonical",
+      "archive_outcome": "retained",
+      "audience_proof": {
+        "kind": "captured-members",
+        "members": [
+          {
+            "member_id": "72f8f60c-0a7a-4c1f-ad65-378eeef4003c",
+            "name": "lead"
+          },
+          {
+            "member_id": "alpha@l1-claude-lead",
+            "name": "alpha"
+          }
+        ],
+        "team_id": "38fe5ae982da14cb3325aca0c6796ee48238ea45f81ac689f4061d7de58a17c0"
+      },
+      "author": {
+        "member_id": "72f8f60c-0a7a-4c1f-ad65-378eeef4003c",
+        "name": "lead",
+        "verified": true
+      },
+      "body": "ACTION REQUIRED: Remember marker L1_BIRCH_73. Do not run tools or send a reply yet; the controller will request step 3.",
+      "body_bytes": 119,
+      "body_format": "text/plain",
+      "body_hash": "29dd5a7226a21ee36ca18069491ddcd60e750151906a3b9c3a9a108b4d9b8c53",
+      "conversation_id": "41a93b923d087895542e91e5e7fce367d32e94310e456b78354e07ca4c5638be",
+      "conversation_kind": "dm",
+      "correction_reason": null,
+      "delivery_targets": [
+        {
+          "delivery_id": "6c38d861-413d-4fa4-b74e-b1d70626dcd7",
+          "legacy_acceptance": "unknown",
+          "legacy_id": "7c60e0d3-28d1-4c4e-910f-d268871d9ec0",
+          "member_id": "alpha@l1-claude-lead",
+          "read_audience": [
+            {
+              "member_id": "72f8f60c-0a7a-4c1f-ad65-378eeef4003c",
+              "name": "lead"
+            },
+            {
+              "member_id": "alpha@l1-claude-lead",
+              "name": "alpha"
+            }
+          ],
+          "recipient": "alpha",
+          "source_path": "inboxes/alpha.json"
+        }
+      ],
+      "dispatch_decision": {
+        "expectation": "action",
+        "policy_revision": 1,
+        "provenance": "prefix",
+        "wake_eligible": true
+      },
+      "envelope": {
+        "from": "lead",
+        "id": "7c60e0d3-28d1-4c4e-910f-d268871d9ec0",
+        "read": false,
+        "summary": "L1 marker B",
+        "text": null,
+        "timestamp": "2026-09-10T22:39:09.842Z"
+      },
+      "idempotency_key": "7c60e0d3-28d1-4c4e-910f-d268871d9ec0",
+      "legacy_acceptance": "unknown",
+      "link": null,
+      "message_id": "177586fa-4e6d-49ce-9589-d4c74a45d48d",
+      "origin": "authored",
+      "producer": "mesh-send:72f8f60c-0a7a-4c1f-ad65-378eeef4003c",
+      "read_audience": [
+        {
+          "member_id": "72f8f60c-0a7a-4c1f-ad65-378eeef4003c",
+          "name": "lead"
+        },
+        {
+          "member_id": "alpha@l1-claude-lead",
+          "name": "alpha"
+        }
+      ],
+      "reply_to_message_id": null,
+      "request_digest": "b41a2afb11e7083a332c23d435dc6ea598e61b9abedbccfc2bd2a6b9291fbe81",
+      "response_expectation": {
+        "basis": "producer",
+        "expectation": "action",
+        "kind": "action",
+        "policy_revision": 1,
+        "provenance": "prefix",
+        "wake_eligible": true
+      },
+      "retention_class": "dm",
+      "source_authority": null,
+      "source_event_refs": [],
+      "summary": "L1 marker B",
+      "supersedes_message_ids": [],
+      "task_links": [],
+      "visibility_policy_id": "captured-members",
+      "visibility_policy_revision": 1,
+      "wake_priority": "urgent"
+    }
+  ],
+  "outcomes": [],
+  "team_id": "38fe5ae982da14cb3325aca0c6796ee48238ea45f81ac689f4061d7de58a17c0"
+}

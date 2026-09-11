@@ -1,0 +1,17 @@
+{
+  "survivors": [],
+  "all_four_scratch_roots_removed": true,
+  "pane_files_checked": 36,
+  "pane_max_lines": 60,
+  "daemon_rows": 503,
+  "rust_diff": false,
+  "mesh_commit": "310144d",
+  "mesh_diff_empty": true,
+  "gates": {
+    "check-quick": 0,
+    "lint": 0,
+    "test-contracts": 0
+  },
+  "review_exit": 0,
+  "sessions_peer_tokens_excluded": true
+}

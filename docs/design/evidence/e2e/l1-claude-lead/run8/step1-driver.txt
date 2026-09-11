@@ -1,0 +1,7 @@
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/step1.py", line 22, in <module>
+    lead=wait_lead_identity(lambda: json.loads((OUT/'latest/team/runtime/lead.json').read_text()), time.monotonic, time.sleep)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/continuation_support.py", line 73, in wait_lead_identity
+    raise TimeoutError('lead session attribution absent after full observation window')
+TimeoutError: lead session attribution absent after full observation window

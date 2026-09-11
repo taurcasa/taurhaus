@@ -1,0 +1,7 @@
+{
+  "current_claude_native_inputs": 3,
+  "prior_claude_inputs": 1,
+  "observed_cumulative_claude_inputs": 4,
+  "unrequested_self_messages": 2,
+  "note": "Recovery card induced self-directed sends; no external read. Both extra native inputs count conservatively."
+}

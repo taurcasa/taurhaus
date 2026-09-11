@@ -1,0 +1,13 @@
+F
+======================================================================
+FAIL: test_sanitizer_excludes_quota_disclosures_but_keeps_turn_metering (test_controller.ControllerTests.test_sanitizer_excludes_quota_disclosures_but_keeps_turn_metering)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l1-claude-lead/docs/design/evidence/e2e/l1-claude-lead/test_controller.py", line 12, in test_sanitizer_excludes_quota_disclosures_but_keeps_turn_metering
+    self.assertNotIn('rate_limits', got)
+AssertionError: 'rate_limits' unexpectedly found in {'info': {'total_token_usage': {'input_tokens': 123}}, 'rate_limits': {'secondary': {'used_percent': 80}}, 'pane': 'READY\n⚠ Heads up, you have less than 25% of your weekly limit left. Run /status for a breakdown.\n› Ask Codex to do anything'}
+
+----------------------------------------------------------------------
+Ran 1 test in 0.000s
+
+FAILED (failures=1)

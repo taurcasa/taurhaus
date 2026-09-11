@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "task",
+    "create",
+    "--subject",
+    "Run10 native mailbox recovery",
+    "--json"
+  ],
+  "exit": 0,
+  "output": "{\n  \"id\": \"1\",\n  \"subject\": \"Run10 native mailbox recovery\",\n  \"status\": \"pending\"\n}\n"
+}

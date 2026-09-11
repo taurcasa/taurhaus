@@ -1,0 +1,80 @@
+{
+  "outcome": "UNAVAILABLE",
+  "classification": "harness",
+  "failed_step": 2,
+  "steps": [
+    {
+      "step": 1,
+      "outcome": "PASS",
+      "classification": null,
+      "evidence": "step1-outcome.json"
+    },
+    {
+      "step": 2,
+      "outcome": "UNAVAILABLE",
+      "classification": "harness",
+      "reason": "Onboarding exposure timed out after the controller appended a no-read setup instruction to a pending Mesh notification; initial product outcome_unknown precedes that input and its ownership is unresolved."
+    },
+    {
+      "step": 3,
+      "outcome": "NOT RUN",
+      "classification": "first-failure stop"
+    },
+    {
+      "step": 4,
+      "outcome": "NOT RUN",
+      "classification": "first-failure stop"
+    },
+    {
+      "step": 5,
+      "outcome": "NOT RUN",
+      "classification": "first-failure stop"
+    },
+    {
+      "step": 6,
+      "outcome": "NOT RUN",
+      "classification": "first-failure stop"
+    }
+  ],
+  "raw_controller_result": {
+    "outcome": "FAIL",
+    "classification": "taurhaus",
+    "step": 2,
+    "reason": "alpha onboarding card never delivered"
+  },
+  "runtime_seconds": 90.53956707601901,
+  "driver_exit": 2,
+  "controller_exit": 2,
+  "ordered_step_exits": [
+    0,
+    1
+  ],
+  "gate_exits": {
+    "check-quick": 0,
+    "lint": 0,
+    "test-contracts": 0
+  },
+  "tests": {
+    "red_exit": 1,
+    "green_exits": [
+      0,
+      0
+    ],
+    "green_counts": [
+      48,
+      11
+    ]
+  },
+  "deviations": [
+    "Run7 stopped at step2: steps3\u20136, publication, assignment, compact and FERN were not executed.",
+    "Raw controller result FAIL/taurhaus is preserved; evidence-reviewed disposition is UNAVAILABLE/harness. Initial product post-paste validation failure predates controller input and remains unresolved.",
+    "Inherited prepare_alpha inserted its no-read setup prompt into the existing notification composer; no offline runtime fix or paid rerun after failure.",
+    "Real assignment description gains explicit operational footer lines to support verbatim publication; the addition has offline coverage only in this attempt.",
+    "Publication request includes owner per spec; current Rust OperationalTaskSnapshot does not store owner. Not reached live.",
+    "Alpha exported notify-sourced idle and final runtime attribution; a logged notify-to-idle transition was absent, so the full PR172 runtime claim remains unproved.",
+    "Foreign startup-notify usage unknown; controller completeness flag covers retained rollout accounting only.",
+    "Journal retained as full six-row segment snapshot; no journal-reader pagination reached before stop.",
+    "Inherited startup gate has no separate preflight event; model/footer, empty composer and confirmed input are retained.",
+    "No product, descriptor, plan-ledger, branch, or other Taurhaus-checkout edits; mesh-l1 build only, no Mesh commit."
+  ]
+}

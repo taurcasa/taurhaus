@@ -1,0 +1,65 @@
+{
+  "controller_inputs": {
+    "claude": 1,
+    "codex": 1
+  },
+  "claude_generations": [],
+  "codex_turns": [
+    {
+      "turn_id": "01a08c2e-ab5b-7873-bb59-518ebb12df15",
+      "rollout": "rollout-2026-09-10T18-37-42-01a08c2e-a66c-7040-8387-e3e1180ecfa2.jsonl"
+    }
+  ],
+  "codex_usage_by_rollout": {},
+  "seat_usd_estimate": 0,
+  "seat_usd_upper_rate": 0,
+  "rates_per_million": {
+    "claude": [
+      1,
+      0.1,
+      1.25,
+      5
+    ],
+    "codex": [
+      0.2,
+      0.02,
+      1.2
+    ]
+  },
+  "metering_complete": false,
+  "prior_preflight_spend_usd": 0,
+  "current_inputs": {
+    "claude": 1,
+    "codex": 1
+  },
+  "prior_trial": {
+    "cap_inputs": {
+      "claude": 0,
+      "codex": 0
+    },
+    "controller_inputs": {
+      "claude": 0,
+      "codex": 0
+    },
+    "seat_usd_estimate": 0,
+    "seat_usd_upper_rate": 0,
+    "prior_runtime_seconds": 0,
+    "closed_runs_history": {
+      "cap_inputs": {
+        "claude": 8,
+        "codex": 11
+      },
+      "seat_usd_estimate": 0.10193487,
+      "seat_usd_upper_rate": 1.0758178,
+      "prior_runtime_seconds": 588.2559631199924,
+      "sources": [
+        "run3/prior-spend.json",
+        "run3/cost-ledger.json",
+        "run3/cleanup.json"
+      ],
+      "scope": "Corrected cumulative admission through run 3. No fresh budget has been inferred."
+    }
+  },
+  "claude_usd_by_input": {},
+  "claude_cap_times_max_observed_input_usd": 0
+}

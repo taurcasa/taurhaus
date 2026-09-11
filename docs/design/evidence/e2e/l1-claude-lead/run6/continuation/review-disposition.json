@@ -1,0 +1,48 @@
+{
+  "candidate": "3b76f69a05188d218568cca3a23bcae306f5d36a",
+  "model": "claude-opus-4-6",
+  "verdict": "approve",
+  "findings": [
+    {
+      "severity": "minor",
+      "finding": "Step 5 harness unavailable and step 6 not run; report correctly classifies this as a stopped run with partial pass, not an E2E completion claim.",
+      "fix": "None required \u2014 truthful classification."
+    },
+    {
+      "severity": "minor",
+      "finding": "Review cost ($0.2134) dominates total spend and exceeds the fresh-attempt seat costs (~$0.046); future runs should consider capping review overhead.",
+      "fix": "Advisory only."
+    }
+  ],
+  "required_fixes": 0,
+  "attempts": [
+    {
+      "exit": 1,
+      "usd": 0.2134,
+      "outcome": "error_max_budget_usd"
+    },
+    {
+      "exit": 0,
+      "usd": 0.092825,
+      "outcome": "approve"
+    }
+  ],
+  "total_review_usd": 0.306225,
+  "per_invocation_requested_cap_usd": 0.2,
+  "first_invocation_cap_overshoot_usd": 0.0134,
+  "root_survivors": [],
+  "all_roots_removed": true,
+  "cleanup": [
+    {
+      "child_exit": 1,
+      "root_removed": true,
+      "credential_placeholder_zero_bytes": true
+    },
+    {
+      "child_exit": 0,
+      "root_removed": true,
+      "credential_placeholder_zero_bytes": true
+    }
+  ],
+  "scope": "Independent stopped-run evidence lens; no further seat input or runtime attempt."
+}

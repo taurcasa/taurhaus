@@ -1,0 +1,116 @@
+{
+  "commands": [
+    {
+      "command": [
+        "just",
+        "check-quick"
+      ],
+      "exit": 0,
+      "seconds": 30.236677823995706,
+      "cargo_preflight": [
+        {
+          "exit": 1,
+          "output": ""
+        }
+      ],
+      "last_lines": [
+        " \u001b[32m\u2713\u001b[39m src/lib/ipc/system.test.js \u001b[2m(\u001b[22m\u001b[2m2 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 2\u001b[2mms\u001b[22m\u001b[39m",
+        " \u001b[32m\u2713\u001b[39m src/lib/components/meshTabRuntime.warnings.test.js \u001b[2m(\u001b[22m\u001b[2m2 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 1\u001b[2mms\u001b[22m\u001b[39m",
+        " \u001b[32m\u2713\u001b[39m src/lib/ipc/templates.test.js \u001b[2m(\u001b[22m\u001b[2m1 test\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 1\u001b[2mms\u001b[22m\u001b[39m",
+        " \u001b[32m\u2713\u001b[39m src/test/visual/ipcMockCoverage.test.js \u001b[2m(\u001b[22m\u001b[2m2 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 1\u001b[2mms\u001b[22m\u001b[39m",
+        " \u001b[32m\u2713\u001b[39m src/visual-host/registry.test.js \u001b[2m(\u001b[22m\u001b[2m4 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 4\u001b[2mms\u001b[22m\u001b[39m",
+        " \u001b[32m\u2713\u001b[39m scripts/workflow-procedures.test.mjs \u001b[2m(\u001b[22m\u001b[2m226 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[33m 8411\u001b[2mms\u001b[22m\u001b[39m",
+        "     \u001b[33m\u001b[2m\u2713\u001b[22m\u001b[39m kills the whole detached group when its owner stops refreshing the lease \u001b[33m 2228\u001b[2mms\u001b[22m\u001b[39m",
+        "     \u001b[33m\u001b[2m\u2713\u001b[22m\u001b[39m leaves a run alone while its owner keeps the lease fresh \u001b[33m 6027\u001b[2mms\u001b[22m\u001b[39m",
+        "\u001b[90mstderr\u001b[2m | src/lib/components/MeshTab.test.js\u001b[2m > \u001b[22m\u001b[2mMeshTab\u001b[2m > \u001b[22m\u001b[2msuppresses skipped team folder discovery warnings from the inline availability banner",
+        "\u001b[22m\u001b[39m[mesh] suppressed internal discovery warning: skipped team folder 'taureval-1773711699719' because config is missing or invalid",
+        "",
+        " \u001b[32m\u2713\u001b[39m src/lib/components/MeshTab.test.js \u001b[2m(\u001b[22m\u001b[2m75 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[33m 7472\u001b[2mms\u001b[22m\u001b[39m",
+        "     \u001b[33m\u001b[2m\u2713\u001b[22m\u001b[39m auto-collapses the resume progress tray after completion \u001b[33m 5234\u001b[2mms\u001b[22m\u001b[39m",
+        "",
+        "\u001b[2m Test Files \u001b[22m \u001b[1m\u001b[32m150 passed\u001b[39m\u001b[22m\u001b[90m (150)\u001b[39m",
+        "\u001b[2m      Tests \u001b[22m \u001b[1m\u001b[32m2519 passed\u001b[39m\u001b[22m\u001b[90m (2519)\u001b[39m",
+        "\u001b[2m   Start at \u001b[22m 23:51:27",
+        "\u001b[2m   Duration \u001b[22m 11.56s\u001b[2m (transform 43.67s, setup 0ms, import 94.75s, tests 51.46s, environment 48.40s)\u001b[22m",
+        "",
+        "Quick check passed."
+      ]
+    },
+    {
+      "command": [
+        "just",
+        "lint"
+      ],
+      "exit": 0,
+      "seconds": 26.483242534974124,
+      "cargo_preflight": [
+        {
+          "exit": 1,
+          "output": ""
+        }
+      ],
+      "last_lines": [
+        "cd src-tauri && cargo clippy --all-targets -- -D warnings",
+        "   Compiling taurhaus v0.9.7 (/home/mstie/projects/taurhaus-l1-claude-lead/src-tauri)",
+        "    Finished `dev` profile [unoptimized + debuginfo] target(s) in 20.60s",
+        "bun run lint",
+        "$ bun run lint:structure",
+        "$ bun run lint:knip && bun run lint:deps",
+        "$ knip",
+        "$ bun run check:node && dependency-cruiser --no-config --include-only '^src' --output-type err-long src",
+        "$ node scripts/check-node-version.mjs",
+        "",
+        "\u2714 no dependency violations found (347 modules, 805 dependencies cruised)",
+        "",
+        "bun scripts/check-workflow-scripts.mjs",
+        "workflow script check passed: 5 script(s) in .claude/workflows",
+        "scripts/check-just-gates.sh",
+        "just check gate guard passed.",
+        "scripts/check-lane-worktree-recipes.sh",
+        "lane worktree recipe guard passed."
+      ]
+    },
+    {
+      "command": [
+        "just",
+        "test-contracts"
+      ],
+      "exit": 0,
+      "seconds": 30.646464599005412,
+      "cargo_preflight": [
+        {
+          "exit": 1,
+          "output": ""
+        }
+      ],
+      "last_lines": [
+        "test legacy_settings_replacement_stays_std_only_and_atomic ... ok",
+        "test main_push_integration_runs_are_never_cancelled_by_newer_pushes ... ok",
+        "test mutable_scan_caches_are_not_global_statics ... ok",
+        "test native_hook_owns_stdout_until_receipt_and_never_writes_a_second_response ... ok",
+        "test project_removal_releases_the_db_before_waiting_for_search ... ok",
+        "test retired_claude_account_bridge_identifiers_do_not_return ... ok",
+        "test retired_gemini_tool_literal_does_not_return ... ok",
+        "test rust_integration_ci_caches_failed_builds ... ok",
+        "test rust_integration_ci_runs_on_every_pull_request ... ok",
+        "test rust_integration_recipe_runs_every_test_binary ... ok",
+        "test scanner_account_memory_never_opens_the_app_database ... ok",
+        "test task_deadline_policy_stays_pure_and_outside_placeholder_health_framework ... ok",
+        "test team_state_write_apis_stay_daemon_or_native_hook_owned ... ok",
+        "test terminal_child_mode_inherits_flock_and_exits_without_daemon_startup ... ok",
+        "test terminal_contract_pins_shared_spelling_and_write_boundaries ... ok",
+        "test the_tmux_focus_path_contains_no_hook_code ... ok",
+        "test transcript_compaction_pipeline_stays_retired ... ok",
+        "",
+        "test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.99s",
+        ""
+      ]
+    }
+  ],
+  "wrapper_exit": 0,
+  "rust_unit": "not applicable: no src-tauri diff",
+  "cleanup": {
+    "children_waited": true,
+    "root_removed": true
+  }
+}

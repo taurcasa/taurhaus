@@ -1,0 +1,16 @@
+{
+  "red_exit": 1,
+  "red": "5 new checks failed: input before guard, missing run8 route and helper; additional in-flight receipt regression also failed",
+  "green": [
+    {
+      "suite": "discovered",
+      "tests": 53,
+      "exit": 0
+    },
+    {
+      "suite": "controller.ReviewRegressionTests",
+      "tests": 11,
+      "exit": 0
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+PASS: authorization quote exactly matches the binding ruling. Historical runtime admission ledger unchanged.

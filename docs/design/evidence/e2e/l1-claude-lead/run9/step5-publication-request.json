@@ -1,0 +1,38 @@
+{
+  "method": "coordination.publish_operational_snapshots",
+  "params": {
+    "publications": [
+      {
+        "snapshot": {
+          "version": 1,
+          "team_name": "l1-claude-lead",
+          "member_name": "lead",
+          "updated_at": "2026-09-11T00:01:10.528171+00:00",
+          "task": {
+            "id": "1",
+            "subject": "Run9 native mailbox recovery",
+            "status": "in_progress",
+            "owner": "lead",
+            "assigned_at": "2026-09-11T00:01:09.700Z"
+          },
+          "assignment_footer": {
+            "execution_mode": "Measure",
+            "file_ownership_boundary": [],
+            "adjacent_fix_policy": "No adjacent fixes.",
+            "validation_expectation": "Controller validates native recovery.",
+            "response_expectation": "Respond once to fresh native mail."
+          },
+          "ownership": {
+            "override_allowed": false,
+            "active_override_reason": null
+          },
+          "working_set": {
+            "project_path": "/tmp/th-l1-runtime-5x89_1sl/project",
+            "focal_files": []
+          }
+        },
+        "task_state_changed_at": "2026-09-11T00:01:09.700Z"
+      }
+    ]
+  }
+}
