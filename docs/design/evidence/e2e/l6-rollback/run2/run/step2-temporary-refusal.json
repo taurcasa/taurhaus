@@ -1,0 +1,116 @@
+{
+  "reason": "error: IO error: delivery: team owner already holds lifetime lock\n",
+  "B": "193725f0-62b0-4c1b-aa94-a243a0373d36",
+  "B_history": [
+    {
+      "checksum": "c1cfd4ecc7820239295f13f4cf7fdd0b41a527f98fc8f0d13419967c75bad194",
+      "committed_at": "2026-09-10T23:59:17.025803963+00:00",
+      "event_id": "8012feeb-5b2c-4245-b636-0ba58fe25c5e",
+      "event_type": "message_accepted",
+      "log_epoch": "abea0f8d-0057-4901-8a87-e09210db881a",
+      "payload": {
+        "acceptance": "canonical",
+        "archive_outcome": "retained",
+        "audience_proof": {
+          "kind": "captured-members",
+          "members": [
+            {
+              "member_id": "3140332c-73bc-4bb6-9a2e-a5400a4cf274",
+              "name": "lead"
+            },
+            {
+              "member_id": "alpha@l6-rollback-run2",
+              "name": "alpha"
+            }
+          ],
+          "team_id": "640a339a973c0d762946d00205b514974dd607004fbd504046da27843ed877ac"
+        },
+        "author": {
+          "member_id": "3140332c-73bc-4bb6-9a2e-a5400a4cf274",
+          "name": "lead",
+          "verified": true
+        },
+        "body": "ACTION REQUIRED: Read this message explicitly, then reply exactly B-7dc78201.",
+        "body_bytes": 77,
+        "body_format": "text/plain",
+        "body_hash": "1ed47f61ac77fdd95446446da8e2512f458adf89940629692865da651a1e90cc",
+        "conversation_id": "727fbbdc988079b38aa98590ae96f3fef467b61e2cdb81aa6b08335efe2294a8",
+        "conversation_kind": "dm",
+        "correction_reason": null,
+        "delivery_targets": [
+          {
+            "delivery_id": "77a04119-535d-4e5a-b8ea-3d39082b6858",
+            "legacy_acceptance": "unknown",
+            "legacy_id": "940e4896-40e7-455a-ab9d-90a099e07b06",
+            "member_id": "alpha@l6-rollback-run2",
+            "read_audience": [
+              {
+                "member_id": "3140332c-73bc-4bb6-9a2e-a5400a4cf274",
+                "name": "lead"
+              },
+              {
+                "member_id": "alpha@l6-rollback-run2",
+                "name": "alpha"
+              }
+            ],
+            "recipient": "alpha",
+            "source_path": "inboxes/alpha.json"
+          }
+        ],
+        "dispatch_decision": {
+          "expectation": "action",
+          "policy_revision": 1,
+          "provenance": "prefix",
+          "wake_eligible": true
+        },
+        "envelope": {
+          "from": "lead",
+          "id": "940e4896-40e7-455a-ab9d-90a099e07b06",
+          "read": false,
+          "summary": "B",
+          "text": null,
+          "timestamp": "2026-09-10T23:59:17.015Z"
+        },
+        "idempotency_key": "940e4896-40e7-455a-ab9d-90a099e07b06",
+        "legacy_acceptance": "unknown",
+        "link": null,
+        "message_id": "193725f0-62b0-4c1b-aa94-a243a0373d36",
+        "origin": "authored",
+        "producer": "mesh-send:3140332c-73bc-4bb6-9a2e-a5400a4cf274",
+        "read_audience": [
+          {
+            "member_id": "3140332c-73bc-4bb6-9a2e-a5400a4cf274",
+            "name": "lead"
+          },
+          {
+            "member_id": "alpha@l6-rollback-run2",
+            "name": "alpha"
+          }
+        ],
+        "reply_to_message_id": null,
+        "request_digest": "f239e64b48f25b5c8870e29e17f0fd24408897aa30d6b253fa814922e6be03b7",
+        "response_expectation": {
+          "basis": "producer",
+          "expectation": "action",
+          "kind": "action",
+          "policy_revision": 1,
+          "provenance": "prefix",
+          "wake_eligible": true
+        },
+        "retention_class": "dm",
+        "source_authority": null,
+        "source_event_refs": [],
+        "summary": "B",
+        "supersedes_message_ids": [],
+        "task_links": [],
+        "visibility_policy_id": "captured-members",
+        "visibility_policy_revision": 1,
+        "wake_priority": "urgent"
+      },
+      "schema_version": 1,
+      "sequence": 18,
+      "team_id": "640a339a973c0d762946d00205b514974dd607004fbd504046da27843ed877ac"
+    }
+  ],
+  "retry_limit": 1
+}

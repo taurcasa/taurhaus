@@ -1,0 +1,4 @@
+[mesh daemon] watching inbox for alpha, delivering to pane %2
+[mesh daemon] also watching workflow state at /tmp/th-l6-_rc3jb84/claude/teams/l6-rollback-run5/state/workflow_events.jsonl
+[mesh daemon] reconciled 1 persisted inbox message(s) without recorded tmux delivery
+[mesh daemon] notified: 1 new message(s)

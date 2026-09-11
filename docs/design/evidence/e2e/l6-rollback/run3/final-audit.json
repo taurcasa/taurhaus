@@ -1,0 +1,11 @@
+{
+  "evidence_audit": "PASS",
+  "runtime_verdict": "FAIL at step 3",
+  "required_gates": "all exit 0",
+  "offline_tests": "6 passed",
+  "independent_review": "unavailable",
+  "retained_files": 80,
+  "aliases": 12,
+  "daemon_rows": 235,
+  "cleanup": "PASS"
+}

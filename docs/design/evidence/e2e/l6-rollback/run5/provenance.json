@@ -1,0 +1,30 @@
+{
+  "checkout_tip": "aea760dacbea1ca2567dc875a35985693bf4dbea",
+  "product_commit": "ac2bc513cb26825548ac3c969261bc4560e7e0aa",
+  "mesh_commit": "3015cb0fda5328d1f8c793b528275e6205683208",
+  "binary_checks": [
+    {
+      "name": "taurhaus-daemon",
+      "path": "/home/mstie/projects/taurhaus-l6-rollback/src-tauri/target/release/taurhaus-daemon",
+      "sha256": "137b86daaf9ae968ee69eb9aa9a76fdf67e2ff33c8cce261150513e67a5f67c1",
+      "recorded_run4_sha256": "137b86daaf9ae968ee69eb9aa9a76fdf67e2ff33c8cce261150513e67a5f67c1",
+      "unchanged": true
+    },
+    {
+      "name": "mesh",
+      "path": "/home/mstie/projects/mesh-l6/target/debug/mesh",
+      "sha256": "c8a92d0e8ea3a8c8fdf94da25e0e0b5f5e947c30fddc0aee7cdbd81aa801a3dc",
+      "recorded_run4_sha256": "c8a92d0e8ea3a8c8fdf94da25e0e0b5f5e947c30fddc0aee7cdbd81aa801a3dc",
+      "unchanged": true
+    }
+  ],
+  "rebuild": "Not needed: product source and both binary digests unchanged since run4; only evidence commits advanced.",
+  "base_controller": "run4/controller.py",
+  "base_sha256": "77fa5e10996131a7713f7df1102109260a2f18da639a2af5cc751a7a7f92ef9f",
+  "executed_controller_sha256": "2958fcf822187556571391138a2bed349515db73d5003636bb0607bb1fe22664",
+  "deviations": [
+    "Specified L2 worktree absent; read versioned run3 controller and evidence in this checkout.",
+    "Full delivery-stage2b brief absent; read addendum, journal-stage3 analysis, USAGE and transition/ownership source.",
+    "Independent Opus lens unavailable: callable collaboration models contain no Opus and no Workflow tool exists; no substitution or claimed review."
+  ]
+}

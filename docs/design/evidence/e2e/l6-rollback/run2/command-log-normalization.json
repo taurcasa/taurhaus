@@ -1,0 +1,8 @@
+[
+  {
+    "path": "test-contracts.txt",
+    "before_sha256": "35801124ad02593ba93e82c32d40fc737b1e68ee4eb852f14fd7d6dd1ad17181",
+    "after_sha256": "1eb9aefc9640f3318e2d9b2e9560eb089054b2d128c1e31fd4b63be4adc7fb46",
+    "transform": "trailing whitespace only"
+  }
+]

@@ -1,0 +1,13 @@
+[
+  {
+    "obligation": {
+      "message_id": "e9da8609-50fc-4c15-adc5-6ff00a54aa36",
+      "delivery_id": "7504247c-4fd2-4eef-889d-b3e2b391ed84",
+      "recipient": "lead",
+      "source_generation": "6a52d6a4-51d6-4445-97d3-85c8308580f9",
+      "source_position": 7,
+      "body": "ACTION REQUIRED: Please provide the missing task, release, and required context; no assignment is currently available."
+    },
+    "since": "2026-09-11T04:57:47.479005902+00:00"
+  }
+]

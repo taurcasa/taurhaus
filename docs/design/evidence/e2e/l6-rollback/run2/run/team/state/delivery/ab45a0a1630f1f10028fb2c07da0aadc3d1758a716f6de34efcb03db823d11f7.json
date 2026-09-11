@@ -1,0 +1,69 @@
+{
+  "obligation": {
+    "message_id": "5549d1ff-6c06-4877-bd54-45156d994214",
+    "delivery_id": "1872dd75-5e77-45f2-a522-a5e4c7a97ff3",
+    "recipient": "lead",
+    "source_generation": "abea0f8d-0057-4901-8a87-e09210db881a",
+    "source_position": 8,
+    "body": "ACTION REQUIRED: provide the missing identity, release, and required context."
+  },
+  "attempts": [
+    {
+      "claim": {
+        "obligation": {
+          "message_id": "5549d1ff-6c06-4877-bd54-45156d994214",
+          "delivery_id": "1872dd75-5e77-45f2-a522-a5e4c7a97ff3",
+          "recipient": "lead",
+          "source_generation": "abea0f8d-0057-4901-8a87-e09210db881a",
+          "source_position": 8,
+          "body": "ACTION REQUIRED: provide the missing identity, release, and required context."
+        },
+        "attachment": {
+          "launch_root": {
+            "claudeDir": "/tmp/th-l6-bo64jqch/claude",
+            "rootAuthorityRevision": 0,
+            "teamsDir": "/tmp/th-l6-bo64jqch/claude/teams",
+            "teamIncarnationId": "640a339a973c0d762946d00205b514974dd607004fbd504046da27843ed877ac"
+          },
+          "attachment_generation": 1,
+          "root": "/tmp/th-l6-bo64jqch/claude",
+          "team_incarnation": "640a339a973c0d762946d00205b514974dd607004fbd504046da27843ed877ac",
+          "member": "lead",
+          "session": "$0",
+          "context_generation": "0",
+          "generation": "1",
+          "socket": "/tmp/th-l6-bo64jqch/tmux/tmux-1000/default",
+          "pane": "%1",
+          "pane_pid": 115,
+          "pane_start": "30526217",
+          "tmux_session": "$0",
+          "harness": "claude"
+        },
+        "epoch": 2,
+        "adapter": "native-mailbox/1",
+        "attempt_id": "09aa564c-a1d6-40d4-9432-931cc8d6fe01"
+      },
+      "receipts": [
+        {
+          "stage": "accepted",
+          "origin": "legacy_mapping",
+          "evidence": "source obligation",
+          "observed_at": "2026-09-10T23:59:05.514470200+00:00"
+        },
+        {
+          "stage": "attempt_started",
+          "origin": "adapter",
+          "evidence": "durable claim",
+          "observed_at": "2026-09-10T23:59:05.514479870+00:00"
+        },
+        {
+          "stage": "native_enqueued",
+          "origin": "canonical_projection",
+          "evidence": "durable native mailbox projection; uptake unobserved",
+          "observed_at": "2026-09-10T23:59:05.631913165+00:00"
+        }
+      ],
+      "presentation_started": true
+    }
+  ]
+}

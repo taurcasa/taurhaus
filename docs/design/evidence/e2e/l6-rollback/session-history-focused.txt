@@ -1,0 +1,9 @@
+
+ RUN  v4.0.18 /home/mstie/projects/taurhaus-l6-rollback
+
+ ✓ src/lib/sessionHistory.test.js (28 tests) 314ms
+
+ Test Files  1 passed (1)
+      Tests  28 passed (28)
+   Start at  01:10:58
+   Duration  1.16s (transform 427ms, setup 0ms, import 567ms, tests 314ms, environment 198ms)

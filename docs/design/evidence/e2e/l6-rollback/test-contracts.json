@@ -1,0 +1,38 @@
+{
+  "command": [
+    "just",
+    "test-contracts"
+  ],
+  "cwd": "/home/mstie/projects/taurhaus-l6-rollback",
+  "exit": 0,
+  "seconds": 265.4138569831848,
+  "cargo_polls": [
+    {
+      "at": 1789081879.4672225,
+      "count": 1,
+      "exit": 0
+    }
+  ],
+  "last_lines": [
+    "test legacy_settings_replacement_stays_std_only_and_atomic ... ok",
+    "test main_push_integration_runs_are_never_cancelled_by_newer_pushes ... ok",
+    "test mutable_scan_caches_are_not_global_statics ... ok",
+    "test native_hook_owns_stdout_until_receipt_and_never_writes_a_second_response ... ok",
+    "test project_removal_releases_the_db_before_waiting_for_search ... ok",
+    "test retired_claude_account_bridge_identifiers_do_not_return ... ok",
+    "test retired_gemini_tool_literal_does_not_return ... ok",
+    "test rust_integration_ci_caches_failed_builds ... ok",
+    "test rust_integration_ci_runs_on_every_pull_request ... ok",
+    "test rust_integration_recipe_runs_every_test_binary ... ok",
+    "test scanner_account_memory_never_opens_the_app_database ... ok",
+    "test task_deadline_policy_stays_pure_and_outside_placeholder_health_framework ... ok",
+    "test team_state_write_apis_stay_daemon_or_native_hook_owned ... ok",
+    "test terminal_child_mode_inherits_flock_and_exits_without_daemon_startup ... ok",
+    "test terminal_contract_pins_shared_spelling_and_write_boundaries ... ok",
+    "test the_tmux_focus_path_contains_no_hook_code ... ok",
+    "test transcript_compaction_pipeline_stays_retired ... ok",
+    "",
+    "test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.06s",
+    ""
+  ]
+}

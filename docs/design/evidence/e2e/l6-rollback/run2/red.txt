@@ -1,0 +1,45 @@
+EEEFE
+======================================================================
+ERROR: test_format_boundary_requires_exact_format_and_retained_history (run2_test.Run2Tests.test_format_boundary_requires_exact_format_and_retained_history)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l6-rollback/docs/design/evidence/e2e/l6-rollback/run2/run2_test.py", line 36, in test_format_boundary_requires_exact_format_and_retained_history
+    from run2_rules import format_boundary
+ModuleNotFoundError: No module named 'run2_rules'
+
+======================================================================
+ERROR: test_heartbeat_compared_as_time_and_working_required (run2_test.Run2Tests.test_heartbeat_compared_as_time_and_working_required)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l6-rollback/docs/design/evidence/e2e/l6-rollback/run2/run2_test.py", line 28, in test_heartbeat_compared_as_time_and_working_required
+    from run2_rules import pending
+ModuleNotFoundError: No module named 'run2_rules'
+
+======================================================================
+ERROR: test_pending_obligation_can_prove_scheduler_opportunity (run2_test.Run2Tests.test_pending_obligation_can_prove_scheduler_opportunity)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l6-rollback/docs/design/evidence/e2e/l6-rollback/run2/run2_test.py", line 19, in test_pending_obligation_can_prove_scheduler_opportunity
+    from run2_rules import pending
+ModuleNotFoundError: No module named 'run2_rules'
+
+======================================================================
+ERROR: test_reply_requires_assistant_message_not_tool_echo (run2_test.Run2Tests.test_reply_requires_assistant_message_not_tool_echo)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l6-rollback/docs/design/evidence/e2e/l6-rollback/run2/run2_test.py", line 44, in test_reply_requires_assistant_message_not_tool_echo
+    from run2_rules import assistant_reply
+ModuleNotFoundError: No module named 'run2_rules'
+
+======================================================================
+FAIL: test_pending_row_is_never_scheduler_opportunity (run2_test.Run2Tests.test_pending_row_is_never_scheduler_opportunity)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l6-rollback/docs/design/evidence/e2e/l6-rollback/run2/run2_test.py", line 16, in test_pending_row_is_never_scheduler_opportunity
+    self.assertIsNone(pending_observation([self.accepted,fake],'B',{},activity=self.activity,now=1788998403))
+AssertionError: {'source': 'journal', 'receipt': {'message_id': 'B', 'stage': 'pending'}} is not None
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.001s
+
+FAILED (failures=1, errors=4)

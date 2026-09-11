@@ -1,0 +1,22 @@
+{
+  "at": 1789100136.9471483,
+  "owners": [
+    {
+      "pid": 1620584,
+      "start_ticks": "32064476",
+      "argv": [
+        "/tmp/th-l6-5f67mhpk/home/.local/bin/mesh",
+        "team-daemon",
+        "start",
+        "--team",
+        "l6-rollback-run3",
+        "--name",
+        "lead",
+        "--claude-dir",
+        "/tmp/th-l6-5f67mhpk/claude",
+        ""
+      ]
+    }
+  ],
+  "operator_marker": null
+}

@@ -1,0 +1,927 @@
+[
+  {
+    "pid": 2179210,
+    "parent_pid": 2178788,
+    "start_ticks": "32429756",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-l6-_rc3jb84",
+      "/tmp/th-l6-_rc3jb84",
+      "--chdir",
+      "/tmp/th-l6-_rc3jb84/project",
+      "/bin/bash",
+      "/tmp/th-l6-_rc3jb84/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 2179211,
+    "parent_pid": 2179210,
+    "start_ticks": "32429757",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-l6-_rc3jb84",
+      "/tmp/th-l6-_rc3jb84",
+      "--chdir",
+      "/tmp/th-l6-_rc3jb84/project",
+      "/bin/bash",
+      "/tmp/th-l6-_rc3jb84/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 2179212,
+    "parent_pid": 2179211,
+    "start_ticks": "32429757",
+    "argv": [
+      "/bin/bash",
+      "/tmp/th-l6-_rc3jb84/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 2179213,
+    "parent_pid": 2179212,
+    "start_ticks": "32429757",
+    "argv": [
+      "tmux",
+      "-D",
+      "-f",
+      "/dev/null",
+      ""
+    ]
+  },
+  {
+    "pid": 2179220,
+    "parent_pid": 2179213,
+    "start_ticks": "32429768",
+    "argv": [
+      "/bin/bash",
+      ""
+    ]
+  },
+  {
+    "pid": 2179222,
+    "parent_pid": 2179212,
+    "start_ticks": "32429768",
+    "argv": [
+      "/tmp/th-l6-_rc3jb84/home/.local/bin/taurhaus-daemon",
+      "--port",
+      "47581",
+      "--data-dir",
+      "/tmp/th-l6-_rc3jb84/data",
+      ""
+    ]
+  },
+  {
+    "pid": 2179249,
+    "parent_pid": 2179222,
+    "start_ticks": "32429785",
+    "argv": [
+      "/bin/bash",
+      "-ilc",
+      "codex --version",
+      ""
+    ]
+  },
+  {
+    "pid": 2179331,
+    "parent_pid": 2179222,
+    "start_ticks": "32429804",
+    "argv": [
+      "/tmp/th-l6-_rc3jb84/home/.local/bin/mesh",
+      "team",
+      "create",
+      "--messaging-canonical",
+      "--isolated",
+      "--retention-policy",
+      "/tmp/th-l6-_rc3jb84/claude/teams/.canonical-policy-3e70a45d-eb67-45b1-b386-cc35d43d8f09.json",
+      "--claude-dir",
+      "/tmp/th-l6-_rc3jb84/claude",
+      "--team",
+      "l6-rollback-run5",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 2179358,
+    "parent_pid": 2179213,
+    "start_ticks": "32429821",
+    "argv": [
+      "/bin/bash",
+      "-ic",
+      "cd '/tmp/th-l6-_rc3jb84/project' && CLAUDE_DIR='/tmp/th-l6-_rc3jb84/claude' CLAUDE_CONFIG_DIR='/tmp/th-l6-_rc3jb84/claude' CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions --model 'claude-haiku-4-5' --team-name 'l6-rollback-run5' --agent-name 'lead' --agent-id 'lead@l6-rollback-run5' --agent-type 'orchestrator' -n 'lead'; exec \"$SHELL\"",
+      ""
+    ]
+  },
+  {
+    "pid": 2179365,
+    "parent_pid": 2179358,
+    "start_ticks": "32429821",
+    "argv": [
+      "claude",
+      "--dangerously-skip-permissions",
+      "--model",
+      "claude-haiku-4-5",
+      "--team-name",
+      "l6-rollback-run5",
+      "--agent-name",
+      "lead",
+      "--agent-id",
+      "lead@l6-rollback-run5",
+      "--agent-type",
+      "orchestrator",
+      "-n",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 2179482,
+    "parent_pid": 2179213,
+    "start_ticks": "32429828",
+    "argv": [
+      "/bin/bash",
+      "-ic",
+      "cd '/tmp/th-l6-_rc3jb84/project' && CLAUDE_DIR='/tmp/th-l6-_rc3jb84/claude' CODEX_HOME='/tmp/th-l6-_rc3jb84/codex' codex --yolo --dangerously-bypass-hook-trust -c 'notify=[\"/tmp/th-l6-_rc3jb84/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]' -m 'gpt-5.6-luna' -c 'model_reasoning_effort=\"low\"'; exec \"$SHELL\"",
+      ""
+    ]
+  },
+  {
+    "pid": 2179491,
+    "parent_pid": 2179482,
+    "start_ticks": "32429828",
+    "argv": [
+      "codex",
+      "--yolo",
+      "--dangerously-bypass-hook-trust",
+      "-c",
+      "notify=[\"/tmp/th-l6-_rc3jb84/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]",
+      "-m",
+      "gpt-5.6-luna",
+      "-c",
+      "model_reasoning_effort=\"low\"",
+      ""
+    ]
+  },
+  {
+    "pid": 2179576,
+    "parent_pid": 2179222,
+    "start_ticks": "32429831",
+    "argv": [
+      "/tmp/th-l6-_rc3jb84/home/.local/bin/mesh",
+      "join",
+      "--team",
+      "l6-rollback-run5",
+      "--name",
+      "lead",
+      "--type",
+      "lead",
+      "--model",
+      "claude-haiku-4-5",
+      "--claude-dir",
+      "/tmp/th-l6-_rc3jb84/claude",
+      ""
+    ]
+  },
+  {
+    "pid": 2179592,
+    "parent_pid": 2179222,
+    "start_ticks": "32429836",
+    "argv": [
+      "/tmp/th-l6-_rc3jb84/home/.local/bin/mesh",
+      "join",
+      "--team",
+      "l6-rollback-run5",
+      "--name",
+      "alpha",
+      "--type",
+      "general-purpose",
+      "--model",
+      "gpt-5.6-luna",
+      "--claude-dir",
+      "/tmp/th-l6-_rc3jb84/claude",
+      ""
+    ]
+  },
+  {
+    "pid": 2179607,
+    "parent_pid": 2179222,
+    "start_ticks": "32429840",
+    "argv": [
+      "/tmp/th-l6-_rc3jb84/home/.local/bin/mesh",
+      "team",
+      "delivery",
+      "--owner",
+      "team",
+      "--claude-dir",
+      "/tmp/th-l6-_rc3jb84/claude",
+      "--team",
+      "l6-rollback-run5",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 2179664,
+    "parent_pid": 2179222,
+    "start_ticks": "32429845",
+    "argv": [
+      "/tmp/th-l6-_rc3jb84/home/.local/bin/mesh",
+      "team-daemon",
+      "start",
+      "--team",
+      "l6-rollback-run5",
+      "--name",
+      "lead",
+      "--claude-dir",
+      "/tmp/th-l6-_rc3jb84/claude",
+      ""
+    ]
+  },
+  {
+    "pid": 2179681,
+    "parent_pid": 2179222,
+    "start_ticks": "32429864",
+    "argv": [
+      "/tmp/th-l6-_rc3jb84/home/.local/bin/mesh",
+      "journal",
+      "accept",
+      "--producer",
+      "taurhaus-daemon",
+      "--recipient",
+      "lead",
+      "--text",
+      "[taurhaus] recovery_card\nIdentity: lead on l6-rollback-run5; key={\"card_schema\":1,\"recipient\":[\"a331dfb18b101ce9accde0cfd02e3a35103b3ffad12ab658c50a5853a544a3a6\",\"f7240736-fea2-4bf8-b5e5-d018a15d2cb6\"],\"context\":[1,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-l6-_rc3jb84/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-l6-_rc3jb84/claude\",\"harness_account_root\":\"/tmp/th-l6-_rc3jb84/claude\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-l6-_rc3jb84/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"37a06e5154de9ef5fdb08ede626ffb29630db236bda6cc9bd2f7868b61a9c25b\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: 5bc30d055acc554f30a311905f53b12fe52e35a20b7ed35e6f5d0c0018b14ec4; source=a8d97ad61031cbcac3988f3b68c520a8a5a4cb0a780f3e3a2fe21bf4bef83bf2; audience=unavailable\nProject cwd: /tmp/th-l6-_rc3jb84/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: unavailable; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-11 05:16:00.800264273 UTC\nCurrent task: # \u2014 \nExecution mode: ; Validation expectation: ; Response expectation: ; Adjacent fix policy: ; Override allowed: false; Override reason: none\nFocal files: unavailable\nRole: unavailable\nHOLD: minimal role steering unavailable; owner: team lead.\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.",
+      "--idempotency-key",
+      "taurhaus-daemon:e7fc58fbdf06d39b373e176eff4697aafad41d4e692782f56d4cfc0e55aae2de",
+      "--claude-dir",
+      "/tmp/th-l6-_rc3jb84/claude",
+      "--team",
+      "l6-rollback-run5",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 2179865,
+    "parent_pid": 2179222,
+    "start_ticks": "32429894",
+    "argv": [
+      "/tmp/th-l6-_rc3jb84/home/.local/bin/mesh",
+      "journal",
+      "accept",
+      "--producer",
+      "taurhaus-daemon",
+      "--recipient",
+      "alpha",
+      "--text",
+      "[taurhaus] recovery_card\nIdentity: alpha on l6-rollback-run5; key={\"card_schema\":1,\"recipient\":[\"a331dfb18b101ce9accde0cfd02e3a35103b3ffad12ab658c50a5853a544a3a6\",\"5f3f0a31-8dc1-4ec0-963d-ee0d2364bf0c\"],\"context\":[1,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-l6-_rc3jb84/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-l6-_rc3jb84/claude\",\"harness_account_root\":\"/tmp/th-l6-_rc3jb84/codex\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-l6-_rc3jb84/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"e7812c23ec02899bcbd8bf4262683e2c53422fc175476c1aba01b24059519c33\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: 52380f2a51f8a627d81dea3e98334f716f04109ba4245485d6c47ffda06fec7b; source=682540e4a3f9cfbca660a5add5db7fa379ff474f5fe7c2f18798f74d7e72c755; audience=unavailable\nProject cwd: /tmp/th-l6-_rc3jb84/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: low; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-11 05:16:01.106042057 UTC\nCurrent task: # \u2014 \nExecution mode: ; Validation expectation: ; Response expectation: ; Adjacent fix policy: ; Override allowed: false; Override reason: none\nFocal files: unavailable\nRole: unavailable\nPurpose: For every inbox notification including onboarding, explicitly run mesh read --json --unread --mark-read --claude-dir \"$CLAUDE_DIR\" --team l6-rollback-run5 --name alpha; follow returned --since cursors with the same filters until done. Reply briefly. When a message assigns you a task, run exactly the mesh lifecycle commands the message names, in order, then reply with the task id and the word done. Never modify files. For ACTION REQUIRED marker messages, read your inbox with mesh read --json --mark-read --claude-dir \"$CLAUDE_DIR\" --team l6-rollback-run5 --name alpha and reply exactly with the requested marker. Follow every returned cursor until done. Do not send other messages.\n\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.",
+      "--idempotency-key",
+      "taurhaus-daemon:f6df8e546ba147d0dec375eb35211d3a44615f46553a9e7cc1e33c4e0ce92e33",
+      "--claude-dir",
+      "/tmp/th-l6-_rc3jb84/claude",
+      "--team",
+      "l6-rollback-run5",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 2180312,
+    "parent_pid": 2179491,
+    "start_ticks": "32429981",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2180725,
+    "parent_pid": 2179491,
+    "start_ticks": "32430025",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2180884,
+    "parent_pid": 2179491,
+    "start_ticks": "32430038",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2181234,
+    "parent_pid": 2179491,
+    "start_ticks": "32430125",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2181268,
+    "parent_pid": 2179491,
+    "start_ticks": "32430137",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2181412,
+    "parent_pid": 2179491,
+    "start_ticks": "32430165",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2181535,
+    "parent_pid": 2179491,
+    "start_ticks": "32430204",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2181664,
+    "parent_pid": 2179491,
+    "start_ticks": "32430226",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2181685,
+    "parent_pid": 2179491,
+    "start_ticks": "32430234",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2181711,
+    "parent_pid": 2179491,
+    "start_ticks": "32430241",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2182016,
+    "parent_pid": 2179491,
+    "start_ticks": "32430318",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2182239,
+    "parent_pid": 2179491,
+    "start_ticks": "32430390",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2182565,
+    "parent_pid": 2179491,
+    "start_ticks": "32430430",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2182918,
+    "parent_pid": 2179491,
+    "start_ticks": "32430457",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2183132,
+    "parent_pid": 2179491,
+    "start_ticks": "32430477",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2183319,
+    "parent_pid": 2179491,
+    "start_ticks": "32430508",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2183388,
+    "parent_pid": 2179491,
+    "start_ticks": "32430535",
+    "argv": [
+      "/tmp/th-l6-_rc3jb84/home/.local/bin/codex-code-mode-host",
+      ""
+    ]
+  },
+  {
+    "pid": 2183431,
+    "parent_pid": 2179491,
+    "start_ticks": "32430537",
+    "argv": [
+      "mesh",
+      "read",
+      "--json",
+      "--unread",
+      "--mark-read",
+      "--claude-dir",
+      "/tmp/th-l6-_rc3jb84/claude",
+      "--team",
+      "l6-rollback-run5",
+      "--name",
+      "alpha",
+      ""
+    ]
+  },
+  {
+    "pid": 2183583,
+    "parent_pid": 2179491,
+    "start_ticks": "32430561",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2184146,
+    "parent_pid": 2179213,
+    "start_ticks": "32430934",
+    "argv": [
+      "/bin/bash",
+      "-c",
+      "/tmp/th-l6-_rc3jb84/home/.local/bin/mesh send alpha 'ACTION REQUIRED: Read this message explicitly, then reply exactly A-4dc8234c.' --summary A --claude-dir /tmp/th-l6-_rc3jb84/claude --team l6-rollback-run5 --name lead >/tmp/th-l6-_rc3jb84/459ba2ca.out 2>&1; echo $? >/tmp/th-l6-_rc3jb84/459ba2ca.exit",
+      ""
+    ]
+  },
+  {
+    "pid": 2184148,
+    "parent_pid": 2184146,
+    "start_ticks": "32430934",
+    "argv": [
+      "/tmp/th-l6-_rc3jb84/home/.local/bin/mesh",
+      "send",
+      "alpha",
+      "ACTION REQUIRED: Read this message explicitly, then reply exactly A-4dc8234c.",
+      "--summary",
+      "A",
+      "--claude-dir",
+      "/tmp/th-l6-_rc3jb84/claude",
+      "--team",
+      "l6-rollback-run5",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 2185136,
+    "parent_pid": 2179491,
+    "start_ticks": "32431335",
+    "argv": [
+      "mesh",
+      "read",
+      "--json",
+      "--unread",
+      "--mark-read",
+      "--claude-dir",
+      "/tmp/th-l6-_rc3jb84/claude",
+      "--team",
+      "l6-rollback-run5",
+      "--name",
+      "alpha",
+      ""
+    ]
+  },
+  {
+    "pid": 2186002,
+    "parent_pid": 2179491,
+    "start_ticks": "32431653",
+    "argv": [
+      "mesh",
+      "read",
+      "--json",
+      "--mark-read",
+      "--claude-dir",
+      "/tmp/th-l6-_rc3jb84/claude",
+      "--team",
+      "l6-rollback-run5",
+      "--name",
+      "alpha",
+      ""
+    ]
+  },
+  {
+    "pid": 2186532,
+    "parent_pid": 2178788,
+    "start_ticks": "32431833",
+    "argv": [
+      ""
+    ]
+  },
+  {
+    "pid": 2186763,
+    "parent_pid": 2179213,
+    "start_ticks": "32431888",
+    "argv": [
+      "/bin/bash",
+      "-c",
+      "/tmp/th-l6-_rc3jb84/home/.local/bin/mesh send alpha 'ACTION REQUIRED: Read this message explicitly, then reply exactly B-d872fac9.' --summary B --claude-dir /tmp/th-l6-_rc3jb84/claude --team l6-rollback-run5 --name lead >/tmp/th-l6-_rc3jb84/7ba8f546.out 2>&1; echo $? >/tmp/th-l6-_rc3jb84/7ba8f546.exit",
+      ""
+    ]
+  },
+  {
+    "pid": 2186765,
+    "parent_pid": 2186763,
+    "start_ticks": "32431888",
+    "argv": [
+      "/tmp/th-l6-_rc3jb84/home/.local/bin/mesh",
+      "send",
+      "alpha",
+      "ACTION REQUIRED: Read this message explicitly, then reply exactly B-d872fac9.",
+      "--summary",
+      "B",
+      "--claude-dir",
+      "/tmp/th-l6-_rc3jb84/claude",
+      "--team",
+      "l6-rollback-run5",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 2186943,
+    "parent_pid": 2179213,
+    "start_ticks": "32431969",
+    "argv": [
+      "/bin/bash",
+      "-c",
+      "/tmp/th-l6-_rc3jb84/home/.local/bin/mesh team-daemon stop --claude-dir /tmp/th-l6-_rc3jb84/claude --team l6-rollback-run5 --name lead >/tmp/th-l6-_rc3jb84/043fe826.out 2>&1; echo $? >/tmp/th-l6-_rc3jb84/043fe826.exit",
+      ""
+    ]
+  },
+  {
+    "pid": 2186945,
+    "parent_pid": 2186943,
+    "start_ticks": "32431969",
+    "argv": [
+      "/tmp/th-l6-_rc3jb84/home/.local/bin/mesh",
+      "team-daemon",
+      "stop",
+      "--claude-dir",
+      "/tmp/th-l6-_rc3jb84/claude",
+      "--team",
+      "l6-rollback-run5",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 2188790,
+    "parent_pid": 2179213,
+    "start_ticks": "32433333",
+    "argv": [
+      "/bin/bash",
+      "-c",
+      "/tmp/th-l6-_rc3jb84/home/.local/bin/mesh team format --legacy --quiescent --claude-dir /tmp/th-l6-_rc3jb84/claude --team l6-rollback-run5 --name lead >/tmp/th-l6-_rc3jb84/aad5970e.out 2>&1; echo $? >/tmp/th-l6-_rc3jb84/aad5970e.exit",
+      ""
+    ]
+  },
+  {
+    "pid": 2188792,
+    "parent_pid": 2188790,
+    "start_ticks": "32433333",
+    "argv": [
+      "/tmp/th-l6-_rc3jb84/home/.local/bin/mesh",
+      "team",
+      "format",
+      "--legacy",
+      "--quiescent",
+      "--claude-dir",
+      "/tmp/th-l6-_rc3jb84/claude",
+      "--team",
+      "l6-rollback-run5",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 2188889,
+    "parent_pid": 2179213,
+    "start_ticks": "32433391",
+    "argv": [
+      "/bin/bash",
+      "-c",
+      "/tmp/th-l6-_rc3jb84/home/.local/bin/mesh team delivery --owner members --claude-dir /tmp/th-l6-_rc3jb84/claude --team l6-rollback-run5 --name lead >/tmp/th-l6-_rc3jb84/6a8c410a.out 2>&1; echo $? >/tmp/th-l6-_rc3jb84/6a8c410a.exit",
+      ""
+    ]
+  },
+  {
+    "pid": 2188927,
+    "parent_pid": 2179213,
+    "start_ticks": "32433406",
+    "argv": [
+      "/bin/bash",
+      "-c",
+      "/tmp/th-l6-_rc3jb84/home/.local/bin/mesh daemon --pane %2 --claude-dir /tmp/th-l6-_rc3jb84/claude --team l6-rollback-run5 --name alpha --debounce-ms 200 >/tmp/th-l6-_rc3jb84/member-executor.log 2>&1",
+      ""
+    ]
+  },
+  {
+    "pid": 2188929,
+    "parent_pid": 2188927,
+    "start_ticks": "32433406",
+    "argv": [
+      "/tmp/th-l6-_rc3jb84/home/.local/bin/mesh",
+      "daemon",
+      "--pane",
+      "%2",
+      "--claude-dir",
+      "/tmp/th-l6-_rc3jb84/claude",
+      "--team",
+      "l6-rollback-run5",
+      "--name",
+      "alpha",
+      "--debounce-ms",
+      "200",
+      ""
+    ]
+  },
+  {
+    "pid": 2188948,
+    "parent_pid": 2179491,
+    "start_ticks": "32433421",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2190956,
+    "parent_pid": 2179491,
+    "start_ticks": "32434775",
+    "argv": [
+      "mesh",
+      "read",
+      "--json",
+      "--unread",
+      "--mark-read",
+      "--claude-dir",
+      "/tmp/th-l6-_rc3jb84/claude",
+      "--team",
+      "l6-rollback-run5",
+      "--name",
+      "alpha",
+      ""
+    ]
+  },
+  {
+    "pid": 2191078,
+    "parent_pid": 2179491,
+    "start_ticks": "32435038",
+    "argv": [
+      "mesh",
+      "read",
+      "--json",
+      "--mark-read",
+      "--claude-dir",
+      "/tmp/th-l6-_rc3jb84/claude",
+      "--team",
+      "l6-rollback-run5",
+      "--name",
+      "alpha",
+      ""
+    ]
+  },
+  {
+    "pid": 2191195,
+    "parent_pid": 2179213,
+    "start_ticks": "32435188",
+    "argv": [
+      "/bin/bash",
+      "-c",
+      "/tmp/th-l6-_rc3jb84/home/.local/bin/mesh send alpha 'ACTION REQUIRED: Read this message explicitly, then reply exactly C-18c750f5.' --summary C --claude-dir /tmp/th-l6-_rc3jb84/claude --team l6-rollback-run5 --name lead >/tmp/th-l6-_rc3jb84/da506f64.out 2>&1; echo $? >/tmp/th-l6-_rc3jb84/da506f64.exit",
+      ""
+    ]
+  },
+  {
+    "pid": 2191197,
+    "parent_pid": 2191195,
+    "start_ticks": "32435188",
+    "argv": [
+      "/tmp/th-l6-_rc3jb84/home/.local/bin/mesh",
+      "send",
+      "alpha",
+      "ACTION REQUIRED: Read this message explicitly, then reply exactly C-18c750f5.",
+      "--summary",
+      "C",
+      "--claude-dir",
+      "/tmp/th-l6-_rc3jb84/claude",
+      "--team",
+      "l6-rollback-run5",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 2192620,
+    "parent_pid": 2179491,
+    "start_ticks": "32435769",
+    "argv": [
+      "mesh",
+      "read",
+      "--json",
+      "--mark-read",
+      "--claude-dir",
+      "/tmp/th-l6-_rc3jb84/claude",
+      "--team",
+      "l6-rollback-run5",
+      "--name",
+      "alpha",
+      ""
+    ]
+  },
+  {
+    "pid": 2193199,
+    "parent_pid": 2179213,
+    "start_ticks": "32435994",
+    "argv": [
+      "/bin/bash",
+      "-c",
+      "/tmp/th-l6-_rc3jb84/home/.local/bin/mesh read --json --mark-read --last 16 --claude-dir /tmp/th-l6-_rc3jb84/claude --team l6-rollback-run5 --name alpha >/tmp/th-l6-_rc3jb84/dc7060b1.out 2>&1; echo $? >/tmp/th-l6-_rc3jb84/dc7060b1.exit",
+      ""
+    ]
+  },
+  {
+    "pid": 2193207,
+    "parent_pid": 2179213,
+    "start_ticks": "32435999",
+    "argv": [
+      "/bin/bash",
+      "-c",
+      "/tmp/th-l6-_rc3jb84/home/.local/bin/mesh read --json --mark-read --last 16 --claude-dir /tmp/th-l6-_rc3jb84/claude --team l6-rollback-run5 --name lead >/tmp/th-l6-_rc3jb84/62a2b215.out 2>&1; echo $? >/tmp/th-l6-_rc3jb84/62a2b215.exit",
+      ""
+    ]
+  },
+  {
+    "pid": 2193209,
+    "parent_pid": 2193207,
+    "start_ticks": "32435999",
+    "argv": [
+      "/tmp/th-l6-_rc3jb84/home/.local/bin/mesh",
+      "read",
+      "--json",
+      "--mark-read",
+      "--last",
+      "16",
+      "--claude-dir",
+      "/tmp/th-l6-_rc3jb84/claude",
+      "--team",
+      "l6-rollback-run5",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 2193290,
+    "parent_pid": 2179213,
+    "start_ticks": "32436026",
+    "argv": [
+      "/bin/bash",
+      "-c",
+      "/tmp/th-l6-_rc3jb84/home/.local/bin/mesh ack 868fcd4b-2097-4738-aaf6-7b6f77e5bb36 --claude-dir /tmp/th-l6-_rc3jb84/claude --team l6-rollback-run5 --name alpha >/tmp/th-l6-_rc3jb84/e5d4dd3d.out 2>&1; echo $? >/tmp/th-l6-_rc3jb84/e5d4dd3d.exit",
+      ""
+    ]
+  },
+  {
+    "pid": 2193299,
+    "parent_pid": 2193290,
+    "start_ticks": "32436027",
+    "argv": [
+      "/tmp/th-l6-_rc3jb84/home/.local/bin/mesh",
+      "ack",
+      "868fcd4b-2097-4738-aaf6-7b6f77e5bb36",
+      "--claude-dir",
+      "/tmp/th-l6-_rc3jb84/claude",
+      "--team",
+      "l6-rollback-run5",
+      "--name",
+      "alpha",
+      ""
+    ]
+  },
+  {
+    "pid": 2193543,
+    "parent_pid": 2179213,
+    "start_ticks": "32436063",
+    "argv": [
+      "/bin/bash",
+      "-c",
+      "/tmp/th-l6-_rc3jb84/home/.local/bin/mesh ack 1e0864c1-b64b-422c-be1d-6545981c5e49 --claude-dir /tmp/th-l6-_rc3jb84/claude --team l6-rollback-run5 --name alpha >/tmp/th-l6-_rc3jb84/d91e940d.out 2>&1; echo $? >/tmp/th-l6-_rc3jb84/d91e940d.exit",
+      ""
+    ]
+  }
+]

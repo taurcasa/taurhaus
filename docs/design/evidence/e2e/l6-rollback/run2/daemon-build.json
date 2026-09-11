@@ -1,0 +1,20 @@
+{
+  "command": [
+    "just",
+    "build-daemon"
+  ],
+  "cwd": "/home/mstie/projects/taurhaus-l6-rollback",
+  "exit": 0,
+  "seconds": 188.492773771286,
+  "cargo_polls": [
+    {
+      "at": 1789084509.9226885,
+      "count": 1,
+      "exit": 0
+    }
+  ],
+  "last_lines": [
+    "   Compiling taurhaus v0.9.7 (/home/mstie/projects/taurhaus-l6-rollback/src-tauri)",
+    "    Finished `release` profile [optimized] target(s) in 3m 08s"
+  ]
+}

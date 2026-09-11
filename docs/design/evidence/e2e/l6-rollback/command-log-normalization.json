@@ -1,0 +1,20 @@
+[
+  {
+    "path": "check-quick.txt",
+    "before_sha256": "fae0624475e2caa57cc58d412a0ba997c6fd40531ebe35910f17a245c96fb272",
+    "after_sha256": "ec9cc367ac8d5ca412566aef0bfee4ac2906d729fd28666241b6510db1b72a89",
+    "transform": "trailing whitespace only"
+  },
+  {
+    "path": "session-history-focused.txt",
+    "before_sha256": "e227528b53c1541f29278acc56860f94eee67d202f99e16254479f6dbc8b96f6",
+    "after_sha256": "3cb41ebc8200ff79cebe971dc9227b50be8d54781d6654575a064e941cf93e64",
+    "transform": "trailing whitespace only"
+  },
+  {
+    "path": "test-contracts.txt",
+    "before_sha256": "a5dc9bda00899952118a73baf2140b66129904e54aecfe0c4be2a7ea9d25dd31",
+    "after_sha256": "3c8f817547a44bd8b36ba43f866fe7d00660f1042af4768e840db4d8bc1b7ea2",
+    "transform": "trailing whitespace only"
+  }
+]

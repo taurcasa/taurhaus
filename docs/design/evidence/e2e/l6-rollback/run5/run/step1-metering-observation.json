@@ -1,0 +1,115 @@
+{
+  "paid_inputs": 2,
+  "turns": [
+    {
+      "turn_id": "01a08ee4-ee54-7cf0-90c2-305c0141ca64",
+      "usd": 0.0017699600000000001,
+      "completed": true,
+      "usage": {
+        "input_tokens": 20461,
+        "cached_input_tokens": 14848,
+        "output_tokens": 292
+      },
+      "conservative_usd": 0.024903599999999998
+    },
+    {
+      "turn_id": "01a08ee5-13a3-7f62-b796-2939770db8f6",
+      "usd": 0.0022711199999999997,
+      "completed": true,
+      "usage": {
+        "input_tokens": 42234,
+        "cached_input_tokens": 36096,
+        "output_tokens": 268
+      },
+      "conservative_usd": 0.0510024
+    },
+    {
+      "turn_id": "01a08ee4-f0ba-72a3-b920-f38986a8e94e",
+      "usd": null,
+      "completed": true,
+      "source": "notify-only",
+      "classification": "unknown-but-not-a-model-input"
+    }
+  ],
+  "usage_rows": [
+    {
+      "at": "2026-09-11T05:16:07.703Z",
+      "turn_id": "01a08ee4-ee54-7cf0-90c2-305c0141ca64",
+      "usage": {
+        "input_tokens": 9031,
+        "cached_input_tokens": 6912,
+        "output_tokens": 165
+      },
+      "usd": 0.0007600399999999999
+    },
+    {
+      "at": "2026-09-11T05:16:11.064Z",
+      "turn_id": "01a08ee4-ee54-7cf0-90c2-305c0141ca64",
+      "usage": {
+        "input_tokens": 11430,
+        "cached_input_tokens": 7936,
+        "output_tokens": 127
+      },
+      "usd": 0.00100992
+    },
+    {
+      "at": "2026-09-11T05:16:15.672Z",
+      "turn_id": "01a08ee5-13a3-7f62-b796-2939770db8f6",
+      "usage": {
+        "input_tokens": 12372,
+        "cached_input_tokens": 11008,
+        "output_tokens": 121
+      },
+      "usd": 0.00063816
+    },
+    {
+      "at": "2026-09-11T05:16:18.816Z",
+      "turn_id": "01a08ee5-13a3-7f62-b796-2939770db8f6",
+      "usage": {
+        "input_tokens": 13737,
+        "cached_input_tokens": 12032,
+        "output_tokens": 122
+      },
+      "usd": 0.00072804
+    },
+    {
+      "at": "2026-09-11T05:16:20.004Z",
+      "turn_id": "01a08ee5-13a3-7f62-b796-2939770db8f6",
+      "usage": {
+        "input_tokens": 16125,
+        "cached_input_tokens": 13056,
+        "output_tokens": 25
+      },
+      "usd": 0.00090492
+    }
+  ],
+  "metering_complete": true,
+  "api_equivalent_usd": 0.00404108,
+  "conservative_usd": 0.075906,
+  "rates_usd_per_million": {
+    "input": 0.2,
+    "cached_input": 0.02,
+    "output": 1.2
+  },
+  "rate_source": "Inherited integration/messaging packet; estimates, not invoices",
+  "input_reservations": [
+    {
+      "reason": "production initialization/onboarding",
+      "step": 1,
+      "at": 1789103760.0155735,
+      "generation": null
+    },
+    {
+      "reason": "A",
+      "step": 1,
+      "at": 1789103771.548945,
+      "generation": 1
+    }
+  ],
+  "rollout_turns": 2,
+  "controller_input_attempts": 0,
+  "controller_issued_inputs": 0,
+  "mesh_terminal_deliveries": 2,
+  "legacy_terminal_deliveries": 0,
+  "transport_inputs": 2
+}

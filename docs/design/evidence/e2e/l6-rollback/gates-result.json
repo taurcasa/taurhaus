@@ -1,0 +1,175 @@
+{
+  "commands": [
+    {
+      "command": [
+        "just",
+        "check-quick"
+      ],
+      "cwd": "/home/mstie/projects/taurhaus-l6-rollback",
+      "exit": 0,
+      "seconds": 30.714569807052612,
+      "cargo_polls": [
+        {
+          "at": 1789082154.7940416,
+          "count": 1,
+          "exit": 0
+        }
+      ],
+      "last_lines": [
+        " \u2713 src/lib/components/meshBuilderUtils.test.js (1 test) 2ms",
+        " \u2713 src/lib/components/meshTabRuntime.warnings.test.js (2 tests) 1ms",
+        " \u2713 src/lib/ipc/templates.test.js (1 test) 2ms",
+        " \u2713 src/test/visual/ipcMockCoverage.test.js (2 tests) 2ms",
+        " \u2713 src/visual-host/registry.test.js (4 tests) 3ms",
+        " \u2713 scripts/workflow-procedures.test.mjs (226 tests) 8426ms",
+        "     \u2713 kills the whole detached group when its owner stops refreshing the lease  2041ms",
+        "     \u2713 leaves a run alone while its owner keeps the lease fresh  6033ms",
+        "stderr | src/lib/components/MeshTab.test.js > MeshTab > suppresses skipped team folder discovery warnings from the inline availability banner",
+        "[mesh] suppressed internal discovery warning: skipped team folder 'taureval-1773711699719' because config is missing or invalid",
+        "",
+        " \u2713 src/lib/components/MeshTab.test.js (75 tests) 7598ms",
+        "     \u2713 auto-collapses the resume progress tray after completion  5256ms",
+        "",
+        " Test Files  150 passed (150)",
+        "      Tests  2519 passed (2519)",
+        "   Start at  01:16:12",
+        "   Duration  13.10s (transform 52.45s, setup 0ms, import 112.44s, tests 56.46s, environment 68.01s)",
+        "",
+        "Quick check passed."
+      ]
+    },
+    {
+      "command": [
+        "just",
+        "lint"
+      ],
+      "cwd": "/home/mstie/projects/taurhaus-l6-rollback",
+      "exit": 0,
+      "seconds": 77.798579454422,
+      "cargo_polls": [
+        {
+          "at": 1789081801.6609406,
+          "count": 1,
+          "exit": 0
+        }
+      ],
+      "last_lines": [
+        "cd src-tauri && cargo clippy --all-targets -- -D warnings",
+        "   Compiling taurhaus v0.9.7 (/home/mstie/projects/taurhaus-l6-rollback/src-tauri)",
+        "    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1m 11s",
+        "bun run lint",
+        "$ bun run lint:structure",
+        "$ bun run lint:knip && bun run lint:deps",
+        "$ knip",
+        "$ bun run check:node && dependency-cruiser --no-config --include-only '^src' --output-type err-long src",
+        "$ node scripts/check-node-version.mjs",
+        "",
+        "\u2714 no dependency violations found (347 modules, 805 dependencies cruised)",
+        "",
+        "bun scripts/check-workflow-scripts.mjs",
+        "workflow script check passed: 5 script(s) in .claude/workflows",
+        "scripts/check-just-gates.sh",
+        "just check gate guard passed.",
+        "scripts/check-lane-worktree-recipes.sh",
+        "lane worktree recipe guard passed."
+      ]
+    },
+    {
+      "command": [
+        "just",
+        "test-contracts"
+      ],
+      "cwd": "/home/mstie/projects/taurhaus-l6-rollback",
+      "exit": 0,
+      "seconds": 265.4138569831848,
+      "cargo_polls": [
+        {
+          "at": 1789081879.4672225,
+          "count": 1,
+          "exit": 0
+        }
+      ],
+      "last_lines": [
+        "test legacy_settings_replacement_stays_std_only_and_atomic ... ok",
+        "test main_push_integration_runs_are_never_cancelled_by_newer_pushes ... ok",
+        "test mutable_scan_caches_are_not_global_statics ... ok",
+        "test native_hook_owns_stdout_until_receipt_and_never_writes_a_second_response ... ok",
+        "test project_removal_releases_the_db_before_waiting_for_search ... ok",
+        "test retired_claude_account_bridge_identifiers_do_not_return ... ok",
+        "test retired_gemini_tool_literal_does_not_return ... ok",
+        "test rust_integration_ci_caches_failed_builds ... ok",
+        "test rust_integration_ci_runs_on_every_pull_request ... ok",
+        "test rust_integration_recipe_runs_every_test_binary ... ok",
+        "test scanner_account_memory_never_opens_the_app_database ... ok",
+        "test task_deadline_policy_stays_pure_and_outside_placeholder_health_framework ... ok",
+        "test team_state_write_apis_stay_daemon_or_native_hook_owned ... ok",
+        "test terminal_child_mode_inherits_flock_and_exits_without_daemon_startup ... ok",
+        "test terminal_contract_pins_shared_spelling_and_write_boundaries ... ok",
+        "test the_tmux_focus_path_contains_no_hook_code ... ok",
+        "test transcript_compaction_pipeline_stays_retired ... ok",
+        "",
+        "test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.06s",
+        ""
+      ]
+    }
+  ],
+  "initial_check_quick": {
+    "command": [
+      "just",
+      "check-quick"
+    ],
+    "cwd": "/home/mstie/projects/taurhaus-l6-rollback",
+    "exit": 1,
+    "seconds": 358.641832113266,
+    "cargo_polls": [
+      {
+        "at": 1789081443.009687,
+        "count": 1,
+        "exit": 0
+      }
+    ],
+    "last_lines": [
+      "       |           ^",
+      "    165|           listen('project-task-history-changed', maybeRefresh),",
+      "    166|         ]).then((fns) => {",
+      " \u276f processTicksAndRejections node:internal/process/task_queues:104:5",
+      "",
+      "This error originated in \"src/lib/sessionHistory.test.js\" test file. It doesn't mean the error was thrown inside the file itself, but while it was running.",
+      "The latest test that might've caused the error is \"re-fetches archived sessions on project-task-history-changed without showing the loading skeleton again\". It might mean one of the following:",
+      "- The error was thrown, while Vitest was running this test.",
+      "- If the error occurred after the test had been completed, this was the last documented test before it was thrown.",
+      "\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af",
+      "",
+      "",
+      " Test Files  1 failed | 149 passed (150)",
+      "      Tests  3 failed | 2516 passed (2519)",
+      "     Errors  1 error",
+      "   Start at  01:09:47",
+      "   Duration  13.90s (transform 63.72s, setup 0ms, import 133.57s, tests 69.95s, environment 56.80s)",
+      "",
+      "error: script \"test\" exited with code 1",
+      "error: Recipe `check-quick` failed on line 235 with exit code 1"
+    ]
+  },
+  "focused_diagnostic": {
+    "command": [
+      "bunx",
+      "vitest",
+      "run",
+      "src/lib/sessionHistory.test.js"
+    ],
+    "cwd": "/home/mstie/projects/taurhaus-l6-rollback",
+    "exit": 0,
+    "tests_passed": 28,
+    "reason": "Diagnose three SessionHistory failures in the full gate without product edits"
+  },
+  "after_teardown": true,
+  "rust_diff": false,
+  "conditional_test_rust_unit": "not applicable: no src-tauri diff",
+  "offline_tests": {
+    "command": "python3 -B -m unittest discover -s docs/design/evidence/e2e/l6-rollback -p '*_test.py'",
+    "exit": 0,
+    "passed": 22
+  },
+  "export_audit_exit": 0
+}

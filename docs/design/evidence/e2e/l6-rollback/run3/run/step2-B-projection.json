@@ -1,0 +1,13 @@
+{
+  "logical_id": "b026d303-9ac7-46d8-987f-9b34a52c19bb",
+  "projection": {
+    "delivery_id": "55e21660-dc01-4ae4-914c-0b186cf5ee65",
+    "from": "lead",
+    "id": "55e21660-dc01-4ae4-914c-0b186cf5ee65",
+    "message_id": "b026d303-9ac7-46d8-987f-9b34a52c19bb",
+    "read": false,
+    "summary": "B",
+    "text": "ACTION REQUIRED: Read this message explicitly, then reply exactly B-2c3955c5.",
+    "timestamp": "2026-09-11T04:15:36.114Z"
+  }
+}

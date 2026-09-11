@@ -1,0 +1,215 @@
+{
+  "before": [
+    {
+      "pid": 2179210,
+      "parent_pid": 2178788,
+      "start_ticks": "32429756",
+      "argv": [
+        "bwrap",
+        "--die-with-parent",
+        "--unshare-pid",
+        "--ro-bind",
+        "/",
+        "/",
+        "--tmpfs",
+        "/home",
+        "--tmpfs",
+        "/tmp",
+        "--tmpfs",
+        "/run",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+        "--bind",
+        "/tmp/th-l6-_rc3jb84",
+        "/tmp/th-l6-_rc3jb84",
+        "--chdir",
+        "/tmp/th-l6-_rc3jb84/project",
+        "/bin/bash",
+        "/tmp/th-l6-_rc3jb84/boot.sh",
+        ""
+      ]
+    },
+    {
+      "pid": 2179211,
+      "parent_pid": 2179210,
+      "start_ticks": "32429757",
+      "argv": [
+        "bwrap",
+        "--die-with-parent",
+        "--unshare-pid",
+        "--ro-bind",
+        "/",
+        "/",
+        "--tmpfs",
+        "/home",
+        "--tmpfs",
+        "/tmp",
+        "--tmpfs",
+        "/run",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+        "--bind",
+        "/tmp/th-l6-_rc3jb84",
+        "/tmp/th-l6-_rc3jb84",
+        "--chdir",
+        "/tmp/th-l6-_rc3jb84/project",
+        "/bin/bash",
+        "/tmp/th-l6-_rc3jb84/boot.sh",
+        ""
+      ]
+    },
+    {
+      "pid": 2179212,
+      "parent_pid": 2179211,
+      "start_ticks": "32429757",
+      "argv": [
+        "/bin/bash",
+        "/tmp/th-l6-_rc3jb84/boot.sh",
+        ""
+      ]
+    },
+    {
+      "pid": 2179213,
+      "parent_pid": 2179212,
+      "start_ticks": "32429757",
+      "argv": [
+        "tmux",
+        "-D",
+        "-f",
+        "/dev/null",
+        ""
+      ]
+    },
+    {
+      "pid": 2179220,
+      "parent_pid": 2179213,
+      "start_ticks": "32429768",
+      "argv": [
+        "/bin/bash",
+        ""
+      ]
+    },
+    {
+      "pid": 2179222,
+      "parent_pid": 2179212,
+      "start_ticks": "32429768",
+      "argv": [
+        "/tmp/th-l6-_rc3jb84/home/.local/bin/taurhaus-daemon",
+        "--port",
+        "47581",
+        "--data-dir",
+        "/tmp/th-l6-_rc3jb84/data",
+        ""
+      ]
+    },
+    {
+      "pid": 2179358,
+      "parent_pid": 2179213,
+      "start_ticks": "32429821",
+      "argv": [
+        "/bin/bash",
+        "-ic",
+        "cd '/tmp/th-l6-_rc3jb84/project' && CLAUDE_DIR='/tmp/th-l6-_rc3jb84/claude' CLAUDE_CONFIG_DIR='/tmp/th-l6-_rc3jb84/claude' CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions --model 'claude-haiku-4-5' --team-name 'l6-rollback-run5' --agent-name 'lead' --agent-id 'lead@l6-rollback-run5' --agent-type 'orchestrator' -n 'lead'; exec \"$SHELL\"",
+        ""
+      ]
+    },
+    {
+      "pid": 2179365,
+      "parent_pid": 2179358,
+      "start_ticks": "32429821",
+      "argv": [
+        "claude",
+        "--dangerously-skip-permissions",
+        "--model",
+        "claude-haiku-4-5",
+        "--team-name",
+        "l6-rollback-run5",
+        "--agent-name",
+        "lead",
+        "--agent-id",
+        "lead@l6-rollback-run5",
+        "--agent-type",
+        "orchestrator",
+        "-n",
+        "lead",
+        ""
+      ]
+    },
+    {
+      "pid": 2179482,
+      "parent_pid": 2179213,
+      "start_ticks": "32429828",
+      "argv": [
+        "/bin/bash",
+        "-ic",
+        "cd '/tmp/th-l6-_rc3jb84/project' && CLAUDE_DIR='/tmp/th-l6-_rc3jb84/claude' CODEX_HOME='/tmp/th-l6-_rc3jb84/codex' codex --yolo --dangerously-bypass-hook-trust -c 'notify=[\"/tmp/th-l6-_rc3jb84/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]' -m 'gpt-5.6-luna' -c 'model_reasoning_effort=\"low\"'; exec \"$SHELL\"",
+        ""
+      ]
+    },
+    {
+      "pid": 2179491,
+      "parent_pid": 2179482,
+      "start_ticks": "32429828",
+      "argv": [
+        "codex",
+        "--yolo",
+        "--dangerously-bypass-hook-trust",
+        "-c",
+        "notify=[\"/tmp/th-l6-_rc3jb84/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]",
+        "-m",
+        "gpt-5.6-luna",
+        "-c",
+        "model_reasoning_effort=\"low\"",
+        ""
+      ]
+    },
+    {
+      "pid": 2183388,
+      "parent_pid": 2179491,
+      "start_ticks": "32430535",
+      "argv": [
+        "/tmp/th-l6-_rc3jb84/home/.local/bin/codex-code-mode-host",
+        ""
+      ]
+    },
+    {
+      "pid": 2188927,
+      "parent_pid": 2179213,
+      "start_ticks": "32433406",
+      "argv": [
+        "/bin/bash",
+        "-c",
+        "/tmp/th-l6-_rc3jb84/home/.local/bin/mesh daemon --pane %2 --claude-dir /tmp/th-l6-_rc3jb84/claude --team l6-rollback-run5 --name alpha --debounce-ms 200 >/tmp/th-l6-_rc3jb84/member-executor.log 2>&1",
+        ""
+      ]
+    },
+    {
+      "pid": 2188929,
+      "parent_pid": 2188927,
+      "start_ticks": "32433406",
+      "argv": [
+        "/tmp/th-l6-_rc3jb84/home/.local/bin/mesh",
+        "daemon",
+        "--pane",
+        "%2",
+        "--claude-dir",
+        "/tmp/th-l6-_rc3jb84/claude",
+        "--team",
+        "l6-rollback-run5",
+        "--name",
+        "alpha",
+        "--debounce-ms",
+        "200",
+        ""
+      ]
+    }
+  ],
+  "survivors": [],
+  "port_closed": true,
+  "auth_removed": true,
+  "root_removed": true
+}

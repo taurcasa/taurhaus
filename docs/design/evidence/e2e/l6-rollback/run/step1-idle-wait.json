@@ -1,0 +1,21 @@
+{
+  "at": 1789081410.6922634,
+  "outcome": "PASS",
+  "evidence": {
+    "version": 1,
+    "observed_at": "2026-09-10T23:03:30.583845196+00:00",
+    "stall_recent_activity": false,
+    "stall_no_output": true,
+    "stall_no_active_process": false,
+    "active_non_shell_process": true,
+    "recent_io": false,
+    "pane_alive": true,
+    "pane_foreign": false,
+    "last_output_age_secs": 0,
+    "activity_confidence": "idle",
+    "confidence": "high",
+    "last_observed_at": "2026-09-10T23:03:30.580794342+00:00",
+    "source": "notify",
+    "state": "idle"
+  }
+}

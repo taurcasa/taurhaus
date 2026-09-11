@@ -1,0 +1,373 @@
+{
+  "verdict": "PASS operational rollback (a)-(e); automatic-executor product observation NOT OBTAINED; full workflow incomplete (original Opus review unavailable)",
+  "raw_controller_exit": 0,
+  "raw_steps": [
+    {
+      "step": 1,
+      "outcome": "PASS",
+      "classification": "S-runtime verified",
+      "at": 1789103795.4573138
+    },
+    {
+      "step": 2,
+      "outcome": "PASS",
+      "classification": "S-runtime verified",
+      "at": 1789103796.076298
+    },
+    {
+      "step": 3,
+      "outcome": "PASS",
+      "classification": "S-runtime verified",
+      "at": 1789103796.1784635
+    },
+    {
+      "step": 4,
+      "outcome": "PASS",
+      "classification": "S-runtime verified",
+      "at": 1789103822.1197894
+    },
+    {
+      "step": 5,
+      "outcome": "PASS",
+      "classification": "S-runtime verified; teardown complete"
+    }
+  ],
+  "operational_steps": {
+    "a": "PASS: A delivered/read/replied, B pending with scheduler opportunity, owner stopped, marker and named skip",
+    "b": "PASS: format 0/members/verified rollback, transition complete, journal retained, B pending/unread under original id",
+    "c": "PASS: same-owner exit 0 clears marker with unchanged owner/digest/epoch and no new handoff",
+    "d": "PASS: one transport submission, first seat consumption and one reply per A/B/C; no duplicate executor; rereads are observations",
+    "e": "PASS: explicit reads/acks, identity reconciliation, export and teardown"
+  },
+  "classification": "S-runtime operational PASS; automatic-executor observation NOT OBTAINED (no self-heal opportunity); original failure was an offline adjudication error",
+  "messages": {
+    "A": {
+      "submissions": 1,
+      "reads": 6,
+      "assistant_replies": 1,
+      "delivered": true,
+      "first_seat_consumptions": 1,
+      "first_read_at": "2026-09-11T05:16:15.579784375+00:00",
+      "reads_before_first_reply": [
+        "2026-09-11T05:16:15.579784375+00:00",
+        "2026-09-11T05:16:15.628Z",
+        "2026-09-11T05:16:18.774Z"
+      ],
+      "reads_after_first_reply": [
+        "2026-09-11T05:16:52.602Z",
+        "2026-09-11T05:16:59.911Z",
+        "2026-09-11T05:17:02.159Z"
+      ],
+      "single_read": false,
+      "one_transport_delivery": true,
+      "passes_delivery_checks": true
+    },
+    "B": {
+      "submissions": 1,
+      "reads": 4,
+      "assistant_replies": 1,
+      "delivered": true,
+      "first_seat_consumptions": 1,
+      "first_read_at": "2026-09-11T05:16:49.972Z",
+      "reads_before_first_reply": [
+        "2026-09-11T05:16:49.972Z",
+        "2026-09-11T05:16:52.602Z"
+      ],
+      "reads_after_first_reply": [
+        "2026-09-11T05:16:59.911Z",
+        "2026-09-11T05:17:02.159Z"
+      ],
+      "single_read": false,
+      "one_transport_delivery": true,
+      "passes_delivery_checks": true
+    },
+    "C": {
+      "submissions": 1,
+      "reads": 3,
+      "assistant_replies": 1,
+      "delivered": true,
+      "first_seat_consumptions": 1,
+      "first_read_at": "2026-09-11T05:16:57.351Z",
+      "reads_before_first_reply": [
+        "2026-09-11T05:16:57.351Z",
+        "2026-09-11T05:16:59.911Z"
+      ],
+      "reads_after_first_reply": [
+        "2026-09-11T05:17:02.159Z"
+      ],
+      "single_read": false,
+      "one_transport_delivery": true,
+      "passes_delivery_checks": true
+    }
+  },
+  "read_detail": {
+    "B_first_turn_reads": [
+      "2026-09-11T05:16:49.972Z",
+      "2026-09-11T05:16:52.602Z"
+    ],
+    "B_later_reads": [
+      "2026-09-11T05:16:59.911Z",
+      "2026-09-11T05:17:02.159Z"
+    ],
+    "reason": "Inherited AGENTS instructions specify unread read for every notification and another unfiltered read for marker messages. Alpha executed both; subsequent C and controller reconciliation also reread B. Retain all four rows; never relabel them one read or a second transport submission."
+  },
+  "executor": {
+    "starter": "controller, sanctioned guarded RC path; immediate census only, no product inference",
+    "product_observation": {
+      "status": "NOT OBTAINED",
+      "members_owned_window_start": "2026-09-11T05:16:36.153044+00:00",
+      "members_owned_window_end": "2026-09-11T05:17:03.903Z",
+      "self_heal_pass_timestamps": [
+        "2026-09-11T05:16:04.930Z",
+        "2026-09-11T05:16:34.939Z"
+      ],
+      "passes_in_window": [],
+      "reason": "A census before the next self-heal pass cannot establish automatic executor behavior.",
+      "future_observation": "After (c), hold for at least one full self-heal cadence with a bounded wait and census sampled throughout before concluding none is attached."
+    },
+    "start_at": 1789103796.2663064,
+    "verified_transition_complete_at": 1789103796.0575554,
+    "handoff_end_at": 1789103796.1530442,
+    "seconds_after_verified_downgrade": 0.20875096321105957,
+    "seconds_after_handoff_end": 0.11326217651367188,
+    "first_census_at": 1789103796.5175362,
+    "max_live_alpha_executors": 1,
+    "binary": {
+      "pid": 2188929,
+      "parent_pid": 2188927,
+      "start_ticks": "32433406",
+      "argv": [
+        "/tmp/th-l6-_rc3jb84/home/.local/bin/mesh",
+        "daemon",
+        "--pane",
+        "%2",
+        "--claude-dir",
+        "/tmp/th-l6-_rc3jb84/claude",
+        "--team",
+        "l6-rollback-run5",
+        "--name",
+        "alpha",
+        "--debounce-ms",
+        "200",
+        ""
+      ],
+      "namespace_pid": 3147,
+      "sha256": "c8a92d0e8ea3a8c8fdf94da25e0e0b5f5e947c30fddc0aee7cdbd81aa801a3dc"
+    },
+    "runtime": {
+      "activitySnapshotPath": "/tmp/th-l6-_rc3jb84/claude/teams/l6-rollback-run5/state/activity/alpha.json",
+      "appliedEffort": "low",
+      "attached_at": "2026-09-11T05:16:00.499072808Z",
+      "attachmentGeneration": 1,
+      "cli_tool": "codex",
+      "contextGeneration": "0",
+      "daemon_pid": null,
+      "delivery_lease": null,
+      "harness": "codex",
+      "health": "healthy",
+      "hookSessionId": "01a08ee4-e954-7bf3-99c5-a6444d5b559b",
+      "hostInputAbandonedAt": null,
+      "hostInputUnknown": false,
+      "jsonl_path": "/tmp/th-l6-_rc3jb84/codex/sessions/2026/09/11/rollout-2026-09-11T07-16-01-01a08ee4-e954-7bf3-99c5-a6444d5b559b.jsonl",
+      "last_seen_at": "2026-09-11T05:16:04.912981123Z",
+      "launchRoot": {
+        "claudeDir": "/tmp/th-l6-_rc3jb84/claude",
+        "rootAuthorityRevision": 0,
+        "teamIncarnationId": "a331dfb18b101ce9accde0cfd02e3a35103b3ffad12ab658c50a5853a544a3a6",
+        "teamsDir": "/tmp/th-l6-_rc3jb84/claude/teams"
+      },
+      "memberName": "alpha",
+      "paneId": "%2",
+      "panePid": 139,
+      "paneStartTime": "32429828",
+      "project_path": "/tmp/th-l6-_rc3jb84/project",
+      "recovery": {
+        "activation_intent": "6e4578281630acd542a89bab7b9cdf7ee3097a9ce022c3abb694e33b410bc8d5",
+        "admitted_boundary": null,
+        "baseline_binding": [
+          [
+            "a331dfb18b101ce9accde0cfd02e3a35103b3ffad12ab658c50a5853a544a3a6",
+            "5f3f0a31-8dc1-4ec0-963d-ee0d2364bf0c"
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "claim": {
+          "accepted_bytes": 2887,
+          "attempt": 1,
+          "card_key": {
+            "card_schema": 1,
+            "context": [
+              1,
+              0
+            ],
+            "contract": {
+              "effective_role_revision": "e7812c23ec02899bcbd8bf4262683e2c53422fc175476c1aba01b24059519c33",
+              "instruction_contract_revision": "bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f",
+              "packet_revision": "",
+              "role_id": ""
+            },
+            "recipient": [
+              "a331dfb18b101ce9accde0cfd02e3a35103b3ffad12ab658c50a5853a544a3a6",
+              "5f3f0a31-8dc1-4ec0-963d-ee0d2364bf0c"
+            ],
+            "roots": {
+              "harness_account_root": "/tmp/th-l6-_rc3jb84/codex",
+              "launch_namespace": "native",
+              "resolved_mesh_config_root": "/tmp/th-l6-_rc3jb84/claude",
+              "resolved_project_root": "/tmp/th-l6-_rc3jb84/project",
+              "resolved_teams_root": "/tmp/th-l6-_rc3jb84/claude/teams",
+              "root_authority_revision": "0"
+            }
+          },
+          "content_revision": "52380f2a51f8a627d81dea3e98334f716f04109ba4245485d6c47ffda06fec7b",
+          "delivery_id": "f6df8e546ba147d0dec375eb35211d3a44615f46553a9e7cc1e33c4e0ce92e33",
+          "generated_bytes": 2887,
+          "journal": {
+            "delivery_id": "ff74e55d-e7c8-4c31-b0ec-2bc9de7dd6a3",
+            "message_id": "2aed4552-ac8b-4a25-9623-5cf615e36d82",
+            "projection": "pending",
+            "sequence": 2
+          },
+          "kind": "baseline",
+          "obligation_key": [
+            [
+              "a331dfb18b101ce9accde0cfd02e3a35103b3ffad12ab658c50a5853a544a3a6",
+              "5f3f0a31-8dc1-4ec0-963d-ee0d2364bf0c"
+            ],
+            [
+              1,
+              0
+            ]
+          ],
+          "observations": [
+            [
+              "accepted",
+              "2026-09-11T05:16:01.349670993Z",
+              "inbox"
+            ]
+          ],
+          "offered_bytes": 0,
+          "path": "inbox",
+          "returned_by_read_bytes": 0,
+          "satisfied_obligations": [
+            [
+              [
+                "a331dfb18b101ce9accde0cfd02e3a35103b3ffad12ab658c50a5853a544a3a6",
+                "5f3f0a31-8dc1-4ec0-963d-ee0d2364bf0c"
+              ],
+              [
+                1,
+                0
+              ]
+            ]
+          ],
+          "stage": "accepted",
+          "supersedes_revision": null
+        },
+        "harness_account_root": "/tmp/th-l6-_rc3jb84/codex",
+        "last_delivered": {
+          "accepted_bytes": 2887,
+          "attempt": 1,
+          "card_key": {
+            "card_schema": 1,
+            "context": [
+              1,
+              0
+            ],
+            "contract": {
+              "effective_role_revision": "e7812c23ec02899bcbd8bf4262683e2c53422fc175476c1aba01b24059519c33",
+              "instruction_contract_revision": "bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f",
+              "packet_revision": "",
+              "role_id": ""
+            },
+            "recipient": [
+              "a331dfb18b101ce9accde0cfd02e3a35103b3ffad12ab658c50a5853a544a3a6",
+              "5f3f0a31-8dc1-4ec0-963d-ee0d2364bf0c"
+            ],
+            "roots": {
+              "harness_account_root": "/tmp/th-l6-_rc3jb84/codex",
+              "launch_namespace": "native",
+              "resolved_mesh_config_root": "/tmp/th-l6-_rc3jb84/claude",
+              "resolved_project_root": "/tmp/th-l6-_rc3jb84/project",
+              "resolved_teams_root": "/tmp/th-l6-_rc3jb84/claude/teams",
+              "root_authority_revision": "0"
+            }
+          },
+          "content_revision": "52380f2a51f8a627d81dea3e98334f716f04109ba4245485d6c47ffda06fec7b",
+          "delivery_id": "f6df8e546ba147d0dec375eb35211d3a44615f46553a9e7cc1e33c4e0ce92e33",
+          "generated_bytes": 2887,
+          "journal": {
+            "delivery_id": "ff74e55d-e7c8-4c31-b0ec-2bc9de7dd6a3",
+            "message_id": "2aed4552-ac8b-4a25-9623-5cf615e36d82",
+            "projection": "pending",
+            "sequence": 2
+          },
+          "kind": "baseline",
+          "obligation_key": [
+            [
+              "a331dfb18b101ce9accde0cfd02e3a35103b3ffad12ab658c50a5853a544a3a6",
+              "5f3f0a31-8dc1-4ec0-963d-ee0d2364bf0c"
+            ],
+            [
+              1,
+              0
+            ]
+          ],
+          "observations": [
+            [
+              "accepted",
+              "2026-09-11T05:16:01.349670993Z",
+              "inbox"
+            ]
+          ],
+          "offered_bytes": 0,
+          "path": "inbox",
+          "returned_by_read_bytes": 0,
+          "satisfied_obligations": [
+            [
+              [
+                "a331dfb18b101ce9accde0cfd02e3a35103b3ffad12ab658c50a5853a544a3a6",
+                "5f3f0a31-8dc1-4ec0-963d-ee0d2364bf0c"
+              ],
+              [
+                1,
+                0
+              ]
+            ]
+          ],
+          "stage": "accepted",
+          "supersedes_revision": null
+        },
+        "launch_namespace": "native",
+        "member_incarnation_id": "5f3f0a31-8dc1-4ec0-963d-ee0d2364bf0c",
+        "reserved_attachment": "2026-09-11T05:16:00.499072808Z",
+        "reserved_effort": "low"
+      },
+      "schema_version": 3,
+      "session_id": "01a08ee4-e954-7bf3-99c5-a6444d5b559b",
+      "terminalContract": 1,
+      "tmuxSessionId": "$0",
+      "tmuxSocket": "/tmp/th-l6-_rc3jb84/tmux/tmux-1000/default"
+    }
+  },
+  "alpha_initiated_journal_messages": [],
+  "Opus_review": {
+    "status": "unavailable",
+    "exit_code": null,
+    "reason": "No Opus model or Workflow endpoint in active tool surface; no reviewer launched, no substitute claimed."
+  },
+  "deviations": [
+    "Automatic member-executor product observation NOT OBTAINED: no self-heal pass after the members-owned boundary before teardown; controller started the executor after an immediate census.",
+    "Inherited instructions and required reconciliation elicited rereads; row multiplicity is retained but does not count as duplicate delivery. No paid retry or product change."
+  ],
+  "raw_outcome_hashes": {
+    "step1-outcome.json": "40007f3f40914353945954b728881aee9c06941643bdcdd9bb635a0ddaf18b47",
+    "step2-outcome.json": "15cfd2b4e2dd694182477ea5c4f09e6bf1b9dc915c06eff5213d6408992e5d3c",
+    "step4-outcome.json": "f72b4f16f4fc03662cf38406d598b65f5afe0747d0966e609524d9c277bad947",
+    "step3-outcome.json": "b2bf0fee55d6efd88a53c499a0989b5e3e7faaf8d5f3a8754560f237447e16e0",
+    "step5-outcome.json": "ff5b9daffd9cdf42aef4fdb1bb1a2acaad7aa09132c33e57112092da577f0ed3"
+  }
+}

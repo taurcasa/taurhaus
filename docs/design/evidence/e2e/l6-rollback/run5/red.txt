@@ -1,0 +1,53 @@
+FFFE.
+======================================================================
+ERROR: test_executed_startup_guard_accepts_submitted_tool_alternative (__main__.DeliveryContract.test_executed_startup_guard_accepts_submitted_tool_alternative)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l6-rollback/docs/design/evidence/e2e/l6-rollback/run5/delivery_test.py", line 25, in test_executed_startup_guard_accepts_submitted_tool_alternative
+    self.assertFalse(controller.onboarding_delivered(*args,native=[]))
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: onboarding_delivered() got an unexpected keyword argument 'native'
+
+======================================================================
+FAIL: test_actual_A_delivery_path_needs_no_submission (__main__.DeliveryContract.test_actual_A_delivery_path_needs_no_submission)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l6-rollback/docs/design/evidence/e2e/l6-rollback/run5/delivery_test.py", line 44, in test_actual_A_delivery_path_needs_no_submission
+    t.delivered('A-marker','A',1)
+  File "/home/mstie/projects/taurhaus-l6-rollback/docs/design/evidence/e2e/l6-rollback/run5/controller.py", line 528, in delivered
+    self.settle_delivery(marker,message_id)
+  File "/home/mstie/projects/taurhaus-l6-rollback/docs/design/evidence/e2e/l6-rollback/run5/controller.py", line 383, in settle_delivery
+    value=self.wait(predicate,why,90,owner=owner)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mstie/projects/taurhaus-l6-rollback/docs/design/evidence/e2e/l6-rollback/run5/delivery_test.py", line 41, in wait
+    assert value,why
+           ^^^^^
+AssertionError: marker reply evidence missing
+
+======================================================================
+FAIL: test_actual_legacy_delivery_accepts_explicit_seat_read_without_paste (__main__.DeliveryContract.test_actual_legacy_delivery_accepts_explicit_seat_read_without_paste)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l6-rollback/docs/design/evidence/e2e/l6-rollback/run5/delivery_test.py", line 56, in test_actual_legacy_delivery_accepts_explicit_seat_read_without_paste
+    self.assertTrue(t.legacy_delivery('B-marker','B'))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mstie/projects/taurhaus-l6-rollback/docs/design/evidence/e2e/l6-rollback/run5/controller.py", line 596, in legacy_delivery
+    value=self.wait(complete,'legacy delivery/read/reply not confirmed',90,owner='mesh')
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mstie/projects/taurhaus-l6-rollback/docs/design/evidence/e2e/l6-rollback/run5/delivery_test.py", line 54, in wait
+    value=fn();assert value,why;return value
+                      ^^^^^
+AssertionError: legacy delivery/read/reply not confirmed
+
+======================================================================
+FAIL: test_executed_startup_guard_accepts_alpha_read_alone (__main__.DeliveryContract.test_executed_startup_guard_accepts_alpha_read_alone)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l6-rollback/docs/design/evidence/e2e/l6-rollback/run5/delivery_test.py", line 21, in test_executed_startup_guard_accepts_alpha_read_alone
+    self.assertEqual(controller.onboarding_delivered(self.record,self.activity,self.snapshot,[self.card,self.read],datetime.fromisoformat(STAMP).timestamp()),'A')
+AssertionError: False != 'A'
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.001s
+
+FAILED (failures=3, errors=1)

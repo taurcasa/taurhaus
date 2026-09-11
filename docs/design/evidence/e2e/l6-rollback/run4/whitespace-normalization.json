@@ -1,0 +1,26 @@
+[
+  {
+    "path": "run/final-pane-1.txt",
+    "before_sha256": "246d7ed81a1040fa2e2886349eea27a4d88d18dd6e5e3a15a3b4ab1a3f9a1660",
+    "after_sha256": "8c5479e24be3f0716881f033706881c5af41dded69354c701d76f858454af44a",
+    "transform": "trailing whitespace/blank lines only; content and line order retained"
+  },
+  {
+    "path": "run/step1-initial-pane-2.txt",
+    "before_sha256": "9fd1ae2e3f478ac2b7a12fa87596f7ae2702ff9ecd7dfc43279076b3e6ec9396",
+    "after_sha256": "2c8f6614a86aa33817e618317f104e9182d15802dca05415301b8105a7a1e3ef",
+    "transform": "trailing whitespace/blank lines only; content and line order retained"
+  },
+  {
+    "path": "run/final-pane-0.txt",
+    "before_sha256": "4b33af0e5498831b534cc9ef910483c28f865bb35d780cb94b2318d611edbc8c",
+    "after_sha256": "d6bfb0813c3de746181c6e5b36106845c4891061cd0b40971d88d5337b86f5c9",
+    "transform": "trailing whitespace/blank lines only; content and line order retained"
+  },
+  {
+    "path": "run/startup-000-pane-2.txt",
+    "before_sha256": "d6797a70bfb022faa881f9503142af55e3a3eb22d247c716124a9de4e8ee0b55",
+    "after_sha256": "856a6bf31c8366d426fa3092d83db7392e374d9848640341b6abdccc7bf10fa9",
+    "transform": "trailing whitespace/blank lines only; content and line order retained"
+  }
+]

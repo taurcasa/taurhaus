@@ -1,0 +1,38 @@
+{
+  "command": [
+    "just",
+    "check-quick"
+  ],
+  "cwd": "/home/mstie/projects/taurhaus-l6-rollback",
+  "exit": 0,
+  "seconds": 30.714569807052612,
+  "cargo_polls": [
+    {
+      "at": 1789082154.7940416,
+      "count": 1,
+      "exit": 0
+    }
+  ],
+  "last_lines": [
+    " \u2713 src/lib/components/meshBuilderUtils.test.js (1 test) 2ms",
+    " \u2713 src/lib/components/meshTabRuntime.warnings.test.js (2 tests) 1ms",
+    " \u2713 src/lib/ipc/templates.test.js (1 test) 2ms",
+    " \u2713 src/test/visual/ipcMockCoverage.test.js (2 tests) 2ms",
+    " \u2713 src/visual-host/registry.test.js (4 tests) 3ms",
+    " \u2713 scripts/workflow-procedures.test.mjs (226 tests) 8426ms",
+    "     \u2713 kills the whole detached group when its owner stops refreshing the lease  2041ms",
+    "     \u2713 leaves a run alone while its owner keeps the lease fresh  6033ms",
+    "stderr | src/lib/components/MeshTab.test.js > MeshTab > suppresses skipped team folder discovery warnings from the inline availability banner",
+    "[mesh] suppressed internal discovery warning: skipped team folder 'taureval-1773711699719' because config is missing or invalid",
+    "",
+    " \u2713 src/lib/components/MeshTab.test.js (75 tests) 7598ms",
+    "     \u2713 auto-collapses the resume progress tray after completion  5256ms",
+    "",
+    " Test Files  150 passed (150)",
+    "      Tests  2519 passed (2519)",
+    "   Start at  01:16:12",
+    "   Duration  13.10s (transform 52.45s, setup 0ms, import 112.44s, tests 56.46s, environment 68.01s)",
+    "",
+    "Quick check passed."
+  ]
+}

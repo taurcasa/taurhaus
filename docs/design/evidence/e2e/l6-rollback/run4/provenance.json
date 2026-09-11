@@ -1,0 +1,22 @@
+{
+  "base_controller": "docs/design/evidence/e2e/l6-rollback/run3/controller.py",
+  "base_controller_sha256": "c6249c5937891567658ac60eddee410c566b1e3386adbe3d45ed5102c8dc2495",
+  "executed_controller_sha256": "77fa5e10996131a7713f7df1102109260a2f18da639a2af5cc751a7a7f92ef9f",
+  "startup_helper": "docs/design/evidence/e2e/l6-rollback/support.py:onboarding_delivered",
+  "startup_helper_commit": "5e89fb019",
+  "changed_after_execution": "rules.py gained offline diagnostic functions only; controller.py unchanged",
+  "candidate_ancestor_check": {
+    "command": "git merge-base --is-ancestor ac2bc513 HEAD",
+    "exit": 0
+  },
+  "mesh_revision_checks": {
+    "HEAD": "3015cb0",
+    "release/overhaul-rc": "3015cb0"
+  },
+  "deviations": [
+    "Specified L2 worktree absent; read its versioned run3 evidence and controller in this checkout.",
+    "Full Mesh delivery-stage2b brief absent in mesh-l6; read its addendum, journal-stage3-storage analysis, USAGE and authoritative transition/ownership source.",
+    "Run4 inherited the submitted-AND-read startup guard, contradicting the binding consumed_by_read alternative; stopped at step1 and did not retry paid initialization.",
+    "Required independent Opus evidence review unavailable from the active tool/model surface."
+  ]
+}

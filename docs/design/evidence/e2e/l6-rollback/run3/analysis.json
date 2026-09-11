@@ -1,0 +1,1034 @@
+{
+  "classification": "harness",
+  "failed_step": 3,
+  "reason": "required resulting format 1 not observed",
+  "actual_format": 0,
+  "owner_before_format": "team",
+  "owner_after_format": "members",
+  "epoch_before": {
+    "root": "/tmp/th-l6-5f67mhpk/claude",
+    "directory_identity": [
+      2096,
+      1461276
+    ],
+    "incarnation": "e9d3dc68bbaf03903200b3dc09ec8a8a585caada6e925147acaa43e001f6abad",
+    "epoch": 2,
+    "pid": 196,
+    "process_start": "32064476"
+  },
+  "epoch_after": {
+    "root": "/tmp/th-l6-5f67mhpk/claude",
+    "directory_identity": [
+      2096,
+      1461276
+    ],
+    "incarnation": "e9d3dc68bbaf03903200b3dc09ec8a8a585caada6e925147acaa43e001f6abad",
+    "epoch": 3,
+    "pid": 3165,
+    "process_start": "32067504"
+  },
+  "canonical_history_retained": true,
+  "authority": {
+    "legacy_cut": "5f7ae87c5a1228e236077cbac00cd977a5bd05b7e442a5e4b23a4e72c1325b09",
+    "root_identity": [
+      2096,
+      1461276
+    ],
+    "team_id": "e9d3dc68bbaf03903200b3dc09ec8a8a585caada6e925147acaa43e001f6abad",
+    "transition": "complete"
+  },
+  "handoff_request_observed": false,
+  "ownership_boundary_events": [],
+  "operator_marker_retained": true,
+  "product_observation": {
+    "claim": "owner restart not observed between stop and step3 failure; step4 handoff not reached",
+    "owner_census_rows": 75,
+    "maximum_sample_gap_seconds": 0.569408655166626,
+    "samples_with_live_owner": 0,
+    "self_heal_rows": [
+      {
+        "ts": "2026-09-11T04:15:11.457Z",
+        "level": "INFO",
+        "component": "coordination",
+        "event": "self_heal.pass.completed",
+        "run_id": "run_34a3f9fde1aa4a72a9ff569162b54242",
+        "message": "Daemon coordination self-heal pass completed",
+        "duration_ms": 16,
+        "members_effort_resumed": 0,
+        "owner_ensure_refused": 0,
+        "team_daemons_ensured": 1,
+        "team_errors": 1,
+        "teams_reconciled": 1,
+        "teams_scanned": 2,
+        "teams_skipped": 0
+      },
+      {
+        "ts": "2026-09-11T04:15:41.573Z",
+        "level": "INFO",
+        "component": "coordination",
+        "event": "coordination.team_daemon.skipped",
+        "run_id": "run_34a3f9fde1aa4a72a9ff569162b54242",
+        "message": "Team daemon startup skipped",
+        "credential_path": "/tmp/th-l6-5f67mhpk/claude/teams/l6-rollback-run3/state/control_auth/lead.json",
+        "operator_name": "lead",
+        "reason": "owner_stopped_by_operator",
+        "team_name": "l6-rollback-run3"
+      },
+      {
+        "ts": "2026-09-11T04:15:41.573Z",
+        "level": "INFO",
+        "component": "coordination",
+        "event": "self_heal.pass.completed",
+        "run_id": "run_34a3f9fde1aa4a72a9ff569162b54242",
+        "message": "Daemon coordination self-heal pass completed",
+        "duration_ms": 116,
+        "members_effort_resumed": 0,
+        "owner_ensure_refused": 1,
+        "team_daemons_ensured": 0,
+        "team_errors": 1,
+        "teams_reconciled": 1,
+        "teams_scanned": 2,
+        "teams_skipped": 0
+      },
+      {
+        "ts": "2026-09-11T04:16:11.585Z",
+        "level": "INFO",
+        "component": "coordination",
+        "event": "self_heal.pass.completed",
+        "run_id": "run_34a3f9fde1aa4a72a9ff569162b54242",
+        "message": "Daemon coordination self-heal pass completed",
+        "duration_ms": 11,
+        "members_effort_resumed": 0,
+        "owner_ensure_refused": 1,
+        "team_daemons_ensured": 0,
+        "team_errors": 1,
+        "teams_reconciled": 1,
+        "teams_scanned": 2,
+        "teams_skipped": 0
+      }
+    ],
+    "member_executors": [
+      {
+        "pid": 1628609,
+        "start_ticks": "32067925",
+        "argv": [
+          "/tmp/th-l6-5f67mhpk/home/.local/bin/mesh",
+          "daemon",
+          "--pane",
+          "%2",
+          "--team",
+          "l6-rollback-run3",
+          "--name",
+          "alpha",
+          "--claude-dir",
+          "/tmp/th-l6-5f67mhpk/claude",
+          ""
+        ]
+      }
+    ],
+    "daemon_jsonl_rows": 235,
+    "member_executor_starter": {
+      "product": "taurhaus",
+      "basis": "Source/argv attribution: the retained mesh daemon --pane %2 --team l6-rollback-run3 --name alpha --claude-dir argv matches spawn_mesh_daemon_at_root; the controller never reached its executor start and the private Taurhaus daemon was the other coordinator in the PID namespace. Parent PID was not retained.",
+      "source": "src-tauri/src/coordination/runtime/system.rs:279-300",
+      "observation": "B received its single legacy tmux_injected row at 04:15:41.600Z while owner-stopped.json remained present and the explicit handoff had not been attempted. This is a member executor, not a restarted team owner."
+    }
+  },
+  "messages": {
+    "A": {
+      "marker": "A-943bd6e0",
+      "logical_id": "36328545-20b9-40d4-af7b-4614dd34d94f",
+      "delivery_id": "713839d3-91e4-4398-87bc-532827e3c23a",
+      "canonical_history": [
+        {
+          "checksum": "5dd52f59bb21aaee2f3e428573375b098206d3626c9d9ed0f6d0453dc9e33349",
+          "committed_at": "2026-09-11T04:15:17.598969211+00:00",
+          "event_id": "baf4cb25-bc77-4c9d-8c42-f576324be37d",
+          "event_type": "message_accepted",
+          "log_epoch": "be063ed5-3756-445f-8623-edf425d06eb4",
+          "payload": {
+            "acceptance": "canonical",
+            "archive_outcome": "retained",
+            "audience_proof": {
+              "kind": "captured-members",
+              "members": [
+                {
+                  "member_id": "5fa468d3-ec75-4985-b4ad-14ec722f6df4",
+                  "name": "lead"
+                },
+                {
+                  "member_id": "alpha@l6-rollback-run3",
+                  "name": "alpha"
+                }
+              ],
+              "team_id": "e9d3dc68bbaf03903200b3dc09ec8a8a585caada6e925147acaa43e001f6abad"
+            },
+            "author": {
+              "member_id": "5fa468d3-ec75-4985-b4ad-14ec722f6df4",
+              "name": "lead",
+              "verified": true
+            },
+            "body": "ACTION REQUIRED: Read this message explicitly, then reply exactly A-943bd6e0.",
+            "body_bytes": 77,
+            "body_format": "text/plain",
+            "body_hash": "14c0525d65936c64571614b9f40f28b8bfd602469ec0350bd9bea539d4857068",
+            "conversation_id": "a08946a11c09d18cb6dd6f880f121210b5def0054ed80308e6f713006093b3e0",
+            "conversation_kind": "dm",
+            "correction_reason": null,
+            "delivery_targets": [
+              {
+                "delivery_id": "713839d3-91e4-4398-87bc-532827e3c23a",
+                "legacy_acceptance": "unknown",
+                "legacy_id": "2e32c2fb-3a6d-4bb3-a260-4d74800509d2",
+                "member_id": "alpha@l6-rollback-run3",
+                "read_audience": [
+                  {
+                    "member_id": "5fa468d3-ec75-4985-b4ad-14ec722f6df4",
+                    "name": "lead"
+                  },
+                  {
+                    "member_id": "alpha@l6-rollback-run3",
+                    "name": "alpha"
+                  }
+                ],
+                "recipient": "alpha",
+                "source_path": "inboxes/alpha.json"
+              }
+            ],
+            "dispatch_decision": {
+              "expectation": "action",
+              "policy_revision": 1,
+              "provenance": "prefix",
+              "wake_eligible": true
+            },
+            "envelope": {
+              "from": "lead",
+              "id": "2e32c2fb-3a6d-4bb3-a260-4d74800509d2",
+              "read": false,
+              "summary": "A",
+              "text": null,
+              "timestamp": "2026-09-11T04:15:17.591Z"
+            },
+            "idempotency_key": "2e32c2fb-3a6d-4bb3-a260-4d74800509d2",
+            "legacy_acceptance": "unknown",
+            "link": null,
+            "message_id": "36328545-20b9-40d4-af7b-4614dd34d94f",
+            "origin": "authored",
+            "producer": "mesh-send:5fa468d3-ec75-4985-b4ad-14ec722f6df4",
+            "read_audience": [
+              {
+                "member_id": "5fa468d3-ec75-4985-b4ad-14ec722f6df4",
+                "name": "lead"
+              },
+              {
+                "member_id": "alpha@l6-rollback-run3",
+                "name": "alpha"
+              }
+            ],
+            "reply_to_message_id": null,
+            "request_digest": "067bdee32e3357bd054525cb020f33022249957c75ce98ebe3dd0b6134922c40",
+            "response_expectation": {
+              "basis": "producer",
+              "expectation": "action",
+              "kind": "action",
+              "policy_revision": 1,
+              "provenance": "prefix",
+              "wake_eligible": true
+            },
+            "retention_class": "dm",
+            "source_authority": null,
+            "source_event_refs": [],
+            "summary": "A",
+            "supersedes_message_ids": [],
+            "task_links": [],
+            "visibility_policy_id": "captured-members",
+            "visibility_policy_revision": 1,
+            "wake_priority": "urgent"
+          },
+          "schema_version": 1,
+          "sequence": 8,
+          "team_id": "e9d3dc68bbaf03903200b3dc09ec8a8a585caada6e925147acaa43e001f6abad"
+        },
+        {
+          "checksum": "ef79780f1d0035747b16f346dd377a62325323e837f7e514a7ed844347d2dd1f",
+          "committed_at": "2026-09-11T04:15:18.366956765+00:00",
+          "event_id": "7d79b4ff-d831-4cdf-a31a-434bc5551a26",
+          "event_type": "delivery_attempt",
+          "log_epoch": "be063ed5-3756-445f-8623-edf425d06eb4",
+          "payload": {
+            "adapter": "tmux/1",
+            "attachment": {
+              "attachment_generation": 1,
+              "context_generation": "0",
+              "generation": "1",
+              "harness": "codex",
+              "launch_root": {
+                "claudeDir": "/tmp/th-l6-5f67mhpk/claude",
+                "rootAuthorityRevision": 0,
+                "teamIncarnationId": "e9d3dc68bbaf03903200b3dc09ec8a8a585caada6e925147acaa43e001f6abad",
+                "teamsDir": "/tmp/th-l6-5f67mhpk/claude/teams"
+              },
+              "member": "alpha",
+              "pane": "%2",
+              "pane_pid": 134,
+              "pane_start": "32064467",
+              "root": "/tmp/th-l6-5f67mhpk/claude",
+              "session": "$0",
+              "socket": "/tmp/th-l6-5f67mhpk/tmux/tmux-1000/default",
+              "team_incarnation": "e9d3dc68bbaf03903200b3dc09ec8a8a585caada6e925147acaa43e001f6abad",
+              "tmux_session": "$0"
+            },
+            "attempt_id": "fa399c6b-c85e-4fe0-ac81-ef85142c5fd4",
+            "delivery_id": "713839d3-91e4-4398-87bc-532827e3c23a",
+            "event_type": "delivery_attempt",
+            "evidence": "durable claim",
+            "message_id": "36328545-20b9-40d4-af7b-4614dd34d94f",
+            "observed_at": "2026-09-11T04:15:18.349775560+00:00",
+            "origin": "adapter",
+            "owner_epoch": 2,
+            "recipient": "alpha",
+            "source_generation": "be063ed5-3756-445f-8623-edf425d06eb4",
+            "source_position": 8,
+            "stage": "attempt_started",
+            "team_incarnation": "e9d3dc68bbaf03903200b3dc09ec8a8a585caada6e925147acaa43e001f6abad"
+          },
+          "schema_version": 1,
+          "sequence": 9,
+          "team_id": "e9d3dc68bbaf03903200b3dc09ec8a8a585caada6e925147acaa43e001f6abad"
+        },
+        {
+          "checksum": "a82973094dec7bfab796b17541d7f1eb0ef54f3aadbe9615a307849e202be8a0",
+          "committed_at": "2026-09-11T04:15:18.539103853+00:00",
+          "event_id": "94b4eda1-a273-4cfb-aaab-a4c9d9ca1ea1",
+          "event_type": "receipt",
+          "log_epoch": "be063ed5-3756-445f-8623-edf425d06eb4",
+          "payload": {
+            "adapter": "tmux/1",
+            "attachment": {
+              "attachment_generation": 1,
+              "context_generation": "0",
+              "generation": "1",
+              "harness": "codex",
+              "launch_root": {
+                "claudeDir": "/tmp/th-l6-5f67mhpk/claude",
+                "rootAuthorityRevision": 0,
+                "teamIncarnationId": "e9d3dc68bbaf03903200b3dc09ec8a8a585caada6e925147acaa43e001f6abad",
+                "teamsDir": "/tmp/th-l6-5f67mhpk/claude/teams"
+              },
+              "member": "alpha",
+              "pane": "%2",
+              "pane_pid": 134,
+              "pane_start": "32064467",
+              "root": "/tmp/th-l6-5f67mhpk/claude",
+              "session": "$0",
+              "socket": "/tmp/th-l6-5f67mhpk/tmux/tmux-1000/default",
+              "team_incarnation": "e9d3dc68bbaf03903200b3dc09ec8a8a585caada6e925147acaa43e001f6abad",
+              "tmux_session": "$0"
+            },
+            "attempt_id": "fa399c6b-c85e-4fe0-ac81-ef85142c5fd4",
+            "delivery_id": "713839d3-91e4-4398-87bc-532827e3c23a",
+            "event_type": "receipt",
+            "evidence": "literal paste and harness submit exited 0; model uptake unobserved",
+            "message_id": "36328545-20b9-40d4-af7b-4614dd34d94f",
+            "observed_at": "2026-09-11T04:15:18.525430880+00:00",
+            "origin": "tmux_send_keys",
+            "owner_epoch": 2,
+            "recipient": "alpha",
+            "source_generation": "be063ed5-3756-445f-8623-edf425d06eb4",
+            "source_position": 8,
+            "stage": "submitted",
+            "team_incarnation": "e9d3dc68bbaf03903200b3dc09ec8a8a585caada6e925147acaa43e001f6abad"
+          },
+          "schema_version": 1,
+          "sequence": 10,
+          "team_id": "e9d3dc68bbaf03903200b3dc09ec8a8a585caada6e925147acaa43e001f6abad"
+        },
+        {
+          "checksum": "1b9d3c577bad3909affb58a3f147089f6383344757c8794da078425ed1900871",
+          "committed_at": "2026-09-11T04:15:21.718771013+00:00",
+          "event_id": "daa7323e-23a7-431c-b70d-296650691913",
+          "event_type": "receipt",
+          "log_epoch": "be063ed5-3756-445f-8623-edf425d06eb4",
+          "payload": {
+            "accepted_sequence": 8,
+            "audience_proof": {
+              "kind": "captured-members",
+              "members": [
+                {
+                  "member_id": "5fa468d3-ec75-4985-b4ad-14ec722f6df4",
+                  "name": "lead"
+                },
+                {
+                  "member_id": "alpha@l6-rollback-run3",
+                  "name": "alpha"
+                }
+              ],
+              "team_id": "e9d3dc68bbaf03903200b3dc09ec8a8a585caada6e925147acaa43e001f6abad"
+            },
+            "body_bytes": 77,
+            "body_hash": "14c0525d65936c64571614b9f40f28b8bfd602469ec0350bd9bea539d4857068",
+            "context": "explicit-mesh-cli",
+            "delivery_id": "713839d3-91e4-4398-87bc-532827e3c23a",
+            "kind": "consumed_by_read",
+            "message_id": "36328545-20b9-40d4-af7b-4614dd34d94f",
+            "read_audience": [
+              {
+                "member_id": "5fa468d3-ec75-4985-b4ad-14ec722f6df4",
+                "name": "lead"
+              },
+              {
+                "member_id": "alpha@l6-rollback-run3",
+                "name": "alpha"
+              }
+            ],
+            "reader": "alpha@l6-rollback-run3",
+            "reader_name": "alpha"
+          },
+          "schema_version": 1,
+          "sequence": 11,
+          "team_id": "e9d3dc68bbaf03903200b3dc09ec8a8a585caada6e925147acaa43e001f6abad"
+        }
+      ],
+      "legacy_history": [
+        {
+          "eventId": "ca385ac7-1b31-4fa6-8f61-0839fc514345",
+          "protocolVersion": 1,
+          "eventType": "message_sent",
+          "expectation": {
+            "expectation": "action",
+            "wake_eligible": true,
+            "provenance": "prefix",
+            "policy_revision": 1
+          },
+          "message_id": "713839d3-91e4-4398-87bc-532827e3c23a",
+          "sender": "lead",
+          "recipient": "alpha",
+          "kind": "direct_action",
+          "timestamp": "2026-09-11T04:15:17.591Z",
+          "action_required": true,
+          "no_response_needed": false
+        },
+        {
+          "eventId": "911da8f2-35d8-4b22-ba3c-53084b71c5fb",
+          "protocolVersion": 1,
+          "eventType": "message_read",
+          "message_id": "713839d3-91e4-4398-87bc-532827e3c23a",
+          "reader": "alpha",
+          "timestamp": "2026-09-11T04:15:21.743Z"
+        },
+        {
+          "eventId": "fb976af0-867a-4fcf-92d5-60172026cf81",
+          "protocolVersion": 1,
+          "eventType": "message_read",
+          "message_id": "713839d3-91e4-4398-87bc-532827e3c23a",
+          "reader": "alpha",
+          "timestamp": "2026-09-11T04:15:25.392Z"
+        },
+        {
+          "eventId": "4b78bc95-f814-4e9e-b571-fa4a4b584037",
+          "protocolVersion": 1,
+          "eventType": "message_read",
+          "message_id": "713839d3-91e4-4398-87bc-532827e3c23a",
+          "reader": "alpha",
+          "timestamp": "2026-09-11T04:16:08.061Z"
+        }
+      ],
+      "final_projection": {
+        "message_id": "36328545-20b9-40d4-af7b-4614dd34d94f",
+        "id": "713839d3-91e4-4398-87bc-532827e3c23a",
+        "from": "lead",
+        "text": "ACTION REQUIRED: Read this message explicitly, then reply exactly A-943bd6e0.",
+        "timestamp": "2026-09-11T04:15:17.591Z",
+        "read": true,
+        "summary": "A"
+      },
+      "assistant_replies": [
+        {
+          "timestamp": "2026-09-11T04:15:35.359Z",
+          "ordinal": 69,
+          "type": "response_item",
+          "payload": {
+            "type": "message",
+            "id": "msg_0915d5280d84fb7f016aa38061812087d2a00ab0a4a20914b4",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "output_text",
+                "text": "A-943bd6e0"
+              }
+            ],
+            "phase": "final_answer",
+            "internal_chat_message_metadata_passthrough": {
+              "turn_id": "01a08ead-51fb-7963-ae25-6dc7ccb5d00a",
+              "create_time": 1789100128.49614,
+              "content_item_kinds": [
+                "unknown"
+              ]
+            }
+          }
+        }
+      ],
+      "tool_exposure": [
+        {
+          "timestamp": "2026-09-11T04:15:21.779Z",
+          "ordinal": 38,
+          "type": "response_item",
+          "payload": {
+            "type": "custom_tool_call_output",
+            "id": "ctco_01a08ead-5eb3-7512-94ad-b2ccf5af3c0e",
+            "call_id": "call_CpTq03saOJ9UCFaeUIeIxZHF",
+            "output": [
+              {
+                "type": "input_text",
+                "text": "Script completed\nWall time 0.1 seconds\nOutput:\n"
+              },
+              {
+                "type": "input_text",
+                "text": "{\n  \"body_refs\": \"immutable full bodies retained; no truncation\",\n  \"bytes_read\": 23283,\n  \"coverage\": {\n    \"expired_bytes_deleted\": false,\n    \"known_gaps\": [\n      \"native-foreign-writers-excluded\",\n      \"taurhaus-writer-legacy\",\n      \"task-workflow-atomicity-unavailable\",\n      \"review-proof-unavailable\"\n    ],\n    \"last_gap_sequence\": null,\n    \"observed_gap_count\": 0,\n    \"purge_implemented\": false,\n    \"status\": \"partial\"\n  },\n  \"coverage_scope\": \"scanned-delta\",\n  \"cursor\": \"7b2266696c746572223a5b2263616e6f6e6963616c2d696e626f782f31222c747275652c6e756c6c5d2c227363616e223a22376232323663363137333734356637333635373137353635366536333635323233613331333032633232366336663637356636353730366636333638323233613232363236353330333633333635363433353264333333373335333632643334333433353636326433383336333233333264363536343636333433323335363433303336363536323334323232633232366536353738373435663632373937343635323233613332333333323338333332633232373036663663363936333739323233613232333333343332333933393336363636333332333536333633333333343636333033303632363633383334333533393338333436313331333933313636333233303335363533373636333233363335333733333330363533313633363336333331333836363633363633303631333036363333363233393633363433333338333732323263323237303732366636613635363337343639366636653232336133313263323237323635363136343635373232323361323236313663373036383631343036633336326437323666366336633632363136333662326437323735366533333232326332323732366636663734356636393634363536653734363937343739323233613562333233303339333632633331333433363331333233373336356432633232373336353637366436353665373432323361333032633232373336353637366436353665373435663639363436353665373436393734373932323361356233323330333933363263333133343336333133323339333335643263323237333635363736643635366537343566373337343631366437303232336135623332333333323338333332633331333733383339333133303330333133313338326333353333333333393334333933363330333935643263323237333666373537323633363532323361323236643635373337333631363736393665363732643736333232323263323237343631373336623232336136653735366336633263323237343635363136643566363936343232336132323635333936343333363436333336333836323632363136363330333333393330333333323330333036323333363436333330333936353633333836313338363133353338333536333631363136343631333636353339333233353331333433373631363336313631333433333635333033303331363633363631363236313634323237642e33353461396339633265663761363936646366353431373633343638613465383031653166626363353837356265666435353833376434346466613065636337227d.1acffbf9b562311e54589e7430ffd3a586b204afe1da522878e6637c11fd1038\",\n  \"done\": true,\n  \"exposed_bytes\": 77,\n  \"log_epoch\": \"be063ed5-3756-445f-8623-edf425d06eb4\",\n  \"messages\": [\n    {\n      \"from\": \"lead\",\n      \"id\": \"713839d3-91e4-4398-87bc-532827e3c23a\",\n      \"message_id\": \"36328545-20b9-40d4-af7b-4614dd34d94f\",\n      \"read\": false,\n      \"summary\": \"A\",\n      \"text\": \"ACTION REQUIRED: Read this message explicitly, then reply exactly A-943bd6e0.\",\n      \"timestamp\": \"2026-09-11T04:15:17.591Z\"\n    }\n  ],\n  \"outcomes\": [\n    {\n      \"attempt_id\": \"fa399c6b-c85e-4fe0-ac81-ef85142c5fd4\",\n      \"delivery_id\": \"713839d3-91e4-4398-87bc-532827e3c23a\",\n      \"evidence\": \"literal paste and harness submit exited 0; model uptake unobserved\",\n      \"offer_id\": null,\n      \"owner_fence\": 2,\n      \"stage\": \"submitted\"\n    }\n  ],\n  \"team_id\": \"e9d3dc68bbaf03903200b3dc09ec8a8a585caada6e925147acaa43e001f6abad\"\n}\n"
+              }
+            ],
+            "internal_chat_message_metadata_passthrough": {
+              "turn_id": "01a08ead-51fb-7963-ae25-6dc7ccb5d00a",
+              "create_time": 1789100121.779331
+            }
+          }
+        },
+        {
+          "timestamp": "2026-09-11T04:15:25.428Z",
+          "ordinal": 45,
+          "type": "response_item",
+          "payload": {
+            "type": "custom_tool_call_output",
+            "id": "ctco_01a08ead-6cf4-7af3-840d-72fad4f2659d",
+            "call_id": "call_J4saEaFYJIo4NSt9UCtXFMea",
+            "output": [
+              {
+                "type": "input_text",
+                "text": "Script completed\nWall time 0.1 seconds\nOutput:\n"
+              },
+              {
+                "type": "input_text",
+                "text": "{\n  \"body_refs\": \"immutable full bodies retained; no truncation\",\n  \"bytes_read\": 24390,\n  \"coverage\": {\n    \"expired_bytes_deleted\": false,\n    \"known_gaps\": [\n      \"native-foreign-writers-excluded\",\n      \"taurhaus-writer-legacy\",\n      \"task-workflow-atomicity-unavailable\",\n      \"review-proof-unavailable\"\n    ],\n    \"last_gap_sequence\": null,\n    \"observed_gap_count\": 0,\n    \"purge_implemented\": false,\n    \"status\": \"partial\"\n  },\n  \"coverage_scope\": \"scanned-delta\",\n  \"cursor\": \"7b2266696c746572223a5b2263616e6f6e6963616c2d696e626f782f31222c66616c73652c6e756c6c5d2c227363616e223a22376232323663363137333734356637333635373137353635366536333635323233613331333132633232366336663637356636353730366636333638323233613232363236353330333633333635363433353264333333373335333632643334333433353636326433383336333233333264363536343636333433323335363433303336363536323334323232633232366536353738373435663632373937343635323233613332333433333339333032633232373036663663363936333739323233613232333333343332333933393336363636333332333536333633333333343636333033303632363633383334333533393338333436313331333933313636333233303335363533373636333233363335333733333330363533313633363336333331333836363633363633303631333036363333363233393633363433333338333732323263323237303732366636613635363337343639366636653232336133313263323237323635363136343635373232323361323236313663373036383631343036633336326437323666366336633632363136333662326437323735366533333232326332323732366636663734356636393634363536653734363937343739323233613562333233303339333632633331333433363331333233373336356432633232373336353637366436353665373432323361333032633232373336353637366436353665373435663639363436353665373436393734373932323361356233323330333933363263333133343336333133323339333335643263323237333635363736643635366537343566373337343631366437303232336135623332333433333339333032633331333733383339333133303330333133323331326333373331333333393334333933353339333435643263323237333666373537323633363532323361323236643635373337333631363736393665363732643736333232323263323237343631373336623232336136653735366336633263323237343635363136643566363936343232336132323635333936343333363436333336333836323632363136363330333333393330333333323330333036323333363436333330333936353633333836313338363133353338333536333631363136343631333636353339333233353331333433373631363336313631333433333635333033303331363633363631363236313634323237642e66333463306264316661633539393539323464323764373838643863303739356366656665356562313737353434306435396666396562656462373063666436227d.6fde757a0e757293c20de306bbc3dbd612cffc04ec22165f801a0e9d7385165a\",\n  \"done\": true,\n  \"exposed_bytes\": 2964,\n  \"log_epoch\": \"be063ed5-3756-445f-8623-edf425d06eb4\",\n  \"messages\": [\n    {\n      \"from\": \"lead\",\n      \"id\": \"fd38cec4-5524-45ef-96e0-0899af6472e1\",\n      \"message_id\": \"bd40b569-1aa3-41e1-9c1c-89217e53945c\",\n      \"read\": true,\n      \"text\": \"[taurhaus] recovery_card\\nIdentity: alpha on l6-rollback-run3; key={\\\"card_schema\\\":1,\\\"recipient\\\":[\\\"e9d3dc68bbaf03903200b3dc09ec8a8a585caada6e925147acaa43e001f6abad\\\",\\\"2e9c5cc0-a204-422f-92e2-cae934194b74\\\"],\\\"context\\\":[1,0],\\\"roots\\\":{\\\"root_authority_revision\\\":\\\"0\\\",\\\"resolved_teams_root\\\":\\\"/tmp/th-l6-5f67mhpk/claude/teams\\\",\\\"resolved_mesh_config_root\\\":\\\"/tmp/th-l6-5f67mhpk/claude\\\",\\\"harness_account_root\\\":\\\"/tmp/th-l6-5f67mhpk/codex\\\",\\\"launch_namespace\\\":\\\"native\\\",\\\"resolved_project_root\\\":\\\"/tmp/th-l6-5f67mhpk/project\\\"},\\\"contract\\\":{\\\"role_id\\\":\\\"\\\",\\\"effective_role_revision\\\":\\\"6a8cbf613400d0bc3cb293bc1423d163faa2078f7283118127ecccf29a3eefb2\\\",\\\"instruction_contract_revision\\\":\\\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\\\",\\\"packet_revision\\\":\\\"\\\"}}\\nCoverage: d89c17a81d3eb535b535d85698984975ae2e6a597620e9ce9fd60ea91df66687; source=682540e4a3f9cfbca660a5add5db7fa379ff474f5fe7c2f18798f74d7e72c755; audience=unavailable\\nProject cwd: /tmp/th-l6-5f67mhpk/project\\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\\nObjective: unavailable\\nDeliverable: unavailable\\nFirst action: unavailable\\nCompletion signal: unavailable\\nReview route: unavailable\\nWait/release: unavailable\\nCandidate: unavailable\\nRubric: unavailable\\nRestart cursor: unavailable\\nRequested effort: unavailable; effective effort: low; hold: none recorded\\nFile boundary: unavailable\\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\\nGenerated: 2026-09-11 04:15:07.256128695 UTC\\nCurrent task: # \u2014 \\nExecution mode: ; Validation expectation: ; Response expectation: ; Adjacent fix policy: ; Override allowed: false; Override reason: none\\nFocal files: unavailable\\nRole: unavailable\\nPurpose: For every inbox notification including onboarding, explicitly run mesh read --json --unread --mark-read --claude-dir \\\"$CLAUDE_DIR\\\" --team l6-rollback-run3 --name alpha; follow returned --since cursors with the same filters until done. Reply briefly. When a message assigns you a task, run exactly the mesh lifecycle commands the message names, in order, then reply with the task id and the word done. Never modify files. For ACTION REQUIRED marker messages, read your inbox with mesh read --json --mark-read --claude-dir \\\"$CLAUDE_DIR\\\" --team l6-rollback-run3 --name alpha and reply exactly with the requested marker. Follow every returned cursor until done. Do not send other messages.\\n\\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.\",\n      \"timestamp\": \"2026-09-11T04:15:07.275780338+00:00\"\n    },\n    {\n      \"from\": \"lead\",\n      \"id\": \"713839d3-91e4-4398-87bc-532827e3c23a\",\n      \"message_id\": \"36328545-20b9-40d4-af7b-4614dd34d94f\",\n      \"read\": true,\n      \"summary\": \"A\",\n      \"text\": \"ACTION REQUIRED: Read this message explicitly, then reply exactly A-943bd6e0.\",\n      \"timestamp\": \"2026-09-11T04:15:17.591Z\"\n    }\n  ],\n  \"outcomes\": [\n    {\n      \"attempt_id\": \"dfc6a730-4789-4e2b-a7ab-7c07ec8f0334\",\n      \"delivery_id\": \"fd38cec4-5524-45ef-96e0-0899af6472e1\",\n      \"evidence\": \"literal paste and harness submit exited 0; model uptake unobserved\",\n      \"offer_id\": null,\n      \"owner_fence\": 2,\n      \"stage\": \"submitted\"\n    },\n    {\n      \"attempt_id\": \"fa399c6b-c85e-4fe0-ac81-ef85142c5fd4\",\n      \"delivery_id\": \"713839d3-91e4-4398-87bc-532827e3c23a\",\n      \"evidence\": \"literal paste and harness submit exited 0; model uptake unobserved\",\n      \"offer_id\": null,\n      \"owner_fence\": 2,\n      \"stage\": \"submitted\"\n    }\n  ],\n  \"team_id\": \"e9d3dc68bbaf03903200b3dc09ec8a8a585caada6e925147acaa43e001f6abad\"\n}\n"
+              }
+            ],
+            "internal_chat_message_metadata_passthrough": {
+              "turn_id": "01a08ead-51fb-7963-ae25-6dc7ccb5d00a",
+              "create_time": 1789100125.4282227
+            }
+          }
+        },
+        {
+          "timestamp": "2026-09-11T04:16:08.111Z",
+          "ordinal": 100,
+          "type": "response_item",
+          "payload": {
+            "type": "custom_tool_call_output",
+            "id": "ctco_01a08eae-13af-7890-8af8-cd8c9b303275",
+            "call_id": "call_fX1D5mliumt0WDpcZ7TQzTGK",
+            "output": [
+              {
+                "type": "input_text",
+                "text": "Script completed\nWall time 0.1 seconds\nOutput:\n"
+              },
+              {
+                "type": "input_text",
+                "text": "[mesh] alpha pending info: 0 (coverage: complete; before read marks)\n[\n  {\n    \"message_id\": \"bd40b569-1aa3-41e1-9c1c-89217e53945c\",\n    \"id\": \"fd38cec4-5524-45ef-96e0-0899af6472e1\",\n    \"from\": \"lead\",\n    \"text\": \"[taurhaus] recovery_card\\nIdentity: alpha on l6-rollback-run3; key={\\\"card_schema\\\":1,\\\"recipient\\\":[\\\"e9d3dc68bbaf03903200b3dc09ec8a8a585caada6e925147acaa43e001f6abad\\\",\\\"2e9c5cc0-a204-422f-92e2-cae934194b74\\\"],\\\"context\\\":[1,0],\\\"roots\\\":{\\\"root_authority_revision\\\":\\\"0\\\",\\\"resolved_teams_root\\\":\\\"/tmp/th-l6-5f67mhpk/claude/teams\\\",\\\"resolved_mesh_config_root\\\":\\\"/tmp/th-l6-5f67mhpk/claude\\\",\\\"harness_account_root\\\":\\\"/tmp/th-l6-5f67mhpk/codex\\\",\\\"launch_namespace\\\":\\\"native\\\",\\\"resolved_project_root\\\":\\\"/tmp/th-l6-5f67mhpk/project\\\"},\\\"contract\\\":{\\\"role_id\\\":\\\"\\\",\\\"effective_role_revision\\\":\\\"6a8cbf613400d0bc3cb293bc1423d163faa2078f7283118127ecccf29a3eefb2\\\",\\\"instruction_contract_revision\\\":\\\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\\\",\\\"packet_revision\\\":\\\"\\\"}}\\nCoverage: d89c17a81d3eb535b535d85698984975ae2e6a597620e9ce9fd60ea91df66687; source=682540e4a3f9cfbca660a5add5db7fa379ff474f5fe7c2f18798f74d7e72c755; audience=unavailable\\nProject cwd: /tmp/th-l6-5f67mhpk/project\\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\\nObjective: unavailable\\nDeliverable: unavailable\\nFirst action: unavailable\\nCompletion signal: unavailable\\nReview route: unavailable\\nWait/release: unavailable\\nCandidate: unavailable\\nRubric: unavailable\\nRestart cursor: unavailable\\nRequested effort: unavailable; effective effort: low; hold: none recorded\\nFile boundary: unavailable\\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\\nGenerated: 2026-09-11 04:15:07.256128695 UTC\\nCurrent task: # \u2014 \\nExecution mode: ; Validation expectation: ; Response expectation: ; Adjacent fix policy: ; Override allowed: false; Override reason: none\\nFocal files: unavailable\\nRole: unavailable\\nPurpose: For every inbox notification including onboarding, explicitly run mesh read --json --unread --mark-read --claude-dir \\\"$CLAUDE_DIR\\\" --team l6-rollback-run3 --name alpha; follow returned --since cursors with the same filters until done. Reply briefly. When a message assigns you a task, run exactly the mesh lifecycle commands the message names, in order, then reply with the task id and the word done. Never modify files. For ACTION REQUIRED marker messages, read your inbox with mesh read --json --mark-read --claude-dir \\\"$CLAUDE_DIR\\\" --team l6-rollback-run3 --name alpha and reply exactly with the requested marker. Follow every returned cursor until done. Do not send other messages.\\n\\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.\",\n    \"timestamp\": \"2026-09-11T04:15:07.275780338+00:00\",\n    \"read\": true\n  },\n  {\n    \"message_id\": \"36328545-20b9-40d4-af7b-4614dd34d94f\",\n    \"id\": \"713839d3-91e4-4398-87bc-532827e3c23a\",\n    \"from\": \"lead\",\n    \"text\": \"ACTION REQUIRED: Read this message explicitly, then reply exactly A-943bd6e0.\",\n    \"timestamp\": \"2026-09-11T04:15:17.591Z\",\n    \"read\": true,\n    \"summary\": \"A\"\n  },\n  {\n    \"message_id\": \"b026d303-9ac7-46d8-987f-9b34a52c19bb\",\n    \"id\": \"55e21660-dc01-4ae4-914c-0b186cf5ee65\",\n    \"from\": \"lead\",\n    \"text\": \"ACTION REQUIRED: Read this message explicitly, then reply exactly B-2c3955c5.\",\n    \"timestamp\": \"2026-09-11T04:15:36.114Z\",\n    \"read\": true,\n    \"summary\": \"B\"\n  }\n]\n"
+              }
+            ],
+            "internal_chat_message_metadata_passthrough": {
+              "turn_id": "01a08ead-959d-7d33-9153-e6b632e86d3a",
+              "create_time": 1789100168.111727
+            }
+          }
+        }
+      ]
+    },
+    "B": {
+      "marker": "B-2c3955c5",
+      "logical_id": "b026d303-9ac7-46d8-987f-9b34a52c19bb",
+      "delivery_id": "55e21660-dc01-4ae4-914c-0b186cf5ee65",
+      "canonical_history": [
+        {
+          "checksum": "d242d2eb771cdd6cd775d3337a3447fe2a6196d95bd7aa38ed4acb58939209c9",
+          "committed_at": "2026-09-11T04:15:36.123284140+00:00",
+          "event_id": "73ada1d2-4bf2-42ab-bd80-7fed449929e7",
+          "event_type": "message_accepted",
+          "log_epoch": "be063ed5-3756-445f-8623-edf425d06eb4",
+          "payload": {
+            "acceptance": "canonical",
+            "archive_outcome": "retained",
+            "audience_proof": {
+              "kind": "captured-members",
+              "members": [
+                {
+                  "member_id": "5fa468d3-ec75-4985-b4ad-14ec722f6df4",
+                  "name": "lead"
+                },
+                {
+                  "member_id": "alpha@l6-rollback-run3",
+                  "name": "alpha"
+                }
+              ],
+              "team_id": "e9d3dc68bbaf03903200b3dc09ec8a8a585caada6e925147acaa43e001f6abad"
+            },
+            "author": {
+              "member_id": "5fa468d3-ec75-4985-b4ad-14ec722f6df4",
+              "name": "lead",
+              "verified": true
+            },
+            "body": "ACTION REQUIRED: Read this message explicitly, then reply exactly B-2c3955c5.",
+            "body_bytes": 77,
+            "body_format": "text/plain",
+            "body_hash": "13613c35d08c46daba3b2df4c730553f93b0b57e7ee595c012798e329644bde3",
+            "conversation_id": "a08946a11c09d18cb6dd6f880f121210b5def0054ed80308e6f713006093b3e0",
+            "conversation_kind": "dm",
+            "correction_reason": null,
+            "delivery_targets": [
+              {
+                "delivery_id": "55e21660-dc01-4ae4-914c-0b186cf5ee65",
+                "legacy_acceptance": "unknown",
+                "legacy_id": "ba2c7c69-f0d5-48ee-916e-241f3e146a24",
+                "member_id": "alpha@l6-rollback-run3",
+                "read_audience": [
+                  {
+                    "member_id": "5fa468d3-ec75-4985-b4ad-14ec722f6df4",
+                    "name": "lead"
+                  },
+                  {
+                    "member_id": "alpha@l6-rollback-run3",
+                    "name": "alpha"
+                  }
+                ],
+                "recipient": "alpha",
+                "source_path": "inboxes/alpha.json"
+              }
+            ],
+            "dispatch_decision": {
+              "expectation": "action",
+              "policy_revision": 1,
+              "provenance": "prefix",
+              "wake_eligible": true
+            },
+            "envelope": {
+              "from": "lead",
+              "id": "ba2c7c69-f0d5-48ee-916e-241f3e146a24",
+              "read": false,
+              "summary": "B",
+              "text": null,
+              "timestamp": "2026-09-11T04:15:36.114Z"
+            },
+            "idempotency_key": "ba2c7c69-f0d5-48ee-916e-241f3e146a24",
+            "legacy_acceptance": "unknown",
+            "link": null,
+            "message_id": "b026d303-9ac7-46d8-987f-9b34a52c19bb",
+            "origin": "authored",
+            "producer": "mesh-send:5fa468d3-ec75-4985-b4ad-14ec722f6df4",
+            "read_audience": [
+              {
+                "member_id": "5fa468d3-ec75-4985-b4ad-14ec722f6df4",
+                "name": "lead"
+              },
+              {
+                "member_id": "alpha@l6-rollback-run3",
+                "name": "alpha"
+              }
+            ],
+            "reply_to_message_id": null,
+            "request_digest": "ab88904ab42f583490f710fe43cfd7aa6c74c40d6aef6aebbf9b0e0e048cebb7",
+            "response_expectation": {
+              "basis": "producer",
+              "expectation": "action",
+              "kind": "action",
+              "policy_revision": 1,
+              "provenance": "prefix",
+              "wake_eligible": true
+            },
+            "retention_class": "dm",
+            "source_authority": null,
+            "source_event_refs": [],
+            "summary": "B",
+            "supersedes_message_ids": [],
+            "task_links": [],
+            "visibility_policy_id": "captured-members",
+            "visibility_policy_revision": 1,
+            "wake_priority": "urgent"
+          },
+          "schema_version": 1,
+          "sequence": 15,
+          "team_id": "e9d3dc68bbaf03903200b3dc09ec8a8a585caada6e925147acaa43e001f6abad"
+        }
+      ],
+      "legacy_history": [
+        {
+          "eventId": "614fb224-ba71-4a86-bed3-445964fd86f7",
+          "protocolVersion": 1,
+          "eventType": "message_sent",
+          "expectation": {
+            "expectation": "action",
+            "wake_eligible": true,
+            "provenance": "prefix",
+            "policy_revision": 1
+          },
+          "message_id": "55e21660-dc01-4ae4-914c-0b186cf5ee65",
+          "sender": "lead",
+          "recipient": "alpha",
+          "kind": "direct_action",
+          "timestamp": "2026-09-11T04:15:36.114Z",
+          "action_required": true,
+          "no_response_needed": false
+        },
+        {
+          "eventId": "4dcc9a7c-9dcc-4846-a56f-87467dbc4cda",
+          "protocolVersion": 1,
+          "eventType": "message_delivery_recorded",
+          "message_id": "55e21660-dc01-4ae4-914c-0b186cf5ee65",
+          "source": "inbox",
+          "channel": "tmux",
+          "target": "%2",
+          "outcome": "tmux_injected",
+          "timestamp": "2026-09-11T04:15:41.600Z"
+        },
+        {
+          "eventId": "c28fc29b-2a93-4e71-9c6c-6103807159a5",
+          "protocolVersion": 1,
+          "eventType": "message_read",
+          "message_id": "55e21660-dc01-4ae4-914c-0b186cf5ee65",
+          "reader": "alpha",
+          "timestamp": "2026-09-11T04:16:05.186Z"
+        },
+        {
+          "eventId": "8480b13e-22ee-4844-8d86-f828ed145fe6",
+          "protocolVersion": 1,
+          "eventType": "message_read",
+          "message_id": "55e21660-dc01-4ae4-914c-0b186cf5ee65",
+          "reader": "alpha",
+          "timestamp": "2026-09-11T04:16:08.061Z"
+        }
+      ],
+      "final_projection": {
+        "message_id": "b026d303-9ac7-46d8-987f-9b34a52c19bb",
+        "id": "55e21660-dc01-4ae4-914c-0b186cf5ee65",
+        "from": "lead",
+        "text": "ACTION REQUIRED: Read this message explicitly, then reply exactly B-2c3955c5.",
+        "timestamp": "2026-09-11T04:15:36.114Z",
+        "read": true,
+        "summary": "B"
+      },
+      "assistant_replies": [
+        {
+          "timestamp": "2026-09-11T04:16:14.479Z",
+          "ordinal": 110,
+          "type": "response_item",
+          "payload": {
+            "type": "message",
+            "id": "msg_0915d5280d84fb7f016aa38088aa2487d2aecba1c00138673e",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "output_text",
+                "text": "B-2c3955c5"
+              }
+            ],
+            "phase": "final_answer",
+            "internal_chat_message_metadata_passthrough": {
+              "turn_id": "01a08ead-959d-7d33-9153-e6b632e86d3a",
+              "create_time": 1789100166.594992,
+              "content_item_kinds": [
+                "unknown"
+              ]
+            }
+          }
+        }
+      ],
+      "tool_exposure": [
+        {
+          "timestamp": "2026-09-11T04:16:05.226Z",
+          "ordinal": 93,
+          "type": "response_item",
+          "payload": {
+            "type": "custom_tool_call_output",
+            "id": "ctco_01a08eae-086a-7591-8d10-8c571beb91c8",
+            "call_id": "call_qcD8g4PGCkyTXb6fMD4KAfdU",
+            "output": [
+              {
+                "type": "input_text",
+                "text": "Script completed\nWall time 0.1 seconds\nOutput:\n"
+              },
+              {
+                "type": "input_text",
+                "text": "[mesh] alpha pending info: 0 (coverage: complete; before read marks)\n[\n  {\n    \"message_id\": \"b026d303-9ac7-46d8-987f-9b34a52c19bb\",\n    \"id\": \"55e21660-dc01-4ae4-914c-0b186cf5ee65\",\n    \"from\": \"lead\",\n    \"text\": \"ACTION REQUIRED: Read this message explicitly, then reply exactly B-2c3955c5.\",\n    \"timestamp\": \"2026-09-11T04:15:36.114Z\",\n    \"read\": false,\n    \"summary\": \"B\"\n  }\n]\n"
+              }
+            ],
+            "internal_chat_message_metadata_passthrough": {
+              "turn_id": "01a08ead-959d-7d33-9153-e6b632e86d3a",
+              "create_time": 1789100165.226274
+            }
+          }
+        },
+        {
+          "timestamp": "2026-09-11T04:16:08.111Z",
+          "ordinal": 100,
+          "type": "response_item",
+          "payload": {
+            "type": "custom_tool_call_output",
+            "id": "ctco_01a08eae-13af-7890-8af8-cd8c9b303275",
+            "call_id": "call_fX1D5mliumt0WDpcZ7TQzTGK",
+            "output": [
+              {
+                "type": "input_text",
+                "text": "Script completed\nWall time 0.1 seconds\nOutput:\n"
+              },
+              {
+                "type": "input_text",
+                "text": "[mesh] alpha pending info: 0 (coverage: complete; before read marks)\n[\n  {\n    \"message_id\": \"bd40b569-1aa3-41e1-9c1c-89217e53945c\",\n    \"id\": \"fd38cec4-5524-45ef-96e0-0899af6472e1\",\n    \"from\": \"lead\",\n    \"text\": \"[taurhaus] recovery_card\\nIdentity: alpha on l6-rollback-run3; key={\\\"card_schema\\\":1,\\\"recipient\\\":[\\\"e9d3dc68bbaf03903200b3dc09ec8a8a585caada6e925147acaa43e001f6abad\\\",\\\"2e9c5cc0-a204-422f-92e2-cae934194b74\\\"],\\\"context\\\":[1,0],\\\"roots\\\":{\\\"root_authority_revision\\\":\\\"0\\\",\\\"resolved_teams_root\\\":\\\"/tmp/th-l6-5f67mhpk/claude/teams\\\",\\\"resolved_mesh_config_root\\\":\\\"/tmp/th-l6-5f67mhpk/claude\\\",\\\"harness_account_root\\\":\\\"/tmp/th-l6-5f67mhpk/codex\\\",\\\"launch_namespace\\\":\\\"native\\\",\\\"resolved_project_root\\\":\\\"/tmp/th-l6-5f67mhpk/project\\\"},\\\"contract\\\":{\\\"role_id\\\":\\\"\\\",\\\"effective_role_revision\\\":\\\"6a8cbf613400d0bc3cb293bc1423d163faa2078f7283118127ecccf29a3eefb2\\\",\\\"instruction_contract_revision\\\":\\\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\\\",\\\"packet_revision\\\":\\\"\\\"}}\\nCoverage: d89c17a81d3eb535b535d85698984975ae2e6a597620e9ce9fd60ea91df66687; source=682540e4a3f9cfbca660a5add5db7fa379ff474f5fe7c2f18798f74d7e72c755; audience=unavailable\\nProject cwd: /tmp/th-l6-5f67mhpk/project\\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\\nObjective: unavailable\\nDeliverable: unavailable\\nFirst action: unavailable\\nCompletion signal: unavailable\\nReview route: unavailable\\nWait/release: unavailable\\nCandidate: unavailable\\nRubric: unavailable\\nRestart cursor: unavailable\\nRequested effort: unavailable; effective effort: low; hold: none recorded\\nFile boundary: unavailable\\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\\nGenerated: 2026-09-11 04:15:07.256128695 UTC\\nCurrent task: # \u2014 \\nExecution mode: ; Validation expectation: ; Response expectation: ; Adjacent fix policy: ; Override allowed: false; Override reason: none\\nFocal files: unavailable\\nRole: unavailable\\nPurpose: For every inbox notification including onboarding, explicitly run mesh read --json --unread --mark-read --claude-dir \\\"$CLAUDE_DIR\\\" --team l6-rollback-run3 --name alpha; follow returned --since cursors with the same filters until done. Reply briefly. When a message assigns you a task, run exactly the mesh lifecycle commands the message names, in order, then reply with the task id and the word done. Never modify files. For ACTION REQUIRED marker messages, read your inbox with mesh read --json --mark-read --claude-dir \\\"$CLAUDE_DIR\\\" --team l6-rollback-run3 --name alpha and reply exactly with the requested marker. Follow every returned cursor until done. Do not send other messages.\\n\\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.\",\n    \"timestamp\": \"2026-09-11T04:15:07.275780338+00:00\",\n    \"read\": true\n  },\n  {\n    \"message_id\": \"36328545-20b9-40d4-af7b-4614dd34d94f\",\n    \"id\": \"713839d3-91e4-4398-87bc-532827e3c23a\",\n    \"from\": \"lead\",\n    \"text\": \"ACTION REQUIRED: Read this message explicitly, then reply exactly A-943bd6e0.\",\n    \"timestamp\": \"2026-09-11T04:15:17.591Z\",\n    \"read\": true,\n    \"summary\": \"A\"\n  },\n  {\n    \"message_id\": \"b026d303-9ac7-46d8-987f-9b34a52c19bb\",\n    \"id\": \"55e21660-dc01-4ae4-914c-0b186cf5ee65\",\n    \"from\": \"lead\",\n    \"text\": \"ACTION REQUIRED: Read this message explicitly, then reply exactly B-2c3955c5.\",\n    \"timestamp\": \"2026-09-11T04:15:36.114Z\",\n    \"read\": true,\n    \"summary\": \"B\"\n  }\n]\n"
+              }
+            ],
+            "internal_chat_message_metadata_passthrough": {
+              "turn_id": "01a08ead-959d-7d33-9153-e6b632e86d3a",
+              "create_time": 1789100168.111727
+            }
+          }
+        }
+      ]
+    }
+  },
+  "C": "NOT SENT: step 5 not reached",
+  "observer_errors": [
+    {
+      "at": 1789100106.8454897,
+      "kind": "observer_error",
+      "error": "argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'NoneType'"
+    }
+  ],
+  "cleanup": {
+    "survivors": [],
+    "port_closed": true,
+    "auth_removed": true,
+    "root_removed": true
+  },
+  "metering": {
+    "paid_inputs": 4,
+    "turns": [
+      {
+        "turn_id": "01a08ead-2da2-7221-8383-af06dcdc4ac8",
+        "usd": 0.00161804,
+        "completed": true,
+        "usage": {
+          "input_tokens": 20641,
+          "cached_input_tokens": 15872,
+          "output_tokens": 289
+        },
+        "conservative_usd": 0.025116
+      },
+      {
+        "turn_id": "01a08ead-51fb-7963-ae25-6dc7ccb5d00a",
+        "usd": 0.004273320000000001,
+        "completed": true,
+        "usage": {
+          "input_tokens": 93093,
+          "cached_input_tokens": 83456,
+          "output_tokens": 564
+        },
+        "conservative_usd": 0.1123884
+      },
+      {
+        "turn_id": "01a08ead-959d-7d33-9153-e6b632e86d3a",
+        "usd": 0.0050696000000000005,
+        "completed": true,
+        "usage": {
+          "input_tokens": 96484,
+          "cached_input_tokens": 90880,
+          "output_tokens": 1776
+        },
+        "conservative_usd": 0.117912
+      },
+      {
+        "turn_id": "01a08ead-2f79-7cf2-8276-6de193ec9722",
+        "usd": null,
+        "completed": true,
+        "source": "notify-only",
+        "classification": "unknown-but-not-a-model-input"
+      }
+    ],
+    "usage_rows": [
+      {
+        "at": "2026-09-11T04:15:13.249Z",
+        "turn_id": "01a08ead-2da2-7221-8383-af06dcdc4ac8",
+        "usage": {
+          "input_tokens": 9243,
+          "cached_input_tokens": 6912,
+          "output_tokens": 146
+        },
+        "usd": 0.0007796400000000001
+      },
+      {
+        "at": "2026-09-11T04:15:17.165Z",
+        "turn_id": "01a08ead-2da2-7221-8383-af06dcdc4ac8",
+        "usage": {
+          "input_tokens": 11398,
+          "cached_input_tokens": 8960,
+          "output_tokens": 143
+        },
+        "usd": 0.0008384000000000001
+      },
+      {
+        "at": "2026-09-11T04:15:21.781Z",
+        "turn_id": "01a08ead-51fb-7963-ae25-6dc7ccb5d00a",
+        "usage": {
+          "input_tokens": 12358,
+          "cached_input_tokens": 11008,
+          "output_tokens": 129
+        },
+        "usd": 0.0006449599999999999
+      },
+      {
+        "at": "2026-09-11T04:15:25.429Z",
+        "turn_id": "01a08ead-51fb-7963-ae25-6dc7ccb5d00a",
+        "usage": {
+          "input_tokens": 13715,
+          "cached_input_tokens": 12032,
+          "output_tokens": 142
+        },
+        "usd": 0.0007476399999999999
+      },
+      {
+        "at": "2026-09-11T04:15:28.381Z",
+        "turn_id": "01a08ead-51fb-7963-ae25-6dc7ccb5d00a",
+        "usage": {
+          "input_tokens": 16100,
+          "cached_input_tokens": 13056,
+          "output_tokens": 83
+        },
+        "usd": 0.0009695200000000001
+      },
+      {
+        "at": "2026-09-11T04:15:30.521Z",
+        "turn_id": "01a08ead-51fb-7963-ae25-6dc7ccb5d00a",
+        "usage": {
+          "input_tokens": 16588,
+          "cached_input_tokens": 15104,
+          "output_tokens": 68
+        },
+        "usd": 0.00068048
+      },
+      {
+        "at": "2026-09-11T04:15:33.778Z",
+        "turn_id": "01a08ead-51fb-7963-ae25-6dc7ccb5d00a",
+        "usage": {
+          "input_tokens": 16993,
+          "cached_input_tokens": 16128,
+          "output_tokens": 131
+        },
+        "usd": 0.00065276
+      },
+      {
+        "at": "2026-09-11T04:15:35.369Z",
+        "turn_id": "01a08ead-51fb-7963-ae25-6dc7ccb5d00a",
+        "usage": {
+          "input_tokens": 17339,
+          "cached_input_tokens": 16128,
+          "output_tokens": 11
+        },
+        "usd": 0.0005779600000000001
+      },
+      {
+        "at": "2026-09-11T04:16:01.975Z",
+        "turn_id": "01a08ead-959d-7d33-9153-e6b632e86d3a",
+        "usage": {
+          "input_tokens": 17380,
+          "cached_input_tokens": 17152,
+          "output_tokens": 1404
+        },
+        "usd": 0.00207344
+      },
+      {
+        "at": "2026-09-11T04:16:05.227Z",
+        "turn_id": "01a08ead-959d-7d33-9153-e6b632e86d3a",
+        "usage": {
+          "input_tokens": 18846,
+          "cached_input_tokens": 17152,
+          "output_tokens": 122
+        },
+        "usd": 0.00082824
+      },
+      {
+        "at": "2026-09-11T04:16:08.113Z",
+        "turn_id": "01a08ead-959d-7d33-9153-e6b632e86d3a",
+        "usage": {
+          "input_tokens": 19140,
+          "cached_input_tokens": 18176,
+          "output_tokens": 114
+        },
+        "usd": 0.0006931199999999999
+      },
+      {
+        "at": "2026-09-11T04:16:11.710Z",
+        "turn_id": "01a08ead-959d-7d33-9153-e6b632e86d3a",
+        "usage": {
+          "input_tokens": 20454,
+          "cached_input_tokens": 18176,
+          "output_tokens": 124
+        },
+        "usd": 0.0009679199999999999
+      },
+      {
+        "at": "2026-09-11T04:16:14.493Z",
+        "turn_id": "01a08ead-959d-7d33-9153-e6b632e86d3a",
+        "usage": {
+          "input_tokens": 20664,
+          "cached_input_tokens": 20224,
+          "output_tokens": 12
+        },
+        "usd": 0.00050688
+      }
+    ],
+    "metering_complete": true,
+    "api_equivalent_usd": 0.01096096,
+    "conservative_usd": 0.2554164,
+    "rates_usd_per_million": {
+      "input": 0.2,
+      "cached_input": 0.02,
+      "output": 1.2
+    },
+    "rate_source": "Inherited integration/messaging packet; estimates, not invoices",
+    "input_reservations": [
+      {
+        "reason": "production initialization/onboarding",
+        "step": 1,
+        "at": 1789100106.5473666,
+        "generation": null
+      },
+      {
+        "reason": "A",
+        "step": 1,
+        "at": 1789100117.584518,
+        "generation": 1
+      },
+      {
+        "reason": "B-work",
+        "step": 1,
+        "at": 1789100135.5803654,
+        "generation": 1,
+        "confirmed": true
+      },
+      {
+        "reason": "B",
+        "step": 1,
+        "at": 1789100136.1079965,
+        "generation": 1
+      }
+    ],
+    "rollout_turns": 3,
+    "controller_input_attempts": 1,
+    "controller_issued_inputs": 1,
+    "mesh_terminal_deliveries": 2,
+    "legacy_terminal_deliveries": 1
+  },
+  "inherited_run2_expected_format": 1,
+  "review_correction": "Harness-predicate stop, not an observed Mesh route failure. The third-run ruling requires a committed legacy boundary, not format 1. No runtime re-execution in this review fix.",
+  "ownership_source_observation": {
+    "classification": "UNTESTED source-level observation",
+    "source": "/home/mstie/projects/mesh-l6/src/delivery/ownership.rs:395-404",
+    "mechanism": "When previous owner already equals members and no handoff.json exists, verified_rollback runs and clear_owner_stop removes the marker before returning Ok; this path creates no new handoff or epoch. The run never executed team delivery --owner members."
+  }
+}

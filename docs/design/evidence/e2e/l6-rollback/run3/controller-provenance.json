@@ -1,0 +1,7 @@
+{
+  "docs/design/evidence/e2e/l6-rollback/run3/controller.py": "4a81a8892dd9d2a295cc89f29b2450a316fcb7b2bc7df14d1fa8f8a031308d44",
+  "docs/design/evidence/e2e/l6-rollback/support.py": "7fa274fe40f8e2acbaaa29af03f5ff4147e7206eab761b48a80899ad222c6ab1",
+  "docs/design/evidence/e2e/l6-rollback/preflight.py": "23dfc4ec5713dcb2e481fd77a7819bb7050fc4ce9168a976b6be0a49de470744",
+  "docs/design/evidence/e2e/l6-rollback/rollback.py": "8aaeabc45d9c0fc9b2940597695d013b82f1187cc0ea2ac53725fbf2b9f213c7",
+  "docs/design/evidence/e2e/l6-rollback/run2/run2_rules.py": "86492750a27092ba9ca42515e95dc87ee620d5888b1acb8f5afab1ad4609ca4f"
+}

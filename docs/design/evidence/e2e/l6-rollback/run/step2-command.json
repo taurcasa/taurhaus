@@ -1,0 +1,4 @@
+{
+  "exit": 1,
+  "output": "error: IO error: delivery: canonical_downgrade_required\n"
+}

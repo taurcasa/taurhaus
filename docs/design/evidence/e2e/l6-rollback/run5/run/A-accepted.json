@@ -1,0 +1,27 @@
+{
+  "marker": "A-4dc8234c",
+  "message_id": "803ed1c2-8d4b-4c4d-af31-91b6ddd90c64",
+  "sequence": 8,
+  "status": "accepted",
+  "projection": "pending",
+  "delivery_targets": [
+    {
+      "delivery_id": "868fcd4b-2097-4738-aaf6-7b6f77e5bb36",
+      "legacy_acceptance": "unknown",
+      "legacy_id": "cc4f33f6-714f-4b65-b6b4-edbe8bb5700f",
+      "member_id": "alpha@l6-rollback-run5",
+      "read_audience": [
+        {
+          "member_id": "alpha@l6-rollback-run5",
+          "name": "alpha"
+        },
+        {
+          "member_id": "e38528ed-1825-4e7d-9780-a13137f27897",
+          "name": "lead"
+        }
+      ],
+      "recipient": "alpha",
+      "source_path": "inboxes/alpha.json"
+    }
+  ]
+}

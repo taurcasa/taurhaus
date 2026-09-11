@@ -1,0 +1,22 @@
+[
+  {
+    "delivery_id": "8bf14298-d2e8-492a-8c19-6ef5723e437a",
+    "recipient": "lead",
+    "stage": "native_enqueued"
+  },
+  {
+    "delivery_id": "ff74e55d-e7c8-4c31-b0ec-2bc9de7dd6a3",
+    "recipient": "alpha",
+    "stage": "consumed_by_read"
+  },
+  {
+    "delivery_id": "868fcd4b-2097-4738-aaf6-7b6f77e5bb36",
+    "recipient": "alpha",
+    "stage": "consumed_by_read"
+  },
+  {
+    "delivery_id": "386f2d46-2826-48bc-9358-a43ebdee573e",
+    "recipient": "alpha",
+    "stage": "pending"
+  }
+]

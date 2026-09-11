@@ -1,0 +1,562 @@
+{
+  "receipts": [
+    {
+      "checksum": "079c0d78a6f711820304376fdb41ea78e8c05b1770528e4798eb1e4db7b1a889",
+      "committed_at": "2026-09-10T23:03:21.800841590+00:00",
+      "event_id": "0649e296-eb53-4a44-a178-ab7f3cd5d1be",
+      "event_type": "message_accepted",
+      "log_epoch": "0f4d4432-2b89-46de-bf6a-3059cb4e52fa",
+      "payload": {
+        "acceptance": "canonical",
+        "archive_outcome": "retained",
+        "audience_proof": {
+          "kind": "captured-members",
+          "members": [
+            {
+              "member_id": "147bda60-ee98-4e96-9946-98d2db64253c",
+              "name": "lead"
+            },
+            {
+              "member_id": "alpha@l6-rollback",
+              "name": "alpha"
+            }
+          ],
+          "team_id": "19889ba6d58a872128b635b97967711ec220ee32b0bb7a2d7938a597ea8f7042"
+        },
+        "author": {
+          "member_id": "147bda60-ee98-4e96-9946-98d2db64253c",
+          "name": "lead",
+          "verified": true
+        },
+        "body": "ACTION REQUIRED: Read this message explicitly, then reply exactly A-c79df580.",
+        "body_bytes": 77,
+        "body_format": "text/plain",
+        "body_hash": "92fcb4cb367a37d68b8bc30634b6e41b924a1e30b2820fab9f0560fba8c6b6c7",
+        "conversation_id": "d66b1b5fb2708ef2a59cbbf2afab977db2af8b6c907d29423222c0141268da8f",
+        "conversation_kind": "dm",
+        "correction_reason": null,
+        "delivery_targets": [
+          {
+            "delivery_id": "d8a7d12f-6211-4407-8dc6-25015f435672",
+            "legacy_acceptance": "unknown",
+            "legacy_id": "a4eff42e-e5ec-4985-8cbf-b0a802c3ac79",
+            "member_id": "alpha@l6-rollback",
+            "read_audience": [
+              {
+                "member_id": "147bda60-ee98-4e96-9946-98d2db64253c",
+                "name": "lead"
+              },
+              {
+                "member_id": "alpha@l6-rollback",
+                "name": "alpha"
+              }
+            ],
+            "recipient": "alpha",
+            "source_path": "inboxes/alpha.json"
+          }
+        ],
+        "dispatch_decision": {
+          "expectation": "action",
+          "policy_revision": 1,
+          "provenance": "prefix",
+          "wake_eligible": true
+        },
+        "envelope": {
+          "from": "lead",
+          "id": "a4eff42e-e5ec-4985-8cbf-b0a802c3ac79",
+          "read": false,
+          "summary": "A",
+          "text": null,
+          "timestamp": "2026-09-10T23:03:21.791Z"
+        },
+        "idempotency_key": "a4eff42e-e5ec-4985-8cbf-b0a802c3ac79",
+        "legacy_acceptance": "unknown",
+        "link": null,
+        "message_id": "d94184ac-d1e6-48e7-a17a-65ac2ed1fb9c",
+        "origin": "authored",
+        "producer": "mesh-send:147bda60-ee98-4e96-9946-98d2db64253c",
+        "read_audience": [
+          {
+            "member_id": "147bda60-ee98-4e96-9946-98d2db64253c",
+            "name": "lead"
+          },
+          {
+            "member_id": "alpha@l6-rollback",
+            "name": "alpha"
+          }
+        ],
+        "reply_to_message_id": null,
+        "request_digest": "90dd5ad2749518703b7cfd82eb9afac7c086487dc109bbd9c2c17be3f24f66ef",
+        "response_expectation": {
+          "basis": "producer",
+          "expectation": "action",
+          "kind": "action",
+          "policy_revision": 1,
+          "provenance": "prefix",
+          "wake_eligible": true
+        },
+        "retention_class": "dm",
+        "source_authority": null,
+        "source_event_refs": [],
+        "summary": "A",
+        "supersedes_message_ids": [],
+        "task_links": [],
+        "visibility_policy_id": "captured-members",
+        "visibility_policy_revision": 1,
+        "wake_priority": "urgent"
+      },
+      "schema_version": 1,
+      "sequence": 8,
+      "team_id": "19889ba6d58a872128b635b97967711ec220ee32b0bb7a2d7938a597ea8f7042"
+    },
+    {
+      "checksum": "676f981f1668afceed2c1d3e064ca7b02a696a4fa09a8d0aa90dcf450e2a1de4",
+      "committed_at": "2026-09-10T23:03:22.628677481+00:00",
+      "event_id": "7c119247-eb32-4890-b698-876a01e6a148",
+      "event_type": "delivery_attempt",
+      "log_epoch": "0f4d4432-2b89-46de-bf6a-3059cb4e52fa",
+      "payload": {
+        "adapter": "tmux/1",
+        "attachment": {
+          "attachment_generation": 1,
+          "context_generation": "0",
+          "generation": "1",
+          "harness": "codex",
+          "launch_root": {
+            "claudeDir": "/tmp/th-l6-qgmptfx3/claude",
+            "rootAuthorityRevision": 0,
+            "teamIncarnationId": "19889ba6d58a872128b635b97967711ec220ee32b0bb7a2d7938a597ea8f7042",
+            "teamsDir": "/tmp/th-l6-qgmptfx3/claude/teams"
+          },
+          "member": "alpha",
+          "pane": "%2",
+          "pane_pid": 135,
+          "pane_start": "30192684",
+          "root": "/tmp/th-l6-qgmptfx3/claude",
+          "session": "$0",
+          "socket": "/tmp/th-l6-qgmptfx3/tmux/tmux-1000/default",
+          "team_incarnation": "19889ba6d58a872128b635b97967711ec220ee32b0bb7a2d7938a597ea8f7042",
+          "tmux_session": "$0"
+        },
+        "attempt_id": "97da4075-3d10-40ee-abc3-fe8ab851f9b0",
+        "delivery_id": "d8a7d12f-6211-4407-8dc6-25015f435672",
+        "event_type": "delivery_attempt",
+        "evidence": "durable claim",
+        "message_id": "d94184ac-d1e6-48e7-a17a-65ac2ed1fb9c",
+        "observed_at": "2026-09-10T23:03:22.606623092+00:00",
+        "origin": "adapter",
+        "owner_epoch": 2,
+        "recipient": "alpha",
+        "source_generation": "0f4d4432-2b89-46de-bf6a-3059cb4e52fa",
+        "source_position": 8,
+        "stage": "attempt_started",
+        "team_incarnation": "19889ba6d58a872128b635b97967711ec220ee32b0bb7a2d7938a597ea8f7042"
+      },
+      "schema_version": 1,
+      "sequence": 9,
+      "team_id": "19889ba6d58a872128b635b97967711ec220ee32b0bb7a2d7938a597ea8f7042"
+    },
+    {
+      "checksum": "bd14874114335f371997a84c4dc0b80f1342f5b4ca64923235bc5f9657cd2862",
+      "committed_at": "2026-09-10T23:03:22.811788318+00:00",
+      "event_id": "a503c9e2-2b4d-4bc2-bd33-17074a54725b",
+      "event_type": "receipt",
+      "log_epoch": "0f4d4432-2b89-46de-bf6a-3059cb4e52fa",
+      "payload": {
+        "adapter": "tmux/1",
+        "attachment": {
+          "attachment_generation": 1,
+          "context_generation": "0",
+          "generation": "1",
+          "harness": "codex",
+          "launch_root": {
+            "claudeDir": "/tmp/th-l6-qgmptfx3/claude",
+            "rootAuthorityRevision": 0,
+            "teamIncarnationId": "19889ba6d58a872128b635b97967711ec220ee32b0bb7a2d7938a597ea8f7042",
+            "teamsDir": "/tmp/th-l6-qgmptfx3/claude/teams"
+          },
+          "member": "alpha",
+          "pane": "%2",
+          "pane_pid": 135,
+          "pane_start": "30192684",
+          "root": "/tmp/th-l6-qgmptfx3/claude",
+          "session": "$0",
+          "socket": "/tmp/th-l6-qgmptfx3/tmux/tmux-1000/default",
+          "team_incarnation": "19889ba6d58a872128b635b97967711ec220ee32b0bb7a2d7938a597ea8f7042",
+          "tmux_session": "$0"
+        },
+        "attempt_id": "97da4075-3d10-40ee-abc3-fe8ab851f9b0",
+        "delivery_id": "d8a7d12f-6211-4407-8dc6-25015f435672",
+        "event_type": "receipt",
+        "evidence": "literal paste and harness submit exited 0; model uptake unobserved",
+        "message_id": "d94184ac-d1e6-48e7-a17a-65ac2ed1fb9c",
+        "observed_at": "2026-09-10T23:03:22.793087542+00:00",
+        "origin": "tmux_send_keys",
+        "owner_epoch": 2,
+        "recipient": "alpha",
+        "source_generation": "0f4d4432-2b89-46de-bf6a-3059cb4e52fa",
+        "source_position": 8,
+        "stage": "submitted",
+        "team_incarnation": "19889ba6d58a872128b635b97967711ec220ee32b0bb7a2d7938a597ea8f7042"
+      },
+      "schema_version": 1,
+      "sequence": 10,
+      "team_id": "19889ba6d58a872128b635b97967711ec220ee32b0bb7a2d7938a597ea8f7042"
+    },
+    {
+      "checksum": "798b7d4bfd9bbe0ce5b3db77b19d98b0911150529b693e03446e589669999cea",
+      "committed_at": "2026-09-10T23:03:26.176836197+00:00",
+      "event_id": "e9d509a2-6835-4ad5-b3df-03d48b5f2b60",
+      "event_type": "receipt",
+      "log_epoch": "0f4d4432-2b89-46de-bf6a-3059cb4e52fa",
+      "payload": {
+        "accepted_sequence": 8,
+        "audience_proof": {
+          "kind": "captured-members",
+          "members": [
+            {
+              "member_id": "147bda60-ee98-4e96-9946-98d2db64253c",
+              "name": "lead"
+            },
+            {
+              "member_id": "alpha@l6-rollback",
+              "name": "alpha"
+            }
+          ],
+          "team_id": "19889ba6d58a872128b635b97967711ec220ee32b0bb7a2d7938a597ea8f7042"
+        },
+        "body_bytes": 77,
+        "body_hash": "92fcb4cb367a37d68b8bc30634b6e41b924a1e30b2820fab9f0560fba8c6b6c7",
+        "context": "explicit-mesh-cli",
+        "delivery_id": "d8a7d12f-6211-4407-8dc6-25015f435672",
+        "kind": "consumed_by_read",
+        "message_id": "d94184ac-d1e6-48e7-a17a-65ac2ed1fb9c",
+        "read_audience": [
+          {
+            "member_id": "147bda60-ee98-4e96-9946-98d2db64253c",
+            "name": "lead"
+          },
+          {
+            "member_id": "alpha@l6-rollback",
+            "name": "alpha"
+          }
+        ],
+        "reader": "alpha@l6-rollback",
+        "reader_name": "alpha"
+      },
+      "schema_version": 1,
+      "sequence": 11,
+      "team_id": "19889ba6d58a872128b635b97967711ec220ee32b0bb7a2d7938a597ea8f7042"
+    }
+  ],
+  "runtime": {
+    "activitySnapshotPath": "/tmp/th-l6-qgmptfx3/claude/teams/l6-rollback/state/activity/alpha.json",
+    "appliedEffort": "low",
+    "attached_at": "2026-09-10T23:03:09.059505383Z",
+    "attachmentGeneration": 1,
+    "cli_tool": "codex",
+    "contextGeneration": "0",
+    "daemon_pid": null,
+    "delivery_lease": null,
+    "harness": "codex",
+    "health": "healthy",
+    "hookSessionId": "01a08d8f-8beb-7731-96ef-a3f92eb457f4",
+    "hostInputAbandonedAt": null,
+    "hostInputUnknown": false,
+    "jsonl_path": "/tmp/th-l6-qgmptfx3/codex/sessions/2026/09/11/rollout-2026-09-11T01-03-10-01a08d8f-8beb-7731-96ef-a3f92eb457f4.jsonl",
+    "last_seen_at": "2026-09-10T23:03:13.588763668Z",
+    "launchRoot": {
+      "claudeDir": "/tmp/th-l6-qgmptfx3/claude",
+      "rootAuthorityRevision": 0,
+      "teamIncarnationId": "19889ba6d58a872128b635b97967711ec220ee32b0bb7a2d7938a597ea8f7042",
+      "teamsDir": "/tmp/th-l6-qgmptfx3/claude/teams"
+    },
+    "memberName": "alpha",
+    "paneId": "%2",
+    "panePid": 135,
+    "paneStartTime": "30192684",
+    "project_path": "/tmp/th-l6-qgmptfx3/project",
+    "recovery": {
+      "activation_intent": "652b19106ae4185e72cb605833ac85aecf7912d59b0f51756dabd97009cc4f39",
+      "admitted_boundary": null,
+      "baseline_binding": [
+        [
+          "19889ba6d58a872128b635b97967711ec220ee32b0bb7a2d7938a597ea8f7042",
+          "cdcf2574-aa8c-4872-9ce1-e532c251d1fc"
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "claim": {
+        "accepted_bytes": 2872,
+        "attempt": 1,
+        "card_key": {
+          "card_schema": 1,
+          "context": [
+            1,
+            0
+          ],
+          "contract": {
+            "effective_role_revision": "082340fae4fb81446e944bea2184fbe28494a0c23a0b4da42a9f18ed94ad7bbe",
+            "instruction_contract_revision": "bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f",
+            "packet_revision": "",
+            "role_id": ""
+          },
+          "recipient": [
+            "19889ba6d58a872128b635b97967711ec220ee32b0bb7a2d7938a597ea8f7042",
+            "cdcf2574-aa8c-4872-9ce1-e532c251d1fc"
+          ],
+          "roots": {
+            "harness_account_root": "/tmp/th-l6-qgmptfx3/codex",
+            "launch_namespace": "native",
+            "resolved_mesh_config_root": "/tmp/th-l6-qgmptfx3/claude",
+            "resolved_project_root": "/tmp/th-l6-qgmptfx3/project",
+            "resolved_teams_root": "/tmp/th-l6-qgmptfx3/claude/teams",
+            "root_authority_revision": "0"
+          }
+        },
+        "content_revision": "972b858be338a62aea086b2fdeabb7d797d0ece7333483af90191fecdc90b743",
+        "delivery_id": "45aa62cb898b138806a43173ba6cadcf2457f09fd6ed1111d6eeb63007a84a9e",
+        "generated_bytes": 2872,
+        "journal": {
+          "delivery_id": "238e6010-82d3-4757-89f7-6bf18ac9e594",
+          "message_id": "b74405c7-5312-43d2-a910-fae622360339",
+          "projection": "pending",
+          "sequence": 2
+        },
+        "kind": "baseline",
+        "obligation_key": [
+          [
+            "19889ba6d58a872128b635b97967711ec220ee32b0bb7a2d7938a597ea8f7042",
+            "cdcf2574-aa8c-4872-9ce1-e532c251d1fc"
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "observations": [
+          [
+            "accepted",
+            "2026-09-10T23:03:09.540134313Z",
+            "inbox"
+          ]
+        ],
+        "offered_bytes": 0,
+        "path": "inbox",
+        "returned_by_read_bytes": 0,
+        "satisfied_obligations": [
+          [
+            [
+              "19889ba6d58a872128b635b97967711ec220ee32b0bb7a2d7938a597ea8f7042",
+              "cdcf2574-aa8c-4872-9ce1-e532c251d1fc"
+            ],
+            [
+              1,
+              0
+            ]
+          ]
+        ],
+        "stage": "accepted",
+        "supersedes_revision": null
+      },
+      "harness_account_root": "/tmp/th-l6-qgmptfx3/codex",
+      "last_delivered": {
+        "accepted_bytes": 2872,
+        "attempt": 1,
+        "card_key": {
+          "card_schema": 1,
+          "context": [
+            1,
+            0
+          ],
+          "contract": {
+            "effective_role_revision": "082340fae4fb81446e944bea2184fbe28494a0c23a0b4da42a9f18ed94ad7bbe",
+            "instruction_contract_revision": "bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f",
+            "packet_revision": "",
+            "role_id": ""
+          },
+          "recipient": [
+            "19889ba6d58a872128b635b97967711ec220ee32b0bb7a2d7938a597ea8f7042",
+            "cdcf2574-aa8c-4872-9ce1-e532c251d1fc"
+          ],
+          "roots": {
+            "harness_account_root": "/tmp/th-l6-qgmptfx3/codex",
+            "launch_namespace": "native",
+            "resolved_mesh_config_root": "/tmp/th-l6-qgmptfx3/claude",
+            "resolved_project_root": "/tmp/th-l6-qgmptfx3/project",
+            "resolved_teams_root": "/tmp/th-l6-qgmptfx3/claude/teams",
+            "root_authority_revision": "0"
+          }
+        },
+        "content_revision": "972b858be338a62aea086b2fdeabb7d797d0ece7333483af90191fecdc90b743",
+        "delivery_id": "45aa62cb898b138806a43173ba6cadcf2457f09fd6ed1111d6eeb63007a84a9e",
+        "generated_bytes": 2872,
+        "journal": {
+          "delivery_id": "238e6010-82d3-4757-89f7-6bf18ac9e594",
+          "message_id": "b74405c7-5312-43d2-a910-fae622360339",
+          "projection": "pending",
+          "sequence": 2
+        },
+        "kind": "baseline",
+        "obligation_key": [
+          [
+            "19889ba6d58a872128b635b97967711ec220ee32b0bb7a2d7938a597ea8f7042",
+            "cdcf2574-aa8c-4872-9ce1-e532c251d1fc"
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "observations": [
+          [
+            "accepted",
+            "2026-09-10T23:03:09.540134313Z",
+            "inbox"
+          ]
+        ],
+        "offered_bytes": 0,
+        "path": "inbox",
+        "returned_by_read_bytes": 0,
+        "satisfied_obligations": [
+          [
+            [
+              "19889ba6d58a872128b635b97967711ec220ee32b0bb7a2d7938a597ea8f7042",
+              "cdcf2574-aa8c-4872-9ce1-e532c251d1fc"
+            ],
+            [
+              1,
+              0
+            ]
+          ]
+        ],
+        "stage": "accepted",
+        "supersedes_revision": null
+      },
+      "launch_namespace": "native",
+      "member_incarnation_id": "cdcf2574-aa8c-4872-9ce1-e532c251d1fc",
+      "reserved_attachment": "2026-09-10T23:03:09.059505383Z",
+      "reserved_effort": "low"
+    },
+    "schema_version": 3,
+    "session_id": "01a08d8f-8beb-7731-96ef-a3f92eb457f4",
+    "terminalContract": 1,
+    "tmuxSessionId": "$0",
+    "tmuxSocket": "/tmp/th-l6-qgmptfx3/tmux/tmux-1000/default"
+  },
+  "activity": {
+    "version": 1,
+    "observed_at": "2026-09-10T23:03:30.583845196+00:00",
+    "stall_recent_activity": false,
+    "stall_no_output": true,
+    "stall_no_active_process": false,
+    "active_non_shell_process": true,
+    "recent_io": false,
+    "pane_alive": true,
+    "pane_foreign": false,
+    "last_output_age_secs": 0,
+    "activity_confidence": "idle",
+    "confidence": "high",
+    "last_observed_at": "2026-09-10T23:03:30.580794342+00:00",
+    "source": "notify",
+    "state": "idle"
+  },
+  "tool_exposure": [
+    {
+      "timestamp": "2026-09-10T23:03:26.248Z",
+      "ordinal": 40,
+      "type": "response_item",
+      "payload": {
+        "type": "custom_tool_call_output",
+        "id": "ctco_01a08d8f-cb28-7ef1-8159-ca9cd12fb7c6",
+        "call_id": "call_Q5Yr7X8drw7e1IeDPsaeBcMn",
+        "output": [
+          {
+            "type": "input_text",
+            "text": "Script completed\nWall time 0.1 seconds\nOutput:\n"
+          },
+          {
+            "type": "input_text",
+            "text": "{\n  \"body_refs\": \"immutable full bodies retained; no truncation\",\n  \"bytes_read\": 23208,\n  \"coverage\": {\n    \"expired_bytes_deleted\": false,\n    \"known_gaps\": [\n      \"native-foreign-writers-excluded\",\n      \"taurhaus-writer-legacy\",\n      \"task-workflow-atomicity-unavailable\",\n      \"review-proof-unavailable\"\n    ],\n    \"last_gap_sequence\": null,\n    \"observed_gap_count\": 0,\n    \"purge_implemented\": false,\n    \"status\": \"partial\"\n  },\n  \"coverage_scope\": \"scanned-delta\",\n  \"cursor\": \"7b2266696c746572223a5b2263616e6f6e6963616c2d696e626f782f31222c747275652c6e756c6c5d2c227363616e223a223762323236633631373337343566373336353731373536353665363336353232336133313330326332323663366636373566363537303666363336383232336132323330363633343634333433343333333232643332363233383339326433343336363436353264363236363336363132643333333033353339363336323334363533353332363636313232326332323665363537383734356636323739373436353232336133323333333233303338326332323730366636633639363337393232336132323333333433323339333933363636363333323335363336333333333436363330333036323636333833343335333933383334363133313339333136363332333033353635333736363332333633353337333333303635333136333633363333313338363636333636333036313330363633333632333936333634333333383337323232633232373037323666366136353633373436393666366532323361333132633232373236353631363436353732323233613232363136633730363836313430366333363264373236663663366336323631363336623232326332323732366636663734356636393634363536653734363937343739323233613562333233303339333632633331333733363334333833333335356432633232373336353637366436353665373432323361333032633232373336353637366436353665373435663639363436353665373436393734373932323361356233323330333933363263333133373336333433383334333535643263323237333635363736643635366537343566373337343631366437303232336135623332333333323330333832633331333733383339333033383331333433303332326333383330333533393334333033373339333935643263323237333666373537323633363532323361323236643635373337333631363736393665363732643736333232323263323237343631373336623232336136653735366336633263323237343635363136643566363936343232336132323331333933383338333936323631333636343335333836313338333733323331333233383632333633333335363233393337333933363337333733313331363536333332333233303635363533333332363233303632363233373631333236343337333933333338363133353339333736353631333836363337333033343332323237642e38386538343038613865643838376562376235343362316662336231383861393536313730306665366634663039666462616331633361303237663763616461227d.d5ca127d4fae81c24ca12425bbe01ccc526a9885f10cfcb11b63cb3c54c74aab\",\n  \"done\": true,\n  \"exposed_bytes\": 77,\n  \"log_epoch\": \"0f4d4432-2b89-46de-bf6a-3059cb4e52fa\",\n  \"messages\": [\n    {\n      \"from\": \"lead\",\n      \"id\": \"d8a7d12f-6211-4407-8dc6-25015f435672\",\n      \"message_id\": \"d94184ac-d1e6-48e7-a17a-65ac2ed1fb9c\",\n      \"read\": false,\n      \"summary\": \"A\",\n      \"text\": \"ACTION REQUIRED: Read this message explicitly, then reply exactly A-c79df580.\",\n      \"timestamp\": \"2026-09-10T23:03:21.791Z\"\n    }\n  ],\n  \"outcomes\": [\n    {\n      \"attempt_id\": \"97da4075-3d10-40ee-abc3-fe8ab851f9b0\",\n      \"delivery_id\": \"d8a7d12f-6211-4407-8dc6-25015f435672\",\n      \"evidence\": \"literal paste and harness submit exited 0; model uptake unobserved\",\n      \"offer_id\": null,\n      \"owner_fence\": 2,\n      \"stage\": \"submitted\"\n    }\n  ],\n  \"team_id\": \"19889ba6d58a872128b635b97967711ec220ee32b0bb7a2d7938a597ea8f7042\"\n}\n"
+          }
+        ],
+        "internal_chat_message_metadata_passthrough": {
+          "turn_id": "01a08d8f-bda8-7692-a25d-ea84be176fa9",
+          "create_time": 1789081406.248808
+        }
+      }
+    },
+    {
+      "timestamp": "2026-09-10T23:03:29.114Z",
+      "ordinal": 47,
+      "type": "response_item",
+      "payload": {
+        "type": "custom_tool_call_output",
+        "id": "ctco_01a08d8f-d65a-79d2-ae43-2fc777669fba",
+        "call_id": "call_G62JVVj9GbHlq2raiFJHuHu4",
+        "output": [
+          {
+            "type": "input_text",
+            "text": "Script completed\nWall time 0.1 seconds\nOutput:\n"
+          },
+          {
+            "type": "input_text",
+            "text": "{\n  \"body_refs\": \"immutable full bodies retained; no truncation\",\n  \"bytes_read\": 24300,\n  \"coverage\": {\n    \"expired_bytes_deleted\": false,\n    \"known_gaps\": [\n      \"native-foreign-writers-excluded\",\n      \"taurhaus-writer-legacy\",\n      \"task-workflow-atomicity-unavailable\",\n      \"review-proof-unavailable\"\n    ],\n    \"last_gap_sequence\": null,\n    \"observed_gap_count\": 0,\n    \"purge_implemented\": false,\n    \"status\": \"partial\"\n  },\n  \"coverage_scope\": \"scanned-delta\",\n  \"cursor\": \"7b2266696c746572223a5b2263616e6f6e6963616c2d696e626f782f31222c66616c73652c6e756c6c5d2c227363616e223a223762323236633631373337343566373336353731373536353665363336353232336133313331326332323663366636373566363537303666363336383232336132323330363633343634333433343333333232643332363233383339326433343336363436353264363236363336363132643333333033353339363336323334363533353332363636313232326332323665363537383734356636323739373436353232336133323334333333303330326332323730366636633639363337393232336132323333333433323339333933363636363333323335363336333333333436363330333036323636333833343335333933383334363133313339333136363332333033353635333736363332333633353337333333303635333136333633363333313338363636333636333036313330363633333632333936333634333333383337323232633232373037323666366136353633373436393666366532323361333132633232373236353631363436353732323233613232363136633730363836313430366333363264373236663663366336323631363336623232326332323732366636663734356636393634363536653734363937343739323233613562333233303339333632633331333733363334333833333335356432633232373336353637366436353665373432323361333032633232373336353637366436353665373435663639363436353665373436393734373932323361356233323330333933363263333133373336333433383334333535643263323237333635363736643635366537343566373337343631366437303232336135623332333433333330333032633331333733383339333033383331333433303336326333313336333933393334333033373339333735643263323237333666373537323633363532323361323236643635373337333631363736393665363732643736333232323263323237343631373336623232336136653735366336633263323237343635363136643566363936343232336132323331333933383338333936323631333636343335333836313338333733323331333233383632333633333335363233393337333933363337333733313331363536333332333233303635363533333332363233303632363233373631333236343337333933333338363133353339333736353631333836363337333033343332323237642e65313930646364303939313531373932656238643434323464623732616465386535306563613263613864326337376165343566626239383837643937393534227d.decfed38c875cce6e6b6faff7616fdc26dd56f69363cbe90b12f7ebe98b37ebc\",\n  \"done\": true,\n  \"exposed_bytes\": 2949,\n  \"log_epoch\": \"0f4d4432-2b89-46de-bf6a-3059cb4e52fa\",\n  \"messages\": [\n    {\n      \"from\": \"lead\",\n      \"id\": \"238e6010-82d3-4757-89f7-6bf18ac9e594\",\n      \"message_id\": \"b74405c7-5312-43d2-a910-fae622360339\",\n      \"read\": true,\n      \"text\": \"[taurhaus] recovery_card\\nIdentity: alpha on l6-rollback; key={\\\"card_schema\\\":1,\\\"recipient\\\":[\\\"19889ba6d58a872128b635b97967711ec220ee32b0bb7a2d7938a597ea8f7042\\\",\\\"cdcf2574-aa8c-4872-9ce1-e532c251d1fc\\\"],\\\"context\\\":[1,0],\\\"roots\\\":{\\\"root_authority_revision\\\":\\\"0\\\",\\\"resolved_teams_root\\\":\\\"/tmp/th-l6-qgmptfx3/claude/teams\\\",\\\"resolved_mesh_config_root\\\":\\\"/tmp/th-l6-qgmptfx3/claude\\\",\\\"harness_account_root\\\":\\\"/tmp/th-l6-qgmptfx3/codex\\\",\\\"launch_namespace\\\":\\\"native\\\",\\\"resolved_project_root\\\":\\\"/tmp/th-l6-qgmptfx3/project\\\"},\\\"contract\\\":{\\\"role_id\\\":\\\"\\\",\\\"effective_role_revision\\\":\\\"082340fae4fb81446e944bea2184fbe28494a0c23a0b4da42a9f18ed94ad7bbe\\\",\\\"instruction_contract_revision\\\":\\\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\\\",\\\"packet_revision\\\":\\\"\\\"}}\\nCoverage: 972b858be338a62aea086b2fdeabb7d797d0ece7333483af90191fecdc90b743; source=682540e4a3f9cfbca660a5add5db7fa379ff474f5fe7c2f18798f74d7e72c755; audience=unavailable\\nProject cwd: /tmp/th-l6-qgmptfx3/project\\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\\nObjective: unavailable\\nDeliverable: unavailable\\nFirst action: unavailable\\nCompletion signal: unavailable\\nReview route: unavailable\\nWait/release: unavailable\\nCandidate: unavailable\\nRubric: unavailable\\nRestart cursor: unavailable\\nRequested effort: unavailable; effective effort: low; hold: none recorded\\nFile boundary: unavailable\\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\\nGenerated: 2026-09-10 23:03:09.418910466 UTC\\nCurrent task: # \u2014 \\nExecution mode: ; Validation expectation: ; Response expectation: ; Adjacent fix policy: ; Override allowed: false; Override reason: none\\nFocal files: unavailable\\nRole: unavailable\\nPurpose: For every inbox notification including onboarding, explicitly run mesh read --json --unread --mark-read --claude-dir \\\"$CLAUDE_DIR\\\" --team l6-rollback --name alpha; follow returned --since cursors with the same filters until done. Reply briefly. When a message assigns you a task, run exactly the mesh lifecycle commands the message names, in order, then reply with the task id and the word done. Never modify files. For ACTION REQUIRED marker messages, read your inbox with mesh read --json --mark-read --claude-dir \\\"$CLAUDE_DIR\\\" --team l6-rollback --name alpha and reply exactly with the requested marker. Follow every returned cursor until done. Do not send other messages.\\n\\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.\",\n      \"timestamp\": \"2026-09-10T23:03:09.442806956+00:00\"\n    },\n    {\n      \"from\": \"lead\",\n      \"id\": \"d8a7d12f-6211-4407-8dc6-25015f435672\",\n      \"message_id\": \"d94184ac-d1e6-48e7-a17a-65ac2ed1fb9c\",\n      \"read\": true,\n      \"summary\": \"A\",\n      \"text\": \"ACTION REQUIRED: Read this message explicitly, then reply exactly A-c79df580.\",\n      \"timestamp\": \"2026-09-10T23:03:21.791Z\"\n    }\n  ],\n  \"outcomes\": [\n    {\n      \"attempt_id\": \"64504b8a-5bc5-4807-9ee9-6443d0bf1474\",\n      \"delivery_id\": \"238e6010-82d3-4757-89f7-6bf18ac9e594\",\n      \"evidence\": \"literal paste and harness submit exited 0; model uptake unobserved\",\n      \"offer_id\": null,\n      \"owner_fence\": 2,\n      \"stage\": \"submitted\"\n    },\n    {\n      \"attempt_id\": \"97da4075-3d10-40ee-abc3-fe8ab851f9b0\",\n      \"delivery_id\": \"d8a7d12f-6211-4407-8dc6-25015f435672\",\n      \"evidence\": \"literal paste and harness submit exited 0; model uptake unobserved\",\n      \"offer_id\": null,\n      \"owner_fence\": 2,\n      \"stage\": \"submitted\"\n    }\n  ],\n  \"team_id\": \"19889ba6d58a872128b635b97967711ec220ee32b0bb7a2d7938a597ea8f7042\"\n}\n"
+          }
+        ],
+        "internal_chat_message_metadata_passthrough": {
+          "turn_id": "01a08d8f-bda8-7692-a25d-ea84be176fa9",
+          "create_time": 1789081409.114884
+        }
+      }
+    }
+  ],
+  "reply": {
+    "source": "post-delivery rollout row",
+    "delivery_at": 1789081402.793087,
+    "row": {
+      "timestamp": "2026-09-10T23:03:26.242Z",
+      "ordinal": 39,
+      "type": "event_msg",
+      "payload": {
+        "type": "item_completed",
+        "thread_id": "01a08d8f-8beb-7731-96ef-a3f92eb457f4",
+        "turn_id": "01a08d8f-bda8-7692-a25d-ea84be176fa9",
+        "item": {
+          "type": "CommandExecution",
+          "id": "exec-cc112158-a750-4b45-b57c-b058d2f969b0",
+          "process_id": "1788",
+          "command": [
+            "/usr/bin/zsh",
+            "-lc",
+            "mesh read --json --unread --mark-read --claude-dir \"$CLAUDE_DIR\" --team l6-rollback --name alpha"
+          ],
+          "cwd": "file:///tmp/th-l6-qgmptfx3/project",
+          "parsed_cmd": [
+            {
+              "type": "unknown",
+              "cmd": "mesh read --json --unread --mark-read --claude-dir \"$CLAUDE_DIR\" --team l6-rollback --name alpha"
+            }
+          ],
+          "source": "unified_exec_startup",
+          "status": "completed",
+          "stdout": "{\n  \"body_refs\": \"immutable full bodies retained; no truncation\",\n  \"bytes_read\": 23208,\n  \"coverage\": {\n    \"expired_bytes_deleted\": false,\n    \"known_gaps\": [\n      \"native-foreign-writers-excluded\",\n      \"taurhaus-writer-legacy\",\n      \"task-workflow-atomicity-unavailable\",\n      \"review-proof-unavailable\"\n    ],\n    \"last_gap_sequence\": null,\n    \"observed_gap_count\": 0,\n    \"purge_implemented\": false,\n    \"status\": \"partial\"\n  },\n  \"coverage_scope\": \"scanned-delta\",\n  \"cursor\": \"7b2266696c746572223a5b2263616e6f6e6963616c2d696e626f782f31222c747275652c6e756c6c5d2c227363616e223a223762323236633631373337343566373336353731373536353665363336353232336133313330326332323663366636373566363537303666363336383232336132323330363633343634333433343333333232643332363233383339326433343336363436353264363236363336363132643333333033353339363336323334363533353332363636313232326332323665363537383734356636323739373436353232336133323333333233303338326332323730366636633639363337393232336132323333333433323339333933363636363333323335363336333333333436363330333036323636333833343335333933383334363133313339333136363332333033353635333736363332333633353337333333303635333136333633363333313338363636333636333036313330363633333632333936333634333333383337323232633232373037323666366136353633373436393666366532323361333132633232373236353631363436353732323233613232363136633730363836313430366333363264373236663663366336323631363336623232326332323732366636663734356636393634363536653734363937343739323233613562333233303339333632633331333733363334333833333335356432633232373336353637366436353665373432323361333032633232373336353637366436353665373435663639363436353665373436393734373932323361356233323330333933363263333133373336333433383334333535643263323237333635363736643635366537343566373337343631366437303232336135623332333333323330333832633331333733383339333033383331333433303332326333383330333533393334333033373339333935643263323237333666373537323633363532323361323236643635373337333631363736393665363732643736333232323263323237343631373336623232336136653735366336633263323237343635363136643566363936343232336132323331333933383338333936323631333636343335333836313338333733323331333233383632333633333335363233393337333933363337333733313331363536333332333233303635363533333332363233303632363233373631333236343337333933333338363133353339333736353631333836363337333033343332323237642e38386538343038613865643838376562376235343362316662336231383861393536313730306665366634663039666462616331633361303237663763616461227d.d5ca127d4fae81c24ca12425bbe01ccc526a9885f10cfcb11b63cb3c54c74aab\",\n  \"done\": true,\n  \"exposed_bytes\": 77,\n  \"log_epoch\": \"0f4d4432-2b89-46de-bf6a-3059cb4e52fa\",\n  \"messages\": [\n    {\n      \"from\": \"lead\",\n      \"id\": \"d8a7d12f-6211-4407-8dc6-25015f435672\",\n      \"message_id\": \"d94184ac-d1e6-48e7-a17a-65ac2ed1fb9c\",\n      \"read\": false,\n      \"summary\": \"A\",\n      \"text\": \"ACTION REQUIRED: Read this message explicitly, then reply exactly A-c79df580.\",\n      \"timestamp\": \"2026-09-10T23:03:21.791Z\"\n    }\n  ],\n  \"outcomes\": [\n    {\n      \"attempt_id\": \"97da4075-3d10-40ee-abc3-fe8ab851f9b0\",\n      \"delivery_id\": \"d8a7d12f-6211-4407-8dc6-25015f435672\",\n      \"evidence\": \"literal paste and harness submit exited 0; model uptake unobserved\",\n      \"offer_id\": null,\n      \"owner_fence\": 2,\n      \"stage\": \"submitted\"\n    }\n  ],\n  \"team_id\": \"19889ba6d58a872128b635b97967711ec220ee32b0bb7a2d7938a597ea8f7042\"\n}\n",
+          "stderr": "",
+          "aggregated_output": "{\n  \"body_refs\": \"immutable full bodies retained; no truncation\",\n  \"bytes_read\": 23208,\n  \"coverage\": {\n    \"expired_bytes_deleted\": false,\n    \"known_gaps\": [\n      \"native-foreign-writers-excluded\",\n      \"taurhaus-writer-legacy\",\n      \"task-workflow-atomicity-unavailable\",\n      \"review-proof-unavailable\"\n    ],\n    \"last_gap_sequence\": null,\n    \"observed_gap_count\": 0,\n    \"purge_implemented\": false,\n    \"status\": \"partial\"\n  },\n  \"coverage_scope\": \"scanned-delta\",\n  \"cursor\": \"7b2266696c746572223a5b2263616e6f6e6963616c2d696e626f782f31222c747275652c6e756c6c5d2c227363616e223a223762323236633631373337343566373336353731373536353665363336353232336133313330326332323663366636373566363537303666363336383232336132323330363633343634333433343333333232643332363233383339326433343336363436353264363236363336363132643333333033353339363336323334363533353332363636313232326332323665363537383734356636323739373436353232336133323333333233303338326332323730366636633639363337393232336132323333333433323339333933363636363333323335363336333333333436363330333036323636333833343335333933383334363133313339333136363332333033353635333736363332333633353337333333303635333136333633363333313338363636333636333036313330363633333632333936333634333333383337323232633232373037323666366136353633373436393666366532323361333132633232373236353631363436353732323233613232363136633730363836313430366333363264373236663663366336323631363336623232326332323732366636663734356636393634363536653734363937343739323233613562333233303339333632633331333733363334333833333335356432633232373336353637366436353665373432323361333032633232373336353637366436353665373435663639363436353665373436393734373932323361356233323330333933363263333133373336333433383334333535643263323237333635363736643635366537343566373337343631366437303232336135623332333333323330333832633331333733383339333033383331333433303332326333383330333533393334333033373339333935643263323237333666373537323633363532323361323236643635373337333631363736393665363732643736333232323263323237343631373336623232336136653735366336633263323237343635363136643566363936343232336132323331333933383338333936323631333636343335333836313338333733323331333233383632333633333335363233393337333933363337333733313331363536333332333233303635363533333332363233303632363233373631333236343337333933333338363133353339333736353631333836363337333033343332323237642e38386538343038613865643838376562376235343362316662336231383861393536313730306665366634663039666462616331633361303237663763616461227d.d5ca127d4fae81c24ca12425bbe01ccc526a9885f10cfcb11b63cb3c54c74aab\",\n  \"done\": true,\n  \"exposed_bytes\": 77,\n  \"log_epoch\": \"0f4d4432-2b89-46de-bf6a-3059cb4e52fa\",\n  \"messages\": [\n    {\n      \"from\": \"lead\",\n      \"id\": \"d8a7d12f-6211-4407-8dc6-25015f435672\",\n      \"message_id\": \"d94184ac-d1e6-48e7-a17a-65ac2ed1fb9c\",\n      \"read\": false,\n      \"summary\": \"A\",\n      \"text\": \"ACTION REQUIRED: Read this message explicitly, then reply exactly A-c79df580.\",\n      \"timestamp\": \"2026-09-10T23:03:21.791Z\"\n    }\n  ],\n  \"outcomes\": [\n    {\n      \"attempt_id\": \"97da4075-3d10-40ee-abc3-fe8ab851f9b0\",\n      \"delivery_id\": \"d8a7d12f-6211-4407-8dc6-25015f435672\",\n      \"evidence\": \"literal paste and harness submit exited 0; model uptake unobserved\",\n      \"offer_id\": null,\n      \"owner_fence\": 2,\n      \"stage\": \"submitted\"\n    }\n  ],\n  \"team_id\": \"19889ba6d58a872128b635b97967711ec220ee32b0bb7a2d7938a597ea8f7042\"\n}\n",
+          "exit_code": 0,
+          "duration": {
+            "secs": 0,
+            "nanos": 8330
+          },
+          "formatted_output": "{\n  \"body_refs\": \"immutable full bodies retained; no truncation\",\n  \"bytes_read\": 23208,\n  \"coverage\": {\n    \"expired_bytes_deleted\": false,\n    \"known_gaps\": [\n      \"native-foreign-writers-excluded\",\n      \"taurhaus-writer-legacy\",\n      \"task-workflow-atomicity-unavailable\",\n      \"review-proof-unavailable\"\n    ],\n    \"last_gap_sequence\": null,\n    \"observed_gap_count\": 0,\n    \"purge_implemented\": false,\n    \"status\": \"partial\"\n  },\n  \"coverage_scope\": \"scanned-delta\",\n  \"cursor\": \"7b2266696c746572223a5b2263616e6f6e6963616c2d696e626f782f31222c747275652c6e756c6c5d2c227363616e223a223762323236633631373337343566373336353731373536353665363336353232336133313330326332323663366636373566363537303666363336383232336132323330363633343634333433343333333232643332363233383339326433343336363436353264363236363336363132643333333033353339363336323334363533353332363636313232326332323665363537383734356636323739373436353232336133323333333233303338326332323730366636633639363337393232336132323333333433323339333933363636363333323335363336333333333436363330333036323636333833343335333933383334363133313339333136363332333033353635333736363332333633353337333333303635333136333633363333313338363636333636333036313330363633333632333936333634333333383337323232633232373037323666366136353633373436393666366532323361333132633232373236353631363436353732323233613232363136633730363836313430366333363264373236663663366336323631363336623232326332323732366636663734356636393634363536653734363937343739323233613562333233303339333632633331333733363334333833333335356432633232373336353637366436353665373432323361333032633232373336353637366436353665373435663639363436353665373436393734373932323361356233323330333933363263333133373336333433383334333535643263323237333635363736643635366537343566373337343631366437303232336135623332333333323330333832633331333733383339333033383331333433303332326333383330333533393334333033373339333935643263323237333666373537323633363532323361323236643635373337333631363736393665363732643736333232323263323237343631373336623232336136653735366336633263323237343635363136643566363936343232336132323331333933383338333936323631333636343335333836313338333733323331333233383632333633333335363233393337333933363337333733313331363536333332333233303635363533333332363233303632363233373631333236343337333933333338363133353339333736353631333836363337333033343332323237642e38386538343038613865643838376562376235343362316662336231383861393536313730306665366634663039666462616331633361303237663763616461227d.d5ca127d4fae81c24ca12425bbe01ccc526a9885f10cfcb11b63cb3c54c74aab\",\n  \"done\": true,\n  \"exposed_bytes\": 77,\n  \"log_epoch\": \"0f4d4432-2b89-46de-bf6a-3059cb4e52fa\",\n  \"messages\": [\n    {\n      \"from\": \"lead\",\n      \"id\": \"d8a7d12f-6211-4407-8dc6-25015f435672\",\n      \"message_id\": \"d94184ac-d1e6-48e7-a17a-65ac2ed1fb9c\",\n      \"read\": false,\n      \"summary\": \"A\",\n      \"text\": \"ACTION REQUIRED: Read this message explicitly, then reply exactly A-c79df580.\",\n      \"timestamp\": \"2026-09-10T23:03:21.791Z\"\n    }\n  ],\n  \"outcomes\": [\n    {\n      \"attempt_id\": \"97da4075-3d10-40ee-abc3-fe8ab851f9b0\",\n      \"delivery_id\": \"d8a7d12f-6211-4407-8dc6-25015f435672\",\n      \"evidence\": \"literal paste and harness submit exited 0; model uptake unobserved\",\n      \"offer_id\": null,\n      \"owner_fence\": 2,\n      \"stage\": \"submitted\"\n    }\n  ],\n  \"team_id\": \"19889ba6d58a872128b635b97967711ec220ee32b0bb7a2d7938a597ea8f7042\"\n}\n"
+        },
+        "started_at_ms": 1789081406241,
+        "completed_at_ms": 1789081406241
+      }
+    }
+  },
+  "accepted_to_submitted_seconds": 0.9922459125518799
+}

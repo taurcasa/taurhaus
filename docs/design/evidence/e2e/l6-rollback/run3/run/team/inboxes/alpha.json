@@ -1,0 +1,28 @@
+[
+  {
+    "message_id": "bd40b569-1aa3-41e1-9c1c-89217e53945c",
+    "id": "fd38cec4-5524-45ef-96e0-0899af6472e1",
+    "from": "lead",
+    "text": "[taurhaus] recovery_card\nIdentity: alpha on l6-rollback-run3; key={\"card_schema\":1,\"recipient\":[\"e9d3dc68bbaf03903200b3dc09ec8a8a585caada6e925147acaa43e001f6abad\",\"2e9c5cc0-a204-422f-92e2-cae934194b74\"],\"context\":[1,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-l6-5f67mhpk/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-l6-5f67mhpk/claude\",\"harness_account_root\":\"/tmp/th-l6-5f67mhpk/codex\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-l6-5f67mhpk/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"6a8cbf613400d0bc3cb293bc1423d163faa2078f7283118127ecccf29a3eefb2\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: d89c17a81d3eb535b535d85698984975ae2e6a597620e9ce9fd60ea91df66687; source=682540e4a3f9cfbca660a5add5db7fa379ff474f5fe7c2f18798f74d7e72c755; audience=unavailable\nProject cwd: /tmp/th-l6-5f67mhpk/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: low; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-11 04:15:07.256128695 UTC\nCurrent task: # \u2014 \nExecution mode: ; Validation expectation: ; Response expectation: ; Adjacent fix policy: ; Override allowed: false; Override reason: none\nFocal files: unavailable\nRole: unavailable\nPurpose: For every inbox notification including onboarding, explicitly run mesh read --json --unread --mark-read --claude-dir \"$CLAUDE_DIR\" --team l6-rollback-run3 --name alpha; follow returned --since cursors with the same filters until done. Reply briefly. When a message assigns you a task, run exactly the mesh lifecycle commands the message names, in order, then reply with the task id and the word done. Never modify files. For ACTION REQUIRED marker messages, read your inbox with mesh read --json --mark-read --claude-dir \"$CLAUDE_DIR\" --team l6-rollback-run3 --name alpha and reply exactly with the requested marker. Follow every returned cursor until done. Do not send other messages.\n\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.",
+    "timestamp": "2026-09-11T04:15:07.275780338+00:00",
+    "read": true
+  },
+  {
+    "message_id": "36328545-20b9-40d4-af7b-4614dd34d94f",
+    "id": "713839d3-91e4-4398-87bc-532827e3c23a",
+    "from": "lead",
+    "text": "ACTION REQUIRED: Read this message explicitly, then reply exactly A-943bd6e0.",
+    "timestamp": "2026-09-11T04:15:17.591Z",
+    "read": true,
+    "summary": "A"
+  },
+  {
+    "message_id": "b026d303-9ac7-46d8-987f-9b34a52c19bb",
+    "id": "55e21660-dc01-4ae4-914c-0b186cf5ee65",
+    "from": "lead",
+    "text": "ACTION REQUIRED: Read this message explicitly, then reply exactly B-2c3955c5.",
+    "timestamp": "2026-09-11T04:15:36.114Z",
+    "read": true,
+    "summary": "B"
+  }
+]

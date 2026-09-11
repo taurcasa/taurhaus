@@ -1,0 +1,33 @@
+....FF
+======================================================================
+FAIL: test_explicit_alpha_read_drains_accepted_delivery (__main__.RuntimePredicates.test_explicit_alpha_read_drains_accepted_delivery)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l6-rollback/docs/design/evidence/e2e/l6-rollback/run3/controller_test.py", line 58, in test_explicit_alpha_read_drains_accepted_delivery
+    trial.assert_no_pending_delivery()
+  File "/home/mstie/projects/taurhaus-l6-rollback/docs/design/evidence/e2e/l6-rollback/run3/controller.py", line 215, in assert_no_pending_delivery
+    assert not pending,'delivery to seat still pending: '+str(pending)
+           ^^^^^^^^^^^
+AssertionError: delivery to seat still pending: ['A']
+
+======================================================================
+FAIL: test_owner_census_recognizes_actual_start_verb (__main__.RuntimePredicates.test_owner_census_recognizes_actual_start_verb)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l6-rollback/docs/design/evidence/e2e/l6-rollback/run3/controller_test.py", line 46, in test_owner_census_recognizes_actual_start_verb
+    self.assertEqual(trial.owner_census()['owners'],[owner])
+AssertionError: Lists differ: [] != [{'pid': 12, 'start_ticks': '8', 'argv': [[61 chars]t']}]
+
+Second list contains 1 additional elements.
+First extra element 0:
+{'pid': 12, 'start_ticks': '8', 'argv': ['/tmp/tmpfx0285_d/home/.local/bin/mesh', 'team-daemon', 'start']}
+
+- []
++ [{'argv': ['/tmp/tmpfx0285_d/home/.local/bin/mesh', 'team-daemon', 'start'],
++   'pid': 12,
++   'start_ticks': '8'}]
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.120s
+
+FAILED (failures=2)

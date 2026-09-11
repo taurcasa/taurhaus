@@ -1,0 +1,189 @@
+{
+  "before": [
+    {
+      "pid": 1974383,
+      "start_ticks": "32317819",
+      "argv": [
+        "bwrap",
+        "--die-with-parent",
+        "--unshare-pid",
+        "--ro-bind",
+        "/",
+        "/",
+        "--tmpfs",
+        "/home",
+        "--tmpfs",
+        "/tmp",
+        "--tmpfs",
+        "/run",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+        "--bind",
+        "/tmp/th-l6-w0eoiirt",
+        "/tmp/th-l6-w0eoiirt",
+        "--chdir",
+        "/tmp/th-l6-w0eoiirt/project",
+        "/bin/bash",
+        "/tmp/th-l6-w0eoiirt/boot.sh",
+        ""
+      ]
+    },
+    {
+      "pid": 1974384,
+      "start_ticks": "32317819",
+      "argv": [
+        "bwrap",
+        "--die-with-parent",
+        "--unshare-pid",
+        "--ro-bind",
+        "/",
+        "/",
+        "--tmpfs",
+        "/home",
+        "--tmpfs",
+        "/tmp",
+        "--tmpfs",
+        "/run",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+        "--bind",
+        "/tmp/th-l6-w0eoiirt",
+        "/tmp/th-l6-w0eoiirt",
+        "--chdir",
+        "/tmp/th-l6-w0eoiirt/project",
+        "/bin/bash",
+        "/tmp/th-l6-w0eoiirt/boot.sh",
+        ""
+      ]
+    },
+    {
+      "pid": 1974385,
+      "start_ticks": "32317820",
+      "argv": [
+        "/bin/bash",
+        "/tmp/th-l6-w0eoiirt/boot.sh",
+        ""
+      ]
+    },
+    {
+      "pid": 1974386,
+      "start_ticks": "32317820",
+      "argv": [
+        "tmux",
+        "-D",
+        "-f",
+        "/dev/null",
+        ""
+      ]
+    },
+    {
+      "pid": 1974399,
+      "start_ticks": "32317830",
+      "argv": [
+        "/bin/bash",
+        ""
+      ]
+    },
+    {
+      "pid": 1974401,
+      "start_ticks": "32317831",
+      "argv": [
+        "/tmp/th-l6-w0eoiirt/home/.local/bin/taurhaus-daemon",
+        "--port",
+        "47743",
+        "--data-dir",
+        "/tmp/th-l6-w0eoiirt/data",
+        ""
+      ]
+    },
+    {
+      "pid": 1974703,
+      "start_ticks": "32317889",
+      "argv": [
+        "/bin/bash",
+        "-ic",
+        "cd '/tmp/th-l6-w0eoiirt/project' && CLAUDE_DIR='/tmp/th-l6-w0eoiirt/claude' CLAUDE_CONFIG_DIR='/tmp/th-l6-w0eoiirt/claude' CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions --model 'claude-haiku-4-5' --team-name 'l6-rollback-run4' --agent-name 'lead' --agent-id 'lead@l6-rollback-run4' --agent-type 'orchestrator' -n 'lead'; exec \"$SHELL\"",
+        ""
+      ]
+    },
+    {
+      "pid": 1974706,
+      "start_ticks": "32317890",
+      "argv": [
+        "claude",
+        "--dangerously-skip-permissions",
+        "--model",
+        "claude-haiku-4-5",
+        "--team-name",
+        "l6-rollback-run4",
+        "--agent-name",
+        "lead",
+        "--agent-id",
+        "lead@l6-rollback-run4",
+        "--agent-type",
+        "orchestrator",
+        "-n",
+        "lead",
+        ""
+      ]
+    },
+    {
+      "pid": 1974724,
+      "start_ticks": "32317897",
+      "argv": [
+        "/bin/bash",
+        "-ic",
+        "cd '/tmp/th-l6-w0eoiirt/project' && CLAUDE_DIR='/tmp/th-l6-w0eoiirt/claude' CODEX_HOME='/tmp/th-l6-w0eoiirt/codex' codex --yolo --dangerously-bypass-hook-trust -c 'notify=[\"/tmp/th-l6-w0eoiirt/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]' -m 'gpt-5.6-luna' -c 'model_reasoning_effort=\"low\"'; exec \"$SHELL\"",
+        ""
+      ]
+    },
+    {
+      "pid": 1974727,
+      "start_ticks": "32317897",
+      "argv": [
+        "codex",
+        "--yolo",
+        "--dangerously-bypass-hook-trust",
+        "-c",
+        "notify=[\"/tmp/th-l6-w0eoiirt/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]",
+        "-m",
+        "gpt-5.6-luna",
+        "-c",
+        "model_reasoning_effort=\"low\"",
+        ""
+      ]
+    },
+    {
+      "pid": 1974839,
+      "start_ticks": "32317914",
+      "argv": [
+        "/tmp/th-l6-w0eoiirt/home/.local/bin/mesh",
+        "team-daemon",
+        "start",
+        "--team",
+        "l6-rollback-run4",
+        "--name",
+        "lead",
+        "--claude-dir",
+        "/tmp/th-l6-w0eoiirt/claude",
+        ""
+      ]
+    },
+    {
+      "pid": 1977610,
+      "start_ticks": "32318827",
+      "argv": [
+        "/tmp/th-l6-w0eoiirt/home/.local/bin/codex-code-mode-host",
+        ""
+      ]
+    }
+  ],
+  "survivors": [],
+  "port_closed": true,
+  "auth_removed": true,
+  "root_removed": true
+}

@@ -1,0 +1,6 @@
+{
+  "step": 2,
+  "outcome": "FAIL",
+  "classification": "mesh",
+  "reason": "permanent ownership refusal: error: IO error: delivery: canonical_downgrade_required\n"
+}

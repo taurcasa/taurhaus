@@ -1,0 +1,69 @@
+{
+  "obligation": {
+    "message_id": "d94184ac-d1e6-48e7-a17a-65ac2ed1fb9c",
+    "delivery_id": "d8a7d12f-6211-4407-8dc6-25015f435672",
+    "recipient": "alpha",
+    "source_generation": "0f4d4432-2b89-46de-bf6a-3059cb4e52fa",
+    "source_position": 8,
+    "body": "ACTION REQUIRED: Read this message explicitly, then reply exactly A-c79df580."
+  },
+  "attempts": [
+    {
+      "claim": {
+        "obligation": {
+          "message_id": "d94184ac-d1e6-48e7-a17a-65ac2ed1fb9c",
+          "delivery_id": "d8a7d12f-6211-4407-8dc6-25015f435672",
+          "recipient": "alpha",
+          "source_generation": "0f4d4432-2b89-46de-bf6a-3059cb4e52fa",
+          "source_position": 8,
+          "body": "ACTION REQUIRED: Read this message explicitly, then reply exactly A-c79df580."
+        },
+        "attachment": {
+          "launch_root": {
+            "claudeDir": "/tmp/th-l6-qgmptfx3/claude",
+            "rootAuthorityRevision": 0,
+            "teamsDir": "/tmp/th-l6-qgmptfx3/claude/teams",
+            "teamIncarnationId": "19889ba6d58a872128b635b97967711ec220ee32b0bb7a2d7938a597ea8f7042"
+          },
+          "attachment_generation": 1,
+          "root": "/tmp/th-l6-qgmptfx3/claude",
+          "team_incarnation": "19889ba6d58a872128b635b97967711ec220ee32b0bb7a2d7938a597ea8f7042",
+          "member": "alpha",
+          "session": "$0",
+          "context_generation": "0",
+          "generation": "1",
+          "socket": "/tmp/th-l6-qgmptfx3/tmux/tmux-1000/default",
+          "pane": "%2",
+          "pane_pid": 135,
+          "pane_start": "30192684",
+          "tmux_session": "$0",
+          "harness": "codex"
+        },
+        "epoch": 2,
+        "adapter": "tmux/1",
+        "attempt_id": "97da4075-3d10-40ee-abc3-fe8ab851f9b0"
+      },
+      "receipts": [
+        {
+          "stage": "accepted",
+          "origin": "legacy_mapping",
+          "evidence": "source obligation",
+          "observed_at": "2026-09-10T23:03:22.606609342+00:00"
+        },
+        {
+          "stage": "attempt_started",
+          "origin": "adapter",
+          "evidence": "durable claim",
+          "observed_at": "2026-09-10T23:03:22.606623092+00:00"
+        },
+        {
+          "stage": "submitted",
+          "origin": "tmux_send_keys",
+          "evidence": "literal paste and harness submit exited 0; model uptake unobserved",
+          "observed_at": "2026-09-10T23:03:22.793087542+00:00"
+        }
+      ],
+      "presentation_started": true
+    }
+  ]
+}

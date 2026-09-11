@@ -1,0 +1,25 @@
+Historical transcript trimmed during review; full version: git show d012ab5d:docs/design/evidence/e2e/l6-rollback/check-quick.txt
+ ❯ src/lib/SessionHistory.svelte:164:11
+    162|         }
+    163|         Promise.all([
+    164|           listen('project-tasks-changed', maybeRefresh),
+       |           ^
+    165|           listen('project-task-history-changed', maybeRefresh),
+    166|         ]).then((fns) => {
+ ❯ processTicksAndRejections node:internal/process/task_queues:104:5
+
+This error originated in "src/lib/sessionHistory.test.js" test file. It doesn't mean the error was thrown inside the file itself, but while it was running.
+The latest test that might've caused the error is "re-fetches archived sessions on project-task-history-changed without showing the loading skeleton again". It might mean one of the following:
+- The error was thrown, while Vitest was running this test.
+- If the error occurred after the test had been completed, this was the last documented test before it was thrown.
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+
+
+ Test Files  1 failed | 149 passed (150)
+      Tests  3 failed | 2516 passed (2519)
+     Errors  1 error
+   Start at  01:09:47
+   Duration  13.90s (transform 63.72s, setup 0ms, import 133.57s, tests 69.95s, environment 56.80s)
+
+error: script "test" exited with code 1
+error: Recipe `check-quick` failed on line 235 with exit code 1
