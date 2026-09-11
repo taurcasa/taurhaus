@@ -36,7 +36,7 @@ def mesh_json(output):
 
 class Trial:
     def __init__(self):
-        self.out=BASE/'run';self.out.mkdir()
+        self.out=BASE/os.environ.get('L7_RUN_NAME','run');self.out.mkdir()
         self.root=Path(tempfile.mkdtemp(prefix='th-l7-'))
         self.children=[];self.step=1;self.started=time.monotonic();self.port=None
         self.stop=threading.Event();self.observer=None;self.seen={};self.reservations=[]
@@ -130,9 +130,13 @@ class Trial:
         value=meter(self.sessions(),self.notify());value['input_reservations']=self.reservations
         self.save('cost-ledger.json',value)
         assert time.monotonic()-self.started <= 720, '12 minute runtime cap reached'
+        prior=json.loads((BASE/'run/cost-ledger.json').read_text()) if self.out.name!='run' else {'paid_inputs':0,'conservative_usd':0}
+        value['prior_run_inputs']=prior['paid_inputs'];value['prior_known_conservative_usd']=prior['conservative_usd']
+        value['prior_unmetered_turns']=[r['turn_id'] for r in prior.get('turns',[]) if r.get('usd') is None]
+        self.save('cost-ledger.json',value)
         if next_input:
-            assert max(value['paid_inputs'],len(self.reservations)) < 12, 'input cap reached'
-            assert value['conservative_usd'] + .025 <= .20, 'cost headroom exhausted'
+            assert prior['paid_inputs'] + max(value['paid_inputs'],len(self.reservations)) < 12, 'input cap reached'
+            assert prior['conservative_usd'] + value['conservative_usd'] + .025 <= .20, 'cost headroom exhausted'
         return value
     def reserve(self,reason):
         self.budget(next_input=True)
@@ -296,6 +300,8 @@ class Trial:
         self.snapshot()
         self.save('identities.json',list(self.identities_seen.values()))
         self.save('cost-ledger.json',{**meter(self.sessions(),self.notify()),'input_reservations':self.reservations})
+        self.save('native-turn-meter.json', [{'timestamp':r.get('timestamp'),'type':r.get('type'),'payload':{k:v for k,v in r.get('payload',{}).items() if k in ('type','turn_id','model','effort','info')}} for rows in self.sessions() for r in rows if r.get('type')=='turn_context' or (r.get('type')=='event_msg' and r.get('payload',{}).get('type') in ('task_started','task_complete','token_count'))])
+        self.save('notify-identities.json',[{k:v for k,v in r.items() if k in ('ts','event','turn_id','session_id')} for r in self.notify()])
         self.save('rollout-inventory.json',[{'file':p.name,'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} for p in (self.root/'codex/sessions').rglob('rollout-*.jsonl')])
         if self.record():
             try:self.capture('final')

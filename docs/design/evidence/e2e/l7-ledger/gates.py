@@ -58,7 +58,7 @@ def command(argv, cwd, label):
 def main():
     if Path.cwd() != ROOT:
         raise SystemExit('Run only from the Lane 7 checkout root')
-    cleanup=json.loads((OUT/'run/cleanup.json').read_text())
+    cleanup=json.loads((OUT/os.environ.get('L7_RUN_NAME','run')/'cleanup.json').read_text())
     assert cleanup['auth_removed'] and cleanup['root_removed'] and not cleanup['survivors'] and cleanup['port_closed'], 'teardown must precede gates'
     LOGS.mkdir(parents=True, exist_ok=True)
     results = {'commands': [], 'binaries': []}
@@ -70,14 +70,14 @@ def main():
         ]
         for argv, cwd, label in commands:
             results['commands'].append(command(argv, cwd, label))
-            (OUT / 'checks-result.json').write_text(json.dumps(results, indent=2) + '\n')
+            (OUT / (os.environ.get('L7_RUN_NAME','run')+'-checks-result.json')).write_text(json.dumps(results, indent=2) + '\n')
         for path in (ROOT / 'src-tauri/target/release/taurhaus-daemon', MESH / 'target/debug/mesh'):
             if path.is_file():
                 with path.open('rb') as stream:
                     digest = hashlib.file_digest(stream, 'sha256').hexdigest()
                 results['binaries'].append({'path': str(path), 'sha256': digest})
     finally:
-        (OUT / 'checks-result.json').write_text(json.dumps(results, indent=2) + '\n')
+        (OUT / (os.environ.get('L7_RUN_NAME','run')+'-checks-result.json')).write_text(json.dumps(results, indent=2) + '\n')
     return int(any(row['exit'] != 0 for row in results['commands']))
 
 

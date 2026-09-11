@@ -1,10 +1,25 @@
 """Offline controller checks: temporary data only, no CLI or credentials."""
 import unittest
+import json
 from support import delivered, ready, receipt_retry, clean
-from controller import output_text, objects
+from controller import output_text, objects, assignment_message_id
 
 
 class EvidenceRules(unittest.TestCase):
+    # // Regression: 030980a7 confused task assign's legacy delivery id with the canonical message id.
+    def test_assignment_maps_legacy_delivery_to_canonical_message(self):
+        rows = [{'event_type': 'message_accepted', 'payload': {'message_id': 'canonical', 'delivery_targets': [{'recipient': 'alpha', 'legacy_id': 'legacy'}]}}]
+        self.assertEqual(assignment_message_id(rows, 'legacy'), 'canonical')
+
+    # // Regression: 104e480f decoded text blocks but not stdout nested in exec_command's JSON result.
+    def test_wrapped_stdout_receipt_is_decoded(self):
+        receipt = {'receipts': [{'event_id': 'e'}]}
+        self.assertIn(receipt, objects(json.dumps({'exit_code': 0, 'output': json.dumps(receipt)})))
+
+    # // Regression: 030980a7 redacted the home component of an allowed scratch binary path.
+    def test_scratch_home_path_is_preserved(self):
+        self.assertEqual(clean('/tmp/lane/home/.local/bin/mesh'), '/tmp/lane/home/.local/bin/mesh')
+
     # // Regression: 030980a7 required transport recipient on Mesh read receipts, whose actor is reader_name.
     def test_live_read_receipt_schema_uses_reader_name(self):
         rows = [{'payload': {'message_id': 'onboard', 'recipient': 'alpha', 'stage': 'submitted'}},

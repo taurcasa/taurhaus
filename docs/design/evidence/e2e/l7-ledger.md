@@ -1,3 +1,10 @@
+# Lane 7 continuation — in progress
+
+The user requested continuation after the committed startup predicate fix.
+The next isolated trial writes to `l7-ledger/run2/`; earlier evidence remains
+intact below. All 10 offline controller checks pass before continuation.
+No new runtime PASS is claimed yet.
+
 # Lane 7 — FAIL / unavailable at startup: harness read-receipt predicate
 
 **Step 1 failed before task creation; steps 2–6 were not run.** The seat did

@@ -33,9 +33,20 @@ def objects(text):
         try:
             value, _ = decoder.raw_decode(text[match.start():])
             result.append(value)
+            if isinstance(value, dict):
+                for key in ('output', 'stdout', 'text'):
+                    if isinstance(value.get(key), str):
+                        result.extend(objects(value[key]))
         except ValueError:
             pass
     return result
+
+
+def assignment_message_id(rows, legacy_id):
+    return next(r['payload']['message_id'] for r in rows
+                if r.get('event_type') == 'message_accepted'
+                and any(t.get('recipient') == 'alpha' and t.get('legacy_id') == legacy_id
+                        for t in r.get('payload', {}).get('delivery_targets', [])))
 
 
 class Trial(Runtime):
@@ -133,10 +144,7 @@ class Trial(Runtime):
         assignment = mesh_json(self.mesh(['task', 'assign', '1', '--owner', 'alpha', '--json']))
         self.save('step1-assignment-receipt.json', assignment)
         self.assignment = self.task()['metadata']['assignment_id']
-        self.last_delivery = assignment.get('message_id', assignment.get('id'))
-        if not self.last_delivery:
-            accepted = [r for r in self.journals() if r.get('event_type') == 'message_accepted' and self.assignment in json.dumps(r)]
-            self.last_delivery = accepted[-1]['payload']['message_id']
+        self.last_delivery = assignment_message_id(self.journals(), assignment['id'])
         packet = {'project': 'l7-project', 'repo_id': 'l7-repo', 'wave': 'l7', 'packet_revision': 'frozen-1',
                   'scopes': [{'scope': 'S7', 'owner': 'alpha', 'task_id': '1', 'assignment_id': self.assignment}]}
         (self.root / 'project/packet.json').write_text(json.dumps(packet))
