@@ -1,0 +1,8 @@
+{
+  "worker_root_removed": true,
+  "auth_copy_removed": true,
+  "staging_root_removed": true,
+  "surviving_processes_with_lane_environment": [],
+  "private_daemon_port": 23257,
+  "operator_port_contacted": false
+}

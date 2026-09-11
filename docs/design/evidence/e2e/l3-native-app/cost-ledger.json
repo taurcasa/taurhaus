@@ -1,0 +1,9 @@
+{
+  "paid_inputs": 0,
+  "seat_starts": 0,
+  "turns": [],
+  "usd": 0,
+  "reason": "Spec module failed before hooks or cases loaded; no warmup, initialization or panel input ran. CLI version probes only.",
+  "runtime_wall_ms": 5410,
+  "runtime_wall_basis": "WDIO wall_ms (116154) minus build_ms (110744)"
+}

@@ -1,0 +1,14 @@
+{
+  "command": "MESH_BIN=/home/mstie/.local/bin/mesh just mesh-verify-lock",
+  "exit_code": 0,
+  "resolved_binary": "/home/mstie/.local/bin/mesh",
+  "contract": {
+    "version": "0.3.0",
+    "protocol_version": 1,
+    "schema_version": 1,
+    "git_commit": "9963e2030ced3b4d86bdd904afb9c3ff3cee7171"
+  },
+  "codex_version_observed": "0.153.4",
+  "daemon_protocol": "27 in built source; private RPC protocol assertion NOT RUN",
+  "daemon_sha256": "1ee64d98b3c7ab2cc3450752ddce699dce005df733e336ecd502596f9bac7e77"
+}

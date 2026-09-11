@@ -1,0 +1,71 @@
+{
+  "source_commit": "0c042a162",
+  "environment": {
+    "CARGO_TARGET_DIR": "/home/mstie/projects/taurhaus-l3-native-app/src-tauri/target",
+    "CARGO_BUILD_JOBS": "3"
+  },
+  "after_native_teardown": true,
+  "gates": [
+    {
+      "command": "just check-quick",
+      "cwd": "/home/mstie/projects/taurhaus-l3-native-app",
+      "exit_code": 0,
+      "last_lines": [
+        "     \u2713 auto-collapses the resume progress tray after completion  5268ms",
+        "",
+        " Test Files  150 passed (150)",
+        "      Tests  2522 passed (2522)",
+        "   Start at  11:04:31",
+        "   Duration  11.59s (transform 44.76s, setup 0ms, import 93.94s, tests 51.51s, environment 48.25s)",
+        "",
+        "Quick check passed."
+      ]
+    },
+    {
+      "command": "just lint",
+      "cwd": "/home/mstie/projects/taurhaus-l3-native-app",
+      "exit_code": 0,
+      "last_lines": [
+        "\u2714 no dependency violations found (347 modules, 805 dependencies cruised)",
+        "",
+        "bun scripts/check-workflow-scripts.mjs",
+        "workflow script check passed: 5 script(s) in .claude/workflows",
+        "scripts/check-just-gates.sh",
+        "just check gate guard passed.",
+        "scripts/check-lane-worktree-recipes.sh",
+        "lane worktree recipe guard passed."
+      ]
+    },
+    {
+      "command": "just test-contracts",
+      "cwd": "/home/mstie/projects/taurhaus-l3-native-app",
+      "exit_code": 0,
+      "last_lines": [
+        "test team_state_write_apis_stay_daemon_or_native_hook_owned ... ok",
+        "test terminal_child_mode_inherits_flock_and_exits_without_daemon_startup ... ok",
+        "test terminal_contract_pins_shared_spelling_and_write_boundaries ... ok",
+        "test the_tmux_focus_path_contains_no_hook_code ... ok",
+        "test transcript_compaction_pipeline_stays_retired ... ok",
+        "",
+        "test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.19s",
+        ""
+      ]
+    }
+  ],
+  "rust_unit": {
+    "required": false,
+    "reason": "No src-tauri/ diff"
+  },
+  "native": {
+    "command": "E2E_INSTALL_DAEMON=0 just test-e2e-spec managed-hosted-builder",
+    "exit_code": 1,
+    "attempts": 1,
+    "error": "ReferenceError: $state is not defined; spec could not load before step 1",
+    "subsequent_native_run": false
+  },
+  "initial_contract_gate": {
+    "exit_code": 101,
+    "test": "retired_gemini_tool_literal_does_not_return",
+    "reason": "New spec used a bare retired directory name; corrected to .gemini scratch data path."
+  }
+}
