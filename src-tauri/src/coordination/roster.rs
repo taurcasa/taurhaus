@@ -388,7 +388,7 @@ mod tests {
 
     #[test]
     fn hosted_roster_uses_snapshot_pane_presence_without_erasing_saved_binding() {
-        // Regression: 64df9ffd4, member-stop lane finding 3: the saved pane hid TUI detachment.
+        // Regression: cadd533eb, member-stop lane finding 3: the saved pane hid TUI detachment.
         let tmp = tempfile::tempdir().unwrap();
         let (registry, hosts) = super::super::hosted::tests::running(tmp.path());
         MemberRuntimeStore::update(tmp.path(), "team", "seat", |r| {

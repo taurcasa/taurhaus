@@ -144,16 +144,7 @@ fn stop_record(
     let Some(host) = record.app_server.as_ref() else {
         stop_tui()?;
         let root = registry.resolve(team).map_err(|e| e.to_string())?;
-        MemberRuntimeStore::update(&root, team, member, |current| {
-            if current.pane_id == record.pane_id
-                && current.session_id == record.session_id
-                && current.pane_pid == record.pane_pid
-                && current.pane_start_time == record.pane_start_time
-            {
-                current.health = crate::coordination::domain::HealthState::SessionDead;
-            }
-        })
-        .map_err(|e| e.to_string())?;
+        super::state_writes::mark_member_stopped(&root, team, member, record)?;
         return Ok(());
     };
     let exit_status = hosts.stop_with_tui(registry, team, member, stop_tui)?;
@@ -178,7 +169,7 @@ mod tests {
     use serde_json::json;
     #[test]
     fn member_stop_keeps_roster_and_session_identity() {
-        // Regression: 64df9ffd4, member-stop lane finding 2: Stop only exposed roster removal.
+        // Regression: 2e627f5cb, member-stop lane finding 2: Stop only exposed roster removal.
         let tmp = tempfile::tempdir().unwrap();
         let (registry, hosts) = running(tmp.path());
         let before = saved(tmp.path());

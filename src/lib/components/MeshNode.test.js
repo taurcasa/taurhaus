@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 import MeshNode from './MeshNode.svelte'
 
 describe('MeshNode', () => {
-  // Regression: 64df9ffd4, member-stop lane finding 3: a headless host looked like an attached session.
+  // Regression: cadd533eb, member-stop lane finding 3: a headless host looked like an attached session.
   it('shows TUI detachment only with live host evidence and no snapshot pane', async () => {
     const view = render(MeshNode, { name: 'seat', hosted: true, source: 'host', paneId: null })
     expect(screen.getByText('TUI detached, host running')).toBeInTheDocument()
