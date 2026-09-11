@@ -56,7 +56,11 @@ USD 0.20 cap remain unverified. Metering did not gate lifecycle operations.
 [counter excerpts](l7-ledger/run2/native-turn-meter.json),
 [cumulative spend](l7-ledger/run2/cumulative-spend.json).
 
-Post-teardown continuation gates are running. No product source changed.
+Post-teardown continuation gates all **PASS**: `just check-quick` **0**,
+`just lint` **0**, `just test-contracts` **0**. Check-quick executed 2,521
+frontend tests; contracts executed 68 Rust assertions. All 11 controller
+checks passed separately. No product source changed, so the additional Rust
+unit gate does not apply. [Gate results](l7-ledger/run2-checks-result.json).
 The green controller fixes were committed; no numbered runtime step completed.
 The independent Opus evidence lens remains unavailable in this executor.
 
