@@ -1,0 +1,40 @@
+test_all_stops_precede_poll_and_both_captures_are_saved (test_run12.ReadyStop.test_all_stops_precede_poll_and_both_captures_are_saved) ... FAIL
+test_ready_path_and_retained_pane_handles_are_accepted (test_run12.ReadyStop.test_ready_path_and_retained_pane_handles_are_accepted) ... FAIL
+test_wrong_ready_identity_path_health_or_binding_rejected (test_run12.ReadyStop.test_wrong_ready_identity_path_health_or_binding_rejected) ... 
+  test_wrong_ready_identity_path_health_or_binding_rejected (test_run12.ReadyStop.test_wrong_ready_identity_path_health_or_binding_rejected) (change={'health': 'sessionDead'}) ... FAIL
+
+======================================================================
+FAIL: test_all_stops_precede_poll_and_both_captures_are_saved (test_run12.ReadyStop.test_all_stops_precede_poll_and_both_captures_are_saved)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run12/test_run12.py", line 52, in test_all_stops_precede_poll_and_both_captures_are_saved
+    lane.step2()
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run12/controller.py", line 385, in step2
+    self.wait(stopped,'supported stop_session did not settle panes/processes and retained alpha identity',timeout=100)
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run12/test_run12.py", line 48, in wait
+    self.assertTrue(test())
+AssertionError: False is not true
+
+======================================================================
+FAIL: test_ready_path_and_retained_pane_handles_are_accepted (test_run12.ReadyStop.test_ready_path_and_retained_pane_handles_are_accepted)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run12/test_run12.py", line 17, in test_ready_path_and_retained_pane_handles_are_accepted
+    support.require_stopped_identity(self.old, self.dead, self.ready)
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run12/support.py", line 139, in require_stopped_identity
+    assert stopped.get('health')=='sessionDead', 'alpha stopped health not sessionDead'
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: alpha stopped health not sessionDead
+
+======================================================================
+FAIL: test_wrong_ready_identity_path_health_or_binding_rejected (test_run12.ReadyStop.test_wrong_ready_identity_path_health_or_binding_rejected) (change={'health': 'sessionDead'})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run12/test_run12.py", line 24, in test_wrong_ready_identity_path_health_or_binding_rejected
+    with self.subTest(change=change), self.assertRaises(AssertionError):
+AssertionError: AssertionError not raised
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.001s
+
+FAILED (failures=3)

@@ -1,0 +1,11 @@
+test_authorized_default_auth_source_without_opening_it (test_preflight.LaneTests.test_authorized_default_auth_source_without_opening_it) ... ok
+test_caps_include_automatic_startup_and_recovery (test_preflight.LaneTests.test_caps_include_automatic_startup_and_recovery) ... ok
+test_explicit_codex_home_is_the_only_override (test_preflight.LaneTests.test_explicit_codex_home_is_the_only_override) ... ok
+test_meter_deduplicates_a_turn_across_two_observers (test_preflight.LaneTests.test_meter_deduplicates_a_turn_across_two_observers) ... ok
+test_missing_usage_blocks_the_next_paid_input (test_preflight.LaneTests.test_missing_usage_blocks_the_next_paid_input) ... ok
+test_resume_terminal_status_does_not_hide_a_startup_refusal (test_preflight.LaneTests.test_resume_terminal_status_does_not_hide_a_startup_refusal) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.005s
+
+OK
