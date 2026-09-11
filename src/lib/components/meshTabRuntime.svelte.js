@@ -368,6 +368,18 @@ export function createMeshTabRuntime({ state, refs, deps, gate }) {
       return
     }
 
+    if (action.kind === 'stop' && action.memberName) {
+      try {
+        await deps.coordinationStopMember(state.teamName, action.memberName)
+        state.runtimeMessage = `Stopped '${action.memberName}'. The member can be resumed.`
+        const sequence = ++refs.discoverySequence
+        await gate.refreshProjectMeshSnapshot(sequence, { preserveNotices: true })
+      } catch (error) {
+        state.errorMessage = error?.message || `Failed to stop member '${action.memberName}'.`
+      }
+      return
+    }
+
     if (action.kind === 'remove' && action.memberName) {
       try {
         const report = await deps.coordinationRemoveMember(state.teamName, action.memberName)
@@ -436,6 +448,11 @@ export function createMeshTabRuntime({ state, refs, deps, gate }) {
       state.confirmContext = { kind: 'disband' }
       return
     }
+    state.confirmContext = { kind: 'stop', memberName: state.selectedNode.name }
+  }
+
+  function removeSelected() {
+    if (!state.selectedNode || state.selectedNode.role === 'lead' || state.isResumingTeam) return
     state.confirmContext = { kind: 'remove', memberName: state.selectedNode.name }
   }
 
@@ -579,6 +596,7 @@ export function createMeshTabRuntime({ state, refs, deps, gate }) {
     switchSelectedAccount,
     resumeTeam,
     stopSelected,
+    removeSelected,
     toggleNode,
   }
 }

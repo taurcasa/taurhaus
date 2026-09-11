@@ -743,6 +743,17 @@
             >
               Stop
             </button>
+            {#if node?.role !== 'lead'}
+              <button
+                class="inline-flex h-10 items-center gap-2 rounded-xl border px-4 text-[13px] font-medium transition {dangerActionTone}"
+                type="button"
+                onclick={() => invoke(actions?.onRemove)}
+                disabled={Boolean(actions?.stopDisabled) || typeof actions?.onRemove !== 'function'}
+                data-testid="mesh-node-detail-remove"
+              >
+                Remove from team
+              </button>
+            {/if}
             <button
               class="inline-flex h-10 items-center gap-2 rounded-xl border px-4 text-[13px] font-medium transition {secondaryActionTone}"
               type="button"
