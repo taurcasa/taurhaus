@@ -1,4 +1,169 @@
-# L6 rollback — run3 IN PROGRESS (step 2 PASS)
+# FAIL — L6 run3 stopped at step 3: Mesh downgrade publishes format 0 and member ownership before the required handoff
+
+## Run3 result (2026-09-11)
+
+**Runtime FAIL, classified as a Mesh contract mismatch against the binding run3 ruling.**
+The lead successfully stopped the canonical owner and downgraded with B pending.
+The next assertion failed: `required resulting format 1 not observed`.
+Mesh `3015cb0` publishes `messaging_format: 0` and `delivery_owner: members` inside
+its downgrade operation. The ruling requires format 1 followed by a separate
+ownership handoff. This is an observed disagreement between the prescribed route
+and the RC implementation, not a claim that legacy data was lost or corrupted.
+No product change or second paid attempt was made.
+
+The controller exited **1** after **70.10 seconds**. Steps 4–6 were not run, as the
+spec requires stopping on the first failed step. Mandatory teardown passed.
+All required gates subsequently exited **0**. The independent Opus lens is
+**unavailable** in this session; no full workflow PASS or release approval is claimed.
+
+| Ordered run3 step | Outcome | Classification and evidence |
+| --- | --- | --- |
+| 1. Initialize; deliver/read A; observe B pending during ordinary work | **PASS** | S-runtime. Production canonical initialization, attributed activity, one A submission/read/reply, B accepted with no begun transport and scheduler opportunity. [Pending boundary](l6-rollback/run3/run/step1-pending-boundary.json). |
+| 2. Lead stops owner, waits for exit/marker, downgrades with B pending | **PASS, operation only** | S-runtime. Stop exit 0; owner exits, operator marker exists; downgrade exit 0; B is projected under its original logical ID with disposition `pending`, `read: false`. This does not assert the required resulting format/ownership boundary. [Commands and report](l6-rollback/run3/run/step2-command.json). |
+| 3. Settle; retry once if temporarily refused; verify committed format boundary | **FAIL** | Mesh contract mismatch. No refusal or retry occurred. Ordinary work settled with attributed idle; actual format is 0 instead of required 1. Config also already says `members`. [Outcome](l6-rollback/run3/run/step3-outcome.json), [analysis](l6-rollback/run3/analysis.json). |
+| 4. Explicit members handoff, request/report/epoch boundary, marker removed last | **NOT RUN** | Blocked by step 3. No `team delivery --owner members` call, no handoff request and no `delivery_owner_changed` event. Marker remains. |
+| 5. Start guarded RC member executor; account for B; send/reply C | **NOT RUN** | Blocked by step 3. Controller never starts the executor or sends C. A production-started RC member executor delivered B during step 3; that observation is not substituted for step 5. |
+| 6. Explicit read/ack and reconciliation across both boundaries; export/teardown | **NOT RUN** | Final read/ack sequence and two-boundary reconciliation were not attempted. Failure export and teardown separately passed. |
+
+### Owner-stop product observation
+
+**Expected #179 named skip observed; owner restart not observed.** At
+`04:15:41.573Z`, the private daemon emitted `coordination.team_daemon.skipped`
+with `reason: owner_stopped_by_operator`. Its subsequent self-heal passes reported
+`team_daemons_ensured: 0`, `owner_ensure_refused: 1`. The census retained **75 samples**,
+maximum adjacent interval **0.5694 seconds**, with no owner after the stop.
+The pre-stop sample identifies host PID **1620584**, start ticks **32064476**;
+Mesh's private-namespace stop output identifies PID **196**. The operator marker
+records epoch **2**, lead, and `04:15:37.060062861Z`.
+
+The observation window ends at the step-3 failure: step 4 was not reached.
+The marker survives downgrade and teardown export. The complete sanitized daemon
+JSONL contains **235 rows**, including shutdown; it is not an event-filtered extract.
+[Daemon JSONL](l6-rollback/run3/run/taurhaus.log.jsonl),
+[owner census](l6-rollback/run3/run/owner-census.jsonl),
+[pre-stop identity](l6-rollback/run3/run/step2-owner-before.json).
+
+A **separate member executor** (host PID **1628609**, start ticks **32067925**)
+was observed after downgrade; the controller's executor-start step was not reached.
+B received one legacy `tmux_injected` row at `04:15:41.600Z`, then alpha explicitly
+read B and replied `B-2c3955c5` at `04:16:14.479Z`. This is not a restarted team owner.
+The exact process, workflow, native tool-result and reply rows are retained in
+[analysis](l6-rollback/run3/analysis.json).
+
+### Identity and boundary accounting
+
+| Marker | Original logical message ID | Delivery/projection ID | Final observed disposition |
+| --- | --- | --- | --- |
+| A-943bd6e0 | `36328545-20b9-40d4-af7b-4614dd34d94f` | `713839d3-91e4-4398-87bc-532827e3c23a` | One canonical submission; alpha explicit read and assistant reply. Downgrade reports `consumed_by_read`; retained legacy projection remains read. No replay observed. |
+| B-2c3955c5 | `b026d303-9ac7-46d8-987f-9b34a52c19bb` | `55e21660-dc01-4ae4-914c-0b186cf5ee65` | Accepted/pending while working, scheduler opportunity observed, no canonical submission. Downgrade preserves pending body/ID and unread state. Later one legacy submission, alpha tool-result exposure/read and assistant reply. |
+| C | — | — | Never sent; fresh legacy delivery criterion untested. |
+
+Canonical history is identical before downgrade, immediately afterward and at
+failure export. The authority marker is `transition: complete`, with legacy cut
+`5f7ae87c5a1228e236077cbac00cd977a5bd05b7e442a5e4b23a4e72c1325b09`.
+The format operation advances epoch **2 → 3**, but produces no separate ownership
+boundary event. The downgrade report and rollback compatibility projection are
+retained; this does not fulfill step 4's durable handoff requirements.
+[Boundary snapshot](l6-rollback/run3/run/step2-after-format.json),
+[RC source excerpt](l6-rollback/run3/mesh-downgrade-source.txt).
+
+### Candidate, harness and spend
+
+Checkout stayed on `feat/e2e-l6-rollback`; execution started at `50a36d848858294d9c7b87060aee0bece411b21c`,
+with product source identical to merged main **33443fe79b8e835a69ef3edf2bece38a9f75646a**.
+`COMPLETION_FLUSH_TOLERANCE` occurs **2** times. No rebase was needed because that
+base is already an ancestor. Mesh HEAD and `release/overhaul-rc` both resolve to
+**3015cb0fda5328d1f8c793b528275e6205683208**, with no source or descriptor diff.
+
+`just build-daemon` used this checkout's `src-tauri/target`; the Mesh build used
+`/home/mstie/projects/mesh-l6/target`. Both exited 0. Cargo admission polled the
+required machine-wide predicate and found fewer than three processes at each
+admission; `CARGO_BUILD_JOBS=1`. Binary digests and command tails are in
+[builds](l6-rollback/run3/builds.json); census in
+[cargo-census](l6-rollback/run3/cargo-census.jsonl).
+
+The private daemon used port **45937**, protocol **27**. Codex **0.153.4**, model
+**gpt-5.6-luna**, effort **low**, ran in one real tmux seat `alpha`; lead was the
+real Claude login-only seat, with no Claude model turns. Production initialization
+used the builder's canonical `messaging` policy and creation-time `delivery: tmux`.
+The scratch bin held both native Codex siblings. Only the explicitly authorized
+account-b `auth.json` was copied, at mode 0600, into an otherwise empty scratch
+CODEX_HOME. The copy was deleted. No token/auth contents or installation IDs are
+retained. Bubblewrap hid operator homes and used private PID/tmux namespaces;
+all harness, data, temporary and project roots were disposable. Inherited TMUX
+was absent. No descriptor edit, fault injection, install, release or product edit.
+
+| Spend/input | Observed metered USD | Notes |
+| --- | --- | --- |
+| Onboarding: `01a08ead-2da2-7221-8383-af06dcdc4ac8` | 0.00161804 | Completed metered turn. |
+| A: `01a08ead-51fb-7963-ae25-6dc7ccb5d00a` | 0.00427332 | Completed metered turn, including tool calls. |
+| Ordinary response plus B processing: `01a08ead-959d-7d33-9153-e6b632e86d3a` | 0.00506960 | B was injected during this active turn; native usage is not separable into an independent B cost. |
+| Notify-only ID: `01a08ead-2f79-7cf2-8276-6de193ec9722` | Unknown/not independently billed here | No corresponding native `task_started`; not counted as an additional model turn or free input. |
+| Claude lead | 0 model inputs | Login-only; no Claude model spend observed. |
+| **Total** | **0.01096096** | **4 inputs**, **3 native turn IDs**, one attachment/context generation; below 10 inputs and $0.20 metered. |
+
+The four inputs are onboarding, A, ordinary work and the legacy B presentation.
+All three native turns completed with token usage. The ledger's deliberately
+inflated all-token sensitivity estimate is **$0.2554164**, not measured cost or the
+metered budget metric. Rates are the inherited Luna packet rates ($0.20/M input,
+$0.02/M cached input, $1.20/M output); figures are API-equivalent estimates, not invoices.
+Every individual usage delta is retained in the [cost ledger](l6-rollback/run3/run/cost-ledger.json).
+Metering did not gate a lifecycle operation. Implementer spend is externally
+metered and unavailable here; no independent reviewer was launched.
+
+### Red-first checks, gates and cleanup
+
+The new offline guards first failed against the inherited controller: **4 failures**
+(order, metering wait, missing pending-input checks, missing owner census), then
+**2 behavioral failures** (actual `team-daemon start` process selection and
+`reader_name: alpha` receipt recognition). All **6 now pass**, without reading
+credentials or starting CLIs. Regression comments name the historical controller
+commits. [Tests](l6-rollback/run3/controller_test.py),
+[first red](l6-rollback/run3/red.txt), [predicate red](l6-rollback/run3/predicates-red.txt),
+[green](l6-rollback/run3/green.txt). The live assertion failed on the unchanged RC;
+no product fix was attempted in this evidence lane.
+
+| Exact command from checkout root, after teardown | Exit |
+| --- | --- |
+| `just check-quick` | 0 |
+| `just lint` | 0 |
+| `just test-contracts` | 0 |
+
+[Gate result](l6-rollback/run3/checks-result.json). No `src-tauri/` or `src/` diff;
+`just test-rust-unit` was therefore not required. No full `just check` was run.
+[Cleanup](l6-rollback/run3/run/cleanup.json) records no survivors, closed port,
+removed auth copy and removed scratch root. No foreign process was signalled.
+Pane excerpts are bounded to 60 lines; duplicate files resolve through the export
+manifest. A single benign initialization observer error involved an absent
+activity-path value; it did not abort a wait or remove daemon rows.
+
+### Deviations and reproduction
+
+- The specified lane-2 checkout no longer exists (read-only git command exited 128).
+  Its versioned run3 controller/evidence is retained in this checkout; the run3
+  controller reuses the lane-6 run2 derivative with the required stop, pending and
+  metering corrections. No other Taurhaus checkout was modified.
+- The binding format-1/separate-handoff route conflicts with RC downgrade behavior.
+  It was not silently changed to accept format 0 or to skip the ownership boundary.
+  Steps 4–6 remain NOT RUN after the step-3 failure.
+- The owner observation covers stop through failure, not a completed handoff.
+  The named operator-stop skip is observed; no `rollback_pending` claim is made.
+- Required independent Opus review is unavailable: no callable Workflow/Opus tool
+  or Opus collaboration model. No substitute self-review is claimed.
+  [Review availability](l6-rollback/run3/review.json).
+
+Exact runtime controller: [controller.py](l6-rollback/run3/controller.py).
+Its unchanged helper imports and hashes are in
+[controller provenance](l6-rollback/run3/controller-provenance.json).
+From this checkout, the controller accepts `--auth-source "$AUTHORIZED_SOURCE"`
+(the spec's authorized account-b file only) and an optional `--out NEW_DIRECTORY`.
+The output must be new; this is reproduction documentation, not permission to
+restart the paid run. Exact RPCs/commands/exits/digests are retained in
+[events](l6-rollback/run3/run/events.jsonl). Offline analysis is reproducible with
+`python3 -B docs/design/evidence/e2e/l6-rollback/run3/analyze.py`.
+
+## Historical runs 1–2 (retained unchanged)
+
 
 Review correction: step 1 passes; step 2 fails on a non-quiescence refusal.
 The original controller continued and stopped at the step-3 readiness poll.

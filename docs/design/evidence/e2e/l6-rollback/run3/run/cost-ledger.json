@@ -1,5 +1,5 @@
 {
-  "paid_inputs": 3,
+  "paid_inputs": 4,
   "turns": [
     {
       "turn_id": "01a08ead-2da2-7221-8383-af06dcdc4ac8",
@@ -25,8 +25,14 @@
     },
     {
       "turn_id": "01a08ead-959d-7d33-9153-e6b632e86d3a",
-      "usd": null,
-      "completed": false
+      "usd": 0.0050696000000000005,
+      "completed": true,
+      "usage": {
+        "input_tokens": 96484,
+        "cached_input_tokens": 90880,
+        "output_tokens": 1776
+      },
+      "conservative_usd": 0.117912
     },
     {
       "turn_id": "01a08ead-2f79-7cf2-8276-6de193ec9722",
@@ -116,11 +122,61 @@
         "output_tokens": 11
       },
       "usd": 0.0005779600000000001
+    },
+    {
+      "at": "2026-09-11T04:16:01.975Z",
+      "turn_id": "01a08ead-959d-7d33-9153-e6b632e86d3a",
+      "usage": {
+        "input_tokens": 17380,
+        "cached_input_tokens": 17152,
+        "output_tokens": 1404
+      },
+      "usd": 0.00207344
+    },
+    {
+      "at": "2026-09-11T04:16:05.227Z",
+      "turn_id": "01a08ead-959d-7d33-9153-e6b632e86d3a",
+      "usage": {
+        "input_tokens": 18846,
+        "cached_input_tokens": 17152,
+        "output_tokens": 122
+      },
+      "usd": 0.00082824
+    },
+    {
+      "at": "2026-09-11T04:16:08.113Z",
+      "turn_id": "01a08ead-959d-7d33-9153-e6b632e86d3a",
+      "usage": {
+        "input_tokens": 19140,
+        "cached_input_tokens": 18176,
+        "output_tokens": 114
+      },
+      "usd": 0.0006931199999999999
+    },
+    {
+      "at": "2026-09-11T04:16:11.710Z",
+      "turn_id": "01a08ead-959d-7d33-9153-e6b632e86d3a",
+      "usage": {
+        "input_tokens": 20454,
+        "cached_input_tokens": 18176,
+        "output_tokens": 124
+      },
+      "usd": 0.0009679199999999999
+    },
+    {
+      "at": "2026-09-11T04:16:14.493Z",
+      "turn_id": "01a08ead-959d-7d33-9153-e6b632e86d3a",
+      "usage": {
+        "input_tokens": 20664,
+        "cached_input_tokens": 20224,
+        "output_tokens": 12
+      },
+      "usd": 0.00050688
     }
   ],
-  "metering_complete": false,
-  "api_equivalent_usd": 0.00589136,
-  "conservative_usd": 0.1375044,
+  "metering_complete": true,
+  "api_equivalent_usd": 0.01096096,
+  "conservative_usd": 0.2554164,
   "rates_usd_per_million": {
     "input": 0.2,
     "cached_input": 0.02,
@@ -158,5 +214,5 @@
   "controller_input_attempts": 1,
   "controller_issued_inputs": 1,
   "mesh_terminal_deliveries": 2,
-  "legacy_terminal_deliveries": 0
+  "legacy_terminal_deliveries": 1
 }

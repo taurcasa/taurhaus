@@ -1,0 +1,27 @@
+Mesh 3015cb0 src/journal/transition.rs:250-275 (read-only source inspection)
+    crate::journal_storage::fault(super::Fault::DirectorySync, injected)?;
+    let rollback = state_dir.join("delivery/rollback.json");
+    put(&rollback, &dispositions)?;
+    config.extra.insert(
+        "delivery_rollback_sha256".into(),
+        json!(hash(&bytes(&dispositions))),
+    );
+    config
+        .extra
+        .insert("messaging_downgrade_sha256".into(), json!(digest));
+    config.extra.insert("messaging_format".into(), json!(0));
+    config
+        .extra
+        .insert("delivery_owner".into(), json!("members"));
+    let guard = crate::lock::FlockGuard::acquire(&paths.config())?;
+    guard.write_contents(&serde_json::to_string_pretty(&config)?)?;
+    sync_dir(&paths.team_dir())?;
+    crate::journal_storage::fault(super::Fault::ManifestSync, injected)?;
+    marker["transition"] = json!("complete");
+    put(&marker_path, &marker)?;
+    crate::journal_storage::fault(super::Fault::SegmentSync, injected)?;
+    config.extra.remove("minimum_writer");
+    guard.write_contents(&serde_json::to_string_pretty(&config)?)?;
+    sync_dir(&paths.team_dir())?;
+    Ok(report)
+}

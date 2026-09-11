@@ -1,0 +1,6 @@
+{
+  "step": 3,
+  "outcome": "FAIL",
+  "classification": "mesh",
+  "reason": "required resulting format 1 not observed"
+}

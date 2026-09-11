@@ -5,7 +5,7 @@
   "attachmentGeneration": 1,
   "cli_tool": "codex",
   "contextGeneration": "0",
-  "daemon_pid": null,
+  "daemon_pid": 3205,
   "delivery_lease": null,
   "harness": "codex",
   "health": "healthy",
@@ -13,7 +13,7 @@
   "hostInputAbandonedAt": null,
   "hostInputUnknown": false,
   "jsonl_path": "/tmp/th-l6-5f67mhpk/codex/sessions/2026/09/11/rollout-2026-09-11T06-15-07-01a08ead-284b-7e51-8b27-04e7c508222a.jsonl",
-  "last_seen_at": "2026-09-11T04:15:11.445912569Z",
+  "last_seen_at": "2026-09-11T04:15:41.562964669Z",
   "launchRoot": {
     "claudeDir": "/tmp/th-l6-5f67mhpk/claude",
     "rootAuthorityRevision": 0,
