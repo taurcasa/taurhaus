@@ -1,7 +1,9 @@
 {
+  "legacy_cut": "cb0bed3832ca76747fa6e2abc92c822186df83383421c438a890e8b3ddd471fa",
   "root_identity": [
     2096,
     1715022
   ],
-  "team_id": "a331dfb18b101ce9accde0cfd02e3a35103b3ffad12ab658c50a5853a544a3a6"
+  "team_id": "a331dfb18b101ce9accde0cfd02e3a35103b3ffad12ab658c50a5853a544a3a6",
+  "transition": "complete"
 }

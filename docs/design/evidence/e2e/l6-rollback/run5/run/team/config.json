@@ -46,9 +46,11 @@
     }
   ],
   "created_at": "2026-09-11T05:16:00.258Z",
-  "delivery_owner": "team",
+  "delivery_owner": "members",
+  "delivery_rollback_sha256": "dedf955eb3be868841d9e388d6a1efaed5143145d43771eb0d5b1c31c77639b2",
   "messaging_activation": "disposable-mesh-only",
-  "messaging_format": 2,
+  "messaging_downgrade_sha256": "cb0bed3832ca76747fa6e2abc92c822186df83383421c438a890e8b3ddd471fa",
+  "messaging_format": 0,
   "messaging_policy": {
     "approved_by": "taurhaus-operator",
     "archive_access": "captured-audience",
@@ -64,7 +66,6 @@
     "synthetic_disposable": true,
     "task_horizon_days": 30
   },
-  "minimum_writer": "mesh-journal/2",
   "schema_version": 1,
   "team_incarnation_id": "a331dfb18b101ce9accde0cfd02e3a35103b3ffad12ab658c50a5853a544a3a6"
 }

@@ -1,0 +1,32 @@
+{
+  "dispositions": [
+    {
+      "delivery_id": "8bf14298-d2e8-492a-8c19-6ef5723e437a",
+      "recipient": "lead",
+      "stage": "native_enqueued"
+    },
+    {
+      "delivery_id": "ff74e55d-e7c8-4c31-b0ec-2bc9de7dd6a3",
+      "recipient": "alpha",
+      "stage": "consumed_by_read"
+    },
+    {
+      "delivery_id": "868fcd4b-2097-4738-aaf6-7b6f77e5bb36",
+      "recipient": "alpha",
+      "stage": "consumed_by_read"
+    },
+    {
+      "delivery_id": "386f2d46-2826-48bc-9358-a43ebdee573e",
+      "recipient": "alpha",
+      "stage": "pending"
+    }
+  ],
+  "history": "retained; no expiry or uptake inferred",
+  "log_epoch": "5fc00386-b47f-4b42-a41f-95065830260b",
+  "projection_hashes": {
+    "alpha": "2c1b33b6b1beba1be31027ca488b852678a05f815410fa33d1991067a6da518c",
+    "lead": "f96e8f542a60274969f1bee3fcd347ea9d242f5650b79a087c1ff4e89f0418e6"
+  },
+  "sequence": 12,
+  "team_id": "a331dfb18b101ce9accde0cfd02e3a35103b3ffad12ab658c50a5853a544a3a6"
+}

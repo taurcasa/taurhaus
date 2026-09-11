@@ -1,4 +1,4 @@
-# L6 rollback — run5 IN PROGRESS (step 1 PASS)
+# L6 rollback — run5 IN PROGRESS (step 2 PASS)
 
 ## Run3 result (2026-09-11)
 
@@ -946,3 +946,5 @@ that limitation. The overall workflow is **incomplete**, not PASS. No runtime
 step was green, so there are no numbered runtime PASS commits for run4.
 
 Run5 step 1: PASS (S-runtime); see run5/run/step1-outcome.json.
+
+Run5 step 2: PASS (S-runtime); see run5/run/step2-outcome.json.
