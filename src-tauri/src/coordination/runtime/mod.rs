@@ -430,8 +430,6 @@ pub fn quarantine_foreign_member(
         record.pane_id = None;
         record.pane_pid = None;
         record.pane_start_time = None;
-        record.session_id = None;
-        record.jsonl_path = None;
         record.daemon_pid = None;
     })?;
 

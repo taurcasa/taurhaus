@@ -3995,16 +3995,105 @@ fn load_resume_member_state_preserves_role_template_context() {
 }
 
 #[test]
+fn rollback_resume_with_deleted_home_preserves_thread_fence() {
+    // Regression: 06f76b01 excluded app_server but not host_rollback from the
+    // missing-rollout fallback, losing the thread before rollback could resume it.
+    for detected in ["replacement-thread", "owned-thread"] {
+        let tmp = TempDir::new().unwrap();
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let mut orchestrator =
+            new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime.clone());
+        orchestrator.create_team("team", None).unwrap();
+        orchestrator
+            .add_member(
+                "team",
+                member(
+                    "seat",
+                    MemberRole::Lead,
+                    CliTool::Codex,
+                    tmp.path().to_str().unwrap(),
+                ),
+            )
+            .unwrap();
+        let home = tmp.path().join("deleted-home");
+        fs::create_dir(&home).unwrap();
+        let rollout = home.join("rollout.jsonl");
+        fs::write(&rollout, "").unwrap();
+        fs::remove_dir_all(&home).unwrap();
+        let mut record = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
+        record.health = HealthState::SessionDead;
+        record.session_id = Some("owned-thread".into());
+        record.jsonl_path = Some(rollout);
+        record.host_rollback = Some(serde_json::json!({"attachment": {
+            "contract": 1, "socketPath": tmp.path().join("stopped.sock"),
+            "threadId": "owned-thread", "memberId": "seat", "accountRoot": tmp.path(),
+            "processId": 0, "processStart": "0", "hostGeneration": "old",
+            "build": "fixture", "host": "fixture", "configuration": "fixture",
+            "trust": "fixture", "transport": "unix", "state": "stopped"
+        }}));
+        assert!(record.app_server.is_none());
+        MemberRuntimeStore::save(tmp.path(), "team", "seat", &record).unwrap();
+        runtime.set_detected_runtime_session("test-pane-1", CliTool::Codex, Some(detected), None);
+        let mut commands = CliCommandSettings::default();
+        commands
+            .account_selector_dirs
+            .insert("CODEX_HOME".into(), tmp.path().into());
+        let report = orchestrator
+            .resume_member_with_cli_commands(
+                &ResumeMemberRequest {
+                    team_name: "team".into(),
+                    member_name: "seat".into(),
+                    reasoning_effort_override: None,
+                },
+                &commands,
+            )
+            .unwrap();
+        assert!(runtime.calls().iter().any(|call| matches!(call,
+            RuntimeCall::SendKeys { keys, .. } if keys.contains("resume") && keys.contains("owned-thread")
+        )), "rollback must launch the recorded thread: {report:?}");
+        if detected == "owned-thread" {
+            assert!(report.resumed, "{report:?}");
+        } else {
+            assert!(!report.resumed);
+            assert!(
+                report
+                    .message
+                    .contains("rollback did not recover the named thread"),
+                "{report:?}"
+            );
+            assert!(runtime.calls().iter().any(|call| matches!(call,
+                RuntimeCall::KillPane { pane_id } if pane_id == "test-pane-1"
+            )));
+        }
+        assert_eq!(
+            MemberRuntimeStore::load(tmp.path(), "team", "seat")
+                .unwrap()
+                .session_id
+                .as_deref(),
+            Some("owned-thread")
+        );
+    }
+}
+
+#[test]
 fn operator_resume_renders_recorded_session_for_capturing_harnesses() {
     // Regression: 4994b243 limited recorded-session resume to effort switches;
     // e2e lane 4 run 7 observed an operator resume lose the tmux conversation.
+    let _guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+    let logs = TempDir::new().unwrap();
+    let log_path = logs.path().join("resume.jsonl");
+    let sink = taurhaus_lib::logging::LogFileState::new(log_path.clone()).unwrap();
+    taurhaus_lib::logging::install_global_sink(&sink);
     for tool in [CliTool::Codex, CliTool::Claude, CliTool::Grok, CliTool::Agy] {
-        for (session_id, effort) in [
-            (Some("  recorded-session  "), None),
-            (None, None),
-            (Some(""), None),
-            (Some(" \t "), None),
-            (Some("recorded-session"), Some("high")),
+        for (session_id, effort, rollout_state) in [
+            (Some("  recorded-session  "), None, "present"),
+            (Some("recorded-session"), None, "deleted_home"),
+            (None, None, "present"),
+            (Some(""), None, "present"),
+            (Some(" \t "), None, "present"),
+            (Some("recorded-session"), Some("high"), "present"),
+            (Some("recorded-session"), None, "missing_file"),
+            (Some("recorded-session"), None, "compressed"),
         ] {
             let tmp = TempDir::new().unwrap();
             let runtime = Arc::new(RecordingCoordinationRuntime::default());
@@ -4020,9 +4109,29 @@ fn operator_resume_renders_recorded_session_for_capturing_harnesses() {
             let mut record =
                 MemberRuntimeStore::load(tmp.path(), "resume-recorded", "seat").unwrap();
             record.session_id = session_id.map(str::to_string);
-            record.health = HealthState::SessionDead;
+            // Regression: 106f06c7 resumed missing Codex rollouts without fallback.
+            // Regression: 06f76b01 discarded ids when Codex compressed or relocated a rollout.
+            let home = tmp.path().join("codex-home");
+            fs::create_dir(&home).unwrap();
+            let rollout = home.join("rollout.jsonl");
+            fs::write(&rollout, "").unwrap();
+            match rollout_state {
+                "deleted_home" => fs::remove_dir_all(&home).unwrap(),
+                "missing_file" => fs::remove_file(&rollout).unwrap(),
+                "compressed" => fs::rename(&rollout, home.join("rollout.jsonl.zst")).unwrap(),
+                _ => {}
+            }
+            record.jsonl_path = Some(rollout);
+            // Regression: 39eeb33a / e2e lane 4 run 9 (106f06c7): the
+            // supported stop's offline reconciliation discarded the conversation.
+            record.health = HealthState::Healthy;
+            record.pane_id = Some("%stopped".into());
             MemberRuntimeStore::save(tmp.path(), "resume-recorded", "seat", &record).unwrap();
 
+            runtime.set_pane_exists("%stopped", false);
+            orchestrator
+                .reconcile_team_liveness("resume-recorded")
+                .unwrap();
             let report = orchestrator
                 .resume_member_with_cli_commands(
                     &ResumeMemberRequest {
@@ -4052,7 +4161,9 @@ fn operator_resume_renders_recorded_session_for_capturing_harnesses() {
                 CliTool::Agy => None,
                 _ => unreachable!(),
             };
-            let resumes = expected.is_some() && session_id.is_some_and(|id| !id.trim().is_empty());
+            let resumes = expected.is_some()
+                && session_id.is_some_and(|id| !id.trim().is_empty())
+                && !(rollout_state == "deleted_home" && tool == CliTool::Codex);
             if resumes {
                 assert!(launch.contains(expected.unwrap()), "{tool}: {launch}");
             } else {
@@ -4075,8 +4186,46 @@ fn operator_resume_renders_recorded_session_for_capturing_harnesses() {
                     MemberRuntimeStore::load(tmp.path(), "resume-recorded", "seat").unwrap();
                 assert_eq!(updated.applied_effort.as_deref(), Some(effort), "{launch}");
             }
+            if effort.is_none() {
+                MemberRuntimeStore::update(tmp.path(), "resume-recorded", "seat", |r| {
+                    r.health = HealthState::Healthy;
+                    r.pane_id = record.pane_id.clone();
+                    r.session_id = record.session_id.clone();
+                    r.jsonl_path = record.jsonl_path.clone();
+                })
+                .unwrap();
+                // Exercise team resume from the same supported offline stop as member resume.
+                orchestrator
+                    .reconcile_team_liveness("resume-recorded")
+                    .unwrap();
+                assert_eq!(
+                    MemberRuntimeStore::load(tmp.path(), "resume-recorded", "seat")
+                        .unwrap()
+                        .health,
+                    HealthState::SessionDead
+                );
+                let offset = runtime.calls().len();
+                let report = orchestrator
+                    .resume_team_with_cli_commands_and_layout(
+                        &crate::coordination::requests::ResumeTeamRequest {
+                            team_name: "resume-recorded".into(),
+                        },
+                        &CliCommandSettings::default(),
+                        "new_window",
+                    )
+                    .unwrap();
+                assert!(report.resumed, "{report:?}");
+                assert!(runtime.calls()[offset..].iter().any(|call| matches!(
+                    call, RuntimeCall::SendKeys { keys, .. } if keys == launch
+                )));
+            }
         }
     }
+    sink.flush_for_test().unwrap();
+    assert!(fs::read_to_string(log_path).unwrap().lines().any(|line| {
+        let event: serde_json::Value = serde_json::from_str(line).unwrap();
+        event["event"] == "launch.resume.fallback" && event["level"] == "WARN"
+    }));
 }
 
 #[test]
@@ -5749,12 +5898,9 @@ fn effort_team(
     cli_tool: CliTool,
     launch_effort: Option<&str>,
 ) -> CoordinationOrchestrator {
-    runtime.set_detected_runtime_session(
-        "%21",
-        cli_tool,
-        Some("session-effort"),
-        Some("/tmp/effort.jsonl"),
-    );
+    let rollout = tmp.path().join("effort.jsonl");
+    fs::write(&rollout, "").unwrap();
+    runtime.set_detected_runtime_session("%21", cli_tool, Some("session-effort"), rollout.to_str());
     runtime.set_pane_identity("%21", Some(2021), Some(1_755_000_021));
     let mut orchestrator = new_orchestrator(tmp, Arc::new(FakeBackend::default()), runtime);
     orchestrator
@@ -6524,8 +6670,8 @@ fn adopting_a_session_after_an_offline_pass_clears_applied_effort() {
         "the migration is irreversible",
     );
 
-    // The member's session exits: liveness sees a bare shell and clears the
-    // session id while the level it applied stays recorded.
+    // The member's session exits: liveness sees a bare shell and retains the
+    // pane binding, conversation and its applied level.
     runtime.set_pane_current_command("%21", Some("zsh"));
     orchestrator
         .reconcile_team_liveness("effort-team")
@@ -6533,9 +6679,10 @@ fn adopting_a_session_after_an_offline_pass_clears_applied_effort() {
     let offline =
         MemberRuntimeStore::load(&teams_dir, "effort-team", "builder").expect("runtime record");
     assert_eq!(offline.health, HealthState::SessionDead);
-    assert_eq!(offline.session_id, None);
+    assert!(offline.session_id.is_some());
 
     // The operator restarts `codex` by hand in the same pane.
+    // Regression: a2e07d0c dropped the pane binding, making hand-restart revival unreachable.
     runtime.set_pane_current_command("%21", Some("codex"));
     runtime.set_detected_runtime_session(
         "%21",
@@ -6605,7 +6752,8 @@ fn a_hand_restart_seen_before_its_identity_still_clears_applied_effort() {
         "the migration is irreversible",
     );
 
-    // Session exits; liveness marks the record dead and clears the id.
+    // Regression: 39eeb33a erased stopped ids, masking stale effort on revival.
+    // Session exits; liveness retains the pane binding and the id.
     runtime.set_pane_current_command("%21", Some("zsh"));
     orchestrator
         .reconcile_team_liveness("effort-team")
@@ -6613,6 +6761,7 @@ fn a_hand_restart_seen_before_its_identity_still_clears_applied_effort() {
 
     // Pass 1: the hand-restarted CLI is visible, but its identity is not yet
     // detectable (no registry entry written) — detection returns no id.
+    // Regression: a2e07d0c dropped the pane binding, making hand-restart revival unreachable.
     runtime.set_pane_current_command("%21", Some("codex"));
     runtime.set_detected_runtime_session("%21", CliTool::Codex, None, None);
     orchestrator

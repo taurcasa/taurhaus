@@ -203,6 +203,8 @@ pub struct CliToolSpec {
     /// Calibrated fallback when the harness supplies no current activity evidence.
     pub process_active: fn(u32) -> bool,
     pub tool: CliTool,
+    /// A known missing rollout must fall back to a fresh managed launch.
+    pub resume_requires_rollout: bool,
     pub name: &'static str,
     pub aliases: &'static [&'static str],
     pub argv_signatures: &'static [&'static str],
@@ -260,6 +262,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
     [
         CliToolSpec {
             tool: CliTool::Claude,
+            resume_requires_rollout: false,
             process_active: crate::session_scanner::proc_io::is_process_active_hysteresis,
             name: "claude",
             aliases: &["claude", "claude_native"],
@@ -328,6 +331,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
         },
         CliToolSpec {
             tool: CliTool::Codex,
+            resume_requires_rollout: true,
             process_active: crate::session_scanner::proc_io::is_codex_process_active_hysteresis,
             name: "codex",
             aliases: &["codex", "mesh", "mesh_bridged"],
@@ -401,6 +405,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
         },
         CliToolSpec {
             tool: CliTool::Agy,
+            resume_requires_rollout: false,
             process_active: crate::session_scanner::proc_io::is_process_active_hysteresis,
             name: "agy",
             aliases: &["agy", "antigravity"],
@@ -500,6 +505,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
         },
         CliToolSpec {
             tool: CliTool::Grok,
+            resume_requires_rollout: false,
             process_active: crate::session_scanner::proc_io::is_process_active_hysteresis,
             name: "grok",
             aliases: &["grok"],
@@ -654,6 +660,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
 
 static UNKNOWN_TOOL_SPEC: LazyLock<CliToolSpec> = LazyLock::new(|| CliToolSpec {
     tool: CliTool::Unknown,
+    resume_requires_rollout: false,
     process_active: crate::session_scanner::proc_io::is_process_active_hysteresis,
     name: "unknown",
     aliases: &[],
@@ -953,6 +960,23 @@ fn is_short_flag(flag: &str) -> bool {
 }
 
 impl CliToolSpec {
+    /// Only a missing rollout directory proves the saved home was removed.
+    /// Codex owns compressed/relocated rollout resolution within an existing home.
+    pub fn missing_resume_rollout(&self, path: Option<&std::path::Path>) -> bool {
+        self.resume_requires_rollout
+            && path.is_some_and(|path| {
+                let mut compressed = path.as_os_str().to_os_string();
+                compressed.push(".zst");
+                matches!(path.try_exists(), Ok(false))
+                    // Defensive: preserve a sibling observed before a concurrent
+                    // parent removal; filesystem probes are not one snapshot.
+                    && matches!(std::path::Path::new(&compressed).try_exists(), Ok(false))
+                    && path
+                        .parent()
+                        .is_some_and(|parent| matches!(parent.try_exists(), Ok(false)))
+            })
+    }
+
     /// Account provider for this tool. Provider rollout follows selector
     /// declaration, so a declared selector may temporarily use the floor.
     pub fn account_provider(

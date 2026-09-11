@@ -971,6 +971,7 @@ mod tests {
             "team",
             "seat",
             &crate::coordination::stores::MemberRuntimeRecord {
+                health: crate::coordination::domain::HealthState::Healthy,
                 pane_id: Some("%1".into()),
                 ..Default::default()
             },

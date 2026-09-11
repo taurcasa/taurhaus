@@ -77,17 +77,13 @@ pub(super) fn team_is_self_heal_candidate(
         record.health != HealthState::SessionDead
             || record.daemon_pid.is_some()
             || record.pane_id.is_some()
-            || record.session_id.is_some()
-            || record.attached_at.is_some()
     })
 }
 
 pub(super) fn team_should_ensure_daemon(runtime_records: &[(String, MemberRuntimeRecord)]) -> bool {
-    runtime_records.iter().any(|(_, record)| {
-        record.health != HealthState::SessionDead
-            || record.daemon_pid.is_some()
-            || record.session_id.is_some()
-    })
+    runtime_records
+        .iter()
+        .any(|(_, record)| record.health != HealthState::SessionDead || record.daemon_pid.is_some())
 }
 
 pub(super) fn ordered_members_for_team_resume(members: &[Member]) -> Vec<Member> {
@@ -112,4 +108,25 @@ pub(super) fn ordered_members_for_team_resume(members: &[Member]) -> Vec<Member>
             .cloned(),
     );
     ordered
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn retained_dead_identity_does_not_restart_team() {
+        // Regression: 39eeb33a erased stopped ids, masking identity-as-liveness checks.
+        let records = vec![(
+            "seat".into(),
+            MemberRuntimeRecord {
+                health: HealthState::SessionDead,
+                session_id: Some("retained".into()),
+                attached_at: Some(chrono::Utc::now()),
+                ..Default::default()
+            },
+        )];
+        assert!(!team_should_ensure_daemon(&records));
+        assert!(!team_is_self_heal_candidate(&records));
+    }
 }
