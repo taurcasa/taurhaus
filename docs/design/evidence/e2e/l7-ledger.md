@@ -1,3 +1,13 @@
+# Run7 — IN PROGRESS
+
+Fresh seventh trial on Taurhaus `dabf846f` ancestry and Mesh `588e4cf`.
+The committed six-step controller will run once; run7 raw evidence is retained
+under `l7-ledger/run7/`. No product changes or harness tests.
+
+---
+
+## Historical run6
+
 # FAIL — Run6: step 2 assignment uptake failed on the verified #178 daemon
 
 Run6 used the unchanged committed six-step controller on a fresh scratch root.

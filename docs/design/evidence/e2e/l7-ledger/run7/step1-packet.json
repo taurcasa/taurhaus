@@ -1,0 +1,14 @@
+{
+  "project": "l7-project",
+  "repo_id": "l7-repo",
+  "wave": "l7",
+  "packet_revision": "frozen-1",
+  "scopes": [
+    {
+      "scope": "S7",
+      "owner": "alpha",
+      "task_id": "1",
+      "assignment_id": "c2760346-c20e-4728-bc79-f41697b7b0c6"
+    }
+  ]
+}
