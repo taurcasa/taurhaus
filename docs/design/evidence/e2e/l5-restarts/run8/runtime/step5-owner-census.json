@@ -1,0 +1,14 @@
+{
+  "outcome": "PASS",
+  "classification": "runtime",
+  "reason": "one owner per passive sample across both epochs; bounded evidence only",
+  "samples": 93,
+  "max_simultaneous_observed_owners": 1,
+  "window_start": 1789095237.2448022,
+  "window_end": 1789095282.6027288,
+  "max_gap_seconds": 0.5605688095092773,
+  "old_pid": 755964,
+  "new_pid": 779904,
+  "old_gone_observed_at": 1789095237.9934611,
+  "first_delivery_at": 1789095278.343459
+}
