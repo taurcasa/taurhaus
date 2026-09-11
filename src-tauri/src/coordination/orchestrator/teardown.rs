@@ -539,12 +539,13 @@ impl CoordinationOrchestrator {
             ));
         }
         let operator_name = self.team_daemon_operator_name(team_name)?;
-        if let Some(reason) = self.team_daemon_control_skip_reason(team_name, &operator_name)? {
+        if let Some(reason) = self.team_daemon_skip_reason(team_name, &operator_name)? {
             self.emit_team_daemon_skipped_once(team_name, &operator_name, reason);
             let detail = match reason {
-                DELIVERY_OWNED_BY_MEMBERS_REASON | DELIVERY_OWNER_UNSET_REASON => {
-                    reason.to_string()
-                }
+                OWNER_STOPPED_BY_OPERATOR_REASON
+                | ROLLBACK_PENDING_REASON
+                | DELIVERY_OWNED_BY_MEMBERS_REASON
+                | DELIVERY_OWNER_UNSET_REASON => reason.to_string(),
                 MISSING_LEAD_CREDENTIAL_REASON => {
                     format!("lead control credential is missing for '{operator_name}'")
                 }

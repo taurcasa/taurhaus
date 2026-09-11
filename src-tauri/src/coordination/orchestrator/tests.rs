@@ -6387,7 +6387,7 @@ fn resume_seats_honours_owner_stop_without_blocking_explicit_owner_start() {
     assert_eq!(spawns(), 0);
     orchestrator.ensure_team_daemon_after_initialize(&initialize_request(team));
     orchestrator.ensure_team_daemon_after_add_agent(&add_agent_request(team, "new", "claude"));
-    assert_eq!(spawns(), 2);
+    assert_eq!(spawns(), 0);
     assert!(marker.is_dir());
 }
 
@@ -6436,4 +6436,53 @@ fn resume_seats_honour_a_pending_rollback_handoff() {
             .count(),
         0
     );
+}
+
+#[test]
+fn add_agent_wrapper_honours_owner_markers_once_per_episode() {
+    // Regression: ea79b03e retained the control-only gate after add-agent, restarting stopped owners.
+    let _guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+    let tmp = TempDir::new().unwrap();
+    let log_path = tmp.path().join("wrapper-events.jsonl");
+    let sink = taurhaus_lib::logging::LogFileState::new(log_path.clone()).unwrap();
+    taurhaus_lib::logging::install_global_sink(&sink);
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    let team = "add-marker";
+    create_resumable_team(&mut orchestrator, &tmp, team, CliTool::Claude);
+    MemberRuntimeStore::update(tmp.path(), team, "team-lead", |r| {
+        r.health = HealthState::Healthy
+    })
+    .unwrap();
+    for (marker, reason) in [
+        ("owner-stopped.json", "owner_stopped_by_operator"),
+        ("handoff.json", "rollback_pending"),
+    ] {
+        let path = tmp.path().join(team).join("state/delivery").join(marker);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "{}").unwrap();
+        for _ in 0..2 {
+            orchestrator
+                .ensure_team_daemon_after_add_agent(&add_agent_request(team, "new", "claude"));
+        }
+        assert!(!runtime
+            .calls()
+            .iter()
+            .any(|c| matches!(c, RuntimeCall::SpawnTeamDaemon { .. })));
+        sink.flush_for_test().unwrap();
+        let events: Vec<serde_json::Value> = std::fs::read_to_string(&log_path)
+            .unwrap()
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
+        assert_eq!(
+            events
+                .iter()
+                .filter(|e| e["event"] == "coordination.team_daemon.skipped"
+                    && e["team_name"] == team
+                    && e["reason"] == reason)
+                .count(),
+            1
+        );
+        std::fs::remove_file(path).unwrap();
+    }
 }
