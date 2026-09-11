@@ -1,0 +1,145 @@
+{
+  "accepted": {
+    "message_id": "db73829e-a539-4205-854d-d2c3eb93cd2a",
+    "sequence": 16,
+    "status": "accepted",
+    "projection": "pending",
+    "delivery_targets": [
+      {
+        "delivery_id": "b473240a-fe6b-4b6f-83dd-4a3335e49ae7",
+        "legacy_acceptance": "unknown",
+        "legacy_id": "05284112-ecd6-4c72-9cdd-e5a70b0099c6",
+        "member_id": "alpha@l4-resume",
+        "read_audience": [
+          {
+            "member_id": "2f728aad-f432-44b5-ae51-02b05b2571a5",
+            "name": "lead"
+          },
+          {
+            "member_id": "alpha@l4-resume",
+            "name": "alpha"
+          }
+        ],
+        "recipient": "alpha",
+        "source_path": "inboxes/alpha.json"
+      }
+    ]
+  },
+  "journal": [
+    {
+      "checksum": "0b96507f3dacd0e5f67e516c53c880d08e3a3480561a4b0863d42d78c7724f74",
+      "committed_at": "2026-09-11T07:12:29.017573660+00:00",
+      "event_id": "992a7651-79ed-4a67-b30a-f691057369a7",
+      "event_type": "message_accepted",
+      "log_epoch": "4d01875c-4e87-4daf-8ec9-1e65987d42e1",
+      "payload": {
+        "acceptance": "canonical",
+        "archive_outcome": "retained",
+        "audience_proof": {
+          "kind": "captured-members",
+          "members": [
+            {
+              "member_id": "2f728aad-f432-44b5-ae51-02b05b2571a5",
+              "name": "lead"
+            },
+            {
+              "member_id": "alpha@l4-resume",
+              "name": "alpha"
+            }
+          ],
+          "team_id": "7d7450a4f6d88d6b91a3b52f13e8d5845f6f139c220d4af726d790d7b0dea3a4"
+        },
+        "author": {
+          "member_id": "2f728aad-f432-44b5-ae51-02b05b2571a5",
+          "name": "lead",
+          "verified": true
+        },
+        "body": "ACTION REQUIRED: Reply exactly L4_pending_alpha_bc5a74. No tools are needed for this marker.",
+        "body_bytes": 92,
+        "body_format": "text/plain",
+        "body_hash": "f247c1bf906c4c288db829704a6783d1a5fe4a510c438a44b14a5df728803cd8",
+        "conversation_id": "164da5f4f1988ac2e2e1adb51e107fe458e9381507a63f6b1e79a4c40d67d982",
+        "conversation_kind": "dm",
+        "correction_reason": null,
+        "delivery_targets": [
+          {
+            "delivery_id": "b473240a-fe6b-4b6f-83dd-4a3335e49ae7",
+            "legacy_acceptance": "unknown",
+            "legacy_id": "05284112-ecd6-4c72-9cdd-e5a70b0099c6",
+            "member_id": "alpha@l4-resume",
+            "read_audience": [
+              {
+                "member_id": "2f728aad-f432-44b5-ae51-02b05b2571a5",
+                "name": "lead"
+              },
+              {
+                "member_id": "alpha@l4-resume",
+                "name": "alpha"
+              }
+            ],
+            "recipient": "alpha",
+            "source_path": "inboxes/alpha.json"
+          }
+        ],
+        "dispatch_decision": {
+          "expectation": "action",
+          "policy_revision": 1,
+          "provenance": "prefix",
+          "wake_eligible": true
+        },
+        "envelope": {
+          "from": "lead",
+          "id": "05284112-ecd6-4c72-9cdd-e5a70b0099c6",
+          "read": false,
+          "summary": "L4 pending marker",
+          "text": null,
+          "timestamp": "2026-09-11T07:12:29.011Z"
+        },
+        "idempotency_key": "05284112-ecd6-4c72-9cdd-e5a70b0099c6",
+        "legacy_acceptance": "unknown",
+        "link": null,
+        "message_id": "db73829e-a539-4205-854d-d2c3eb93cd2a",
+        "origin": "authored",
+        "producer": "mesh-send:2f728aad-f432-44b5-ae51-02b05b2571a5",
+        "read_audience": [
+          {
+            "member_id": "2f728aad-f432-44b5-ae51-02b05b2571a5",
+            "name": "lead"
+          },
+          {
+            "member_id": "alpha@l4-resume",
+            "name": "alpha"
+          }
+        ],
+        "reply_to_message_id": null,
+        "request_digest": "d648e74a03d8bbbe0b9ee261ef8960aeddb139151790376b4f243159e0fe1ae3",
+        "response_expectation": {
+          "basis": "producer",
+          "expectation": "action",
+          "kind": "action",
+          "policy_revision": 1,
+          "provenance": "prefix",
+          "wake_eligible": true
+        },
+        "retention_class": "dm",
+        "source_authority": null,
+        "source_event_refs": [],
+        "summary": "L4 pending marker",
+        "supersedes_message_ids": [],
+        "task_links": [],
+        "visibility_policy_id": "captured-members",
+        "visibility_policy_revision": 1,
+        "wake_priority": "urgent"
+      },
+      "schema_version": 1,
+      "sequence": 16,
+      "team_id": "7d7450a4f6d88d6b91a3b52f13e8d5845f6f139c220d4af726d790d7b0dea3a4"
+    }
+  ],
+  "health": {
+    "member": "alpha",
+    "last_defer_reason": "IO error: delivery: pending: runtime session dead"
+  },
+  "status_line": "[mesh] delivery alpha: root=/tmp/th-l4-run13-y3brga1b/claude incarnation=7d7450a4f6d88d6b91a3b52f13e8d5845f6f139c220d4af726d790d7b0dea3a4 epoch=2 heartbeat=2026-09-11T07:12:28.647279853+00:00 pending_since=none pending_age_secs=unknown stuck=false failures=0 completed=2 error=none deferred=IO error: delivery: pending: runtime session dead stale=false",
+  "backlogged": true
+}

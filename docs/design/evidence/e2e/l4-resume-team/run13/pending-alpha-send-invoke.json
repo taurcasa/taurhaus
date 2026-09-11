@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "tmux",
+    "new-window",
+    "-d",
+    "-t",
+    "taurhaus",
+    "/bin/bash -c '/tmp/th-l4-run13-y3brga1b/home/.local/bin/mesh send alpha '\"'\"'ACTION REQUIRED: Reply exactly L4_pending_alpha_bc5a74. No tools are needed for this marker.'\"'\"' --summary '\"'\"'L4 pending marker'\"'\"' --claude-dir /tmp/th-l4-run13-y3brga1b/claude --team l4-resume --name lead >/tmp/th-l4-run13-y3brga1b/a7481582.out 2>&1; echo $? >/tmp/th-l4-run13-y3brga1b/a7481582.status'"
+  ],
+  "exit": 0,
+  "output": ""
+}
