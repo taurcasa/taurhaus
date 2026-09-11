@@ -190,7 +190,7 @@ impl HostedMembers {
         }
         if before.app_server.is_none() && (before.pane_id.is_some() || before.session_id.is_some())
         {
-            return Err("app_server_switch_requires_5b_recoverable_relaunch_packet".into());
+            return Err("pin Codex to the verified build, or remove the seat and re-add it with tmux delivery".into());
         }
         if let Some(previous) = &before.app_server {
             if previous.account_root != launch.account_root
@@ -2578,6 +2578,23 @@ if mode == 'twice' or not previous:
             .is_none());
         }
     }
+    #[test]
+    fn hosted_switch_refusal_gives_operator_recovery_steps() {
+        let tmp = tempfile::tempdir().unwrap();
+        let registry = seat(tmp.path());
+        MemberRuntimeStore::update(tmp.path(), "team", "seat", |r| {
+            r.pane_id = Some("%1".into())
+        })
+        .unwrap();
+        let error = HostedMembers::default()
+            .launch(&registry, "team", "seat", &fixture(tmp.path()))
+            .unwrap_err();
+        assert_eq!(
+            error,
+            "pin Codex to the verified build, or remove the seat and re-add it with tmux delivery"
+        );
+    }
+
     #[test]
     fn hosted_launch_requires_codex_capability_and_records_account_selection() {
         let tmp = tempfile::tempdir().unwrap();

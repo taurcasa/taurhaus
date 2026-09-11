@@ -404,6 +404,21 @@ fn with_hosted_delivery(
         .unwrap_or(&status.bundled_contract);
     status.hosted_delivery_supported =
         hosted_delivery_supported(&contract.version, codex, capabilities);
+    let verified = crate::session_scanner::launch::HostedDescriptor::codex().build;
+    status.hosted_delivery_reason = if status.hosted_delivery_supported {
+        None
+    } else {
+        Some(match codex {
+            Some(installed) if installed != verified => {
+                format!("installed Codex {installed} is not the verified {verified}")
+            }
+            None => format!("installed Codex version is unavailable; verified build is {verified}"),
+            _ if !canonical_messaging_supported(&contract.version) => {
+                "Native delivery requires Mesh 0.3.0 or newer".into()
+            }
+            _ => "Mesh has no enabled descriptor for the verified Codex build".into(),
+        })
+    };
     status
 }
 
@@ -468,6 +483,7 @@ fn mesh_status_not_installed(
 ) -> MeshInstallStatus {
     MeshInstallStatus {
         hosted_delivery_supported: false,
+        hosted_delivery_reason: None,
         // Deliberate bundled fallback: no readable installed contract exists yet.
         canonical_messaging_supported: canonical_messaging_supported(&bundled_contract.version),
         installed: false,
@@ -491,6 +507,7 @@ fn mesh_status_from_contract(
 ) -> MeshInstallStatus {
     MeshInstallStatus {
         hosted_delivery_supported: false,
+        hosted_delivery_reason: None,
         canonical_messaging_supported: canonical_messaging_supported(
             &installed_contract
                 .as_ref()
@@ -524,6 +541,7 @@ fn mesh_status_unrunnable(
 ) -> MeshInstallStatus {
     MeshInstallStatus {
         hosted_delivery_supported: false,
+        hosted_delivery_reason: None,
         // Deliberate bundled fallback: no readable installed contract exists yet.
         canonical_messaging_supported: canonical_messaging_supported(&bundled_contract.version),
         installed: false,
@@ -1965,6 +1983,7 @@ exit 0
     fn mesh_install_required_when_binary_missing() {
         let status = MeshInstallStatus {
             hosted_delivery_supported: false,
+            hosted_delivery_reason: None,
             canonical_messaging_supported: false,
             installed: false,
             version: None,
@@ -1989,6 +2008,7 @@ exit 0
     fn mesh_install_required_when_contract_drifts() {
         let status = MeshInstallStatus {
             hosted_delivery_supported: false,
+            hosted_delivery_reason: None,
             canonical_messaging_supported: false,
             installed: true,
             version: Some("0.2.12".to_string()),
@@ -2023,6 +2043,7 @@ exit 0
     fn mesh_install_required_skips_when_environment_unavailable() {
         let status = MeshInstallStatus {
             hosted_delivery_supported: false,
+            hosted_delivery_reason: None,
             canonical_messaging_supported: false,
             installed: false,
             version: None,

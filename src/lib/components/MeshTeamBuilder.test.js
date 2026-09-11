@@ -1284,3 +1284,15 @@ it.each([true, false])('derives the displayed delivery and retains choices with 
     }
   } finally { configureToolRegistry(null) }
 })
+
+it('explains the disabled native delivery option from the mesh status', async () => {
+  configureToolRegistry(FALLBACK_TOOLS.map(tool => ({ ...tool, hostingSupported: tool.id === 'codex' })))
+  try {
+    const reason = 'installed Codex 0.154.0 is not the verified 0.153.4'
+    renderBuilder({ teamConfig: sampleRosterConfig(), meshStatus: { canonical_messaging_supported: true, hosted_delivery_supported: false, hosted_delivery_reason: reason } })
+    await fireEvent.click(screen.getByLabelText('Edit builder-1 details'))
+    expect(screen.getByRole('option', { name: 'native (app-server; TUI in tmux)' })).toBeDisabled()
+    expect(screen.getByText(reason)).toBeVisible()
+    expect(screen.getByRole('option', { name: 'typed into the pane (fallback)' })).not.toBeDisabled()
+  } finally { configureToolRegistry(null) }
+})

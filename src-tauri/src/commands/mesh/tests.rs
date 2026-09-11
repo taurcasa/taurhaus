@@ -146,3 +146,36 @@ fn hosted_capability_rejects_cli_and_mesh_matching_an_unpaired_build() {
         &capabilities
     ));
 }
+
+#[test]
+fn hosted_status_explains_build_mismatch_and_other_admission_failures() {
+    let contract = MeshCompatibilityContract {
+        version: "0.3.0".into(),
+        protocol_version: 1,
+        schema_version: 1,
+        git_commit: None,
+    };
+    for (codex, caps, expected) in [
+        (
+            Some("0.154.0"),
+            hosted_descriptor(),
+            Some("installed Codex 0.154.0 is not the verified 0.153.4"),
+        ),
+        (
+            None,
+            hosted_descriptor(),
+            Some("installed Codex version is unavailable; verified build is 0.153.4"),
+        ),
+        (
+            Some("0.153.4"),
+            serde_json::Value::Null,
+            Some("Mesh has no enabled descriptor for the verified Codex build"),
+        ),
+        (Some("0.153.4"), hosted_descriptor(), None),
+    ] {
+        let status =
+            mesh_status_from_contract(&contract, Some(contract.clone()), vec![], true, None);
+        let wire = serde_json::to_value(with_hosted_delivery(status, codex, &caps)).unwrap();
+        assert_eq!(wire["hostedDeliveryReason"].as_str(), expected);
+    }
+}
