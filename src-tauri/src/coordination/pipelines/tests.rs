@@ -10222,3 +10222,53 @@ fn initialize_pipeline_seeds_each_project_standard() {
     }
     assert!(!bare_project.join("docs").exists());
 }
+
+#[cfg(unix)]
+#[test]
+fn initialize_standard_write_failure_does_not_abort_roster() {
+    // Regression: 2b4b628a0 propagated an optional documentation write as add_lead failure.
+    use std::os::unix::fs::PermissionsExt;
+    let _guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+    let tmp = TempDir::new().unwrap();
+    let project = tmp.path().join("project");
+    let docs = project.join("docs");
+    fs::create_dir_all(&docs).unwrap();
+    let log_path = tmp.path().join("events.jsonl");
+    let sink = taurhaus_lib::logging::LogFileState::new(log_path.clone()).unwrap();
+    taurhaus_lib::logging::install_global_sink(&sink);
+    let mut orchestrator = new_orchestrator(
+        &tmp,
+        Arc::new(FakeBackend::default()),
+        Arc::new(RecordingCoordinationRuntime::default()),
+    );
+    fs::set_permissions(&docs, fs::Permissions::from_mode(0o555)).unwrap();
+    let result = orchestrator.initialize_team(&InitializeTeamRequest {
+        messaging: None,
+        team_name: "standard-failure".into(),
+        team_description: None,
+        lead_mode: LeadMode::LaunchNew,
+        lead: setup_config("lead", "codex", "gpt-6-astra", project.to_str().unwrap()),
+        agents: vec![],
+    });
+    fs::set_permissions(&docs, fs::Permissions::from_mode(0o755)).unwrap();
+    let report = result.unwrap();
+    assert_eq!(report.failed_step, None, "{report:?}");
+    assert!(MemberRuntimeStore::load(tmp.path(), "standard-failure", "lead").is_ok());
+    sink.flush_for_test().unwrap();
+    let rows: Vec<serde_json::Value> = fs::read_to_string(log_path)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    let failures: Vec<_> = rows
+        .iter()
+        .filter(|row| {
+            row["event"] == "coordination.project.standard_skipped"
+                && row["reason"] == "write_failed"
+        })
+        .collect();
+    assert_eq!(failures.len(), 1);
+    assert_eq!(failures[0]["level"], "WARN");
+    assert_eq!(failures[0]["team"], "standard-failure");
+    assert_eq!(failures[0]["member"], "lead");
+}

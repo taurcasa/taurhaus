@@ -673,7 +673,7 @@ impl CoordinationOrchestrator {
         }
 
         for member in members {
-            seed_project_delivery_standard(&member.project_path)?;
+            seed_project_delivery_standard(&member.project_path, team_name, &member.name);
             let seed = crate::coordination::stores::MemberRuntimeRecord {
                 schema_version: 3,
                 member_name: member.name.clone(),
@@ -949,49 +949,140 @@ impl Drop for TemporaryCanonicalPolicy {
 }
 
 /// Embed at build time: the Windows app and WSL daemon need no source checkout.
-fn seed_project_delivery_standard(project: &std::path::Path) -> std::io::Result<()> {
+fn seed_project_delivery_standard(project: &std::path::Path, team: &str, member: &str) {
     use std::io::Write;
 
     let docs = project.join("docs");
     let mut fields = serde_json::Map::new();
-    fields.insert("project_path".into(), serde_json::json!(project));
-    if !docs.is_dir() {
+    fields.insert(
+        "project_path".into(),
+        serde_json::json!(project.to_string_lossy()),
+    );
+    fields.insert("team".into(), serde_json::json!(team));
+    fields.insert("member".into(), serde_json::json!(member));
+    let (level, event) = if !docs.is_dir() {
         fields.insert("reason".into(), serde_json::json!("no_docs_directory"));
-        tracing::debug!(project = %project.display(), "project delivery standard skipped: no docs directory");
-        taurhaus_lib::logging::emit_global(
-            "debug",
-            "coordination",
-            "coordination.project.standard_skipped",
-            None,
-            fields,
-        );
-        return Ok(());
+        tracing::debug!(team, member, project = %project.display(), "project delivery standard skipped: no docs directory");
+        ("debug", "coordination.project.standard_skipped")
+    } else {
+        match write_project_standard(&docs.join("team-delivery-standard.md"), |file| {
+            file.write_all(include_str!("../../../../docs/team-delivery-standard.md").as_bytes())
+        }) {
+            Ok(false) => return,
+            Ok(true) => {
+                tracing::info!(team, member, project = %project.display(), "project delivery standard seeded");
+                ("info", "coordination.project.standard_seeded")
+            }
+            Err(error) => {
+                fields.insert("reason".into(), serde_json::json!("write_failed"));
+                fields.insert(
+                    "error_kind".into(),
+                    serde_json::json!(format!("{:?}", error.kind())),
+                );
+                tracing::warn!(team, member, error_kind = ?error.kind(), "project delivery standard skipped: write failed");
+                ("warn", "coordination.project.standard_skipped")
+            }
+        }
+    };
+    taurhaus_lib::logging::emit_global(level, "coordination", event, None, fields);
+}
+
+// Separate the writer so partial I/O failures can be tested without a full disk.
+fn write_project_standard(
+    path: &std::path::Path,
+    write: impl FnOnce(&mut std::fs::File) -> std::io::Result<()>,
+) -> std::io::Result<bool> {
+    // Include dangling symlinks in the project-owned destinations we preserve.
+    if path.symlink_metadata().is_ok() {
+        return Ok(false);
     }
-    let mut file = match std::fs::OpenOptions::new()
+    let temporary = path.with_file_name(format!(
+        ".team-delivery-standard.{}.tmp",
+        uuid::Uuid::new_v4()
+    ));
+    let mut file = std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
-        .open(docs.join("team-delivery-standard.md"))
-    {
-        Ok(file) => file,
-        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => return Ok(()),
-        Err(error) => return Err(error),
-    };
-    file.write_all(include_str!("../../../../docs/team-delivery-standard.md").as_bytes())?;
-    tracing::info!(project = %project.display(), "project delivery standard seeded");
-    taurhaus_lib::logging::emit_global(
-        "info",
-        "coordination",
-        "coordination.project.standard_seeded",
-        None,
-        fields,
-    );
-    Ok(())
+        .open(&temporary)?;
+    let result = (|| {
+        write(&mut file)?;
+        file.sync_all()?;
+        // Same-directory hard linking publishes the complete file atomically without
+        // replacing a concurrent winner (unlike rename on Unix). Unsupported filesystems
+        // simply skip this best-effort seed; never fall back to a partial direct write.
+        match std::fs::hard_link(&temporary, path) {
+            Ok(()) => Ok(true),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
+            Err(error) => Err(error),
+        }
+    })();
+    drop(file);
+    let _ = std::fs::remove_file(temporary);
+    result
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use taurhaus_lib::logging::{install_global_sink, LogFileState};
+
+    #[test]
+    fn initialize_standard_partial_write_is_not_published_and_can_retry() {
+        // Regression: 2b4b628a0 left partial standards at the final path forever.
+        use std::io::Write;
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("team-delivery-standard.md");
+        let result = write_project_standard(&path, |file| {
+            file.write_all(b"partial")?;
+            Err(std::io::Error::other("injected disk full"))
+        });
+        assert!(result.is_err());
+        assert!(
+            !path.exists(),
+            "partial content must never become the standard"
+        );
+        assert_eq!(std::fs::read_dir(temp.path()).unwrap().count(), 0);
+        assert!(write_project_standard(&path, |file| file.write_all(b"complete")).unwrap());
+        assert_eq!(std::fs::read(&path).unwrap(), b"complete");
+        assert_eq!(std::fs::read_dir(temp.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn initialize_standard_preserves_concurrent_winner() {
+        // Regression: 2b4b628a0 published the destination before the write completed.
+        use std::io::Write;
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("team-delivery-standard.md");
+        let published = write_project_standard(&path, |file| {
+            assert!(
+                !path.exists(),
+                "the standard must be invisible until complete"
+            );
+            std::fs::write(&path, "project-owned winner")?;
+            file.write_all(b"bundled content")
+        })
+        .unwrap();
+        assert!(!published);
+        assert_eq!(
+            std::fs::read_to_string(path).unwrap(),
+            "project-owned winner"
+        );
+        assert_eq!(std::fs::read_dir(temp.path()).unwrap().count(), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn initialize_standard_non_utf8_project_does_not_panic() {
+        // Regression: 2b4b628a0 used json!(Path), which panics for non-UTF-8 paths.
+        use std::os::unix::ffi::OsStringExt;
+        let temp = tempfile::tempdir().unwrap();
+        let project = temp
+            .path()
+            .join(std::ffi::OsString::from_vec(vec![b'p', 0xff]));
+        std::fs::create_dir_all(project.join("docs")).unwrap();
+        seed_project_delivery_standard(&project, "team", "seat");
+        assert!(project.join("docs/team-delivery-standard.md").is_file());
+    }
 
     #[test]
     fn initialize_seeds_standard_once_and_preserves_existing_content() {
@@ -1002,15 +1093,15 @@ mod tests {
         let sink = LogFileState::new(log_path.clone()).unwrap();
         install_global_sink(&sink);
         std::fs::create_dir(temp.path().join("docs")).unwrap();
-        seed_project_delivery_standard(temp.path()).unwrap();
+        seed_project_delivery_standard(temp.path(), "team", "seat");
         let standard = temp.path().join("docs/team-delivery-standard.md");
         assert_eq!(
             std::fs::read_to_string(&standard).unwrap(),
             include_str!("../../../../docs/team-delivery-standard.md")
         );
-        seed_project_delivery_standard(temp.path()).unwrap();
+        seed_project_delivery_standard(temp.path(), "team", "seat");
         std::fs::write(&standard, "Project-owned standard\n").unwrap();
-        seed_project_delivery_standard(temp.path()).unwrap();
+        seed_project_delivery_standard(temp.path(), "team", "seat");
         assert_eq!(
             std::fs::read_to_string(standard).unwrap(),
             "Project-owned standard\n"
@@ -1027,6 +1118,9 @@ mod tests {
             .collect();
         assert_eq!(seeded.len(), 1);
         assert_eq!(seeded[0]["level"], "INFO");
+        // Regression: 2b4b628a0 omitted the initialize identity from seed events.
+        assert_eq!(seeded[0]["team"], "team");
+        assert_eq!(seeded[0]["member"], "seat");
     }
 
     #[test]
@@ -1036,7 +1130,7 @@ mod tests {
         let log_path = temp.path().join("events.jsonl");
         let sink = LogFileState::new(log_path.clone()).unwrap();
         install_global_sink(&sink);
-        seed_project_delivery_standard(temp.path()).unwrap();
+        seed_project_delivery_standard(temp.path(), "team", "seat");
         assert!(!temp.path().join("docs").exists());
         sink.flush_for_test().unwrap();
         let rows: Vec<serde_json::Value> = std::fs::read_to_string(log_path)
