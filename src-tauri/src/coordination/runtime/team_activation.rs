@@ -276,8 +276,7 @@ mod tests {
         let refusal = String::from_utf8_lossy(&output.stderr);
         assert!(!output.status.success());
         assert!(
-            refusal.contains("pending: runtime lead:")
-                && refusal.contains("No such file or directory"),
+            refusal.contains("runtime_record_missing:lead"),
             "unexpected refusal: {}",
             refusal.replace(credential["token"].as_str().unwrap(), "[redacted]")
         );

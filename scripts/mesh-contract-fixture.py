@@ -106,7 +106,8 @@ task = json.loads(run("task", "create", "--subject", "Contract fixture", "--json
 task_id = task["id"]
 (root / "task-id").write_text(task_id)
 path = root / "tasks/deadline-team" / f"{task_id}.json"
-run("task", "assign", task_id, "--owner", "builder", "--status", "in_progress", "--awaiting-go")
+run("task", "assign", task_id, "--owner", "builder", "--status", "in_progress", "--awaiting-go",
+    "--description", "Contract fixture objective", "--review-route", "Lead reviews the scratch result")
 shutil.copyfile(path, root / "awaiting.json")
 run("task", "update", task_id, "--go")
 shutil.copyfile(path, root / "go.json")
