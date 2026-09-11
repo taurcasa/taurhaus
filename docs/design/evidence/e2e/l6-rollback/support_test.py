@@ -6,20 +6,14 @@ from pathlib import Path
 from support import native_runtime, retained_daemon_rows, attributed_idle, evidence_jsonl, pending_observation, ready_session
 
 class SharedHarnessTests(unittest.TestCase):
-    def test_working_pending_requires_scheduler_opportunity_after_acceptance(self):
-        # // Regression: 82e2655b accepted receipt absence before an owner cycle as busy deferral.
-        accepted={'event_type':'message_accepted','committed_at':'2026-09-10T00:00:02+00:00','payload':{'message_id':'B'}}
-        activity={'activity_confidence':'likely_working','observed_at':'2026-09-10T00:00:02+00:00'}
-        for heartbeat in (None, '2026-09-10T00:00:01+00:00', accepted['committed_at'], '2026-09-10T00:00:03+00:00'):
-            with self.subTest(heartbeat=heartbeat):
-                health={'heartbeat':heartbeat, 'last_defer_reason':None} if heartbeat else {}
-                result=pending_observation([accepted],'B',health,activity=activity,now=1788998403)
-                if heartbeat and heartbeat>=accepted['committed_at']:
-                    self.assertEqual(result['source'],'message accepted without receipt while working')
-                    submitted={'event_type':'receipt','payload':{'message_id':'B','stage':'submitted'}}
-                    self.assertIsNone(pending_observation([accepted,submitted],'B',health,activity=activity,now=1788998403))
-                else:
-                    self.assertIsNone(result)
+    def test_retired_pending_entry_points_refuse_invented_evidence(self):
+        # // Regression: 955df28f left the superseded stage:pending helper callable.
+        from support import pending_receipt
+        row={'payload':{'message_id':'B','stage':'pending'}}
+        with self.assertRaisesRegex(RuntimeError,'run2_rules.pending'):
+            pending_observation([row],'B',{})
+        with self.assertRaisesRegex(RuntimeError,'run2_rules.pending'):
+            pending_receipt([row],'B')
 
     def test_preflight_cli_uses_standing_authorization_without_reading_credentials(self):
         # // Regression: 82e2655b omitted the authorized pin from the standalone CLI.
@@ -104,16 +98,6 @@ class SharedHarnessTests(unittest.TestCase):
         record['session_id']='scratch-thread'
         self.assertTrue(attributed_idle(record,activity,now=1788998400))
         self.assertFalse(attributed_idle(record,activity,now=1788998521))
-
-    def test_pending_health_must_follow_this_acceptance_without_submission(self):
-        # // Regression: 8e8f1287 demanded a journal receipt for pre-claim deferral.
-        accepted={'event_type':'message_accepted','committed_at':'2026-09-10T00:00:02+00:00','payload':{'message_id':'Q'}}
-        health={'heartbeat':'2026-09-10T00:00:01+00:00','last_defer_reason':'pending: activity not freshly idle'}
-        self.assertIsNone(pending_observation([accepted],'Q',health))
-        health['heartbeat']='2026-09-10T00:00:03+00:00'
-        self.assertEqual(pending_observation([accepted],'Q',health)['source'],'scheduler_health (not a receipt)')
-        submitted={'payload':{'message_id':'Q','stage':'submitted'}}
-        self.assertIsNone(pending_observation([accepted,submitted],'Q',health))
 
     def test_ready_runtime_row_matches_seat_identity_and_attribution(self):
         record={'session_id':'thread','paneId':'%2'}

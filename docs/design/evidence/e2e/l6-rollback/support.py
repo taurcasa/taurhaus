@@ -69,7 +69,8 @@ def complete_rows(text):
 
 
 def pending_receipt(rows, message_id):
-    return next((p for r in rows if (p:=r.get('payload',r)).get('message_id')==message_id and p.get('stage')=='pending'),None)
+    # Retired by the 2026-09-11 run2 ruling; stage:pending is never evidence.
+    raise RuntimeError('Retired: use run2_rules.pending')
 
 
 def meter(sessions, notifications):
@@ -155,20 +156,8 @@ def attributed_idle(record,activity,now):
 
 
 def pending_observation(rows,message_id,health,*,activity=None,now=None):
-    if any(r.get('payload',{}).get('message_id')==message_id and r.get('payload',{}).get('stage') in ('submitted','consumed','native_enqueued') for r in rows):return None
-    receipt=pending_receipt(rows,message_id)
-    if receipt:return {'source':'journal','receipt':receipt}
-    accepted=next((r for r in rows if r.get('event_type')=='message_accepted' and r.get('payload',{}).get('message_id')==message_id),None)
-    if accepted and activity and activity.get('activity_confidence') in ('active','likely_working'):
-        from datetime import datetime
-        accepted_at=datetime.fromisoformat(accepted['committed_at'].replace('Z','+00:00')).timestamp()
-        observed_at=datetime.fromisoformat(activity['observed_at'].replace('Z','+00:00')).timestamp()
-        receipts=[r for r in rows if r.get('event_type') in ('receipt','delivery_receipt') and r.get('payload',{}).get('message_id')==message_id]
-        if health.get('heartbeat','')>=accepted['committed_at'] and now is not None and now>=accepted_at and 0<=now-observed_at<=120 and not receipts:
-            return {'source':'message accepted without receipt while working','message_id':message_id,'accepted':accepted,'receipt_count':0,'health_corroboration':health}
-    if accepted and health.get('last_defer_reason') and health['heartbeat']>=accepted['committed_at']:
-        return {'source':'scheduler_health (not a receipt)','message_id':message_id,'accepted':accepted,'health':health}
-    return None
+    # Retired by the 2026-09-11 run2 ruling; require working + scheduler opportunity.
+    raise RuntimeError('Retired: use run2_rules.pending')
 
 
 def ready_session(record,snapshot):

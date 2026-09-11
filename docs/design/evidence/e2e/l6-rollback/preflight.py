@@ -9,15 +9,18 @@ import argparse
 import json
 from pathlib import Path
 
-# Standing operator authorization: exactly this file, independent of CLI input.
-AUTHORIZED_AUTH_SOURCE='/home/mstie/.codex/auth.json'
+# Binding lane spec; the prompt's summary explicitly defers to this source.
+AUTHORIZED_AUTH_SOURCE='/home/mstie/.codex-account-b/auth.json'
 
 
 class PreflightUnavailable(ValueError):
     """A required isolation input is absent or unsafe."""
 
 
-def credential_source(value, *, authorized_source=None):
+def credential_source(value, *, authorized_source=None, authorized_sources=()):
+    # Authorization comes from the operator/caller, never from the candidate itself.
+    allowed={str(path) for path in authorized_sources}
+    if authorized_source is not None:allowed.add(str(authorized_source))
     if not value:
         raise PreflightUnavailable("Missing explicit disposable auth.json source; no fallback permitted")
     source = Path(value)
@@ -28,7 +31,7 @@ def credential_source(value, *, authorized_source=None):
     for i, part in enumerate(parts):
         if part in ("home", "root"):
             index = i + (2 if part == "home" else 1)
-            if index < len(parts) and parts[index].startswith((".claude", ".codex", ".gemini", ".grok")) and value != authorized_source:
+            if index < len(parts) and parts[index].startswith((".claude", ".codex", ".gemini", ".grok")) and str(source) not in allowed:
                 raise PreflightUnavailable("Credential source is inside a real harness home")
     # Do not follow a parent symlink into a forbidden home either.
     for entry in reversed((source, *source.parents)):

@@ -50,6 +50,7 @@ class Trial:
         self.stop=threading.Event();self.observer=None;self.seen={};self.reservations=[]
         self.classification='harness';self.code=1;self.identities_seen={}
         self.env={};self.receipts_seen=set();self.first_submissions={};self.first_pending={}
+        self.evidence_lock=threading.RLock()
         self.events=(self.out/'events.jsonl').open('w',buffering=1)
 
     def save(self,name,value):
@@ -59,7 +60,8 @@ class Trial:
 
     def log(self,kind,**fields):
         row=clean({'at':time.time(),'kind':kind,**fields})
-        self.events.write(json.dumps(row)+'\n')
+        with self.evidence_lock:
+            self.events.write(json.dumps(row)+'\n')
 
     def run(self,argv,timeout=25,check=True):
         self.log('command',argv=argv)
@@ -152,7 +154,9 @@ class Trial:
             try:
                 if ('TAURHAUS_TRIAL_ID='+self.root.name).encode()+b'\0' not in (p/'environ').read_bytes():continue
                 row={'pid':int(p.name),'start_ticks':(p/'stat').read_text().rsplit(')',1)[1].split()[19], 'argv':(p/'cmdline').read_bytes().decode(errors='replace').split('\0')}
-                result.append(row);self.identities_seen[(row['pid'],row['start_ticks'])]=row
+                result.append(row)
+                with self.evidence_lock:
+                    self.identities_seen[(row['pid'],row['start_ticks'])]=row
             except (FileNotFoundError,ProcessLookupError,PermissionError):pass
         return result
 
@@ -167,8 +171,9 @@ class Trial:
                     except (OSError,ValueError):pass
             for label,value in [('runtime',self.record()),('activity',self.activity())]:
                 stable=json.dumps(value,sort_keys=True)
-                if self.seen.get(label)!=stable:
-                    self.log(label,value=value);self.seen[label]=stable
+                with self.evidence_lock:
+                    if self.seen.get(label)!=stable:
+                        self.log(label,value=value);self.seen[label]=stable
             journal=self.journals()
             try:health=json.loads((self.team/'state/delivery/health-alpha.json').read_text())
             except (OSError,ValueError):health={}
@@ -201,8 +206,9 @@ class Trial:
                         path=self.team/f'state/delivery/{name}.json'
                         if path.exists():
                             value=json.loads(path.read_text());key='handoff-'+name
-                            if self.seen.get(key)!=value:
-                                self.log('handoff_observation',name=name,value=value);self.seen[key]=value
+                            with self.evidence_lock:
+                                if self.seen.get(key)!=value:
+                                    self.log('handoff_observation',name=name,value=value);self.seen[key]=value
                     lock=self.team/'state/terminal/alpha.lock'
                     if not lock.exists():self.stop.wait(.02);continue
                     inode=lock.stat().st_ino;holders=[]
@@ -289,7 +295,7 @@ class Trial:
     def settle_delivery(self,marker,message_id):
         for name,predicate,why,owner in [
             ('reply',lambda:self.reply(marker,message_id),'marker reply evidence missing','mesh'),
-            ('idle',self.fresh_idle,'post-reply fresh idle missing','harness')]:
+            ('idle',self.fresh_idle,'post-reply fresh idle missing','taurhaus')]:
             value=self.wait(predicate,why,90,owner=owner)
             self.save(f'step{self.step}-{name}-wait.json',{'at':time.time(),'outcome':'PASS','evidence':value})
 
@@ -305,7 +311,7 @@ class Trial:
         source=credential_source(source,authorized_source=AUTHORIZED_AUTH_SOURCE)
         assert not list((self.root/'codex').iterdir())
         shutil.copyfile(source,self.root/'codex/auth.json');(self.root/'codex/auth.json').chmod(0o600)
-        self.log('auth_copy',copied_files=['auth.json'],mode='0600',initial_codex_entries=['auth.json'])
+        self.log('auth_copy',copied_files=['auth.json'],mode='0600',initial_codex_entries=['auth.json'],source_label=source.parent.name+'/'+source.name,source_sha256=hashlib.sha256((self.root/'codex/auth.json').read_bytes()).hexdigest())
         package=Path(shutil.which('codex')).resolve().parents[1]
         native=next(package.glob('node_modules/@openai/codex-linux-x64/vendor/*/bin/codex'))
         for name,path in [*native_runtime(native),('claude',Path(shutil.which('claude')).resolve()),('mesh',CHECKOUT.parent/'mesh-l6/target/debug/mesh'),('taurhaus-daemon',CHECKOUT/'src-tauri/target/release/taurhaus-daemon')]:
@@ -528,7 +534,7 @@ class Trial:
         self.save('step2-command.json',{'exit':code,'output':output})
         self.boundary_snapshot('step2-after-format')
         if self.refused:
-            assert any(x in output.lower() for x in ('quiescent','quiescence','team owner already holds lifetime lock')),'permanent format refusal: '+output
+            assert any(x in output.lower() for x in ('quiescent_required; exclude all producers and native consumers','quiescent required; member executor ')),'permanent format refusal: '+output
             assert any(r.get('event_type')=='message_accepted' for r in self.delivery_rows(self.bid)),'B acceptance lost during refusal'
             assert self.config().get('messaging_format')==2,'refusal changed format'
             self.save('step2-temporary-refusal.json',{'reason':output,'B':self.bid,'B_history':self.delivery_rows(self.bid),'retry_limit':1})
@@ -615,7 +621,9 @@ class Trial:
         self.stop.set()
         if self.observer:self.observer.join(timeout=10)
         self.snapshot()
-        self.save('identities.json',list(self.identities_seen.values()))
+        with self.evidence_lock:
+            identities=list(self.identities_seen.values())
+        self.save('identities.json',identities)
         self.budget(observe_only=True)
         for path in (self.root/'codex/sessions').rglob('rollout-*.jsonl'):
             # Scratch-only native records; never export config/database/account rows.

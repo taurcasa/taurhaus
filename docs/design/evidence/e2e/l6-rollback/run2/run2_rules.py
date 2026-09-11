@@ -13,7 +13,8 @@ def pending(rows,message_id,health,*,activity=None,now=None,obligations=()):
     if activity.get('activity_confidence') not in ('active','likely_working'):return None
     if not 0<=now-stamp(activity.get('observed_at'))<=120:return None
     receipts=[r for r in rows if r.get('payload',{}).get('message_id')==message_id and r.get('event_type') in ('receipt','delivery_receipt')]
-    if receipts:return None
+    begun=any(r.get('payload',{}).get('message_id')==message_id and r.get('payload',{}).get('stage') in ('attempt_started','outcome_unknown','submitted','native_enqueued','consumed') for r in rows)
+    if receipts or begun:return None
     accepted_at=stamp(accepted.get('committed_at'))
     if now<accepted_at:return None
     obligation=next((r for r in obligations if r.get('obligation',{}).get('message_id')==message_id and r['obligation'].get('recipient')=='alpha'),None)
