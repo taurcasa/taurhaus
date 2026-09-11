@@ -1,0 +1,32 @@
+{
+  "epoch_transitions": [],
+  "ledger_id": "9f50c8af-98ee-4c16-a3f5-505555ee01f4",
+  "log_epoch": "bf0dda1b-f657-4bf6-a93e-950b3c65b315",
+  "packet": {
+    "packet_revision": "frozen-1",
+    "project": "l7-project",
+    "repo_id": "l7-repo",
+    "scopes": [
+      {
+        "assignment_id": "27d55b82-876f-4569-82eb-d6f135362b85",
+        "owner": "alpha",
+        "scope": "S7",
+        "task_id": "1"
+      }
+    ],
+    "wave": "l7"
+  },
+  "packet_digest": "6083d61bcb004c9000c9ea245fccef9dbe6898dbd86ba425d5f4618ea652f012",
+  "policy_digest": "9860ae0ad28ebdbdefd3a887c2b0fffc00532e95abc0c0e19b3c4dcc1168f5e9",
+  "repo_root": "/tmp/th-l7-rdua0mg6/project",
+  "schema_version": 1,
+  "segments": [
+    {
+      "committed_bytes": 0,
+      "id": "000001",
+      "last_sequence": 0,
+      "prefix_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "team_incarnation_id": "ca3250cc08b395479fbcf7899115f0fa7151283d2b3f594beb36f7126a6b2310"
+}
