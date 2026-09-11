@@ -224,8 +224,14 @@ fn apply_notify_edge(mut result: IdleResult, notify_path: &Path) -> IdleResult {
     result
 }
 
-// Codex may flush task_complete after notify has already timestamped completion.
-// Only the final complete row can bridge that ordering; never skip a newer row.
+// Codex writes the notify hook BEFORE it flushes the task_complete row, so the
+// row's own timestamp lands a few milliseconds after the notify record (e2e lane
+// 6 run 2: notify 23:59:44.3099Z, row 23:59:44.319Z). A matching final row inside
+// this window is the same completion, not a newer turn; beyond it the row is
+// treated as unrelated. Only the final row can bridge the ordering; a newer row
+// of any other kind means the seat moved on.
+const COMPLETION_FLUSH_TOLERANCE: chrono::Duration = chrono::Duration::seconds(10);
+
 fn codex_completed_tail(
     path: &Path,
     notify: &crate::daemon::codex_notify::CodexNotifyRecord,
@@ -249,7 +255,7 @@ fn codex_completed_tail(
             row["type"] == "event_msg"
                 && row["payload"]["type"] == "task_complete"
                 && row["payload"]["turn_id"].as_str() == Some(turn)
-                && at <= notify.ts,
+                && at <= notify.ts + COMPLETION_FLUSH_TOLERANCE,
         )
     };
     read().unwrap_or(false)
@@ -1089,6 +1095,20 @@ mod tests {
         assert!(result.authoritative, "notify.ts < transcript_mtime");
         assert_eq!(result.state, SessionState::Idle);
         assert_eq!(observation(pid, cwd, Some("%5")).unwrap().source, "notify");
+        // Regression: e2e lane 6 run 2 — Codex flushed the task_complete row 9 ms
+        // AFTER the notify record (notify 23:59:44.3099Z, row 23:59:44.319Z) and the
+        // edge refused every later turn, so the seat decayed to source none and
+        // deliveries stalled on "activity not freshly idle". The same turn's final
+        // row inside the flush window is the completion itself.
+        let flushed_late = serde_json::json!({"timestamp":(completed + chrono::Duration::milliseconds(9)).to_rfc3339(),
+            "type":"event_msg","payload":{"type":"task_complete","turn_id":turn}});
+        writeln!(rollout, "{flushed_late}").unwrap();
+        let late = resolver.detect_idle_for_pid_in(cwd, pid, Some("%5"), &[record.clone()]);
+        assert!(
+            late.authoritative,
+            "task_complete flushed after notify: {flushed_late}"
+        );
+        assert_eq!(late.state, SessionState::Idle);
         // Each guard must independently reject a complete, timestamped final row.
         for (kind, event, turn_id, at) in [
             ("response_item", "task_complete", turn, completed),
@@ -1096,7 +1116,12 @@ mod tests {
             ("event_msg", "turn_aborted", turn, completed),
             ("event_msg", "settings", turn, completed),
             ("event_msg", "task_complete", "other-turn", completed),
-            ("event_msg", "task_complete", turn, Utc::now()),
+            (
+                "event_msg",
+                "task_complete",
+                turn,
+                completed + chrono::Duration::seconds(30),
+            ),
         ] {
             let later = serde_json::json!({"timestamp":at.to_rfc3339(),"type":kind,
                 "payload":{"type":event,"turn_id":turn_id}});
