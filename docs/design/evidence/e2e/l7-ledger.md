@@ -1,3 +1,84 @@
+# Lane 7 — FAIL at step 2: assignment delivery unavailable; workflow incomplete
+
+The fourth explicitly requested trial passed and committed step 1. Step 2
+stopped before sending the note instruction because assignment delivery did not
+settle within the **120-second** wait. Its raw classification is **mesh** (the
+controller's delivery-boundary attribution); the underlying product or harness
+cause is **unresolved**, not a demonstrated Mesh defect. No paid retry followed.
+
+| Ordered step | Outcome | Classification / evidence |
+| --- | --- | --- |
+| 1. Create/assign task; initialize ledger | **PASS**, commit `5ebc205a` | **S-runtime**. [Immutable assignment](l7-ledger/run4/step1-immutable-assignment.json), [packet](l7-ledger/run4/step1-packet.json), [manifest](l7-ledger/run4/step1-manifest.json), [receipt](l7-ledger/run4/step1-init-receipt.json). |
+| 2. Seat note, intake and live render | **FAIL before instruction send** | **mesh**, raw controller attribution; cause unresolved. [Outcome](l7-ledger/run4/step2-outcome.json). |
+| 3. RESULT source and ledger submission | **NOT RUN** | Blocked by step 2; no source commitment or intake rejection. |
+| 4. Ledger-only retry | **NOT RUN** | No ledger or lifecycle retry. |
+| 5. Snapshot and offline views | **NOT RUN** | No artifacts or snapshot. |
+| 6. Receipt reconciliation | **NOT RUN** | Receipts explicitly unavailable; failure export and teardown separately **PASS**. [Receipt table](l7-ledger/run4/receipt-table.json). |
+
+Task `1` has frozen assignment `27d55b82-876f-4569-82eb-d6f135362b85`.
+Ledger `9f50c8af-98ee-4c16-a3f5-505555ee01f4` binds that assignment to the
+scratch project. Task creation, assignment and ledger init each exited **0**.
+Onboarding `b18eac5a-e47e-455b-9754-1e948a14a190` had submitted and explicit read
+receipts plus fresh idle before assignment. Assignment message
+`9bd337c7-3529-4d0a-9872-7d6428cacf6a` had a **submitted** receipt but no explicit
+read receipt. The native diagnostic found neither its assignment UUID nor its
+canonical message ID in any captured tool-result row. The final task remained
+**pending**, with no accepted/started timestamp, while the daemon reported idle.
+No subsequent send was made. This is an unproven delivery, not a claim of a
+`stage: pending` row or proof that submission equals consumption.
+[Commands and exits](l7-ledger/run4/events.jsonl),
+[journal](l7-ledger/run4/team/state/messaging-v2/segments/000001.jsonl),
+[native row identities and hashes](l7-ledger/run4/native-assignment-diagnostic.json),
+[task](l7-ledger/run4/tasks/1.json),
+[final activity](l7-ledger/run4/final-activity.json).
+
+Runtime exited **1** after **139.156 seconds**. Teardown verified **no survivors**,
+a closed private port, and removal of the scratch root and credential copy.
+All **180 physical daemon lines** were retained as 180 sanitized records.
+[Exit](l7-ledger/run4/controller-exit.json), [cleanup](l7-ledger/run4/cleanup.json),
+[log manifest](l7-ledger/run4/daemon-log-manifest.json),
+[complete daemon log](l7-ledger/run4/taurhaus.log.jsonl).
+
+| Run-4 turn | Known API-equivalent USD | Conservative USD |
+| --- | --- | --- |
+| `01a08e2e-0f65-7852-a472-899deeebb7d1` — 43,773 input, 36,864 cached, 507 output | **0.00272748** | **0.05313600** |
+| `01a08e2e-1175-7d03-9902-46ed51d64976` — notify-only | **Unavailable** | **Unavailable** |
+| Claude lead — login-only | **0** | **0** |
+
+This trial has **2 observed turn identities**, **2 input reservations**, and one
+seat attachment generation. Per the operator's explicit fresh-budget instruction,
+its admission uses this trial's **12 inputs / USD 0.20 / 12 minutes**; historical
+trials remain reported separately. No lifecycle action was gated by metering.
+Actual total spend and dollar-cap compliance remain **unverified** because the
+notify-only identity lacks counters. Across four trials: **9 observed identities**,
+**7 input reservations**, known **USD 0.01830316**, conservative known
+**USD 0.29244720**, plus **four unmetered identities**. These are inherited
+API-equivalent estimates, not invoices; workflow spend is separately owned by
+the orchestrator. [Every recorded spend](l7-ledger/run4/cumulative-spend.json),
+[run meter](l7-ledger/run4/cost-ledger.json).
+
+The fresh-run admission regression failed first, then all **14 offline controller
+checks passed**. Assignment instructions now explicitly request inbox read/mark
+before accept/start. Executed controller commit: `4cc54f41`.
+[Red](l7-ledger/fresh-run-red.txt), [green](l7-ledger/fresh-run-green.txt),
+[exact controller](l7-ledger/run4/controller-at-execution.py),
+[exact runtime](l7-ledger/run4/runtime-at-execution.py),
+[exact helpers](l7-ledger/run4/support-at-execution.py).
+The unchanged binaries use Taurhaus product base `106f06c7`, Mesh `1f7447f`,
+protocol 27, Codex 0.153.4 and gpt-5.6-luna / low.
+[Candidate](l7-ledger/run4/candidate.json), [startup](l7-ledger/run4/startup-ready.json).
+
+Post-teardown gates: `just check-quick` **0**, `just lint` **0**,
+`just test-contracts` **0**. No `src-tauri/` diff, so the Rust unit gate does not
+apply. [Gate results](l7-ledger/run4-checks-result.json),
+[Cargo admission](l7-ledger/gate-cargo-polls.jsonl),
+[evidence validation](l7-ledger/run4/public-evidence-check.json).
+The independent Opus lens remains unavailable. Later required steps and complete
+metering remain missing, so this workflow is incomplete. Earlier limitations
+below remain historical; no product, Mesh source, descriptor or plan ledger changed.
+
+## Historical third trial
+
 # Lane 7 — INCOMPLETE: step 1 verified; harness delivery check blocked continuation
 
 The third operator-requested trial completed the audit's step 1. Its controller

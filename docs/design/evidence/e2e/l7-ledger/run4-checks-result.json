@@ -1,0 +1,118 @@
+{
+  "commands": [
+    {
+      "command": "just check-quick",
+      "cwd": "/home/mstie/projects/taurhaus-l7-ledger",
+      "target": "/home/mstie/projects/taurhaus-l7-ledger/src-tauri/target",
+      "exit": 0,
+      "elapsed_s": 18.483,
+      "last_lines": [
+        " \u2713 src/lib/shell/daemonStatusController.test.js (2 tests) 4ms",
+        " \u2713 src/lib/components/roleVersioning.test.js (4 tests) 3ms",
+        " \u2713 src/lib/format.test.js (8 tests) 3ms",
+        " \u2713 src/lib/projectOptions.test.js (3 tests) 2ms",
+        " \u2713 src/app.css.test.js (2 tests) 2ms",
+        " \u2713 src/smoke.test.js (1 test) 1ms",
+        " \u2713 src/lib/batchRegistrationProgress.test.js (3 tests) 2ms",
+        " \u2713 src/lib/errorCopy.test.js (8 tests) 3ms",
+        " \u2713 e2e/helpers/meshTiming.test.js (2 tests) 2ms",
+        " \u2713 src/lib/ipc/system.test.js (2 tests) 2ms",
+        " \u2713 src/lib/components/meshBuilderUtils.test.js (1 test) 2ms",
+        " \u2713 src/lib/components/meshTabRuntime.warnings.test.js (2 tests) 1ms",
+        " \u2713 src/lib/ipc/templates.test.js (1 test) 1ms",
+        " \u2713 src/test/visual/ipcMockCoverage.test.js (2 tests) 2ms",
+        " \u2713 src/visual-host/registry.test.js (4 tests) 3ms",
+        " \u2713 scripts/workflow-procedures.test.mjs (228 tests) 8402ms",
+        "     \u2713 kills the whole detached group when its owner stops refreshing the lease  2223ms",
+        "     \u2713 leaves a run alone while its owner keeps the lease fresh  6036ms",
+        "stderr | src/lib/components/MeshTab.test.js > MeshTab > suppresses skipped team folder discovery warnings from the inline availability banner",
+        "[mesh] suppressed internal discovery warning: skipped team folder 'taureval-1773711699719' because config is missing or invalid",
+        "",
+        " \u2713 src/lib/components/MeshTab.test.js (75 tests) 7553ms",
+        "     \u2713 auto-collapses the resume progress tray after completion  5251ms",
+        "",
+        " Test Files  150 passed (150)",
+        "      Tests  2521 passed (2521)",
+        "   Start at  03:59:11",
+        "   Duration  11.68s (transform 43.40s, setup 0ms, import 97.97s, tests 52.89s, environment 47.60s)",
+        "",
+        "Quick check passed."
+      ]
+    },
+    {
+      "command": "just lint",
+      "cwd": "/home/mstie/projects/taurhaus-l7-ledger",
+      "target": "/home/mstie/projects/taurhaus-l7-ledger/src-tauri/target",
+      "exit": 0,
+      "elapsed_s": 6.641,
+      "last_lines": [
+        "cd src-tauri && cargo clippy --all-targets -- -D warnings",
+        "    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.22s",
+        "bun run lint",
+        "$ bun run lint:structure",
+        "$ bun run lint:knip && bun run lint:deps",
+        "$ knip",
+        "$ bun run check:node && dependency-cruiser --no-config --include-only '^src' --output-type err-long src",
+        "$ node scripts/check-node-version.mjs",
+        "",
+        "\u2714 no dependency violations found (347 modules, 805 dependencies cruised)",
+        "",
+        "bun scripts/check-workflow-scripts.mjs",
+        "workflow script check passed: 5 script(s) in .claude/workflows",
+        "scripts/check-just-gates.sh",
+        "just check gate guard passed.",
+        "scripts/check-lane-worktree-recipes.sh",
+        "lane worktree recipe guard passed."
+      ]
+    },
+    {
+      "command": "just test-contracts",
+      "cwd": "/home/mstie/projects/taurhaus-l7-ledger",
+      "target": "/home/mstie/projects/taurhaus-l7-ledger/src-tauri/target",
+      "exit": 0,
+      "elapsed_s": 5.515,
+      "last_lines": [
+        "test commands_coordination_types_avoids_domain_enum_definitions ... ok",
+        "test configured_account_root_remains_override_only ... ok",
+        "test coordination_cli_log_sink_test_uses_shared_global_guard ... ok",
+        "test coordination_modules_do_not_import_commands_layer ... ok",
+        "test daemon_listener_fixture_suites_run_without_a_global_thread_pin ... ok",
+        "test daemon_provider_boundary_uses_contract_modules ... ok",
+        "test generic_account_core_contains_no_tool_identity_literals ... ok",
+        "test heavy_unit_skips_match_integration_reruns ... ok",
+        "test hook_bridge_contract_pins_protocol_and_writer_coverage ... ok",
+        "test io_commands_use_tauris_async_execution_context ... ok",
+        "test legacy_settings_replacement_stays_std_only_and_atomic ... ok",
+        "test main_push_integration_runs_are_never_cancelled_by_newer_pushes ... ok",
+        "test mutable_scan_caches_are_not_global_statics ... ok",
+        "test native_hook_owns_stdout_until_receipt_and_never_writes_a_second_response ... ok",
+        "test project_removal_releases_the_db_before_waiting_for_search ... ok",
+        "test retired_claude_account_bridge_identifiers_do_not_return ... ok",
+        "test retired_gemini_tool_literal_does_not_return ... ok",
+        "test rust_integration_ci_caches_failed_builds ... ok",
+        "test rust_integration_ci_runs_on_every_pull_request ... ok",
+        "test rust_integration_recipe_runs_every_test_binary ... ok",
+        "test scanner_account_memory_never_opens_the_app_database ... ok",
+        "test task_deadline_policy_stays_pure_and_outside_placeholder_health_framework ... ok",
+        "test team_state_write_apis_stay_daemon_or_native_hook_owned ... ok",
+        "test terminal_child_mode_inherits_flock_and_exits_without_daemon_startup ... ok",
+        "test terminal_contract_pins_shared_spelling_and_write_boundaries ... ok",
+        "test the_tmux_focus_path_contains_no_hook_code ... ok",
+        "test transcript_compaction_pipeline_stays_retired ... ok",
+        "",
+        "test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.04s",
+        ""
+      ]
+    }
+  ],
+  "binaries": [
+    {
+      "path": "/home/mstie/projects/taurhaus-l7-ledger/src-tauri/target/release/taurhaus-daemon",
+      "sha256": "177c4f333aeaef73ae672109ee97c731ad50a3e166c244d93fe715ec5f144fd6"
+    },
+    {
+      "path": "/home/mstie/projects/mesh-l7/target/debug/mesh",
+      "sha256": "283f3673c1dad0aea0a3ee32945c88b032721d6e0b07c8f576699e16670ee083"
+    }
+  ]
+}

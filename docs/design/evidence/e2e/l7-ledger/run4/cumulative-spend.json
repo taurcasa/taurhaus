@@ -1,0 +1,137 @@
+{
+  "runs": [
+    {
+      "run": "run",
+      "turns": [
+        {
+          "turn_id": "01a08e08-9b9d-7d61-a236-b9ab623301cd",
+          "usd": 0.00242444,
+          "completed": true,
+          "usage": {
+            "input_tokens": 20287,
+            "cached_input_tokens": 10752,
+            "output_tokens": 252
+          },
+          "conservative_usd": 0.0246468
+        },
+        {
+          "turn_id": "01a08e08-9df0-70f3-86be-c40886758378",
+          "usd": null,
+          "completed": true,
+          "source": "notify-only"
+        }
+      ],
+      "observed_turns": 2,
+      "input_reservations": 1,
+      "known_usd": 0.00242444,
+      "conservative_known_usd": 0.0246468,
+      "unknown_turn_ids": [
+        "01a08e08-9df0-70f3-86be-c40886758378"
+      ]
+    },
+    {
+      "run": "run2",
+      "turns": [
+        {
+          "turn_id": "01a08e1c-a901-7293-94de-136cad81ad0f",
+          "usd": 0.005458719999999999,
+          "completed": true,
+          "usage": {
+            "input_tokens": 44522,
+            "cached_input_tokens": 22016,
+            "output_tokens": 431
+          },
+          "conservative_usd": 0.0539436
+        },
+        {
+          "turn_id": "01a08e1c-ab41-7551-b212-03c5d70f5ca4",
+          "usd": null,
+          "completed": true,
+          "source": "notify-only"
+        }
+      ],
+      "observed_turns": 2,
+      "input_reservations": 2,
+      "known_usd": 0.005458719999999999,
+      "conservative_known_usd": 0.0539436,
+      "unknown_turn_ids": [
+        "01a08e1c-ab41-7551-b212-03c5d70f5ca4"
+      ]
+    },
+    {
+      "run": "run3",
+      "turns": [
+        {
+          "turn_id": "01a08e21-f8cc-70b2-b777-51a45cf109c3",
+          "usd": 0.00349556,
+          "completed": true,
+          "usage": {
+            "input_tokens": 44311,
+            "cached_input_tokens": 32768,
+            "output_tokens": 443
+          },
+          "conservative_usd": 0.0537048
+        },
+        {
+          "turn_id": "01a08e22-302b-7132-8050-8a822f46ae91",
+          "usd": 0.0041969600000000004,
+          "completed": true,
+          "usage": {
+            "input_tokens": 88396,
+            "cached_input_tokens": 80128,
+            "output_tokens": 784
+          },
+          "conservative_usd": 0.107016
+        },
+        {
+          "turn_id": "01a08e21-fb15-7083-815d-d6f69fb4dc35",
+          "usd": null,
+          "completed": true,
+          "source": "notify-only"
+        }
+      ],
+      "observed_turns": 3,
+      "input_reservations": 2,
+      "known_usd": 0.0076925200000000004,
+      "conservative_known_usd": 0.1607208,
+      "unknown_turn_ids": [
+        "01a08e21-fb15-7083-815d-d6f69fb4dc35"
+      ]
+    },
+    {
+      "run": "run4",
+      "turns": [
+        {
+          "turn_id": "01a08e2e-0f65-7852-a472-899deeebb7d1",
+          "usd": 0.00272748,
+          "completed": true,
+          "usage": {
+            "input_tokens": 43773,
+            "cached_input_tokens": 36864,
+            "output_tokens": 507
+          },
+          "conservative_usd": 0.053136
+        },
+        {
+          "turn_id": "01a08e2e-1175-7d03-9902-46ed51d64976",
+          "usd": null,
+          "completed": true,
+          "source": "notify-only"
+        }
+      ],
+      "observed_turns": 2,
+      "input_reservations": 2,
+      "known_usd": 0.00272748,
+      "conservative_known_usd": 0.053136,
+      "unknown_turn_ids": [
+        "01a08e2e-1175-7d03-9902-46ed51d64976"
+      ]
+    }
+  ],
+  "known_usd": 0.01830316,
+  "conservative_known_usd": 0.2924472,
+  "observed_turns": 9,
+  "input_reservations": 7,
+  "dollar_cap_verified": false,
+  "admission_scope": "operator requested fresh budget for run4; historical totals retained"
+}

@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "observed_at": "2026-09-11T01:58:05.144366310+00:00",
+  "stall_recent_activity": false,
+  "stall_no_output": true,
+  "stall_no_active_process": false,
+  "active_non_shell_process": true,
+  "recent_io": false,
+  "pane_alive": true,
+  "pane_foreign": false,
+  "last_output_age_secs": 93,
+  "activity_confidence": "idle",
+  "confidence": "high",
+  "last_observed_at": "2026-09-11T01:58:05.142049072+00:00",
+  "source": "notify",
+  "state": "idle"
+}

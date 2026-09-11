@@ -11,3 +11,6 @@
 {"at": 1789091543.7053046, "command": "pgrep -af '(^|/)cargo( |$)'", "exit": 0, "pids": ["4069750"]}
 {"at": 1789091563.5325348, "command": "pgrep -af '(^|/)cargo( |$)'", "exit": 0, "pids": ["4069750", "4089721"]}
 {"at": 1789091573.3306732, "command": "pgrep -af '(^|/)cargo( |$)'", "exit": 0, "pids": ["4069750", "4089721"]}
+{"at": 1789091945.1140473, "command": "pgrep -af '(^|/)cargo( |$)'", "exit": 1, "pids": []}
+{"at": 1789091963.604395, "command": "pgrep -af '(^|/)cargo( |$)'", "exit": 1, "pids": []}
+{"at": 1789091970.2528799, "command": "pgrep -af '(^|/)cargo( |$)'", "exit": 0, "pids": ["4172081"]}

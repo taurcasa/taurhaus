@@ -1,0 +1,102 @@
+[
+  {
+    "timestamp": "2026-09-11T01:56:18.418Z",
+    "type": "task_started",
+    "turn_id": "01a08e2e-0f65-7852-a472-899deeebb7d1"
+  },
+  {
+    "timestamp": "2026-09-11T01:56:18.879Z",
+    "type": "message",
+    "role": "developer",
+    "call_id": null,
+    "assignment_uuid_present": false,
+    "canonical_id_present": false,
+    "ready_marker": false,
+    "sha256": "ff5987c1b3b2358e4fa7bb8d78ceec094bc9224ff8a8d058cefca1a88370d44d"
+  },
+  {
+    "timestamp": "2026-09-11T01:56:18.879Z",
+    "type": "message",
+    "role": "user",
+    "call_id": null,
+    "assignment_uuid_present": false,
+    "canonical_id_present": false,
+    "ready_marker": true,
+    "sha256": "994ed3c517e078245444dddbc2fc12d971c358ea83b3d85c4a48ee1f96f47b46"
+  },
+  {
+    "timestamp": "2026-09-11T01:56:18.893Z",
+    "type": "message",
+    "role": "user",
+    "call_id": null,
+    "assignment_uuid_present": false,
+    "canonical_id_present": false,
+    "ready_marker": false,
+    "sha256": "e1c3cae3e874e917ef1104461b55088608386541992ca4c4fcadff9c0e9c4c8d"
+  },
+  {
+    "timestamp": "2026-09-11T01:56:21.629Z",
+    "type": "message",
+    "role": "assistant",
+    "call_id": null,
+    "assignment_uuid_present": false,
+    "canonical_id_present": false,
+    "ready_marker": false,
+    "sha256": "b2f671624e91d3a58fdd1504932d48c464abbcbd61435b974b2a552f953be8aa"
+  },
+  {
+    "timestamp": "2026-09-11T01:56:23.104Z",
+    "type": "custom_tool_call_output",
+    "role": null,
+    "call_id": "call_hds8tgCB54YQHhhT7UpY1NvG",
+    "assignment_uuid_present": false,
+    "canonical_id_present": false,
+    "ready_marker": true,
+    "sha256": "fe876a27736096e1a054a3716afb17141ee779f71dd64c2e9276f8b9fafebb56"
+  },
+  {
+    "timestamp": "2026-09-11T01:56:23.233Z",
+    "type": "message",
+    "role": "developer",
+    "call_id": null,
+    "assignment_uuid_present": false,
+    "canonical_id_present": false,
+    "ready_marker": false,
+    "sha256": "2ce19639bae472fe0e5979a026455afe1bc867f2ea768fe512d25edfc42e9865"
+  },
+  {
+    "timestamp": "2026-09-11T01:56:26.881Z",
+    "type": "custom_tool_call_output",
+    "role": null,
+    "call_id": "call_WaEosjX9HLtYBiEWHmnkjAIA",
+    "assignment_uuid_present": false,
+    "canonical_id_present": false,
+    "ready_marker": false,
+    "sha256": "7c49ff7403324d3f16c9df76b741339c0765cbb46c2ab6fb5d5517bba55fd24d"
+  },
+  {
+    "timestamp": "2026-09-11T01:56:29.529Z",
+    "type": "custom_tool_call_output",
+    "role": null,
+    "call_id": "call_VL1OZB8ZeBFMCRI3NsegooZa",
+    "assignment_uuid_present": false,
+    "canonical_id_present": false,
+    "ready_marker": false,
+    "sha256": "3bc0799469846300d5e23f0ff0fb1f57f6c94b0e304c049d806ecea135ea3399"
+  },
+  {
+    "timestamp": "2026-09-11T01:56:32.087Z",
+    "type": "message",
+    "role": "assistant",
+    "call_id": null,
+    "assignment_uuid_present": false,
+    "canonical_id_present": false,
+    "ready_marker": false,
+    "sha256": "7e2c24265753346e4f843fc7b5a99e61e8c698a0f6fadde6853d9606959a5329"
+  },
+  {
+    "timestamp": "2026-09-11T01:56:32.104Z",
+    "type": "task_complete",
+    "turn_id": "01a08e2e-0f65-7852-a472-899deeebb7d1"
+  }
+]
