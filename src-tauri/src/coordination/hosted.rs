@@ -1759,8 +1759,11 @@ if mode == 'twice' or not previous:
         assert_eq!(snapshot()["activity_confidence"], "high");
         op("interrupt", Value::Null).unwrap();
         assert_eq!(snapshot()["state"], "idle");
+        // Regression: 3000bc3e assumed one short background probe consumed all
+        // approval notifications, even when the fixture was descheduled.
+        std::fs::write(tmp.path().join("delayed-approval"), "").unwrap();
         input(&hosts, &registry, generation, "approval").unwrap();
-        hub.refresh_hosts();
+        transcript(&hosts, &registry, generation);
         assert_eq!(snapshot()["state"], "active");
         assert_eq!(snapshot()["activity_attribution"], "none");
         assert_eq!(snapshot()["activity_confidence"], "high");

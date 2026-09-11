@@ -1598,7 +1598,9 @@ def client(connection):
                 elif method == 'thread/read' and error and error['code'] == -32603 and pending_items:
                     items_and_completion(pending_items)
                     pending_items = None
-                if approval: emit(approval)
+                if approval:
+                    if os.path.exists(os.path.join(root, 'delayed-approval')): time.sleep(0.5)
+                    emit(approval)
 with socket.socket(socket.AF_UNIX) as listener:
     listener.bind(address); listener.listen(4)
     while True:
