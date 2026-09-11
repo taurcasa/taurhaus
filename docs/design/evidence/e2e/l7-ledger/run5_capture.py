@@ -5,11 +5,21 @@ recorded by that controller is read; credential files and message text are exclu
 """
 import hashlib
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 from support import complete_rows
 
 BASE = Path(__file__).resolve().parent
+
+
+def atomic_write(path, text):
+    temporary = path.with_name(path.name + '.tmp')
+    try:
+        temporary.write_text(text)
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def public_row(row):
@@ -36,13 +46,17 @@ def capture():
     for source, name in [(root / 'data/codex-notify.jsonl', 'notify-records.jsonl')]:
         if source.exists():
             rows = complete_rows(source.read_text())
-            (out / name).write_text(''.join(json.dumps(public_row(row)) + '\n' for row in rows))
+            atomic_write(out / name, ''.join(json.dumps(public_row(row)) + '\n' for row in rows))
     tails = []
     for source in (root / 'codex/sessions').rglob('rollout-*.jsonl'):
-        rows = complete_rows(source.read_text())
+        raw = source.read_bytes()
+        captured_at = datetime.now(timezone.utc).isoformat()
+        rows = complete_rows(raw.decode('utf-8'))
         tails.append({'file': source.name, 'complete_rows': len(rows),
+                      'sha256': hashlib.sha256(raw).hexdigest(), 'bytes': len(raw),
+                      'captured_at': captured_at,
                       'tail': [public_row(row) for row in rows[-60:]]})
-    (out / 'rollout-tail.json').write_text(json.dumps(tails, indent=2) + '\n')
+    atomic_write(out / 'rollout-tail.json', json.dumps(tails, indent=2) + '\n')
 
 
 if __name__ == '__main__':

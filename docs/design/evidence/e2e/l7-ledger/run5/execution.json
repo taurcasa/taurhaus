@@ -27,11 +27,37 @@
       "tests": 14
     }
   ],
-  "gate_driver": "Existing gates.command, with OUT=run5 and LOGS=.check-logs/l7-ledger-run5; cleanup asserted before sequential commands.",
+  "gate_driver": "Historical run5 used gates.command through an unretained wrapper with OUT=run5 and LOGS=.check-logs/l7-ledger-run5; its exact wrapper cannot be recovered. Original gate exits remain supported by checks-result.json.",
   "gate_commands": [
     "just check-quick",
     "just lint",
     "just test-contracts"
   ],
-  "rust_unit_gate": "inapplicable: no src-tauri diff"
+  "rust_unit_gate": "inapplicable: no src-tauri diff",
+  "review_round_1": {
+    "findings": "All five verified; no findings skipped.",
+    "runtime": "No new paid trial or runtime process; original six-step outcomes retained.",
+    "additional_seat_inputs": 0,
+    "additional_seat_spend_usd": 0,
+    "rollout_provenance": "Original source deleted at teardown; capture time/digest/bytes unavailable for the historical tail. Collector repaired prospectively; original tail and inventory unchanged.",
+    "tests": {
+      "command": "python3 -B docs/design/evidence/e2e/l7-ledger/run5_capture_test.py",
+      "added": 5,
+      "total": 7,
+      "red_exit": 1,
+      "red_observed": [
+        "Missing sha256 (KeyError)",
+        "Interrupted writes corrupted both published evidence files",
+        "Missing content-check function (AttributeError)",
+        "Gate driver rejected parameters (TypeError)"
+      ],
+      "green_exit": 0
+    },
+    "gate_command": "python3 -B docs/design/evidence/e2e/l7-ledger/gates.py --run-name run5 --log-dir .check-logs/l7-ledger-run5-review --output-dir .check-logs/l7-ledger-run5-review",
+    "gates": "pending rerun after offline repairs",
+    "deviations": [
+      "#176 retest NOT RUN: tested base reverted fix; separate upstream handoff in evidence report.",
+      "Historical rollout provenance and exact gate wrapper cannot be recovered; no evidence backfilled."
+    ]
+  }
 }

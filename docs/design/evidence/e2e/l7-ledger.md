@@ -1,7 +1,8 @@
 # Lane 7 run5 — FAIL at step 2: assignment uptake unproven; workflow incomplete
 
-Run5 executed the committed four-trial controller on the rebuilt **26c06132**
-product base. Step 1 passed and was committed as `6e06ae39`. Step 2 exhausted
+Run5 executed the committed four-trial controller on rebuilt **26c06132**,
+whose product tree lacks the PR #176 fix. **#176 retest: NOT RUN.**
+Step 1 passed and was committed as `6e06ae39`. Step 2 exhausted
 its **120-second** settlement window before sending the note instruction.
 The controller reported **mesh** at this delivery boundary; the underlying
 cause remains unresolved. This is a retained failed runtime trial, not a
@@ -30,24 +31,43 @@ The daemon observed the real seat's native completion and reported fresh
 `source: notify`, `state: idle` throughout the failed assignment wait. Its
 last retained activity has output age **93 seconds**. No captured activity row
 has `source: none`; therefore this trial does not demonstrate the specific
-post-turn decay described in the fifth-trial ruling. The 40-row native rollout
-contains one completed turn; its captured tail retains row identities and
-hashes, with private text omitted. Two notify identities are retained.
+post-turn decay described in the fifth-trial ruling. The passive capture has
+40 complete rows and one completed turn, with private text omitted. Its original
+source digest, byte length and capture time were not recorded; it cannot be
+bound to the final file digested in `rollout-inventory.json`. The original scratch
+file was deleted at teardown, so these missing fields cannot be recovered.
+Two notify identities are retained.
 [Final activity](l7-ledger/run5/final-activity.json),
 [notify records](l7-ledger/run5/notify-records.jsonl),
 [native tail](l7-ledger/run5/rollout-tail.json),
 [adjudication](l7-ledger/run5/adjudication.json).
 
-**Historical correction:** the orchestrator attributes trials 1–4 on
-`106f06c7` to the Taurhaus idle-edge defect fixed by **PR #176**. That ruling
-supersedes the old run-4 raw Mesh classification and unresolved-cause prose
-preserved below. Run5 contains `26c06132` (#176 and #177); its actual observations
-above are reported separately.
+**Base correction (review round 1):** ancestry verification passed, but
+`26c06132` (#177) reverted `9617ea6e` (#176)'s `codex.rs` fix. The tested file
+equals `106f06c7`'s blob `8f665c637b73d7380681a557bfb2426c79e48c56`, rather than
+the fixed blob `3fb33d79d672b8121accccd0598b666361a367e9`. The entire `src-tauri/`
+diff from `106f06c7` to `26c06132` is empty. Run5's daemon SHA-256 is
+`177c4f333aeaef73ae672109ee97c731ad50a3e166c244d93fe715ec5f144fd6`, identical
+to trials 1–4 despite the successful rebuild. The intended fixed-base retest
+and its #176 failure criterion were therefore **NOT RUN**.
+
+The orchestrator's ruling reattributes the historical run-4 boundary to
+Taurhaus's #176 defect; run5 does not validate that attribution on a fixed base.
+Earlier harness defects and raw observations remain recorded below.
+**Separate product/release handoff to the orchestrator:** main at `26c06132`
+lacks #176. Restore and verify the fix upstream before any sixth trial; this
+evidence lane makes no product change. Replace ancestry-only admission with
+`python3 -B docs/design/evidence/e2e/l7-ledger/gates.py --check-base` before
+building or launching a future trial. It compares both HEAD and working-file
+content to #176 and currently exits **1**, correctly rejecting this base.
+An intentionally different upstream fix needs a reviewed content pin.
+[Post-review content verification](l7-ledger/run5/preflight.json).
 
 Runtime exited **1** after **143.990 seconds**. Teardown verified **zero owned
 survivors**, a closed private port, and removal of the scratch root and copied
 credential. All **189 physical daemon lines** are retained as 189 sanitized
-JSONL records, including shutdown. No account usage rows were present.
+JSONL records. The last event is `session_scanner.scan.completed`; no shutdown
+record was captured. No account usage rows were present.
 [Exit](l7-ledger/run5/controller-exit.json), [cleanup](l7-ledger/run5/cleanup.json),
 [log manifest](l7-ledger/run5/daemon-log-manifest.json),
 [complete daemon log](l7-ledger/run5/taurhaus.log.jsonl).
@@ -73,7 +93,8 @@ operation, and no paid retry or authorization question followed the failure.
 respective checkout-local targets with one build job. Cargo admission used
 30-second polls and waited only while at least three Cargo processes were
 already running. Other lanes later started additional Cargo processes; none
-was signalled. Merge-base verification succeeded for `26c06132`. Mesh remained
+was signalled. Merge-base verification succeeded for `26c06132` but did not
+verify that #176's content survived. Mesh remained
 `1f7447f` with no source or descriptor edit. The private runtime used protocol
 **27**, Codex **0.153.4**, **gpt-5.6-luna / low**, both native Codex siblings, the
 canonical production messaging policy, a login-only lead, and scratch-only
@@ -104,14 +125,32 @@ Post-teardown gates: **`just check-quick` 0**, **`just lint` 0**,
 The byte-identical alpha runtime alias is recorded in
 [deduplication](l7-ledger/run5/deduplication.json).
 
+Review round 1 verified all five findings. The collector now publishes both
+outputs by temporary-file replacement and records capture wall time, byte length
+and SHA-256 from the same bytes used to parse each rollout. These are prospective
+repairs; the original run5 tail is unchanged. Five added offline tests reproduced
+the failures before repair; all seven collector/preflight/gate-driver tests now
+pass. Fixtures use temporary roots and mocked gate/Git calls, with no live CLI
+or credential access.
+
+The original gate wrapper was not retained. The parameterized
+[gate driver](l7-ledger/gates.py) now reproduces its run/output/log selection and
+cleanup precondition: `python3 -B docs/design/evidence/e2e/l7-ledger/gates.py
+--run-name run5 --log-dir .check-logs/l7-ledger-run5`. The review rerun uses
+`--log-dir .check-logs/l7-ledger-run5-review --output-dir
+.check-logs/l7-ledger-run5-review` to preserve historical results; its results
+are appended to the [execution record](l7-ledger/run5/execution.json).
+This fix round starts no paid trial: additional seat inputs **0**, seat spend
+**USD 0**. It does not change the six-step outcomes or recover missing spend.
+
 Deviations and limits: the designated lane-2 checkout no longer exists; its
 committed run-3 controller was read in this checkout. The pinned Mesh checkout
 contains no `docs/design/ledger-*.md`; its `USAGE.md` ledger contract was read.
 The prescribed unchanged controller stopped at the first failed boundary, so
 steps 3–6 were not executed. Native tail capture is sanitized identity/hash
 evidence, not public model/message text. One notify-only cost is unavailable.
-The independent **Opus lens is unavailable** in this executor's model/tool
-inventory; the orchestrator must supply it. No workflow PASS, release approval,
+The original trial lacked an independent Opus lens; this fix round addresses
+the Opus round-1 findings supplied by the orchestrator. No workflow PASS, release approval,
 product change, Mesh commit, descriptor change, or plan-ledger edit is claimed.
 
 ## Historical fourth trial (superseded attribution; retained verbatim)
