@@ -6,6 +6,17 @@ from controller import output_text, objects, assignment_message_id
 
 
 class EvidenceRules(unittest.TestCase):
+    # // Regression: 030980a7 required a canonical ID even when the submitted card itself was in a tool result.
+    def test_delivery_accepts_exact_card_in_wrapped_tool_result(self):
+        body = 'ACTION REQUIRED: fixture assignment\nAssignment: unique-fixture-id'
+        accepted = {'event_type': 'message_accepted', 'payload': {'message_id': 'canonical', 'body': body}}
+        transport = {'payload': {'message_id': 'canonical', 'recipient': 'alpha', 'stage': 'submitted'}}
+        result = {'payload': {'type': 'custom_tool_call_output', 'output': json.dumps({'output': body, 'exit_code': 0})}}
+        self.assertTrue(delivered([accepted, transport], 'canonical', [result]))
+        self.assertFalse(delivered([accepted], 'canonical', [result]))
+        self.assertFalse(delivered([accepted, transport], 'canonical', [{'payload': {'type': 'message', 'content': body}}]))
+        self.assertFalse(delivered([accepted, transport], 'canonical', [{'payload': {'type': 'custom_tool_call_output', 'output': 'unique-fixture-id'}}]))
+
     # // Regression: 030980a7 discarded a complete final JSON record without a trailing newline.
     def test_daemon_retains_complete_final_record_without_newline(self):
         self.assertEqual(daemon_rows('{"event":"shutdown"}'), [{'event': 'shutdown'}])

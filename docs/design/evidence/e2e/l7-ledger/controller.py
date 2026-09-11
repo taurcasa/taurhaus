@@ -15,7 +15,7 @@ import time
 import uuid
 
 from runtime import Trial as Runtime, BASE, CHECKOUT, TEAM, mesh_json
-from support import complete_rows, delivered, receipt_retry
+from support import complete_rows, delivery_proof, receipt_retry
 
 
 def output_text(value):
@@ -85,7 +85,12 @@ class Trial(Runtime):
         return [row for p in (self.team / 'state/ledger/v1/segments').glob('*.jsonl') for row in complete_rows(p.read_text())]
 
     def settled(self):
-        return self.fresh_idle() and delivered(self.journals(), self.last_delivery, [r for rows in self.sessions() for r in rows])
+        if not self.fresh_idle():
+            return False
+        proof = delivery_proof(self.journals(), self.last_delivery, [r for rows in self.sessions() for r in rows])
+        if proof:
+            self.save('delivery-proof-' + self.last_delivery + '.json', proof)
+        return bool(proof)
 
     def send(self, instruction):
         self.wait(self.settled, 'previous delivery has not settled; no send allowed', 120, owner='mesh')
@@ -154,7 +159,6 @@ class Trial(Runtime):
         manifest = json.loads((self.team / 'state/ledger/v1/manifest.json').read_text())
         self.raw_save('step1-manifest.json', manifest)
         self.incarnation = manifest['team_incarnation_id']
-        self.wait(lambda: self.settled() and self.task()['metadata'].get('started_at'), 'seat did not accept/start frozen assignment', 150)
         self.save('step1-immutable-assignment.json', [e for e in self.workflow() if e.get('eventType') == 'task_assigned'])
         self.pass_step()
 

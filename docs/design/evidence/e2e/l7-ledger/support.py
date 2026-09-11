@@ -98,11 +98,50 @@ def attributed_idle(record,activity,now):
     return bool(record.get('session_id')) and activity.get('activity_confidence')=='idle' and 0<=age<=120
 
 
-def delivered(rows, message_id, rollout):
+def tool_texts(value):
+    """Decode tool output wrappers without treating model prose as tool output."""
+    if isinstance(value, dict):
+        for child in value.values():
+            yield from tool_texts(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from tool_texts(child)
+    elif isinstance(value, str):
+        yield value
+        try:
+            decoded = json.loads(value)
+        except ValueError:
+            return
+        if decoded != value:
+            yield from tool_texts(decoded)
+
+
+def delivery_proof(rows, message_id, rollout):
+    import hashlib
     receipts = [r.get('payload', {}) for r in rows if r.get('payload', {}).get('message_id') == message_id and (r.get('payload', {}).get('recipient') == 'alpha' or r.get('payload', {}).get('reader_name') == 'alpha')]
     if any(p.get('kind') == 'consumed_by_read' and p.get('reader_name', p.get('recipient')) == 'alpha' for p in receipts):
-        return True
-    return any(p.get('stage') in ('submitted', 'native_enqueued') for p in receipts) and any(r.get('payload', {}).get('type') in ('function_call_output', 'custom_tool_call_output') and message_id in json.dumps(r) for r in rollout)
+        return {'message_id': message_id, 'method': 'consumed_by_read', 'reader_name': 'alpha'}
+    if not any(p.get('stage') in ('submitted', 'native_enqueued') for p in receipts):
+        return None
+    bodies = [r['payload'].get('body') for r in rows if r.get('event_type') == 'message_accepted' and r.get('payload', {}).get('message_id') == message_id]
+    bodies = [body for body in bodies if isinstance(body, str) and body and body != '<message-body-redacted>']
+    for row in rollout:
+        payload = row.get('payload', {})
+        if payload.get('type') not in ('function_call_output', 'custom_tool_call_output'):
+            continue
+        texts = list(tool_texts(payload.get('output', '')))
+        matched = next((body for body in bodies if any(body in text for text in texts)), None)
+        if matched or any(message_id in text for text in texts):
+            return {'message_id': message_id, 'method': 'transport_and_tool_result',
+                    'match': 'exact_card_body' if matched else 'canonical_message_id',
+                    'call_id': payload.get('call_id'), 'timestamp': row.get('timestamp'),
+                    'row_sha256': hashlib.sha256(json.dumps(row).encode()).hexdigest(),
+                    'body_sha256': hashlib.sha256(matched.encode()).hexdigest() if matched else None}
+    return None
+
+
+def delivered(rows, message_id, rollout):
+    return delivery_proof(rows, message_id, rollout) is not None
 
 
 def ready(rows, message_id, idle):

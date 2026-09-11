@@ -79,6 +79,16 @@ spend remains separately owned by the orchestrator.
 [run meter](l7-ledger/run3/cost-ledger.json),
 [native counter excerpts](l7-ledger/run3/native-turn-meter.json).
 
+The controller fix is offline only: it now accepts an exact accepted card body
+in a native tool-result row after a transport receipt, decodes nested output
+wrappers, and retains only proof identities/digests. A lone assignment UUID or
+model-prose echo is insufficient. Step 1 is recorded immediately after its
+required exports; the next send still waits for delivery and fresh idle.
+The regression test failed first, then all **13 controller checks passed**.
+This does not retroactively prove run 3's unexported card or later steps.
+[Red](l7-ledger/card-delivery-red.txt),
+[green](l7-ledger/card-delivery-green.txt).
+
 Post-teardown gates for this continuation are pending. The independent Opus
 evidence lens remains unavailable in this executor. Earlier deviations and
 historical results below remain part of the record; their “no further trial”
