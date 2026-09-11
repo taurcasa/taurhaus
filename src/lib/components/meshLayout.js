@@ -29,8 +29,10 @@ export function hasAccountLine(member) {
 }
 
 export function memberNodeHeight(member, lead = false) {
-  if (hasAccountLine(member)) return lead ? 90 : 82
-  return lead ? 72 : 64
+  const base = lead ? 72 : 64
+  const detached = member?.hosted === true && member?.source === 'host' && !member?.paneId
+  // Each supplemental line uses the existing 18px account-row allowance.
+  return base + (hasAccountLine(member) ? 18 : 0) + (detached ? 18 : 0)
 }
 
 function fitHorizontalLayout(rowCount, availableWidth, preferredNodeWidth, preferredGap) {

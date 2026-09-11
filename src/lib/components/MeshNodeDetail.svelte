@@ -714,6 +714,9 @@
                     <span class="inline-block h-2 w-2 rounded-full {statusDotTone}" aria-hidden="true"></span>
                   <span>{statusLabel}</span>
                 </span>
+                {#if node?.hosted === true && node?.source === 'host' && !paneId}
+                  <span class={shellMutedTone}>TUI detached, host running</span>
+                {/if}
                 {#if subjectLabel}
                   <span class="{shellMutedTone}" data-testid="mesh-node-detail-subject">{subjectLabel}</span>
                 {/if}

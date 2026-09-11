@@ -5,6 +5,16 @@ import { readFileSync } from 'node:fs'
 import MeshNode from './MeshNode.svelte'
 
 describe('MeshNode', () => {
+  // Regression: 64df9ffd4, member-stop lane finding 3: a headless host looked like an attached session.
+  it('shows TUI detachment only with live host evidence and no snapshot pane', async () => {
+    const view = render(MeshNode, { name: 'seat', hosted: true, source: 'host', paneId: null })
+    expect(screen.getByText('TUI detached, host running')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-node-agent')).toHaveAttribute('data-node-height', '82')
+    await view.rerender({ paneId: '%42' })
+    expect(screen.queryByText('TUI detached, host running')).not.toBeInTheDocument()
+    await view.rerender({ paneId: null, source: 'host_unavailable' })
+    expect(screen.queryByText('TUI detached, host running')).not.toBeInTheDocument()
+  })
   it('explains hosted thread activity', () => {
     // Regression: 6f61f611 hid the hosted activity authority from the node.
     render(MeshNode, { name: 'seat', status: 'working', source: 'host' })

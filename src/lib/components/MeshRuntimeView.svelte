@@ -82,6 +82,7 @@ import MeshNodeDetail from './MeshNodeDetail.svelte'
       behaviorSummary: selectedNode.behaviorSummary ?? selectedNode.behavior_summary ?? '',
       paneId: selectedNode.paneId ?? selectedNode.pane_id ?? '',
       hosted: selectedNode.hosted === true,
+      source: selectedNode.source,
       sessionId: selectedNode.sessionId ?? selectedNode.session_id ?? '',
       sessionState: selectedNode.sessionState ?? selectedNode.session_status ?? '',
       accountId: selectedNode.accountId ?? selectedNode.account_id ?? '',
