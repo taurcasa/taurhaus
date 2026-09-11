@@ -1,0 +1,12 @@
+{
+  "at": 1789095127.8916788,
+  "command": [
+    "tmux",
+    "send-keys",
+    "-t",
+    "%1",
+    "Enter"
+  ],
+  "exit": 0,
+  "reason": "Warm-up /quit was visible in the command picker after initial Enter during loading; confirm the existing quit command. No model prompt."
+}

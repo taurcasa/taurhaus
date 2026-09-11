@@ -1,0 +1,40 @@
+......FFFF
+======================================================================
+FAIL: test_daemon_active_overrides_missing_or_old_sidecar_state (support_test.TmuxActivityRegression.test_daemon_active_overrides_missing_or_old_sidecar_state) (sidecar={})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/support_test.py", line 52, in test_daemon_active_overrides_missing_or_old_sidecar_state
+    self.assertEqual(actual['state'],'active')
+AssertionError: None != 'active'
+
+======================================================================
+FAIL: test_daemon_active_overrides_missing_or_old_sidecar_state (support_test.TmuxActivityRegression.test_daemon_active_overrides_missing_or_old_sidecar_state) (sidecar={'state': 'idle'})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/support_test.py", line 52, in test_daemon_active_overrides_missing_or_old_sidecar_state
+    self.assertEqual(actual['state'],'active')
+AssertionError: 'idle' != 'active'
+- idle
++ active
+
+
+======================================================================
+FAIL: test_daemon_active_overrides_missing_or_old_sidecar_state (support_test.TmuxActivityRegression.test_daemon_active_overrides_missing_or_old_sidecar_state) (sidecar={'activity_confidence': 'active'})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/support_test.py", line 52, in test_daemon_active_overrides_missing_or_old_sidecar_state
+    self.assertEqual(actual['state'],'active')
+AssertionError: None != 'active'
+
+======================================================================
+FAIL: test_idle_requires_current_daemon_state_and_attribution (support_test.TmuxActivityRegression.test_idle_requires_current_daemon_state_and_attribution)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/support_test.py", line 60, in test_idle_requires_current_daemon_state_and_attribution
+    self.assertFalse(delivered([{'stage':'submitted'},{'kind':'consumed_by_read'}],actual,'alpha'))
+AssertionError: True is not false
+
+----------------------------------------------------------------------
+Ran 8 tests in 0.005s
+
+FAILED (failures=4)

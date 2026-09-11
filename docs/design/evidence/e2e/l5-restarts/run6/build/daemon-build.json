@@ -1,0 +1,16 @@
+{
+  "command": [
+    "just",
+    "build-daemon"
+  ],
+  "cwd": "/home/mstie/projects/taurhaus-l5-restarts",
+  "exit": 0,
+  "seconds": 196.7715392112732,
+  "cargo_preflight": [
+    {
+      "at": 1789089190.613538,
+      "exit": 0,
+      "output": "3599451 <operator-path-redacted> build --release --bin taurhaus-daemon\n"
+    }
+  ]
+}

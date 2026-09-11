@@ -1,0 +1,113 @@
+{
+  "model": "gpt-5.6-luna",
+  "effort": "low",
+  "turn_ids": [
+    "01a08d9a-fd69-7430-adb1-6f26e7994c8b",
+    "01a08d9b-0a02-7890-a86f-98362abb84c1",
+    "01a08d9b-0bdd-7fc1-aa99-c0d66e27275d",
+    "01a08d9b-2f93-7f12-9334-e484f7824ac6",
+    "01a08d9b-76ec-7f90-a239-b740b8b68abb",
+    "01a08d9b-929f-7a10-99bd-bb2370ca15fe",
+    "01a08d9b-c07d-7621-911f-0851c5dd4d3a"
+  ],
+  "paid_inputs": 7,
+  "generations": [
+    {
+      "thread_id": "01a08d9a-f727-79a2-b71a-ec21a4a953db",
+      "turn_id": "01a08d9a-fd69-7430-adb1-6f26e7994c8b",
+      "input": 10978,
+      "cached_input": 6912,
+      "output": 105,
+      "reasoning_output": 77,
+      "api_equivalent_usd": 0.00107744,
+      "conservative_usd": 0.0132996
+    },
+    {
+      "thread_id": "01a08d9a-f727-79a2-b71a-ec21a4a953db",
+      "turn_id": "01a08d9b-76ec-7f90-a239-b740b8b68abb",
+      "input": 11912,
+      "cached_input": 6912,
+      "output": 12,
+      "reasoning_output": 0,
+      "api_equivalent_usd": 0.00115264,
+      "conservative_usd": 0.0143088
+    },
+    {
+      "thread_id": "01a08d9a-f2c5-79e3-a789-507db57d72b4",
+      "turn_id": "01a08d9b-0a02-7890-a86f-98362abb84c1",
+      "input": 9272,
+      "cached_input": 2816,
+      "output": 93,
+      "reasoning_output": 21,
+      "api_equivalent_usd": 0.00145912,
+      "conservative_usd": 0.011238
+    },
+    {
+      "thread_id": "01a08d9a-f2c5-79e3-a789-507db57d72b4",
+      "turn_id": "01a08d9b-0a02-7890-a86f-98362abb84c1",
+      "input": 10771,
+      "cached_input": 8960,
+      "output": 43,
+      "reasoning_output": 34,
+      "api_equivalent_usd": 0.000593,
+      "conservative_usd": 0.0129768
+    },
+    {
+      "thread_id": "01a08d9a-f2c5-79e3-a789-507db57d72b4",
+      "turn_id": "01a08d9b-2f93-7f12-9334-e484f7824ac6",
+      "input": 10872,
+      "cached_input": 9984,
+      "output": 88,
+      "reasoning_output": 16,
+      "api_equivalent_usd": 0.00048288,
+      "conservative_usd": 0.013152
+    },
+    {
+      "thread_id": "01a08d9a-f2c5-79e3-a789-507db57d72b4",
+      "turn_id": "01a08d9b-2f93-7f12-9334-e484f7824ac6",
+      "input": 11757,
+      "cached_input": 9984,
+      "output": 188,
+      "reasoning_output": 172,
+      "api_equivalent_usd": 0.00077988,
+      "conservative_usd": 0.014334
+    },
+    {
+      "thread_id": "01a08d9a-f2c5-79e3-a789-507db57d72b4",
+      "turn_id": "01a08d9b-929f-7a10-99bd-bb2370ca15fe",
+      "input": 11981,
+      "cached_input": 11008,
+      "output": 509,
+      "reasoning_output": 24,
+      "api_equivalent_usd": 0.00102556,
+      "conservative_usd": 0.014988
+    },
+    {
+      "thread_id": "01a08d9a-f2c5-79e3-a789-507db57d72b4",
+      "turn_id": "01a08d9b-c07d-7621-911f-0851c5dd4d3a",
+      "input": 12551,
+      "cached_input": 11008,
+      "output": 86,
+      "reasoning_output": 14,
+      "api_equivalent_usd": 0.00063196,
+      "conservative_usd": 0.0151644
+    },
+    {
+      "thread_id": "01a08d9a-f2c5-79e3-a789-507db57d72b4",
+      "turn_id": "01a08d9b-c07d-7621-911f-0851c5dd4d3a",
+      "input": 13439,
+      "cached_input": 12032,
+      "output": 16,
+      "reasoning_output": 0,
+      "api_equivalent_usd": 0.00054124,
+      "conservative_usd": 0.016146
+    }
+  ],
+  "api_equivalent_usd": 0.00774372,
+  "conservative_usd": 0.1256076,
+  "metering_complete": false,
+  "unmetered_turn_ids": [
+    "01a08d9b-0bdd-7fc1-aa99-c0d66e27275d"
+  ],
+  "basis": "Host tokenUsage.last via daemon hosted_transcript; packet rates $0.20/$0.02/$1.20 per million input/cached/output. Estimate, not invoice."
+}

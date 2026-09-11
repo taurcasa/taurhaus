@@ -1,0 +1,7 @@
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/run6/steps.py", line 156, in <module>
+    for seat in ['alpha','beta']:wait(lambda:ready(seat,onboarding=True),'transport-specific onboarding completion and fresh idle missing '+seat,180)
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/run6/steps.py", line 38, in wait
+    raise AssertionError(why+f'; polled {time.time()-begin:.1f}s')
+AssertionError: transport-specific onboarding completion and fresh idle missing beta; polled 180.7s

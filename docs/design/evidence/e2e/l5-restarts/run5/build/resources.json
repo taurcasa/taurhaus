@@ -1,0 +1,16 @@
+{
+  "command": [
+    "just",
+    "ensure-tauri-resources"
+  ],
+  "cwd": "/home/mstie/projects/taurhaus-l5-restarts",
+  "exit": 0,
+  "seconds": 0.026444196701049805,
+  "cargo_preflight": [
+    {
+      "at": 1789087817.7572372,
+      "exit": 0,
+      "output": "3347860 <operator-path-redacted> test\n3373233 <operator-path-redacted> check --all-targets\n"
+    }
+  ]
+}

@@ -1,0 +1,142 @@
+[
+  {
+    "thread_id": "01a08de1-488a-7650-8eef-c2d1e25a8029",
+    "timestamp": "2026-09-11T00:32:35.923Z",
+    "ordinal": 1,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_started",
+      "turn_id": "01a08de1-6c45-76a0-8a80-a05e8812bcf1",
+      "started_at": 1789086755,
+      "model_context_window": 31129,
+      "collaboration_mode_kind": "default"
+    }
+  },
+  {
+    "thread_id": "01a08de1-488a-7650-8eef-c2d1e25a8029",
+    "timestamp": "2026-09-11T00:32:39.063Z",
+    "ordinal": 14,
+    "type": "event_msg",
+    "payload": {
+      "type": "token_count",
+      "info": {
+        "total_token_usage": {
+          "input_tokens": 9244,
+          "cached_input_tokens": 3840,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 95,
+          "reasoning_output_tokens": 22,
+          "total_tokens": 9339
+        },
+        "last_token_usage": {
+          "input_tokens": 9244,
+          "cached_input_tokens": 3840,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 95,
+          "reasoning_output_tokens": 22,
+          "total_tokens": 9339
+        },
+        "model_context_window": 31129
+      }
+    }
+  },
+  {
+    "thread_id": "01a08de1-488a-7650-8eef-c2d1e25a8029",
+    "timestamp": "2026-09-11T00:32:42.242Z",
+    "ordinal": 20,
+    "type": "event_msg",
+    "payload": {
+      "type": "token_count",
+      "info": {
+        "total_token_usage": {
+          "input_tokens": 20044,
+          "cached_input_tokens": 12800,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 224,
+          "reasoning_output_tokens": 136,
+          "total_tokens": 20268
+        },
+        "last_token_usage": {
+          "input_tokens": 10800,
+          "cached_input_tokens": 8960,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 129,
+          "reasoning_output_tokens": 114,
+          "total_tokens": 10929
+        },
+        "model_context_window": 31129
+      }
+    }
+  },
+  {
+    "thread_id": "01a08de1-488a-7650-8eef-c2d1e25a8029",
+    "timestamp": "2026-09-11T00:32:42.248Z",
+    "ordinal": 21,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_complete",
+      "turn_id": "01a08de1-6c45-76a0-8a80-a05e8812bcf1",
+      "last_agent_message": "L5_baseline_alpha_713599 done",
+      "started_at": 1789086755,
+      "completed_at": 1789086762,
+      "duration_ms": 6333,
+      "time_to_first_token_ms": 1858
+    }
+  },
+  {
+    "thread_id": "01a08de1-4f57-7050-add8-d00258eb416a",
+    "timestamp": "2026-09-11T00:32:30.916Z",
+    "ordinal": 1,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_started",
+      "turn_id": "01a08de1-5857-7f61-a598-3c3ed1b20a54",
+      "started_at": 1789086750,
+      "model_context_window": 31129,
+      "collaboration_mode_kind": "default"
+    }
+  },
+  {
+    "thread_id": "01a08de1-4f57-7050-add8-d00258eb416a",
+    "timestamp": "2026-09-11T00:32:36.814Z",
+    "ordinal": 13,
+    "type": "event_msg",
+    "payload": {
+      "type": "token_count",
+      "info": {
+        "total_token_usage": {
+          "input_tokens": 11128,
+          "cached_input_tokens": 6912,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 62,
+          "reasoning_output_tokens": 53,
+          "total_tokens": 11190
+        },
+        "last_token_usage": {
+          "input_tokens": 11128,
+          "cached_input_tokens": 6912,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 62,
+          "reasoning_output_tokens": 53,
+          "total_tokens": 11190
+        },
+        "model_context_window": 31129
+      }
+    }
+  },
+  {
+    "thread_id": "01a08de1-4f57-7050-add8-d00258eb416a",
+    "timestamp": "2026-09-11T00:32:37.015Z",
+    "ordinal": 14,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_complete",
+      "turn_id": "01a08de1-5857-7f61-a598-3c3ed1b20a54",
+      "last_agent_message": "# \u2014 done",
+      "started_at": 1789086750,
+      "completed_at": 1789086757,
+      "duration_ms": 6206,
+      "time_to_first_token_ms": 5705
+    }
+  }
+]

@@ -1,0 +1,16 @@
+{
+  "command": [
+    "just",
+    "ensure-tauri-resources"
+  ],
+  "cwd": "<operator-path-redacted>",
+  "exit": 0,
+  "seconds": 0.02742934226989746,
+  "cargo_preflight": [
+    {
+      "at": 1789079257.0274704,
+      "exit": 0,
+      "output": "2098456 <operator-path-redacted> build --release --bin taurhaus-daemon\n"
+    }
+  ]
+}

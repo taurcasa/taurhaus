@@ -1,0 +1,14 @@
+..E.......
+======================================================================
+ERROR: test_pending_is_accepted_unexposed_and_working_at_same_sample (support_test.Acceptance.test_pending_is_accepted_unexposed_and_working_at_same_sample)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/run3/support_test.py", line 15, in test_pending_is_accepted_unexposed_and_working_at_same_sample
+    self.assertTrue(pending([row],'q','alpha',a))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: pending() takes 1 positional argument but 4 were given
+
+----------------------------------------------------------------------
+Ran 10 tests in 0.004s
+
+FAILED (errors=1)

@@ -1,0 +1,32 @@
+test_delivery_requires_receipt_fresh_attributed_idle_and_read (support_test.Acceptance.test_delivery_requires_receipt_fresh_attributed_idle_and_read) ... ok
+test_generation_and_logical_identity (support_test.Acceptance.test_generation_and_logical_identity) ... ok
+test_pending_is_accepted_unexposed_and_working_at_same_sample (support_test.Acceptance.test_pending_is_accepted_unexposed_and_working_at_same_sample) ... ok
+test_reply_any_rollout_row_or_journal (support_test.Acceptance.test_reply_any_rollout_row_or_journal) ... ok
+test_duplicate_artifacts_round_trip_with_exact_newlines (support_test.EvidencePacking.test_duplicate_artifacts_round_trip_with_exact_newlines) ... ok
+test_host_state_comes_from_fresh_attributed_daemon_snapshot (support_test.HostedActivity.test_host_state_comes_from_fresh_attributed_daemon_snapshot) ... ok
+test_credential_source_is_redacted (support_test.OperatorPathRegression.test_credential_source_is_redacted) ... ok
+test_no_default_credential_source (support_test.OperatorPathRegression.test_no_default_credential_source) ... ok
+test_census_requires_both_epochs_and_rejects_overlap (support_test.OwnerEvidenceRegression.test_census_requires_both_epochs_and_rejects_overlap) ... ok
+test_empty_census_is_unproved (support_test.OwnerEvidenceRegression.test_empty_census_is_unproved) ... ok
+test_full_window_cadence_and_old_owner_gone_before_delivery (support_test.OwnerWindowRegression.test_full_window_cadence_and_old_owner_gone_before_delivery) ... ok
+test_checkpoint_refreshes_owned_process_identities (support_test.RestartRegression.test_checkpoint_refreshes_owned_process_identities) ... ok
+test_stopped_host_requires_supported_resume (support_test.RestartRegression.test_stopped_host_requires_supported_resume) ... ok
+test_busy_uses_daemon_attribution_without_sidecar (support_test.Run2Ruling.test_busy_uses_daemon_attribution_without_sidecar) ... ok
+test_controller_calls_tested_gate_with_metered_cost (support_test.Run2Ruling.test_controller_calls_tested_gate_with_metered_cost) ... ok
+test_live_pre_submission_metered_cap (support_test.Run2Ruling.test_live_pre_submission_metered_cap) ... ok
+test_both_boundaries_request_explicit_python3_pacing (support_test.Run4Regression.test_both_boundaries_request_explicit_python3_pacing) ... ok
+test_owner_observer_retains_every_sample (support_test.Run4Regression.test_owner_observer_retains_every_sample) ... ok
+test_retained_run3_identities_match_exactly_one_live_owner (support_test.Run4Regression.test_retained_run3_identities_match_exactly_one_live_owner) ... ok
+test_consumed_message_is_never_pending (support_test.Run5Regression.test_consumed_message_is_never_pending) ... ok
+test_consumption_without_submission_is_delivered (support_test.Run5Regression.test_consumption_without_submission_is_delivered) ... ok
+test_foreign_read_does_not_deliver_to_seat (support_test.Run5Regression.test_foreign_read_does_not_deliver_to_seat) ... ok
+test_later_send_rejects_pending_and_inflight_mail (support_test.Run5Regression.test_later_send_rejects_pending_and_inflight_mail) ... ok
+test_onboarding_requires_submission_read_and_fresh_idle (support_test.Run5Regression.test_onboarding_requires_submission_read_and_fresh_idle) ... ok
+test_daemon_active_overrides_missing_or_old_sidecar_state (support_test.TmuxActivityRegression.test_daemon_active_overrides_missing_or_old_sidecar_state) ... ok
+test_idle_requires_current_daemon_state_and_attribution (support_test.TmuxActivityRegression.test_idle_requires_current_daemon_state_and_attribution) ... ok
+test_only_explicit_busy_refusals_retry_inside_window (support_test.TransientRefusals.test_only_explicit_busy_refusals_retry_inside_window) ... ok
+
+----------------------------------------------------------------------
+Ran 27 tests in 0.039s
+
+OK

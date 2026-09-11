@@ -1,0 +1,13 @@
+..........E...........
+======================================================================
+ERROR: test_full_window_cadence_and_old_owner_gone_before_delivery (support_test.OwnerWindowRegression.test_full_window_cadence_and_old_owner_gone_before_delivery)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/run4/support_test.py", line 197, in test_full_window_cadence_and_old_owner_gone_before_delivery
+    from support import owner_window_evidence
+ImportError: cannot import name 'owner_window_evidence' from 'support' (/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/run4/support.py)
+
+----------------------------------------------------------------------
+Ran 22 tests in 0.039s
+
+FAILED (errors=1)

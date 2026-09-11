@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/run3/steps.py", line 146, in <module>
+    assert len(old)==len(new)==1 and (old[0]['pid'],old[0]['start_ticks'])!=(new[0]['pid'],new[0]['start_ticks'])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError

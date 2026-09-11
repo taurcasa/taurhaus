@@ -1,0 +1,14 @@
+{
+  "offline_tests": {
+    "command": "python3 -m unittest discover -s docs/design/evidence/e2e/l5-restarts/run2 -p '*test.py'",
+    "exit": 0,
+    "passed": 10
+  },
+  "git_diff_check_exit": 0,
+  "json_valid": true,
+  "sanitation_passed": true,
+  "daemon_checksum_verified": true,
+  "mesh_worktree_clean": true,
+  "src_tauri_diff": false,
+  "independent_opus_review": "unavailable: not in model/tool surface"
+}

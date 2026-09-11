@@ -1,0 +1,13 @@
+....E.
+======================================================================
+ERROR: test_duplicate_artifacts_round_trip_with_exact_newlines (support_test.EvidencePacking.test_duplicate_artifacts_round_trip_with_exact_newlines)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/support_test.py", line 39, in test_duplicate_artifacts_round_trip_with_exact_newlines
+    from pack import pack, unpack
+ModuleNotFoundError: No module named 'pack'
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.000s
+
+FAILED (errors=1)

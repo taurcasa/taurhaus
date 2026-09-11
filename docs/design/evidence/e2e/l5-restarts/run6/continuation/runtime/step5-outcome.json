@@ -1,0 +1,8 @@
+{
+  "step": 5,
+  "outcome": "FAIL",
+  "classification": "harness",
+  "reason": "Alpha stopped after a paginated mesh read result before the marker page; no read receipt, marker exposure or marker reply. The controller timed out after 180.1 seconds. Beta native delivery and reply are retained.",
+  "at": 1789090712.1552167,
+  "controller_reason": "reply and attributed idle missing mesh-backlog alpha; polled 180.1s"
+}

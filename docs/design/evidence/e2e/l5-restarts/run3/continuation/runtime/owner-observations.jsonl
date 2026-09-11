@@ -1,0 +1,3 @@
+{"at": 1789084250.1000361, "owners": [], "epoch": null}
+{"at": 1789084257.1546178, "owners": [], "epoch": {"root": "/tmp/th-l5-yxf46ajk/claude", "directory_identity": [2096, 1333228], "incarnation": "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483", "epoch": 2, "pid": 2648, "process_start": "30479457"}}
+{"at": 1789084307.238857, "owners": [], "epoch": {"root": "/tmp/th-l5-yxf46ajk/claude", "directory_identity": [2096, 1333228], "incarnation": "b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483", "epoch": 3, "pid": 5802, "process_start": "30484467"}}

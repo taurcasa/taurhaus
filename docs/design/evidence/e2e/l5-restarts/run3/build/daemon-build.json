@@ -1,0 +1,16 @@
+{
+  "command": [
+    "just",
+    "build-daemon"
+  ],
+  "cwd": "/home/mstie/projects/taurhaus-l5-restarts",
+  "exit": 0,
+  "seconds": 192.70292162895203,
+  "cargo_preflight": [
+    {
+      "at": 1789083062.0201054,
+      "exit": 0,
+      "output": "2679848 <operator-path-redacted> test --lib --bins -- --test-threads=1 --skip daemon::server::tests:: --skip daemon::event_listener::tests:: --skip provider::daemon_client::tests:: --skip daemon::launcher::tests:: --skip daemon::watch::tests:: --skip fs::watcher::tests::watcher_starts_and_stops --skip fs::watcher::tests::unwatch_all_clears_everything --skip fs::watcher::tests::shared_tree_reconcile_stays_live_during_continued_callback_events\n2680377 <operator-path-redacted> build --release --bin taurhaus-daemon\n"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "command": [
+    "just",
+    "lint"
+  ],
+  "exit": 0,
+  "seconds": 38.319122568995226,
+  "cargo_preflight": [
+    {
+      "exit": 0,
+      "output": "2730465 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo check --all-targets\n"
+    }
+  ]
+}

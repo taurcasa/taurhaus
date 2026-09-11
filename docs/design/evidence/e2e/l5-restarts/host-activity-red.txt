@@ -1,0 +1,13 @@
+....E
+======================================================================
+ERROR: test_host_state_comes_from_fresh_attributed_daemon_snapshot (support_test.HostedActivity.test_host_state_comes_from_fresh_attributed_daemon_snapshot)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/support_test.py", line 29, in test_host_state_comes_from_fresh_attributed_daemon_snapshot
+    from support import attributed_activity
+ImportError: cannot import name 'attributed_activity' from 'support' (/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/support.py)
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.000s
+
+FAILED (errors=1)

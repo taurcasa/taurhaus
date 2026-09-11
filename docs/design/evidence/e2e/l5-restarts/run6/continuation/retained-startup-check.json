@@ -1,0 +1,7 @@
+{
+  "source": "../runtime/snapshots.json:onboarding-beta.json",
+  "prior_observer_ready": false,
+  "corrected_observer_ready": true,
+  "mutations": 0,
+  "paid_inputs": 0
+}

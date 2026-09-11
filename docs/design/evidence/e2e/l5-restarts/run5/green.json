@@ -1,0 +1,16 @@
+{
+  "command": [
+    "python3",
+    "-m",
+    "unittest",
+    "discover",
+    "-s",
+    "docs/design/evidence/e2e/l5-restarts/run5",
+    "-p",
+    "support_test.py",
+    "-v"
+  ],
+  "exit": 0,
+  "tests": 27,
+  "result": "OK"
+}

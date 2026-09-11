@@ -1,0 +1,74 @@
+{
+  "status": "offline repair complete; runtime continuation blocked by cumulative input cap",
+  "repair_commit": "c4645d2e",
+  "original_runtime_verdict": "unavailable",
+  "new_paid_inputs": 0,
+  "new_metered_usd": 0,
+  "cumulative_paid_inputs": 6,
+  "cumulative_metered_usd": 0.00500816,
+  "unmetered_turn_ids": [
+    "01a08d7b-a33f-7ab2-aff4-a220c99a86fd"
+  ],
+  "hard_input_cap": 12,
+  "remaining_inputs": 6,
+  "fresh_sequence_minimum_inputs": 10,
+  "minimum_basis": {
+    "seat_onboarding": 2,
+    "baseline_messages": 2,
+    "first_bounded_turns": 2,
+    "first_backlog_deliveries": 2,
+    "second_backlog_deliveries": 2
+  },
+  "gates": {
+    "check-quick": {
+      "command": [
+        "just",
+        "check-quick"
+      ],
+      "exit": 0,
+      "seconds": 25.986734427977353,
+      "cargo_preflight": [
+        {
+          "exit": 0,
+          "output": "2422158 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo check --tests\n"
+        }
+      ]
+    },
+    "lint": {
+      "command": [
+        "just",
+        "lint"
+      ],
+      "exit": 0,
+      "seconds": 24.2304601049982,
+      "cargo_preflight": [
+        {
+          "exit": 0,
+          "output": "2422158 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo check --tests\n"
+        }
+      ]
+    },
+    "test-contracts": {
+      "command": [
+        "just",
+        "test-contracts"
+      ],
+      "exit": 0,
+      "seconds": 19.314361639029812,
+      "cargo_preflight": [
+        {
+          "exit": 0,
+          "output": "2422158 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo check --tests\n"
+        }
+      ]
+    }
+  },
+  "gate_cleanup": {
+    "children_waited": true,
+    "root_removed": true
+  },
+  "original_scratch_root_absent": true,
+  "original_daemon_jsonl_sha256": "9b30d2e4f45871ef1de6d2c2a580d01222134e7434135ab7e0f881cf0a438475",
+  "offline_tests": 8,
+  "rust_diff": false
+}

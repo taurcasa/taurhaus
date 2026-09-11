@@ -1,0 +1,1054 @@
+{
+  "verdict": "FAIL step 1 (harness baseline/startup race); steps 2\u20136 NOT RUN",
+  "step_outcomes": [
+    {
+      "step": 1,
+      "outcome": "FAIL",
+      "classification": "harness",
+      "reason": "Baseline raced alpha startup inbox read: explicit consumption and model reply exist, but no transport submission for the baseline ID. delivery receipt/read missing baseline alpha; polled 120.7s",
+      "at": 1789086884.4458919
+    },
+    {
+      "step": 2,
+      "outcome": "NOT RUN",
+      "classification": "blocked by step 1 harness failure",
+      "paid_inputs": 0,
+      "metered_usd": 0
+    },
+    {
+      "step": 3,
+      "outcome": "NOT RUN",
+      "classification": "blocked by step 1 harness failure",
+      "paid_inputs": 0,
+      "metered_usd": 0
+    },
+    {
+      "step": 4,
+      "outcome": "NOT RUN",
+      "classification": "blocked by step 1 harness failure",
+      "paid_inputs": 0,
+      "metered_usd": 0
+    },
+    {
+      "step": 5,
+      "outcome": "NOT RUN",
+      "classification": "blocked by step 1 harness failure",
+      "paid_inputs": 0,
+      "metered_usd": 0
+    },
+    {
+      "step": 6,
+      "outcome": "NOT RUN",
+      "classification": "blocked by step 1 harness failure",
+      "paid_inputs": 0,
+      "metered_usd": 0
+    }
+  ],
+  "recorded_step1_outcome": {
+    "step": 1,
+    "outcome": "FAIL",
+    "classification": "unclassified pending evidence review",
+    "reason": "delivery receipt/read missing baseline alpha; polled 120.7s",
+    "at": 1789086884.4458919
+  },
+  "started_utc": "2026-09-11T00:32:25.635264+00:00",
+  "cleanup_utc": "2026-09-11T00:34:44.735161+00:00",
+  "runtime_seconds": 139.0998969078064,
+  "baseline": {
+    "message": {
+      "message_id": "2c7d03db-1d91-458e-ad93-92bd1e20a3e2",
+      "sequence": 7,
+      "status": "accepted",
+      "projection": "pending",
+      "delivery_targets": [
+        {
+          "delivery_id": "18315c8b-7840-4e7b-bb90-712f480fb388",
+          "legacy_acceptance": "unknown",
+          "legacy_id": "9cfd8bbf-74b1-4454-a235-e4265a277fef",
+          "member_id": "alpha@l5-restarts",
+          "read_audience": [
+            {
+              "member_id": "alpha@l5-restarts",
+              "name": "alpha"
+            },
+            {
+              "member_id": "c2e09600-f9fd-4bc8-9b34-f3fb0767a688",
+              "name": "lead"
+            }
+          ],
+          "recipient": "alpha",
+          "source_path": "inboxes/alpha.json"
+        }
+      ],
+      "marker": "L5_baseline_alpha_713599",
+      "seat": "alpha"
+    },
+    "journal": [
+      {
+        "checksum": "79e7be18cff8149dbc4c20ba2c6145ceb897600068bad7a541c07ef3aa0d6e97",
+        "committed_at": "2026-09-11T00:32:37.490152966+00:00",
+        "event_id": "520c125f-b273-4547-aa9b-fde2ec676327",
+        "event_type": "message_accepted",
+        "log_epoch": "5e167348-974b-46d3-a510-a7524e47aa93",
+        "payload": {
+          "acceptance": "canonical",
+          "archive_outcome": "retained",
+          "audience_proof": {
+            "kind": "captured-members",
+            "members": [
+              {
+                "member_id": "alpha@l5-restarts",
+                "name": "alpha"
+              },
+              {
+                "member_id": "c2e09600-f9fd-4bc8-9b34-f3fb0767a688",
+                "name": "lead"
+              }
+            ],
+            "team_id": "a923cf7db5623fdd13c48f6859ad05ae5b8c3575c998f0b1e23b5b9a13f9ce1c"
+          },
+          "author": {
+            "member_id": "c2e09600-f9fd-4bc8-9b34-f3fb0767a688",
+            "name": "lead",
+            "verified": true
+          },
+          "body": "ACTION REQUIRED: Reply exactly L5_baseline_alpha_713599. Do not execute tools or modify files.",
+          "body_bytes": 94,
+          "body_format": "text/plain",
+          "body_hash": "6169a26ad9b8cb9ab063f507c8cc3398faf6674ed4f23030af02329cf42d123c",
+          "conversation_id": "ac07cd0a233f6419373a1fe108dbc8498369813297c059623900cfa3357b609f",
+          "conversation_kind": "dm",
+          "correction_reason": null,
+          "delivery_targets": [
+            {
+              "delivery_id": "18315c8b-7840-4e7b-bb90-712f480fb388",
+              "legacy_acceptance": "unknown",
+              "legacy_id": "9cfd8bbf-74b1-4454-a235-e4265a277fef",
+              "member_id": "alpha@l5-restarts",
+              "read_audience": [
+                {
+                  "member_id": "alpha@l5-restarts",
+                  "name": "alpha"
+                },
+                {
+                  "member_id": "c2e09600-f9fd-4bc8-9b34-f3fb0767a688",
+                  "name": "lead"
+                }
+              ],
+              "recipient": "alpha",
+              "source_path": "inboxes/alpha.json"
+            }
+          ],
+          "dispatch_decision": {
+            "expectation": "action",
+            "policy_revision": 1,
+            "provenance": "prefix",
+            "wake_eligible": true
+          },
+          "envelope": {
+            "from": "lead",
+            "id": "9cfd8bbf-74b1-4454-a235-e4265a277fef",
+            "read": false,
+            "summary": "baseline",
+            "text": null,
+            "timestamp": "2026-09-11T00:32:37.482Z"
+          },
+          "idempotency_key": "9cfd8bbf-74b1-4454-a235-e4265a277fef",
+          "legacy_acceptance": "unknown",
+          "link": null,
+          "message_id": "2c7d03db-1d91-458e-ad93-92bd1e20a3e2",
+          "origin": "authored",
+          "producer": "mesh-send:c2e09600-f9fd-4bc8-9b34-f3fb0767a688",
+          "read_audience": [
+            {
+              "member_id": "alpha@l5-restarts",
+              "name": "alpha"
+            },
+            {
+              "member_id": "c2e09600-f9fd-4bc8-9b34-f3fb0767a688",
+              "name": "lead"
+            }
+          ],
+          "reply_to_message_id": null,
+          "request_digest": "4223491c797a539e879f434a4d5bfb6ab7228a01ea2b6de24f8e205f76687ce6",
+          "response_expectation": {
+            "basis": "producer",
+            "expectation": "action",
+            "kind": "action",
+            "policy_revision": 1,
+            "provenance": "prefix",
+            "wake_eligible": true
+          },
+          "retention_class": "dm",
+          "source_authority": null,
+          "source_event_refs": [],
+          "summary": "baseline",
+          "supersedes_message_ids": [],
+          "task_links": [],
+          "visibility_policy_id": "captured-members",
+          "visibility_policy_revision": 1,
+          "wake_priority": "urgent"
+        },
+        "schema_version": 1,
+        "sequence": 7,
+        "team_id": "a923cf7db5623fdd13c48f6859ad05ae5b8c3575c998f0b1e23b5b9a13f9ce1c"
+      },
+      {
+        "checksum": "519106c1ba1f091cfef2941193098e6028d67c617333140000154b4d8f32b42f",
+        "committed_at": "2026-09-11T00:32:38.997380312+00:00",
+        "event_id": "69e8e7fa-7060-4562-99a8-82c1afbf0283",
+        "event_type": "receipt",
+        "log_epoch": "5e167348-974b-46d3-a510-a7524e47aa93",
+        "payload": {
+          "accepted_sequence": 7,
+          "audience_proof": {
+            "kind": "captured-members",
+            "members": [
+              {
+                "member_id": "alpha@l5-restarts",
+                "name": "alpha"
+              },
+              {
+                "member_id": "c2e09600-f9fd-4bc8-9b34-f3fb0767a688",
+                "name": "lead"
+              }
+            ],
+            "team_id": "a923cf7db5623fdd13c48f6859ad05ae5b8c3575c998f0b1e23b5b9a13f9ce1c"
+          },
+          "body_bytes": 94,
+          "body_hash": "6169a26ad9b8cb9ab063f507c8cc3398faf6674ed4f23030af02329cf42d123c",
+          "context": "explicit-mesh-cli",
+          "delivery_id": "18315c8b-7840-4e7b-bb90-712f480fb388",
+          "kind": "consumed_by_read",
+          "message_id": "2c7d03db-1d91-458e-ad93-92bd1e20a3e2",
+          "read_audience": [
+            {
+              "member_id": "alpha@l5-restarts",
+              "name": "alpha"
+            },
+            {
+              "member_id": "c2e09600-f9fd-4bc8-9b34-f3fb0767a688",
+              "name": "lead"
+            }
+          ],
+          "reader": "alpha@l5-restarts",
+          "reader_name": "alpha"
+        },
+        "schema_version": 1,
+        "sequence": 9,
+        "team_id": "a923cf7db5623fdd13c48f6859ad05ae5b8c3575c998f0b1e23b5b9a13f9ce1c"
+      }
+    ],
+    "native_read": [
+      {
+        "thread_id": "01a08de1-488a-7650-8eef-c2d1e25a8029",
+        "timestamp": "2026-09-11T00:32:38.915Z",
+        "ordinal": 10,
+        "type": "response_item",
+        "payload": {
+          "type": "custom_tool_call",
+          "id": "ctc_0ed63d584cbd11e8016aa34c20618c87d2961d74c0d0727b31",
+          "status": "completed",
+          "call_id": "call_wmiht19xgY4XsXfWwMDNt0L3",
+          "name": "exec",
+          "input": "const r = await tools.exec_command({cmd:\"mesh read --unread --mark-read --team l5-restarts --name alpha\",workdir:\"/tmp/th-l5-xeak29e1/project\",yield_time_ms:10000,max_output_tokens:2000}); text(r.output);\n",
+          "internal_chat_message_metadata_passthrough": {
+            "turn_id": "01a08de1-6c45-76a0-8a80-a05e8812bcf1",
+            "create_time": 1789086751.530276
+          }
+        }
+      }
+    ],
+    "native_reply": [
+      {
+        "thread_id": "01a08de1-488a-7650-8eef-c2d1e25a8029",
+        "timestamp": "2026-09-11T00:32:42.232Z",
+        "ordinal": 18,
+        "type": "response_item",
+        "payload": {
+          "type": "message",
+          "id": "msg_0ed63d584cbd11e8016aa34c249ee487d28887eecfd725f0fa",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "L5_baseline_alpha_713599 done"
+            }
+          ],
+          "phase": "final_answer",
+          "internal_chat_message_metadata_passthrough": {
+            "turn_id": "01a08de1-6c45-76a0-8a80-a05e8812bcf1",
+            "create_time": 1789086754.109427,
+            "content_item_kinds": [
+              "unknown"
+            ]
+          }
+        }
+      }
+    ],
+    "exposures": 0,
+    "explicit_reads": 1,
+    "beta_baseline_sent": false
+  },
+  "identities": {
+    "alpha": {
+      "activitySnapshotPath": "/tmp/th-l5-xeak29e1/claude/teams/l5-restarts/state/activity/alpha.json",
+      "appliedEffort": "low",
+      "attached_at": "2026-09-11T00:32:25.991966810Z",
+      "attachmentGeneration": 1,
+      "cli_tool": "codex",
+      "contextGeneration": "0",
+      "daemon_pid": null,
+      "delivery_lease": null,
+      "harness": "codex",
+      "health": "healthy",
+      "hookSessionId": "01a08de1-488a-7650-8eef-c2d1e25a8029",
+      "hostInputAbandonedAt": null,
+      "hostInputUnknown": false,
+      "jsonl_path": "/tmp/th-l5-xeak29e1/codex/sessions/2026/09/11/rollout-2026-09-11T02-32-26-01a08de1-488a-7650-8eef-c2d1e25a8029.jsonl",
+      "last_seen_at": "2026-09-11T00:33:00.337635937Z",
+      "launchRoot": {
+        "claudeDir": "/tmp/th-l5-xeak29e1/claude",
+        "rootAuthorityRevision": 0,
+        "teamIncarnationId": "a923cf7db5623fdd13c48f6859ad05ae5b8c3575c998f0b1e23b5b9a13f9ce1c",
+        "teamsDir": "/tmp/th-l5-xeak29e1/claude/teams"
+      },
+      "memberName": "alpha",
+      "paneId": "%2",
+      "panePid": 136,
+      "paneStartTime": "30728377",
+      "project_path": "/tmp/th-l5-xeak29e1/project",
+      "recovery": {
+        "activation_intent": "53261db90f0b1db4b8dbf8ab3e32a74e368d587cb223e63dc0f35dc683b84fc7",
+        "admitted_boundary": null,
+        "baseline_binding": [
+          [
+            "a923cf7db5623fdd13c48f6859ad05ae5b8c3575c998f0b1e23b5b9a13f9ce1c",
+            "2506a517-e819-4959-b3d3-6116b8aba746"
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "claim": {
+          "accepted_bytes": 2260,
+          "attempt": 1,
+          "card_key": {
+            "card_schema": 1,
+            "context": [
+              1,
+              0
+            ],
+            "contract": {
+              "effective_role_revision": "7b615b003f6a58bf924aee8ccc6e141aeec6d1080360bad5884a53abc78f60da",
+              "instruction_contract_revision": "bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f",
+              "packet_revision": "",
+              "role_id": ""
+            },
+            "recipient": [
+              "a923cf7db5623fdd13c48f6859ad05ae5b8c3575c998f0b1e23b5b9a13f9ce1c",
+              "2506a517-e819-4959-b3d3-6116b8aba746"
+            ],
+            "roots": {
+              "harness_account_root": "/tmp/th-l5-xeak29e1/codex",
+              "launch_namespace": "native",
+              "resolved_mesh_config_root": "/tmp/th-l5-xeak29e1/claude",
+              "resolved_project_root": "/tmp/th-l5-xeak29e1/project",
+              "resolved_teams_root": "/tmp/th-l5-xeak29e1/claude/teams",
+              "root_authority_revision": "0"
+            }
+          },
+          "content_revision": "b3a53794f7f2769ef3398b33d6967e66d8df5915d73d908f5e1c7b0adf397fd1",
+          "delivery_id": "8292e86137941be7d93c2c90086008383ec00c984e379161b7a170ffbcb85ce2",
+          "generated_bytes": 2260,
+          "journal": {
+            "delivery_id": "76c41f3e-c2c3-4dfc-bfd6-fe444a240639",
+            "message_id": "d5c4f215-23c4-47b7-a8e5-f01e73912fd8",
+            "projection": "pending",
+            "sequence": 2
+          },
+          "kind": "baseline",
+          "obligation_key": [
+            [
+              "a923cf7db5623fdd13c48f6859ad05ae5b8c3575c998f0b1e23b5b9a13f9ce1c",
+              "2506a517-e819-4959-b3d3-6116b8aba746"
+            ],
+            [
+              1,
+              0
+            ]
+          ],
+          "observations": [
+            [
+              "accepted",
+              "2026-09-11T00:32:32.939692554Z",
+              "inbox"
+            ]
+          ],
+          "offered_bytes": 0,
+          "path": "inbox",
+          "returned_by_read_bytes": 0,
+          "satisfied_obligations": [
+            [
+              [
+                "a923cf7db5623fdd13c48f6859ad05ae5b8c3575c998f0b1e23b5b9a13f9ce1c",
+                "2506a517-e819-4959-b3d3-6116b8aba746"
+              ],
+              [
+                1,
+                0
+              ]
+            ]
+          ],
+          "stage": "accepted",
+          "supersedes_revision": null
+        },
+        "harness_account_root": "/tmp/th-l5-xeak29e1/codex",
+        "last_delivered": {
+          "accepted_bytes": 2260,
+          "attempt": 1,
+          "card_key": {
+            "card_schema": 1,
+            "context": [
+              1,
+              0
+            ],
+            "contract": {
+              "effective_role_revision": "7b615b003f6a58bf924aee8ccc6e141aeec6d1080360bad5884a53abc78f60da",
+              "instruction_contract_revision": "bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f",
+              "packet_revision": "",
+              "role_id": ""
+            },
+            "recipient": [
+              "a923cf7db5623fdd13c48f6859ad05ae5b8c3575c998f0b1e23b5b9a13f9ce1c",
+              "2506a517-e819-4959-b3d3-6116b8aba746"
+            ],
+            "roots": {
+              "harness_account_root": "/tmp/th-l5-xeak29e1/codex",
+              "launch_namespace": "native",
+              "resolved_mesh_config_root": "/tmp/th-l5-xeak29e1/claude",
+              "resolved_project_root": "/tmp/th-l5-xeak29e1/project",
+              "resolved_teams_root": "/tmp/th-l5-xeak29e1/claude/teams",
+              "root_authority_revision": "0"
+            }
+          },
+          "content_revision": "b3a53794f7f2769ef3398b33d6967e66d8df5915d73d908f5e1c7b0adf397fd1",
+          "delivery_id": "8292e86137941be7d93c2c90086008383ec00c984e379161b7a170ffbcb85ce2",
+          "generated_bytes": 2260,
+          "journal": {
+            "delivery_id": "76c41f3e-c2c3-4dfc-bfd6-fe444a240639",
+            "message_id": "d5c4f215-23c4-47b7-a8e5-f01e73912fd8",
+            "projection": "pending",
+            "sequence": 2
+          },
+          "kind": "baseline",
+          "obligation_key": [
+            [
+              "a923cf7db5623fdd13c48f6859ad05ae5b8c3575c998f0b1e23b5b9a13f9ce1c",
+              "2506a517-e819-4959-b3d3-6116b8aba746"
+            ],
+            [
+              1,
+              0
+            ]
+          ],
+          "observations": [
+            [
+              "accepted",
+              "2026-09-11T00:32:32.939692554Z",
+              "inbox"
+            ]
+          ],
+          "offered_bytes": 0,
+          "path": "inbox",
+          "returned_by_read_bytes": 0,
+          "satisfied_obligations": [
+            [
+              [
+                "a923cf7db5623fdd13c48f6859ad05ae5b8c3575c998f0b1e23b5b9a13f9ce1c",
+                "2506a517-e819-4959-b3d3-6116b8aba746"
+              ],
+              [
+                1,
+                0
+              ]
+            ]
+          ],
+          "stage": "accepted",
+          "supersedes_revision": null
+        },
+        "launch_namespace": "native",
+        "member_incarnation_id": "2506a517-e819-4959-b3d3-6116b8aba746",
+        "reserved_attachment": "2026-09-11T00:32:25.991966810Z",
+        "reserved_effort": "low"
+      },
+      "schema_version": 3,
+      "session_id": "01a08de1-488a-7650-8eef-c2d1e25a8029",
+      "terminalContract": 1,
+      "tmuxSessionId": "$0",
+      "tmuxSocket": "/tmp/th-l5-xeak29e1/tmux/tmux-1000/default"
+    },
+    "beta": {
+      "activitySnapshotPath": null,
+      "appServer": {
+        "accountRoot": "/tmp/th-l5-xeak29e1/codex",
+        "attachArgv": [
+          "codex",
+          "--remote",
+          "unix:///tmp/th-l5-xeak29e1/tmp/th-host-a1f12f37d8c143d6b58101919ada8147/rpc.sock",
+          "resume",
+          "01a08de1-4f57-7050-add8-d00258eb416a",
+          "--no-alt-screen",
+          "--strict-config"
+        ],
+        "build": "0.153.4",
+        "configuration": "strict-config/1",
+        "configurationDigest": "7ea1ba30e019425d3c62c49c7c79115ef3a686cc1406dcc4ea0bcda291abb143",
+        "contract": 1,
+        "host": "taurhaus-daemon-owned-thread/1",
+        "hostGeneration": "8f6dc936-2fd7-436b-a2c8-041a88fcaefe",
+        "instructionSources": [
+          "/tmp/th-l5-xeak29e1/project/AGENTS.md"
+        ],
+        "memberId": "beta@l5-restarts",
+        "processId": 181,
+        "processStart": "30728379",
+        "socketPath": "/tmp/th-l5-xeak29e1/tmp/th-host-a1f12f37d8c143d6b58101919ada8147/rpc.sock",
+        "state": "ready",
+        "threadId": "01a08de1-4f57-7050-add8-d00258eb416a",
+        "transport": "unix-websocket",
+        "trust": "daemon-owned/1"
+      },
+      "appliedEffort": "low",
+      "attached_at": "2026-09-11T00:32:32.521200616Z",
+      "attachmentGeneration": 1,
+      "cli_tool": "codex",
+      "contextGeneration": "0",
+      "daemon_pid": null,
+      "delivery_lease": null,
+      "harness": "codex",
+      "health": "active",
+      "hookSessionId": "01a08de1-4f57-7050-add8-d00258eb416a",
+      "hostInputAbandonedAt": null,
+      "hostInputUnknown": false,
+      "jsonl_path": null,
+      "last_seen_at": null,
+      "launchRoot": {
+        "claudeDir": "/tmp/th-l5-xeak29e1/claude",
+        "rootAuthorityRevision": 0,
+        "teamIncarnationId": "a923cf7db5623fdd13c48f6859ad05ae5b8c3575c998f0b1e23b5b9a13f9ce1c",
+        "teamsDir": "/tmp/th-l5-xeak29e1/claude/teams"
+      },
+      "memberName": "beta",
+      "paneId": "%3",
+      "panePid": 2464,
+      "paneStartTime": "30728891",
+      "project_path": "/tmp/th-l5-xeak29e1/project",
+      "recovery": {
+        "activation_intent": "72283693-aa38-4593-a957-bae486de05c6",
+        "admitted_boundary": null,
+        "baseline_binding": [
+          [
+            "a923cf7db5623fdd13c48f6859ad05ae5b8c3575c998f0b1e23b5b9a13f9ce1c",
+            "31883ebe-9e68-4801-bc1a-14eed2ce3b09"
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "claim": {
+          "accepted_bytes": 0,
+          "attempt": 1,
+          "card_key": {
+            "card_schema": 1,
+            "context": [
+              1,
+              0
+            ],
+            "contract": {
+              "effective_role_revision": "7b615b003f6a58bf924aee8ccc6e141aeec6d1080360bad5884a53abc78f60da",
+              "instruction_contract_revision": "bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f",
+              "packet_revision": "",
+              "role_id": ""
+            },
+            "recipient": [
+              "a923cf7db5623fdd13c48f6859ad05ae5b8c3575c998f0b1e23b5b9a13f9ce1c",
+              "31883ebe-9e68-4801-bc1a-14eed2ce3b09"
+            ],
+            "roots": {
+              "harness_account_root": "/tmp/th-l5-xeak29e1/codex",
+              "launch_namespace": "native",
+              "resolved_mesh_config_root": "/tmp/th-l5-xeak29e1/claude",
+              "resolved_project_root": "/tmp/th-l5-xeak29e1/project",
+              "resolved_teams_root": "/tmp/th-l5-xeak29e1/claude/teams",
+              "root_authority_revision": "0"
+            }
+          },
+          "content_revision": "999ce7fa4b3b2275a7457e28eeaeb4b4233535a0042c4e38e68b6601f51358c4",
+          "delivery_id": "58499cf2fe3a57a463b31f683482c2e6322652f425b1c32ef4e7cf585ef7bf2d",
+          "generated_bytes": 2158,
+          "kind": "baseline",
+          "obligation_key": [
+            [
+              "a923cf7db5623fdd13c48f6859ad05ae5b8c3575c998f0b1e23b5b9a13f9ce1c",
+              "31883ebe-9e68-4801-bc1a-14eed2ce3b09"
+            ],
+            [
+              1,
+              0
+            ]
+          ],
+          "observations": [
+            [
+              "submitted",
+              "2026-09-11T00:32:30.912805137Z",
+              "app_server"
+            ]
+          ],
+          "offered_bytes": 2158,
+          "path": "app_server",
+          "returned_by_read_bytes": 0,
+          "satisfied_obligations": [
+            [
+              [
+                "a923cf7db5623fdd13c48f6859ad05ae5b8c3575c998f0b1e23b5b9a13f9ce1c",
+                "31883ebe-9e68-4801-bc1a-14eed2ce3b09"
+              ],
+              [
+                1,
+                0
+              ]
+            ]
+          ],
+          "stage": "submitted",
+          "supersedes_revision": null
+        },
+        "harness_account_root": "/tmp/th-l5-xeak29e1/codex",
+        "last_delivered": {
+          "accepted_bytes": 0,
+          "attempt": 1,
+          "card_key": {
+            "card_schema": 1,
+            "context": [
+              1,
+              0
+            ],
+            "contract": {
+              "effective_role_revision": "7b615b003f6a58bf924aee8ccc6e141aeec6d1080360bad5884a53abc78f60da",
+              "instruction_contract_revision": "bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f",
+              "packet_revision": "",
+              "role_id": ""
+            },
+            "recipient": [
+              "a923cf7db5623fdd13c48f6859ad05ae5b8c3575c998f0b1e23b5b9a13f9ce1c",
+              "31883ebe-9e68-4801-bc1a-14eed2ce3b09"
+            ],
+            "roots": {
+              "harness_account_root": "/tmp/th-l5-xeak29e1/codex",
+              "launch_namespace": "native",
+              "resolved_mesh_config_root": "/tmp/th-l5-xeak29e1/claude",
+              "resolved_project_root": "/tmp/th-l5-xeak29e1/project",
+              "resolved_teams_root": "/tmp/th-l5-xeak29e1/claude/teams",
+              "root_authority_revision": "0"
+            }
+          },
+          "content_revision": "999ce7fa4b3b2275a7457e28eeaeb4b4233535a0042c4e38e68b6601f51358c4",
+          "delivery_id": "58499cf2fe3a57a463b31f683482c2e6322652f425b1c32ef4e7cf585ef7bf2d",
+          "generated_bytes": 2158,
+          "kind": "baseline",
+          "obligation_key": [
+            [
+              "a923cf7db5623fdd13c48f6859ad05ae5b8c3575c998f0b1e23b5b9a13f9ce1c",
+              "31883ebe-9e68-4801-bc1a-14eed2ce3b09"
+            ],
+            [
+              1,
+              0
+            ]
+          ],
+          "observations": [
+            [
+              "submitted",
+              "2026-09-11T00:32:30.912805137Z",
+              "app_server"
+            ]
+          ],
+          "offered_bytes": 2158,
+          "path": "app_server",
+          "returned_by_read_bytes": 0,
+          "satisfied_obligations": [
+            [
+              [
+                "a923cf7db5623fdd13c48f6859ad05ae5b8c3575c998f0b1e23b5b9a13f9ce1c",
+                "31883ebe-9e68-4801-bc1a-14eed2ce3b09"
+              ],
+              [
+                1,
+                0
+              ]
+            ]
+          ],
+          "stage": "submitted",
+          "supersedes_revision": null
+        },
+        "launch_namespace": "native",
+        "member_incarnation_id": "31883ebe-9e68-4801-bc1a-14eed2ce3b09",
+        "reserved_attachment": null,
+        "reserved_effort": null
+      },
+      "schema_version": 3,
+      "session_id": "01a08de1-4f57-7050-add8-d00258eb416a",
+      "terminalContract": 1,
+      "tmuxSessionId": "$0",
+      "tmuxSocket": "/tmp/th-l5-xeak29e1/tmux/tmux-1000/default"
+    }
+  },
+  "config": {
+    "name": "l5-restarts",
+    "description": "Disposable messaging trial",
+    "createdAt": 1789086745827,
+    "leadAgentId": "c2e09600-f9fd-4bc8-9b34-f3fb0767a688",
+    "leadSessionId": "57e2466d-27f8-432c-9b76-780cac2ad7a2",
+    "members": [
+      {
+        "agentId": "c2e09600-f9fd-4bc8-9b34-f3fb0767a688",
+        "name": "lead",
+        "agentType": "orchestrator",
+        "model": "claude-haiku-4-5",
+        "joinedAt": 1789086745827,
+        "cwd": "/tmp/th-l5-xeak29e1/project",
+        "tmuxPaneId": "%1",
+        "backendType": "external",
+        "isActive": true,
+        "lastActivityAt": "2026-09-11T00:32:37.549Z",
+        "lastActivityReason": "message_sent",
+        "cli_tool": "claude",
+        "controlAuthTokenHash": "<redacted>",
+        "instructions": null,
+        "projectPath": "/tmp/th-l5-xeak29e1/project",
+        "project_path": "/tmp/th-l5-xeak29e1/project",
+        "role": "lead"
+      },
+      {
+        "agentId": "alpha@l5-restarts",
+        "name": "alpha",
+        "agentType": "general-purpose",
+        "model": "gpt-5.6-luna",
+        "joinedAt": 1789086745827,
+        "cwd": "/tmp/th-l5-xeak29e1/project",
+        "tmuxPaneId": "%2",
+        "backendType": "external",
+        "isActive": true,
+        "lastActivityAt": "2026-09-11T00:32:43.042Z",
+        "lastActivityReason": "read_messages",
+        "cli_tool": "codex",
+        "controlAuthTokenHash": "<redacted>",
+        "instructions": "Reply briefly. Follow the project AGENTS.md. Never modify files.",
+        "projectPath": "/tmp/th-l5-xeak29e1/project",
+        "project_path": "/tmp/th-l5-xeak29e1/project",
+        "reasoningEffort": "low",
+        "role": "agent"
+      },
+      {
+        "agentId": "beta@l5-restarts",
+        "name": "beta",
+        "agentType": "general-purpose",
+        "model": "gpt-5.6-luna",
+        "joinedAt": 1789086745827,
+        "cwd": "/tmp/th-l5-xeak29e1/project",
+        "tmuxPaneId": "%3",
+        "backendType": "external",
+        "isActive": true,
+        "adapter_mode": "app_server",
+        "cli_tool": "codex",
+        "controlAuthTokenHash": "<redacted>",
+        "instructions": "Reply briefly. Follow the project AGENTS.md. Never modify files.",
+        "projectPath": "/tmp/th-l5-xeak29e1/project",
+        "project_path": "/tmp/th-l5-xeak29e1/project",
+        "reasoningEffort": "low",
+        "role": "agent"
+      }
+    ],
+    "created_at": "2026-09-11T00:32:25.827Z",
+    "delivery_owner": "team",
+    "messaging_activation": "disposable-mesh-only",
+    "messaging_format": 2,
+    "messaging_policy": {
+      "approved_by": "taurhaus-operator",
+      "archive_access": "captured-audience",
+      "archive_owner": "lead",
+      "canonical_writers": "mesh-only",
+      "capture_scope": "mesh-producers-only",
+      "closure": "manual-disposal-after-evidence-export",
+      "dm_horizon_days": 7,
+      "inactive_horizon_days": 14,
+      "purge_implemented": false,
+      "retry_horizon_days": 30,
+      "review_horizon_days": 30,
+      "synthetic_disposable": true,
+      "task_horizon_days": 30
+    },
+    "minimum_writer": "mesh-journal/2",
+    "schema_version": 1,
+    "team_incarnation_id": "a923cf7db5623fdd13c48f6859ad05ae5b8c3575c998f0b1e23b5b9a13f9ce1c"
+  },
+  "owner_epoch": {
+    "root": "/tmp/th-l5-xeak29e1/claude",
+    "directory_identity": [
+      2096,
+      1642099
+    ],
+    "incarnation": "a923cf7db5623fdd13c48f6859ad05ae5b8c3575c998f0b1e23b5b9a13f9ce1c",
+    "epoch": 2,
+    "pid": 3088,
+    "process_start": "30729040"
+  },
+  "owner_census": {
+    "samples": 276,
+    "max_simultaneous_observed_owners": 1,
+    "max_gap_seconds": 0.5485386848449707,
+    "restart_window": "NOT RUN; startup-only census does not prove restart exclusion"
+  },
+  "working_windows": {
+    "taurhaus_boundary": {
+      "alpha": "NOT RUN",
+      "beta": "NOT RUN"
+    },
+    "mesh_boundary": {
+      "alpha": "NOT RUN",
+      "beta": "NOT RUN"
+    }
+  },
+  "turns": [
+    {
+      "turn_id": "01a08de1-5857-7f61-a598-3c3ed1b20a54",
+      "thread_id": "01a08de1-4f57-7050-add8-d00258eb416a",
+      "started": "2026-09-11T00:32:30.916Z",
+      "completed": "2026-09-11T00:32:37.015Z",
+      "duration_seconds": 6.099,
+      "generations": [
+        {
+          "thread_id": "01a08de1-4f57-7050-add8-d00258eb416a",
+          "turn_id": "01a08de1-5857-7f61-a598-3c3ed1b20a54",
+          "input": 11128,
+          "cached_input": 6912,
+          "output": 62,
+          "reasoning_output": 53,
+          "api_equivalent_usd": 0.00105584,
+          "conservative_usd": 0.013428
+        }
+      ],
+      "metered_usd": 0.00105584
+    },
+    {
+      "turn_id": "01a08de1-6c45-76a0-8a80-a05e8812bcf1",
+      "thread_id": "01a08de1-488a-7650-8eef-c2d1e25a8029",
+      "started": "2026-09-11T00:32:35.923Z",
+      "completed": "2026-09-11T00:32:42.248Z",
+      "duration_seconds": 6.325,
+      "generations": [
+        {
+          "thread_id": "01a08de1-488a-7650-8eef-c2d1e25a8029",
+          "turn_id": "01a08de1-6c45-76a0-8a80-a05e8812bcf1",
+          "input": 9244,
+          "cached_input": 3840,
+          "output": 95,
+          "reasoning_output": 22,
+          "api_equivalent_usd": 0.0012716,
+          "conservative_usd": 0.0112068
+        },
+        {
+          "thread_id": "01a08de1-488a-7650-8eef-c2d1e25a8029",
+          "turn_id": "01a08de1-6c45-76a0-8a80-a05e8812bcf1",
+          "input": 10800,
+          "cached_input": 8960,
+          "output": 129,
+          "reasoning_output": 114,
+          "api_equivalent_usd": 0.000702,
+          "conservative_usd": 0.0131148
+        }
+      ],
+      "metered_usd": 0.0019736
+    },
+    {
+      "turn_id": "01a08de1-6e01-7e52-90cb-0e7207c3615d",
+      "thread_id": "notify-only session",
+      "started": null,
+      "completed": null,
+      "duration_seconds": null,
+      "generations": [],
+      "metered_usd": null
+    }
+  ],
+  "spend": {
+    "model": "gpt-5.6-luna",
+    "effort": "low",
+    "turn_ids": [
+      "01a08de1-5857-7f61-a598-3c3ed1b20a54",
+      "01a08de1-6c45-76a0-8a80-a05e8812bcf1",
+      "01a08de1-6e01-7e52-90cb-0e7207c3615d"
+    ],
+    "paid_inputs": 3,
+    "generations": [
+      {
+        "thread_id": "01a08de1-4f57-7050-add8-d00258eb416a",
+        "turn_id": "01a08de1-5857-7f61-a598-3c3ed1b20a54",
+        "input": 11128,
+        "cached_input": 6912,
+        "output": 62,
+        "reasoning_output": 53,
+        "api_equivalent_usd": 0.00105584,
+        "conservative_usd": 0.013428
+      },
+      {
+        "thread_id": "01a08de1-488a-7650-8eef-c2d1e25a8029",
+        "turn_id": "01a08de1-6c45-76a0-8a80-a05e8812bcf1",
+        "input": 9244,
+        "cached_input": 3840,
+        "output": 95,
+        "reasoning_output": 22,
+        "api_equivalent_usd": 0.0012716,
+        "conservative_usd": 0.0112068
+      },
+      {
+        "thread_id": "01a08de1-488a-7650-8eef-c2d1e25a8029",
+        "turn_id": "01a08de1-6c45-76a0-8a80-a05e8812bcf1",
+        "input": 10800,
+        "cached_input": 8960,
+        "output": 129,
+        "reasoning_output": 114,
+        "api_equivalent_usd": 0.000702,
+        "conservative_usd": 0.0131148
+      }
+    ],
+    "api_equivalent_usd": 0.00302944,
+    "conservative_usd": 0.0377496,
+    "metering_complete": false,
+    "unmetered_turn_ids": [
+      "01a08de1-6e01-7e52-90cb-0e7207c3615d"
+    ],
+    "basis": "Host tokenUsage.last via daemon hosted_transcript; packet rates $0.20/$0.02/$1.20 per million input/cached/output. Estimate, not invoice."
+  },
+  "cleanup": {
+    "survivors": [],
+    "port_closed": true,
+    "root": "/tmp/th-l5-xeak29e1",
+    "auth_copy_removed_before_root": true,
+    "root_removed": true,
+    "auth_removed": true
+  },
+  "controller_exit": 1,
+  "daemon_jsonl": {
+    "rows": 326,
+    "sha256": "1bc979d4c40e72bf40311700680ad600120badf289c2aea51587ce950ea96921"
+  },
+  "transient_refusals": [],
+  "candidate": {
+    "checkout": "/home/mstie/projects/taurhaus-l5-restarts",
+    "branch": "feat/e2e-l5-restarts",
+    "product_base": "a7e6db7e",
+    "mesh_commit": "310144de1f7939e7fbb2d80ab42ebd00580ce15d",
+    "descriptor_sha256": "927d658b88c04f9f6d3be38e9bbc7a4396c3cabe30cf7c22343b466973663944",
+    "descriptor": "0.153.4 enabled in RC; unchanged",
+    "credential_source": "<authorized-source>",
+    "credential_transport": "L5_CREDENTIAL_SOURCE environment variable provided explicitly to controller; only auth.json copied, mode 0600, no fallback",
+    "command": "L5_CREDENTIAL_SOURCE=<authorized-source> python3 docs/design/evidence/e2e/l5-restarts/run4/execute.py",
+    "reference_deviation": "The spec-referenced integration attempt9 checkout no longer exists (git show exit 128). Reused the already-retained run3 continuation adaptation and inspected messaging run2 source read-only.",
+    "caps": {
+      "paid_inputs": 20,
+      "metered_usd": 0.3,
+      "runtime_seconds": 900
+    },
+    "review": "Independent Opus evidence lens is owned by invoking orchestrator; not performed by implementer.",
+    "binaries": [
+      {
+        "at": 1789086744.6002252,
+        "kind": "binary",
+        "name": "codex",
+        "sha256": "56ef98ab4032d317ab26e9b5e5a175650717351edb16ed9cde0cb6d1734d62da"
+      },
+      {
+        "at": 1789086744.707743,
+        "kind": "binary",
+        "name": "codex-code-mode-host",
+        "sha256": "3e85d67471825f73d02ff5f7e047ca1f6ca8caa3f59e4c6e8d9ca6ca7302cb45"
+      },
+      {
+        "at": 1789086744.798723,
+        "kind": "binary",
+        "name": "mesh",
+        "sha256": "46d18e75a5b1b01323c7ed11832cd6b27522268376a58bf0fd2dfb06e2769120"
+      },
+      {
+        "at": 1789086745.1401896,
+        "kind": "binary",
+        "name": "claude",
+        "sha256": "0399c793ff571d5946ef923d80b4f330d05ac4b6842a6b0775468f5d389403c0"
+      },
+      {
+        "at": 1789086745.170702,
+        "kind": "binary",
+        "name": "taurhaus-daemon",
+        "sha256": "4304d1d0350768021c2af8a47ac88e95993cdc1e32c0a1942ee9f73cb1eea906"
+      }
+    ]
+  },
+  "gates": {
+    "check-quick": {
+      "command": [
+        "just",
+        "check-quick"
+      ],
+      "exit": 0,
+      "seconds": 38.55686922301538,
+      "cargo_preflight": [
+        {
+          "exit": 1,
+          "output": ""
+        }
+      ]
+    },
+    "lint": {
+      "command": [
+        "just",
+        "lint"
+      ],
+      "exit": 0,
+      "seconds": 42.074419207987376,
+      "cargo_preflight": [
+        {
+          "exit": 1,
+          "output": ""
+        }
+      ]
+    },
+    "test-contracts": {
+      "command": [
+        "just",
+        "test-contracts"
+      ],
+      "exit": 0,
+      "seconds": 40.461468525987584,
+      "cargo_preflight": [
+        {
+          "exit": 1,
+          "output": ""
+        }
+      ]
+    }
+  },
+  "gate_cleanup": {
+    "children_waited": true,
+    "root_removed": true
+  },
+  "deviations": [
+    "Step 1 stopped at its required 120-second polling deadline; no automatic model retry or restart after failure.",
+    "The referenced integration attempt9 checkout was absent (git show exit 128); reused retained run3 continuation and read messaging run2 source.",
+    "One notify-only input has unknown cost, counted as one input; metered cap verified, complete billed spend unknown.",
+    "Inherited execute.py exited 0 after handling the failed child; step 1 and controller exits are both 1 and govern the verdict.",
+    "Independent Opus evidence review remains with the invoking orchestrator."
+  ],
+  "product_defect": "None established; a startup inbox read consumed the baseline before a separate transport submission."
+}
