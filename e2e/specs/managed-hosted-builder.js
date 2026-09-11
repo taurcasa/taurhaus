@@ -26,7 +26,7 @@ const codexHome = process.env.CODEX_HOME || ''
 const claudeDir = process.env.TAURHAUS_CLAUDE_DIR || ''
 const project = process.env.E2E_TAURHAUS_PROJECT_PATH || ''
 const team = `e2e-l3-${process.pid}`
-const evidence = join(checkout, 'docs/design/evidence/e2e/l3-native-app')
+const evidence = join(checkout, 'docs/design/evidence/e2e/l3-native-app/run3')
 const cleanup = createLaneCleanup()
 const results = Array.from({ length: 6 }, (_, i) => ({ step: i + 1, outcome: 'NOT RUN', classification: 'harness', reason: 'Preceding step has not passed' }))
 let started = 0
@@ -117,13 +117,27 @@ async function poll(predicate, reason, timeout = 90_000) {
     return await predicate()
   }, { timeout, interval: 500, timeoutMsg: reason })
 }
-async function ipc(command, args = {}) {
-  const result = await browser.executeAsync((command, args, done) => {
-    window.__TAURI_INTERNALS__.invoke(command, args).then(result => done({ result }), error => done({ error: String(error) }))
-  }, command, args)
-  if (result.error) throw new Error(`taurhaus: ${command}: ${result.error}`)
+async function invokeTauri(command, args = undefined) {
+  return await browser.executeAsync((payload, done) => {
+    const tauri = window.__TAURI_INTERNALS__
+    if (!tauri || typeof tauri.invoke !== 'function') {
+      done({ ok: false, error: 'Tauri internals unavailable' })
+      return
+    }
+
+    tauri
+      .invoke(payload.command, payload.args)
+      .then((result) => done({ ok: true, result }))
+      .catch((error) => done({ ok: false, error: error?.message ?? String(error) }))
+  }, { command, args })
+}
+
+async function invokeTauriOrThrow(command, args = undefined) {
+  const result = await invokeTauri(command, args)
+  if (!result.ok) throw new Error(result.error || `Failed to invoke ${command}`)
   return result.result
 }
+
 async function rpc(method, params = {}) {
   const port = Number(process.env.TAURHAUS_DAEMON_PORT)
   assert(port >= 20000 && port < 32000, 'harness: daemon port must be private')
@@ -183,7 +197,7 @@ async function snapshot(step) {
 }
 function report() {
   const tables = results.map(r => `| Step ${r.step} | Outcome | Classification | Evidence / reason |\n| --- | --- | --- | --- |\n| ${r.step} | ${r.outcome} | ${r.classification} | ${r.reason.replaceAll('|', '/').replaceAll('\n', ' ')} |`).join('\n\n')
-  writeFileSync(join(evidence, '../l3-native-app.md'), `# Linux native app lane 3\n\n${tables}\n\nRaw sidecars: [cost ledger](l3-native-app/cost-ledger.json), [daemon RPC](l3-native-app/daemon-rpc.json), step screenshots and IPC captures. No retry is authorized by this packet.\n`)
+  writeFileSync(join(evidence, '../../l3-native-app.md'), `# ${failed ? 'UNAVAILABLE' : results.every(r => r.outcome === 'PASS') ? 'PASS' : 'IN PROGRESS'} — run3 Linux native app lane 3\n\n${tables}\n\nRaw sidecars: [cost ledger](l3-native-app/run3/cost-ledger.json), [daemon RPC](l3-native-app/run3/daemon-rpc.json), step screenshots and IPC captures. No retry is authorized by this packet.\n`)
 }
 async function step(number, action) {
   if (failed) throw new Error('harness: prior step failed; paid continuation prohibited')
@@ -224,7 +238,13 @@ describe('canonical builder and hosted conversation (paid)', function () {
     watchdog.unref()
     await waitForProjectsLoaded()
     await observeIpc()
-    const roles = await ipc('templates_list_roles_full')
+    // Regression: 4af0fc629a used positional executeAsync arguments and an unguarded
+    // invoke; run2 failed in setup. Prove the read-only bridge before any seat.
+    const proof = await invokeTauriOrThrow('templates_list_roles_full')
+    assert(Array.isArray(proof), 'harness: read-only IPC proof must return roles')
+    assert.equal(reservations.length, 0, 'harness: IPC proof must precede seat starts')
+    save('ipc-preflight.json', { command: 'templates_list_roles_full', result: proof, seatStarts: 0 })
+    const roles = proof
     for (const name of ['lead', 'alpha', 'beta']) {
       const kind = name === 'lead' ? 'lead' : 'agent'
       const tool = name === 'lead' ? 'claude' : 'codex'
@@ -238,9 +258,11 @@ describe('canonical builder and hosted conversation (paid)', function () {
         template.defaults.reasoning_effort = 'low'
       }
       template.instructions = `Disposable UI trial. On startup reply READY ${name} in at most five words. For ordinary markers reply in at most ten words. Only execute tools explicitly requested by the operator or the managed Mesh contract. Every mesh command must use --team ${team} --name ${name} --claude-dir ${claudeDir}. Do not spawn agents or self-assign work.`
-      template.behavioralContract = { communication: [], execution: [], escalation: [] }
+      // Regression: 4af0fc629a cleared every contract bullet, so template
+      // validation rejected setup before the builder could be exercised.
+      template.behavioralContract = { communication: ['Keep trial replies brief.'], execution: [], escalation: [] }
       template.capabilities = []
-      await ipc('templates_upsert_role', { request: { template } })
+      await invokeTauriOrThrow('templates_upsert_role', { request: { template } })
     }
     } catch (error) {
       failed = true
