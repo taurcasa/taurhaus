@@ -29,6 +29,20 @@ def complete_rows(text):
     return rows
 
 
+def daemon_rows(text):
+    """Retain each physical source line, including a complete non-newline tail."""
+    import hashlib
+    rows = []
+    for line in text.splitlines():
+        try:
+            rows.append(clean(json.loads(line)))
+        except ValueError:
+            rows.append({'event': 'evidence.unparsed_daemon_line',
+                         'source_line': clean(line),
+                         'sha256': hashlib.sha256(line.encode()).hexdigest()})
+    return rows
+
+
 def meter(sessions, notifications):
     turns={}
     for rows in sessions:

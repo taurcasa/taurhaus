@@ -1,11 +1,15 @@
 """Offline controller checks: temporary data only, no CLI or credentials."""
 import unittest
 import json
-from support import delivered, ready, receipt_retry, clean
+from support import delivered, ready, receipt_retry, clean, daemon_rows
 from controller import output_text, objects, assignment_message_id
 
 
 class EvidenceRules(unittest.TestCase):
+    # // Regression: 030980a7 discarded a complete final JSON record without a trailing newline.
+    def test_daemon_retains_complete_final_record_without_newline(self):
+        self.assertEqual(daemon_rows('{"event":"shutdown"}'), [{'event': 'shutdown'}])
+
     # // Regression: 030980a7 confused task assign's legacy delivery id with the canonical message id.
     def test_assignment_maps_legacy_delivery_to_canonical_message(self):
         rows = [{'event_type': 'message_accepted', 'payload': {'message_id': 'canonical', 'delivery_targets': [{'recipient': 'alpha', 'legacy_id': 'legacy'}]}}]

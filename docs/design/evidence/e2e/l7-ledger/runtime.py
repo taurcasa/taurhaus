@@ -21,7 +21,7 @@ import threading
 import time
 from datetime import datetime
 from preflight import credential_source
-from support import clean, complete_rows, meter, native_runtime, retained_daemon_rows, evidence_jsonl, attributed_idle, ready, delivered, receipt_retry
+from support import clean, complete_rows, meter, native_runtime, retained_daemon_rows, evidence_jsonl, attributed_idle, ready, delivered, receipt_retry, daemon_rows
 
 BASE=Path(__file__).resolve().parent
 CHECKOUT=BASE.parents[4]
@@ -130,13 +130,15 @@ class Trial:
         value=meter(self.sessions(),self.notify());value['input_reservations']=self.reservations
         self.save('cost-ledger.json',value)
         assert time.monotonic()-self.started <= 720, '12 minute runtime cap reached'
-        prior=json.loads((BASE/'run/cost-ledger.json').read_text()) if self.out.name!='run' else {'paid_inputs':0,'conservative_usd':0}
-        value['prior_run_inputs']=prior['paid_inputs'];value['prior_known_conservative_usd']=prior['conservative_usd']
-        value['prior_unmetered_turns']=[r['turn_id'] for r in prior.get('turns',[]) if r.get('usd') is None]
+        prior_runs=[json.loads(p.read_text()) for p in BASE.glob('run*/cost-ledger.json') if p.parent!=self.out]
+        prior_inputs=sum(max(p['paid_inputs'],len(p.get('input_reservations',[]))) for p in prior_runs)
+        prior_usd=sum(p['api_equivalent_usd'] for p in prior_runs)
+        value['prior_run_inputs']=prior_inputs;value['prior_known_usd']=prior_usd
+        value['prior_unmetered_turns']=[r['turn_id'] for p in prior_runs for r in p.get('turns',[]) if r.get('usd') is None]
         self.save('cost-ledger.json',value)
         if next_input:
-            assert prior['paid_inputs'] + max(value['paid_inputs'],len(self.reservations)) < 12, 'input cap reached'
-            assert prior['conservative_usd'] + value['conservative_usd'] + .025 <= .20, 'cost headroom exhausted'
+            assert prior_inputs + max(value['paid_inputs'],len(self.reservations)) < 12, 'input cap reached'
+            assert prior_usd + value['api_equivalent_usd'] + .025 <= .20, 'cost headroom exhausted'
         return value
     def reserve(self,reason):
         self.budget(next_input=True)
@@ -156,7 +158,7 @@ class Trial:
     def snapshot(self):
         # Observation errors never abort a step or a receipt wait. Only complete rows retained.
         try:
-            for glob in ['config.json','runtime/*.json','state/delivery/*.json','state/messaging-v2/segments/*.jsonl','state/terminal/*.holder.json']:
+            for glob in ['config.json','runtime/*.json','state/delivery/*.json','state/messaging-v2/segments/*.jsonl','state/terminal/*.holder.json','state/workflow_events.jsonl']:
                 for path in self.team.glob(glob):
                     try:
                         value=json.loads(path.read_text()) if path.suffix=='.json' else complete_rows(path.read_text())
@@ -309,6 +311,10 @@ class Trial:
         if self.record():
             try:self.save('final-runtime-sessions.json',self.rpc('get_runtime_session_snapshot',{}))
             except Exception as e:self.log('runtime_snapshot_error',error=str(e))
+        tasks=self.root/'claude/tasks'/TEAM
+        for path in tasks.glob('*.json'):
+            try:self.save('tasks/'+path.name,json.loads(path.read_text()))
+            except (OSError,ValueError):pass
         self.save('final-runtime.json',self.record());self.save('final-activity.json',self.activity())
         # Namespace PID 1 exit reaps every descendant. No foreign process is signalled.
         before=self.identities()
@@ -324,7 +330,7 @@ class Trial:
         survivors=self.identities()
         log_manifest=[]
         for path in (self.root/'data').glob('taurhaus.log*.jsonl'):
-            data=path.read_bytes();rows=complete_rows(data.decode())
+            data=path.read_bytes();rows=daemon_rows(data.decode())
             self.save(path.name,retained_daemon_rows(rows))
             log_manifest.append({'file':path.name,'source_sha256':hashlib.sha256(data).hexdigest(),'physical_lines':len(data.splitlines()),'retained_rows':len(rows),'all_rows_retained':len(data.splitlines())==len(rows)})
         self.save('daemon-log-manifest.json',log_manifest)
