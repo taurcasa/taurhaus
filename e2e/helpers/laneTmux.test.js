@@ -87,6 +87,7 @@ describe('tmux-driving spec coverage', () => {
     expect(findTmuxDrivingSpecs(specsDir)).toEqual([
       'command-center-real-actions.js',
       'compaction-codex-hooks.js',
+      'managed-hosted-builder.js',
       'managed-stage-codex.js',
       'managed-stage-deadline.js',
       'managed-stage-parallel.js',

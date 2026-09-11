@@ -203,7 +203,7 @@ describe('canonical builder and hosted conversation (paid)', function () {
     cleanup.install()
     cleanup.owe('scratch auth', () => rmSync(join(codexHome, 'auth.json'), { force: true }))
     cleanup.owe('owned children', () => {
-      const owned = findRunTokenProcessRecords(process.env.TAURHAUS_E2E_RUN_TOKEN).filter(p => p.pid !== process.pid)
+      const owned = findRunTokenProcessRecords(process.env.TAURHAUS_E2E_RUN_TOKEN).filter(p => p.pid !== process.pid && /^(?:codex|codex-code-mode|claude|mesh|tmux|taurhaus-daemon)/.test(readFileSync(`/proc/${p.pid}/comm`, 'utf8').trim()))
       save('owned-processes.json', owned)
       for (const record of owned) killOwnedProcessRecord(record, { signal: 'SIGTERM' })
     })
@@ -234,7 +234,12 @@ describe('canonical builder and hosted conversation (paid)', function () {
   after(async function () {
     clearTimeout(watchdog)
     await snapshot(currentStep).catch(() => {})
+    try { exportJournal() } catch (error) { save('journal-export-error.json', { error: String(error) }) }
     cleanup.run()
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    const owned = existsSync(join(evidence, 'owned-processes.json')) ? JSON.parse(readFileSync(join(evidence, 'owned-processes.json'), 'utf8')) : []
+    for (const record of owned) killOwnedProcessRecord(record)
+    save('cleanup.json', { authRemoved: !existsSync(join(codexHome, 'auth.json')), owned, appAndDriver: 'WDIO afterSession owns final app/driver cleanup' })
     report()
   })
 
@@ -274,12 +279,13 @@ describe('canonical builder and hosted conversation (paid)', function () {
     assert.deepEqual(call.args.request.messaging, { mode: 'canonical', retentionPolicy: DEFAULT_CANONICAL_POLICY })
     assert.equal(call.args.request.agents.find(a => a.name === 'alpha').delivery, 'tmux')
     assert.equal(call.args.request.agents.find(a => a.name === 'beta').delivery, 'app_server')
-    assert.equal(call.result.initialized, true, 'taurhaus: initialize report refused')
+    assert.equal(call.result.failed_step, null, 'taurhaus: initialize report refused')
     const config = JSON.parse(readFileSync(join(claudeDir, 'teams', team, 'config.json'), 'utf8'))
-    assert.equal(config.format_version, 2, 'mesh: team is not format 2')
+    assert.equal(config.messaging_format, 2, 'mesh: team is not format 2')
     assert.equal(config.delivery_owner, 'team', 'mesh: delivery owner is not team')
-    assert.equal(runtime('alpha').delivery, 'tmux')
-    assert.equal(runtime('beta').delivery, 'app_server')
+    assert.equal(runtime('alpha').appServer ?? null, null)
+    assert(runtime('beta').appServer, 'taurhaus: beta has no hosted attachment')
+    for (const member of ['alpha', 'beta']) assert.equal(config.members.find(m => m.name === member).delivery, member === 'alpha' ? 'tmux' : 'app_server')
     save('initialize-result.json', call)
   }))
   it('3. shows beta startup in its native thread and keeps alpha free of hosted controls', () => step(3, async () => {
@@ -341,6 +347,27 @@ describe('canonical builder and hosted conversation (paid)', function () {
     await requireReply(marker)
     await poll(() => sampleActivity('idle'), 'taurhaus: host-sourced idle not observed')
     assert.equal(await $('button=Allow').isExisting(), false, 'taurhaus: unexpected approval controls')
+  }))
+
+  it('6. reopens beta without a new thread, onboarding or host launch, then exports', () => step(6, async () => {
+    const before = await hostedTranscript()
+    const beforeRecord = runtime()
+    const beforeTurns = before.thread.turns.map(t => t.id)
+    await clickTestId('mesh-node-detail-close')
+    await openMember('beta')
+    await poll(async () => (await $('[aria-label="Hosted transcript"]').getText()).includes(`L3-B-${process.pid}`), 'taurhaus: reopened transcript missing')
+    const after = await hostedTranscript()
+    assert.equal(after.thread.id, baseline.threadId, 'taurhaus: reopen changed thread identity')
+    assert.deepEqual(after.thread.turns.map(t => t.id), beforeTurns, 'taurhaus: reopen created a new turn')
+    const afterRecord = runtime()
+    for (const key of ['appServer', 'attachmentGeneration', 'contextGeneration', 'paneId', 'session_id']) assert.deepEqual(afterRecord[key], beforeRecord[key], `taurhaus: reopen changed ${key}`)
+    assert.deepEqual(afterRecord.recovery, beforeRecord.recovery, 'taurhaus: reopen changed onboarding receipt')
+    assert((await $('[data-testid="mesh-node-detail-name"]').getText()).includes('beta'))
+    assert(activity.some(a => a.session?.source === 'host' && a.session?.state === 'active'))
+    assert(activity.some(a => a.session?.source === 'host' && a.session?.state === 'idle'))
+    const cost = meter()
+    assert(cost.meteringComplete && cost.usd <= 0.20, 'harness: incomplete or over-budget cost ledger')
+    exportJournal()
   }))
 
 })
@@ -441,10 +468,33 @@ async function requireReply(marker) {
 
 async function sampleActivity(state) {
   const snapshot = await rpc('get_runtime_session_snapshot')
-  const session = snapshot.sessions?.find(s => s.session_id === baseline.threadId)
-  const node = await $(`button[data-node-id="beta"]`)
-  const title = await node.isExisting() ? await node.getAttribute('title') : null
+  const session = snapshot.runtime_sessions?.find(s => s.session_id === baseline.threadId)
+  const nodes = await $$('button[data-node-id]')
+  let title = null
+  for (const node of nodes) if ((await node.getText()).split('\n').some(line => line.trim() === 'beta')) title = await node.getAttribute('title')
   activity.push({ at: Date.now(), session, title })
   save('activity.json', activity)
-  return session?.source === 'host' && session.state === state && Boolean(title?.includes('Codex'))
+  return session?.source === 'host' && session.state === state && title === `${state === 'active' ? 'Working' : 'Idle'} via daemon-owned thread`
+}
+
+function exportJournal() {
+  if (!existsSync(join(claudeDir, 'teams', team, 'config.json'))) return
+  const pages = []
+  for (const member of ['lead', 'alpha', 'beta']) {
+    let cursor
+    while (true) {
+      assert(Date.now() - started < 900_000, 'harness: journal export reached runtime cap')
+      const args = ['journal', 'read', '--team', team, '--name', member, '--claude-dir', claudeDir, '--json']
+      if (cursor) args.push('--since', cursor)
+      const result = spawnSync(join(process.env.HOME, '.local/bin/mesh'), args, { encoding: 'utf8', timeout: 10_000 })
+      assert.equal(result.status, 0, 'mesh: journal export failed')
+      const page = JSON.parse(result.stdout)
+      pages.push({ member, args, page })
+      save('journal-export.json', pages)
+      if (page.done) break
+      assert(page.cursor && page.cursor !== cursor, 'harness: journal cursor made no progress')
+      cursor = page.cursor
+    }
+  }
+  save('receipts.json', { alpha: runtime('alpha').recovery, beta: runtime('beta').recovery })
 }
