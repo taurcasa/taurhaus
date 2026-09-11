@@ -1599,3 +1599,10 @@ the observer to `session_dead`. No product code changed.
   explicit reads. Alpha attributed idle; ready session retained for the stop check.
   [Outcome](l4-resume-team/run12/step1-outcome.json),
   [ready session](l4-resume-team/run12/step1-ready-session.json).
+
+- Step 2 **PASS (runtime)**: supported stop completed for all three seats; no seat
+  panes or Codex siblings survived. Beta's daemon-owned host stopped and its thread
+  remained recorded. Alpha retained the step-1 ready session, rollout and pane
+  binding; health converged to `session_dead` and `daemon_pid` cleared.
+  [Immediate](l4-resume-team/run12/step2-alpha-runtime-record.json),
+  [converged](l4-resume-team/run12/step2-alpha-converged-runtime-record.json).
