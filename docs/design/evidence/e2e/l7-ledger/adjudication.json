@@ -1,0 +1,124 @@
+{
+  "step": 1,
+  "outcome": "FAIL",
+  "classification": "harness",
+  "boundary": "startup preflight before task creation",
+  "raw_controller_classification": "taurhaus (incorrect; predicate schema error)",
+  "message_id": "a0ac01e9-82a6-4cb7-b925-444a63f53480",
+  "submitted": {
+    "checksum": "ec45d028a761152deed649687d19f17227a8d86e0aab464cc4cd52d8fbf573ab",
+    "committed_at": "2026-09-11T01:15:23.983293678+00:00",
+    "event_id": "f80af09d-759b-4175-9460-d6a8c1634c6d",
+    "event_type": "receipt",
+    "log_epoch": "8c48fed9-87a2-4c43-bc39-0e983f5d8d64",
+    "payload": {
+      "adapter": "tmux/1",
+      "attachment": {
+        "attachment_generation": 1,
+        "context_generation": "0",
+        "generation": "1",
+        "harness": "codex",
+        "launch_root": {
+          "claudeDir": "/tmp/th-l7-c161wklz/claude",
+          "rootAuthorityRevision": 0,
+          "teamIncarnationId": "3b1fbb5154d8ed102bb333c38ff7da39703a3c2696698dbb1f5e942bbc3371f3",
+          "teamsDir": "/tmp/th-l7-c161wklz/claude/teams"
+        },
+        "member": "alpha",
+        "pane": "%2",
+        "pane_pid": 137,
+        "pane_start": "30985802",
+        "root": "/tmp/th-l7-c161wklz/claude",
+        "session": "$0",
+        "socket": "/tmp/th-l7-c161wklz/tmux/tmux-1000/default",
+        "team_incarnation": "3b1fbb5154d8ed102bb333c38ff7da39703a3c2696698dbb1f5e942bbc3371f3",
+        "tmux_session": "$0"
+      },
+      "attempt_id": "002e70cc-b8dc-4fb0-b033-55c7a9db60b7",
+      "delivery_id": "3a428342-5a1c-4fd0-8623-4b41ce4af8bc",
+      "event_type": "receipt",
+      "evidence": "literal paste and harness submit exited 0; model uptake unobserved",
+      "message_id": "a0ac01e9-82a6-4cb7-b925-444a63f53480",
+      "observed_at": "2026-09-11T01:15:23.935589576+00:00",
+      "origin": "tmux_send_keys",
+      "owner_epoch": 2,
+      "recipient": "alpha",
+      "source_generation": "8c48fed9-87a2-4c43-bc39-0e983f5d8d64",
+      "source_position": 2,
+      "stage": "submitted",
+      "team_incarnation": "3b1fbb5154d8ed102bb333c38ff7da39703a3c2696698dbb1f5e942bbc3371f3"
+    },
+    "schema_version": 1,
+    "sequence": 6,
+    "team_id": "3b1fbb5154d8ed102bb333c38ff7da39703a3c2696698dbb1f5e942bbc3371f3"
+  },
+  "read": {
+    "checksum": "04dc42bedfd5c1f392e2b2d0e29376c52fa87af82e6afa6641d0e8587e5f710c",
+    "committed_at": "2026-09-11T01:15:28.190209826+00:00",
+    "event_id": "09bb75a9-825b-4a2c-ae5b-0cf48dc4122a",
+    "event_type": "receipt",
+    "log_epoch": "8c48fed9-87a2-4c43-bc39-0e983f5d8d64",
+    "payload": {
+      "accepted_sequence": 2,
+      "audience_proof": {
+        "kind": "captured-members",
+        "members": [
+          {
+            "member_id": "2fe2c38a-0b59-49ba-aaf6-67ba27bbc882",
+            "name": "lead"
+          },
+          {
+            "member_id": "alpha@l7-ledger",
+            "name": "alpha"
+          }
+        ],
+        "team_id": "3b1fbb5154d8ed102bb333c38ff7da39703a3c2696698dbb1f5e942bbc3371f3"
+      },
+      "body_bytes": 3146,
+      "body_hash": "378663bf79a684a0699d6bfc457d11c30bd9c8198a998cbad2c91485e9e64af9",
+      "context": "explicit-mesh-cli",
+      "delivery_id": "3a428342-5a1c-4fd0-8623-4b41ce4af8bc",
+      "kind": "consumed_by_read",
+      "message_id": "a0ac01e9-82a6-4cb7-b925-444a63f53480",
+      "read_audience": [
+        {
+          "member_id": "2fe2c38a-0b59-49ba-aaf6-67ba27bbc882",
+          "name": "lead"
+        },
+        {
+          "member_id": "alpha@l7-ledger",
+          "name": "alpha"
+        }
+      ],
+      "reader": "alpha@l7-ledger",
+      "reader_name": "alpha"
+    },
+    "schema_version": 1,
+    "sequence": 7,
+    "team_id": "3b1fbb5154d8ed102bb333c38ff7da39703a3c2696698dbb1f5e942bbc3371f3"
+  },
+  "final_activity": {
+    "version": 1,
+    "observed_at": "2026-09-11T01:17:05.591868082+00:00",
+    "stall_recent_activity": false,
+    "stall_no_output": true,
+    "stall_no_active_process": false,
+    "active_non_shell_process": true,
+    "recent_io": false,
+    "pane_alive": true,
+    "pane_foreign": false,
+    "last_output_age_secs": 94,
+    "activity_confidence": "idle",
+    "confidence": "high",
+    "last_observed_at": "2026-09-11T01:17:05.589302141+00:00",
+    "source": "notify",
+    "state": "idle"
+  },
+  "executed_predicate": false,
+  "corrected_offline_predicate": true,
+  "runtime_rerun": false,
+  "reason": "consumed_by_read identifies alpha in reader_name, not recipient; the inherited receipt filter discards it",
+  "task_created": false,
+  "artifact_created": false,
+  "ledger_initialized": false
+}

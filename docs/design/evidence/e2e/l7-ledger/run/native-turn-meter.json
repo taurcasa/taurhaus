@@ -1,0 +1,89 @@
+{
+  "rows": [
+    {
+      "timestamp": "2026-09-11T01:15:23.964Z",
+      "file": "rollout-2026-09-11T03-15-21-01a08e08-92b0-7243-b55f-f3e12dcf1878.jsonl",
+      "payload": {
+        "type": "task_started",
+        "turn_id": "01a08e08-9b9d-7d61-a236-b9ab623301cd"
+      }
+    },
+    {
+      "timestamp": "2026-09-11T01:15:24.466Z",
+      "file": "rollout-2026-09-11T03-15-21-01a08e08-92b0-7243-b55f-f3e12dcf1878.jsonl",
+      "payload": {
+        "turn_id": "01a08e08-9b9d-7d61-a236-b9ab623301cd",
+        "model": "gpt-5.6-luna",
+        "effort": "low"
+      }
+    },
+    {
+      "timestamp": "2026-09-11T01:15:28.301Z",
+      "file": "rollout-2026-09-11T03-15-21-01a08e08-92b0-7243-b55f-f3e12dcf1878.jsonl",
+      "payload": {
+        "type": "token_count",
+        "info": {
+          "total_token_usage": {
+            "input_tokens": 8923,
+            "cached_input_tokens": 2816,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 156,
+            "reasoning_output_tokens": 41,
+            "total_tokens": 9079
+          },
+          "last_token_usage": {
+            "input_tokens": 8923,
+            "cached_input_tokens": 2816,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 156,
+            "reasoning_output_tokens": 41,
+            "total_tokens": 9079
+          },
+          "model_context_window": 15564
+        }
+      }
+    },
+    {
+      "timestamp": "2026-09-11T01:15:30.865Z",
+      "file": "rollout-2026-09-11T03-15-21-01a08e08-92b0-7243-b55f-f3e12dcf1878.jsonl",
+      "payload": {
+        "type": "token_count",
+        "info": {
+          "total_token_usage": {
+            "input_tokens": 20287,
+            "cached_input_tokens": 10752,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 252,
+            "reasoning_output_tokens": 106,
+            "total_tokens": 20539
+          },
+          "last_token_usage": {
+            "input_tokens": 11364,
+            "cached_input_tokens": 7936,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 96,
+            "reasoning_output_tokens": 65,
+            "total_tokens": 11460
+          },
+          "model_context_window": 15564
+        }
+      }
+    },
+    {
+      "timestamp": "2026-09-11T01:15:30.872Z",
+      "file": "rollout-2026-09-11T03-15-21-01a08e08-92b0-7243-b55f-f3e12dcf1878.jsonl",
+      "payload": {
+        "type": "task_complete",
+        "turn_id": "01a08e08-9b9d-7d61-a236-b9ab623301cd"
+      }
+    }
+  ],
+  "notify_identities": [
+    {
+      "turn_id": "01a08e08-9df0-70f3-86be-c40886758378"
+    },
+    {
+      "turn_id": "01a08e08-9b9d-7d61-a236-b9ab623301cd"
+    }
+  ]
+}

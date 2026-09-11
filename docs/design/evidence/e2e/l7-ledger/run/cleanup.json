@@ -1,0 +1,189 @@
+{
+  "before": [
+    {
+      "pid": 3638624,
+      "start_ticks": "30985725",
+      "argv": [
+        "bwrap",
+        "--die-with-parent",
+        "--unshare-pid",
+        "--ro-bind",
+        "/",
+        "/",
+        "--tmpfs",
+        "/home",
+        "--tmpfs",
+        "/tmp",
+        "--tmpfs",
+        "/run",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+        "--bind",
+        "/tmp/th-l7-c161wklz",
+        "/tmp/th-l7-c161wklz",
+        "--chdir",
+        "/tmp/th-l7-c161wklz/project",
+        "/bin/bash",
+        "/tmp/th-l7-c161wklz/boot.sh",
+        ""
+      ]
+    },
+    {
+      "pid": 3638625,
+      "start_ticks": "30985725",
+      "argv": [
+        "bwrap",
+        "--die-with-parent",
+        "--unshare-pid",
+        "--ro-bind",
+        "/",
+        "/",
+        "--tmpfs",
+        "/home",
+        "--tmpfs",
+        "/tmp",
+        "--tmpfs",
+        "/run",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+        "--bind",
+        "/tmp/th-l7-c161wklz",
+        "/tmp/th-l7-c161wklz",
+        "--chdir",
+        "/tmp/th-l7-c161wklz/project",
+        "/bin/bash",
+        "/tmp/th-l7-c161wklz/boot.sh",
+        ""
+      ]
+    },
+    {
+      "pid": 3638626,
+      "start_ticks": "30985725",
+      "argv": [
+        "/bin/bash",
+        "/tmp/th-l7-c161wklz/boot.sh",
+        ""
+      ]
+    },
+    {
+      "pid": 3638627,
+      "start_ticks": "30985725",
+      "argv": [
+        "tmux",
+        "-D",
+        "-f",
+        "/dev/null",
+        ""
+      ]
+    },
+    {
+      "pid": 3638633,
+      "start_ticks": "30985736",
+      "argv": [
+        "/bin/bash",
+        ""
+      ]
+    },
+    {
+      "pid": 3638635,
+      "start_ticks": "30985736",
+      "argv": [
+        "/tmp/th-l7-c161wklz<operator-path-redacted>",
+        "--port",
+        "46863",
+        "--data-dir",
+        "/tmp/th-l7-c161wklz/data",
+        ""
+      ]
+    },
+    {
+      "pid": 3638919,
+      "start_ticks": "30985795",
+      "argv": [
+        "/bin/bash",
+        "-ic",
+        "cd '/tmp/th-l7-c161wklz/project' && CLAUDE_DIR='/tmp/th-l7-c161wklz/claude' CLAUDE_CONFIG_DIR='/tmp/th-l7-c161wklz/claude' CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions --model 'claude-haiku-4-5' --team-name 'l7-ledger' --agent-name 'lead' --agent-id 'lead@l7-ledger' --agent-type 'orchestrator' -n 'lead'; exec \"$SHELL\"",
+        ""
+      ]
+    },
+    {
+      "pid": 3638922,
+      "start_ticks": "30985796",
+      "argv": [
+        "claude",
+        "--dangerously-skip-permissions",
+        "--model",
+        "claude-haiku-4-5",
+        "--team-name",
+        "l7-ledger",
+        "--agent-name",
+        "lead",
+        "--agent-id",
+        "lead@l7-ledger",
+        "--agent-type",
+        "orchestrator",
+        "-n",
+        "lead",
+        ""
+      ]
+    },
+    {
+      "pid": 3638938,
+      "start_ticks": "30985802",
+      "argv": [
+        "/bin/bash",
+        "-ic",
+        "cd '/tmp/th-l7-c161wklz/project' && CLAUDE_DIR='/tmp/th-l7-c161wklz/claude' CODEX_HOME='/tmp/th-l7-c161wklz/codex' codex --yolo --dangerously-bypass-hook-trust -c 'notify=[\"/tmp/th-l7-c161wklz<operator-path-redacted>\",\"codex-notify\"]' -m 'gpt-5.6-luna' -c 'model_reasoning_effort=\"low\"'; exec \"$SHELL\"",
+        ""
+      ]
+    },
+    {
+      "pid": 3638943,
+      "start_ticks": "30985803",
+      "argv": [
+        "codex",
+        "--yolo",
+        "--dangerously-bypass-hook-trust",
+        "-c",
+        "notify=[\"/tmp/th-l7-c161wklz<operator-path-redacted>\",\"codex-notify\"]",
+        "-m",
+        "gpt-5.6-luna",
+        "-c",
+        "model_reasoning_effort=\"low\"",
+        ""
+      ]
+    },
+    {
+      "pid": 3639210,
+      "start_ticks": "30985821",
+      "argv": [
+        "/tmp/th-l7-c161wklz<operator-path-redacted>",
+        "team-daemon",
+        "start",
+        "--team",
+        "l7-ledger",
+        "--name",
+        "lead",
+        "--claude-dir",
+        "/tmp/th-l7-c161wklz/claude",
+        ""
+      ]
+    },
+    {
+      "pid": 3641307,
+      "start_ticks": "30986594",
+      "argv": [
+        "/tmp/th-l7-c161wklz<operator-path-redacted>",
+        ""
+      ]
+    }
+  ],
+  "survivors": [],
+  "port_closed": true,
+  "auth_removed": true,
+  "root_removed": true
+}

@@ -1,0 +1,13 @@
+...F...
+======================================================================
+FAIL: test_live_read_receipt_schema_uses_reader_name (__main__.EvidenceRules.test_live_read_receipt_schema_uses_reader_name)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l7-ledger/docs/design/evidence/e2e/l7-ledger/controller_test.py", line 12, in test_live_read_receipt_schema_uses_reader_name
+    self.assertTrue(ready(rows, 'onboard', True))
+AssertionError: False is not true
+
+----------------------------------------------------------------------
+Ran 7 tests in 0.001s
+
+FAILED (failures=1)

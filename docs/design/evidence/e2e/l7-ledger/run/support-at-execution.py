@@ -85,15 +85,15 @@ def attributed_idle(record,activity,now):
 
 
 def delivered(rows, message_id, rollout):
-    receipts = [r.get('payload', {}) for r in rows if r.get('payload', {}).get('message_id') == message_id and (r.get('payload', {}).get('recipient') == 'alpha' or r.get('payload', {}).get('reader_name') == 'alpha')]
-    if any(p.get('kind') == 'consumed_by_read' and p.get('reader_name', p.get('recipient')) == 'alpha' for p in receipts):
+    receipts = [r.get('payload', {}) for r in rows if r.get('payload', {}).get('message_id') == message_id and r.get('payload', {}).get('recipient') == 'alpha']
+    if any(p.get('kind') == 'consumed_by_read' for p in receipts):
         return True
     return any(p.get('stage') in ('submitted', 'native_enqueued') for p in receipts) and any(r.get('payload', {}).get('type') in ('function_call_output', 'custom_tool_call_output') and message_id in json.dumps(r) for r in rollout)
 
 
 def ready(rows, message_id, idle):
-    receipts = [r.get('payload', {}) for r in rows if r.get('payload', {}).get('message_id') == message_id and (r.get('payload', {}).get('recipient') == 'alpha' or r.get('payload', {}).get('reader_name') == 'alpha')]
-    return bool(idle) and any(p.get('stage') == 'submitted' for p in receipts) and any(p.get('kind') == 'consumed_by_read' and p.get('reader_name', p.get('recipient')) == 'alpha' for p in receipts)
+    receipts = [r.get('payload', {}) for r in rows if r.get('payload', {}).get('message_id') == message_id and r.get('payload', {}).get('recipient') == 'alpha']
+    return bool(idle) and any(p.get('stage') == 'submitted' for p in receipts) and any(p.get('kind') == 'consumed_by_read' for p in receipts)
 
 
 def receipt_retry(original, retried, before_count, after_count):

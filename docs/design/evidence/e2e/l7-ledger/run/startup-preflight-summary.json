@@ -1,0 +1,45 @@
+{
+  "taurhaus_product_commit": "106f06c7",
+  "controller_commit": "64f3d81c",
+  "mesh_commit": "1f7447f",
+  "protocol": 27,
+  "codex_version_asserted": "0.153.4",
+  "model": "gpt-5.6-luna",
+  "effort": "low",
+  "descriptor": "unchanged; no hosted seat",
+  "binaries": [
+    {
+      "at": 1789089318.803909,
+      "kind": "binary",
+      "name": "codex",
+      "sha256": "56ef98ab4032d317ab26e9b5e5a175650717351edb16ed9cde0cb6d1734d62da"
+    },
+    {
+      "at": 1789089318.867711,
+      "kind": "binary",
+      "name": "codex-code-mode-host",
+      "sha256": "3e85d67471825f73d02ff5f7e047ca1f6ca8caa3f59e4c6e8d9ca6ca7302cb45"
+    },
+    {
+      "at": 1789089319.1532035,
+      "kind": "binary",
+      "name": "claude",
+      "sha256": "0399c793ff571d5946ef923d80b4f330d05ac4b6842a6b0775468f5d389403c0"
+    },
+    {
+      "at": 1789089319.2283468,
+      "kind": "binary",
+      "name": "mesh",
+      "sha256": "283f3673c1dad0aea0a3ee32945c88b032721d6e0b07c8f576699e16670ee083"
+    },
+    {
+      "at": 1789089319.2556458,
+      "kind": "binary",
+      "name": "taurhaus-daemon",
+      "sha256": "177c4f333aeaef73ae672109ee97c731ad50a3e166c244d93fe715ec5f144fd6"
+    }
+  ],
+  "credential_copy": "one explicitly authorized file; mode 0600; no fallback",
+  "claude_paid_inputs": 0,
+  "requested_codex_starts": 1
+}

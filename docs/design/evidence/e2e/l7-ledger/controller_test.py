@@ -5,6 +5,16 @@ from controller import output_text, objects
 
 
 class EvidenceRules(unittest.TestCase):
+    # // Regression: 030980a7 required transport recipient on Mesh read receipts, whose actor is reader_name.
+    def test_live_read_receipt_schema_uses_reader_name(self):
+        rows = [{'payload': {'message_id': 'onboard', 'recipient': 'alpha', 'stage': 'submitted'}},
+                {'payload': {'message_id': 'onboard', 'reader_name': 'alpha', 'reader': 'alpha@l7-ledger', 'kind': 'consumed_by_read'}}]
+        self.assertTrue(ready(rows, 'onboard', True))
+        self.assertTrue(delivered(rows, 'onboard', []))
+        rows[-1]['payload']['reader_name'] = 'lead'
+        self.assertFalse(ready(rows, 'onboard', True))
+        self.assertFalse(delivered(rows, 'onboard', []))
+
     def test_native_tool_result_blocks_preserve_receipt_json(self):
         blocks = [{'type': 'input_text', 'text': 'Script completed\n'},
                   {'type': 'input_text', 'text': '{\n"receipts": [{"event_id": "e"}]\n}'}]

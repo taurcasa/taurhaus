@@ -1,0 +1,50 @@
+[
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789088413.7904787,
+    "exit": 1,
+    "pids": []
+  },
+  {
+    "command": "just build-daemon",
+    "cwd": "/home/mstie/projects/taurhaus-l7-ledger",
+    "CARGO_TARGET_DIR": "/home/mstie/projects/taurhaus-l7-ledger/src-tauri/target",
+    "CARGO_BUILD_JOBS": "1",
+    "exit": 101
+  },
+  {
+    "command": "just ensure-tauri-resources",
+    "exit": 0
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789089043.8034875,
+    "exit": 0,
+    "pids": [
+      "3598552"
+    ]
+  },
+  {
+    "command": "just build-daemon",
+    "cwd": "/home/mstie/projects/taurhaus-l7-ledger",
+    "CARGO_TARGET_DIR": "/home/mstie/projects/taurhaus-l7-ledger/src-tauri/target",
+    "CARGO_BUILD_JOBS": "1",
+    "exit": 0
+  },
+  {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "at": 1789089250.1647158,
+    "exit": 0,
+    "pids": [
+      "3616114",
+      "3619695"
+    ]
+  },
+  {
+    "command": "cargo build --bin mesh",
+    "cwd": "/home/mstie/projects/mesh-l7",
+    "CARGO_TARGET_DIR": "/home/mstie/projects/mesh-l7/target",
+    "CARGO_BUILD_JOBS": "1",
+    "exit": 0
+  }
+]
