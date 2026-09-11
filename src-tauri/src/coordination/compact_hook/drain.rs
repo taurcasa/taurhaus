@@ -587,13 +587,9 @@ pub fn reconcile_home(
     bindings: &[Binding],
     exe: &Path,
 ) -> Result<bool, CoordinationError> {
-    if !enabled() || !matches!(tool, CliTool::Claude | CliTool::Codex) {
+    if cfg!(windows) || !matches!(tool, CliTool::Claude | CliTool::Codex) {
         return Ok(false);
     }
-    // Absence of capability evidence never grants teardown authority (notably on Windows).
-    let Some(mesh) = executable() else {
-        return Ok(false);
-    };
     let filename = if tool == CliTool::Claude {
         CLAUDE_SETTINGS_FILENAME
     } else {
@@ -604,9 +600,15 @@ pub fn reconcile_home(
     let original = settings.clone();
     let runtime = detect_hook_runtime(home);
     let mut desired = std::collections::BTreeMap::new();
-    if settings["disableAllHooks"] != true
+    if enabled()
+        && settings["disableAllHooks"] != true
         && hook_executable_exists(home, &runtime_path_string(exe, runtime)?)
     {
+        // Enabled discovery failures preserve existing registrations; a disabled
+        // release needs no subprocess evidence to remove its own stale hooks.
+        let Some(mesh) = executable() else {
+            return Ok(false);
+        };
         for (teams, team, member) in bindings {
             let Some(config) = read_json(&teams.join(team).join("config.json"), 1024 * 1024) else {
                 continue;

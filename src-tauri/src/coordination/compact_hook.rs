@@ -3897,9 +3897,28 @@ else: print(json.dumps({'protocol':protocol,'status':'recorded','text':'','deliv
     #[cfg(unix)]
     #[test]
     fn disabled_drain_descriptors_skip_installer_and_account_home_probes() {
+        // Regression: 260cf1e3 gated teardown as well as installation, orphaning owned hooks.
         let (fake, _, teams) = hook_drain_fixture();
         let root = fake.dir.path();
+        for tool in [CliTool::Codex, CliTool::Claude] {
+            let filename = if tool == CliTool::Codex {
+                "hooks.json"
+            } else {
+                "settings.json"
+            };
+            let script = root
+                .join("hooks")
+                .join(format!("taurhaus-delivery-drain-{}.sh", "a".repeat(64)));
+            fs::write(root.join(filename), json!({"hooks":{"PostToolUse":[{"hooks":[
+                {"type":"command", "command": settings_command_for_script(&script, HookRuntime::Posix).unwrap()},
+                {"type":"command", "command":"foreign-hook"}
+            ]}]}}).to_string()).unwrap();
+        }
         fs::remove_file(root.join("mesh.drain-enabled")).unwrap();
+        drain::reconcile_home(root, CliTool::Codex, &[], &root.join("mesh")).unwrap();
+        let hooks = fs::read_to_string(root.join("hooks.json")).unwrap();
+        assert!(!hooks.contains("taurhaus-delivery-drain"));
+        assert!(hooks.contains("foreign-hook"));
         let mesh = root.join("mesh");
         fs::write(
             &mesh,
