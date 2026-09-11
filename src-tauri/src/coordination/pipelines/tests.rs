@@ -3995,6 +3995,87 @@ fn load_resume_member_state_preserves_role_template_context() {
 }
 
 #[test]
+fn rollback_resume_with_deleted_home_preserves_thread_fence() {
+    // Regression: 06f76b01 excluded app_server but not host_rollback from the
+    // missing-rollout fallback, losing the thread before rollback could resume it.
+    for detected in ["replacement-thread", "owned-thread"] {
+        let tmp = TempDir::new().unwrap();
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let mut orchestrator =
+            new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime.clone());
+        orchestrator.create_team("team", None).unwrap();
+        orchestrator
+            .add_member(
+                "team",
+                member(
+                    "seat",
+                    MemberRole::Lead,
+                    CliTool::Codex,
+                    tmp.path().to_str().unwrap(),
+                ),
+            )
+            .unwrap();
+        let home = tmp.path().join("deleted-home");
+        fs::create_dir(&home).unwrap();
+        let rollout = home.join("rollout.jsonl");
+        fs::write(&rollout, "").unwrap();
+        fs::remove_dir_all(&home).unwrap();
+        let mut record = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
+        record.health = HealthState::SessionDead;
+        record.session_id = Some("owned-thread".into());
+        record.jsonl_path = Some(rollout);
+        record.host_rollback = Some(serde_json::json!({"attachment": {
+            "contract": 1, "socketPath": tmp.path().join("stopped.sock"),
+            "threadId": "owned-thread", "memberId": "seat", "accountRoot": tmp.path(),
+            "processId": 0, "processStart": "0", "hostGeneration": "old",
+            "build": "fixture", "host": "fixture", "configuration": "fixture",
+            "trust": "fixture", "transport": "unix", "state": "stopped"
+        }}));
+        assert!(record.app_server.is_none());
+        MemberRuntimeStore::save(tmp.path(), "team", "seat", &record).unwrap();
+        runtime.set_detected_runtime_session("test-pane-1", CliTool::Codex, Some(detected), None);
+        let mut commands = CliCommandSettings::default();
+        commands
+            .account_selector_dirs
+            .insert("CODEX_HOME".into(), tmp.path().into());
+        let report = orchestrator
+            .resume_member_with_cli_commands(
+                &ResumeMemberRequest {
+                    team_name: "team".into(),
+                    member_name: "seat".into(),
+                    reasoning_effort_override: None,
+                },
+                &commands,
+            )
+            .unwrap();
+        assert!(runtime.calls().iter().any(|call| matches!(call,
+            RuntimeCall::SendKeys { keys, .. } if keys.contains("resume") && keys.contains("owned-thread")
+        )), "rollback must launch the recorded thread: {report:?}");
+        if detected == "owned-thread" {
+            assert!(report.resumed, "{report:?}");
+        } else {
+            assert!(!report.resumed);
+            assert!(
+                report
+                    .message
+                    .contains("rollback did not recover the named thread"),
+                "{report:?}"
+            );
+            assert!(runtime.calls().iter().any(|call| matches!(call,
+                RuntimeCall::KillPane { pane_id } if pane_id == "test-pane-1"
+            )));
+        }
+        assert_eq!(
+            MemberRuntimeStore::load(tmp.path(), "team", "seat")
+                .unwrap()
+                .session_id
+                .as_deref(),
+            Some("owned-thread")
+        );
+    }
+}
+
+#[test]
 fn operator_resume_renders_recorded_session_for_capturing_harnesses() {
     // Regression: 4994b243 limited recorded-session resume to effort switches;
     // e2e lane 4 run 7 observed an operator resume lose the tmux conversation.

@@ -630,6 +630,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
             .map(ToString::to_string);
         if activation_context.resume_session_id.is_some()
             && runtime_record.app_server.is_none()
+            && runtime_record.host_rollback.is_none()
             && crate::session_scanner::cli_tool::spec(member.cli_tool)
                 .missing_resume_rollout(runtime_record.jsonl_path.as_deref())
         {
