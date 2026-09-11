@@ -14,7 +14,7 @@ pub(crate) fn handle(
         .as_str()
         .ok_or("missing member_name")?;
     let root = registry.resolve(team).map_err(|e| e.to_string())?;
-    let record = MemberRuntimeStore::load(&root, team, member).map_err(|e| e.to_string())?;
+    let record = MemberRuntimeStore::load(&root, team, member);
     if operation == "stop" {
         let config = crate::coordination::stores::TeamConfigStore::load(&root, team)
             .map_err(|e| e.to_string())?;
@@ -23,6 +23,13 @@ pub(crate) fn handle(
             .iter()
             .find(|m| m.name == member)
             .ok_or("member is not on the team")?;
+        let record = match record {
+            Ok(record) => record,
+            Err(crate::coordination::errors::CoordinationError::NotFound(_)) => {
+                return Ok(serde_json::json!({"ok":true}));
+            }
+            Err(error) => return Err(error.to_string()),
+        };
         if let Some(pane) = record.pane_id.as_deref() {
             if !crate::session_scanner::control::pane_matches_record(pane, &record)? {
                 return Err("stop deferred: pane belongs to another session".into());
@@ -39,6 +46,15 @@ pub(crate) fn handle(
         )?;
         return Ok(serde_json::json!({"ok":true}));
     }
+    let record = record.map_err(|e| e.to_string())?;
+    if operation == "reconcile" {
+        if params["abandonUnknown"] == true {
+            let generation = params["generation"].as_u64().ok_or("missing attachment generation")?;
+            return hosts.abandon_unknown(registry, team, member, generation);
+        }
+        hosts.reconcile(registry, team, member)?;
+        return Ok(serde_json::json!({"ok":true}));
+    }
     let attachment = record.app_server.as_ref().ok_or("NOT_HOSTED")?;
     let generation = if operation == "transcript" {
         record.attachment_generation
@@ -47,12 +63,6 @@ pub(crate) fn handle(
             .as_u64()
             .ok_or("missing attachment generation")?
     };
-    if operation == "reconcile" {
-        if params["abandonUnknown"] != true {
-            return Err("Explicit abandon decision required".into());
-        }
-        return hosts.abandon_unknown(registry, team, member, generation);
-    }
     if operation == "transcript"
         && (attachment.state == "stopped" || attachment.state == "orphaned")
     {
@@ -142,6 +152,7 @@ fn stop_record(
         Ok(())
     };
     let Some(host) = record.app_server.as_ref() else {
+        hosts.reconcile(registry, team, member)?;
         stop_tui()?;
         let root = registry.resolve(team).map_err(|e| e.to_string())?;
         super::state_writes::mark_member_stopped(&root, team, member, record)?;
@@ -167,6 +178,53 @@ mod tests {
     use crate::coordination::hosted::tests::{input, running, saved, seat};
     use crate::coordination::hosted_process::tests::fixture;
     use serde_json::json;
+    #[test]
+    fn member_stop_releases_dead_owned_host_without_attachment() {
+        dead_owned_host_without_attachment("stop");
+    }
+
+    #[test]
+    fn member_reconcile_releases_dead_owned_host_without_attachment() {
+        dead_owned_host_without_attachment("reconcile");
+    }
+
+    fn dead_owned_host_without_attachment(operation: &str) {
+        // Regression: d612491fd missed the member-stop addendum: a dead owned
+        // seat without an app_server block could never be stopped and resumed.
+        let tmp = tempfile::tempdir().unwrap();
+        let (registry, hosts) = running(tmp.path());
+        let before = saved(tmp.path());
+        let roster = std::fs::read(tmp.path().join("team/config.json")).unwrap();
+        crate::coordination::hosted::tests::exit_owned_host(&hosts, tmp.path());
+        MemberRuntimeStore::update(tmp.path(), "team", "seat", |r| {
+            r.app_server = None;
+            r.health = crate::coordination::domain::HealthState::Healthy;
+        }).unwrap();
+        handle(&hosts, &registry, operation,
+            &json!({"team_name":"team", "member_name":"seat"})).unwrap();
+        assert_eq!(saved(tmp.path()).health, crate::coordination::domain::HealthState::SessionDead);
+        assert_eq!(saved(tmp.path()).session_id, before.session_id);
+        hosts.launch(&registry, "team", "seat", &fixture(tmp.path())).unwrap();
+        let resumed = saved(tmp.path());
+        assert_ne!(resumed.app_server.as_ref().unwrap().process_id,
+            before.app_server.as_ref().unwrap().process_id);
+        assert_eq!(resumed.app_server.unwrap().thread_id, before.app_server.unwrap().thread_id);
+        assert_eq!(std::fs::read(tmp.path().join("team/config.json")).unwrap(), roster);
+        hosts.stop(&registry, "team", "seat").unwrap();
+    }
+
+    #[test]
+    fn member_stop_without_runtime_is_already_stopped() {
+        // Regression: d612491fd exposed the runtime store's NotFound for an unlaunched member.
+        let tmp = tempfile::tempdir().unwrap();
+        let registry = seat(tmp.path());
+        std::fs::remove_file(tmp.path().join("team/runtime/seat.json")).unwrap();
+        assert_eq!(handle(&HostedMembers::default(), &registry, "stop",
+            &json!({"team_name":"team", "member_name":"seat"})).unwrap(), json!({"ok":true}));
+        assert!(handle(&HostedMembers::default(), &registry, "stop",
+            &json!({"team_name":"team", "member_name":"unknown"})).is_err());
+    }
+
     #[test]
     fn member_stop_keeps_roster_and_session_identity() {
         // Regression: 2e627f5cb, member-stop lane finding 2: Stop only exposed roster removal.
