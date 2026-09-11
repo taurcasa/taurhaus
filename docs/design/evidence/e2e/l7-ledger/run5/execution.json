@@ -1,0 +1,211 @@
+{
+  "controller_command": "L7_RUN_NAME=run5 python3 -B docs/design/evidence/e2e/l7-ledger/controller.py --auth-source <explicit-authorized-source>",
+  "controller_exit": 1,
+  "passive_capture_command": "python3 -B docs/design/evidence/e2e/l7-ledger/run5_capture.py",
+  "capture_scope": "Repeated read-only observations of the recorded scratch root while controller waited; no injected messages or lifecycle mutations.",
+  "native_version": {
+    "version": "codex-cli 0.153.4",
+    "exit": 0,
+    "stdout_sha256": "616dba4e87de2b1f07e61fe30ff4a5b3b075986c986c466ac5d244597eac0f36"
+  },
+  "tests": [
+    {
+      "command": "python3 -B docs/design/evidence/e2e/l7-ledger/run5_capture_test.py",
+      "phase": "red",
+      "exit": 1,
+      "reason": "ModuleNotFoundError: no run5_capture implementation yet"
+    },
+    {
+      "command": "python3 -B docs/design/evidence/e2e/l7-ledger/run5_capture_test.py",
+      "phase": "green",
+      "exit": 0,
+      "tests": 2
+    },
+    {
+      "command": "python3 -B docs/design/evidence/e2e/l7-ledger/controller_test.py",
+      "exit": 0,
+      "tests": 14
+    }
+  ],
+  "gate_driver": "Historical run5 used gates.command through an unretained wrapper with OUT=run5 and LOGS=.check-logs/l7-ledger-run5; its exact wrapper cannot be recovered. Original gate exits remain supported by checks-result.json.",
+  "gate_commands": [
+    "just check-quick",
+    "just lint",
+    "just test-contracts"
+  ],
+  "rust_unit_gate": "inapplicable: no src-tauri diff",
+  "review_round_1": {
+    "findings": "All five verified; no findings skipped.",
+    "runtime": "No new paid trial or runtime process; original six-step outcomes retained.",
+    "additional_seat_inputs": 0,
+    "additional_seat_spend_usd": 0,
+    "rollout_provenance": "Original source deleted at teardown; capture time/digest/bytes unavailable for the historical tail. Collector repaired prospectively; original tail and inventory unchanged.",
+    "tests": {
+      "command": "python3 -B docs/design/evidence/e2e/l7-ledger/run5_capture_test.py",
+      "added": 5,
+      "total": 7,
+      "red_exit": 1,
+      "red_observed": [
+        "Missing sha256 (KeyError)",
+        "Interrupted writes corrupted both published evidence files",
+        "Missing content-check function (AttributeError)",
+        "Gate driver rejected parameters (TypeError)"
+      ],
+      "green_exit": 0,
+      "controller_command": "python3 -B docs/design/evidence/e2e/l7-ledger/controller_test.py",
+      "controller_tests": 14,
+      "controller_exit": 0,
+      "fixtures": "Temporary directories and mocked gate/Git calls only; no live harness CLI or credentials."
+    },
+    "gate_command": "python3 -B docs/design/evidence/e2e/l7-ledger/gates.py --run-name run5 --log-dir .check-logs/l7-ledger-run5-review --output-dir .check-logs/l7-ledger-run5-review",
+    "gates": [
+      {
+        "commands": [
+          {
+            "command": "just check-quick",
+            "exit": 0,
+            "elapsed_s": 23.415,
+            "target": "/home/mstie/projects/taurhaus-l7-ledger/src-tauri/target"
+          },
+          {
+            "command": "just lint",
+            "exit": 0,
+            "elapsed_s": 6.94,
+            "target": "/home/mstie/projects/taurhaus-l7-ledger/src-tauri/target"
+          },
+          {
+            "command": "just test-contracts",
+            "exit": 101,
+            "elapsed_s": 5.704,
+            "target": "/home/mstie/projects/taurhaus-l7-ledger/src-tauri/target"
+          }
+        ],
+        "cargo_admission": [
+          {
+            "at": 1789094591.8360922,
+            "command": "pgrep -af '(^|/)cargo( |$)'",
+            "exit": 0,
+            "pids": [
+              "620679",
+              "620916"
+            ]
+          },
+          {
+            "at": 1789094615.259783,
+            "command": "pgrep -af '(^|/)cargo( |$)'",
+            "exit": 0,
+            "pids": [
+              "620916",
+              "626546"
+            ]
+          },
+          {
+            "at": 1789094622.2083673,
+            "command": "pgrep -af '(^|/)cargo( |$)'",
+            "exit": 0,
+            "pids": [
+              "620916",
+              "626546"
+            ]
+          }
+        ],
+        "logs": [
+          {
+            "path": ".check-logs/l7-ledger-run5-review/check-quick.log",
+            "sha256": "891070b3ab4ab70a3b3aad6d5e415d5a4bc7f072fe774d61382dc98850bb9d27"
+          },
+          {
+            "path": ".check-logs/l7-ledger-run5-review/lint.log",
+            "sha256": "a822e1888bddd901959bac869d9bc65d8dc16cfd07671eec6136a50a45065af3"
+          },
+          {
+            "path": ".check-logs/l7-ledger-run5-review/test-contracts.log",
+            "sha256": "97538a5513539619cd7b2f9a9318fd728e7ae543bccb290ccaaba986de06b240"
+          }
+        ]
+      },
+      {
+        "commands": [
+          {
+            "command": "just check-quick",
+            "exit": 0,
+            "elapsed_s": 18.509,
+            "target": "/home/mstie/projects/taurhaus-l7-ledger/src-tauri/target"
+          },
+          {
+            "command": "just lint",
+            "exit": 0,
+            "elapsed_s": 6.672,
+            "target": "/home/mstie/projects/taurhaus-l7-ledger/src-tauri/target"
+          },
+          {
+            "command": "just test-contracts",
+            "exit": 0,
+            "elapsed_s": 5.594,
+            "target": "/home/mstie/projects/taurhaus-l7-ledger/src-tauri/target"
+          }
+        ],
+        "cargo_admission": [
+          {
+            "at": 1789094670.3817377,
+            "command": "pgrep -af '(^|/)cargo( |$)'",
+            "exit": 0,
+            "pids": [
+              "631953",
+              "634158"
+            ]
+          },
+          {
+            "at": 1789094688.89932,
+            "command": "pgrep -af '(^|/)cargo( |$)'",
+            "exit": 0,
+            "pids": [
+              "634158",
+              "640991"
+            ]
+          },
+          {
+            "at": 1789094695.5788472,
+            "command": "pgrep -af '(^|/)cargo( |$)'",
+            "exit": 0,
+            "pids": [
+              "634158",
+              "640991"
+            ]
+          }
+        ],
+        "logs": [
+          {
+            "path": ".check-logs/l7-ledger-run5-review-retry/check-quick.log",
+            "sha256": "5a584b553de3d7ecbcfa7c6680e90a4605b7c5d04ebb157b8682225e8dbd6eab"
+          },
+          {
+            "path": ".check-logs/l7-ledger-run5-review-retry/lint.log",
+            "sha256": "1dd8ad45466c870f9b951a5da4aff25c47ae2b15ca3c23df5e287bec6de8d00f"
+          },
+          {
+            "path": ".check-logs/l7-ledger-run5-review-retry/test-contracts.log",
+            "sha256": "e7b89009ecf6cc2a7e5cc7139df4098064a0a72e1324a72869e9c0a41e8c2aeb"
+          }
+        ]
+      }
+    ],
+    "deviations": [
+      "#176 retest NOT RUN: tested base reverted fix; separate upstream handoff in evidence report.",
+      "Historical rollout provenance and exact gate wrapper cannot be recovered; no evidence backfilled.",
+      "Initial contracts gate failed on stale ignored gate output; preserved bytes with a .log extension and reran all gates successfully."
+    ],
+    "gate_rerun_command": "python3 -B docs/design/evidence/e2e/l7-ledger/gates.py --run-name run5 --log-dir .check-logs/l7-ledger-run5-review-retry --output-dir .check-logs/l7-ledger-run5-review-retry",
+    "gate_failure_resolution": {
+      "initial_test_contracts_exit": 101,
+      "failed_test": "retired_gemini_tool_literal_does_not_return",
+      "cause": "Repository source scan included a passing test-name string in an ignored JSON gate-output artifact from the original run5.",
+      "artifact_before": ".check-logs/l7-ledger-run5/final-result-data.json",
+      "artifact_after": ".check-logs/l7-ledger-run5/final-result-data.retained.log",
+      "sha256": "be5545254fb435ed636355734ba4bf83bf8a08419c1984c95c948d6a4d974893",
+      "resolution": "Renamed ignored output without changing bytes; retained initial review result as .log too. No source or test edits. All three exact gates rerun through committed driver; final output also retained as .log to prevent scan pollution."
+    },
+    "teardown": "No new runtime processes or credentials; gate children exited and were reaped. Original cleanup precondition checked before each gate run.",
+    "rust_unit_gate": "Not required: no src-tauri diff."
+  }
+}

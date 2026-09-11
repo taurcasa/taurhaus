@@ -1,0 +1,44 @@
+{
+  "merge_base_command": "git merge-base --is-ancestor 26c06132 HEAD",
+  "exit": 0,
+  "merge_base": "26c0613283118a68c877ec2f47903a3c555179d3",
+  "mesh_commit": "1f7447fec04d6c7b6407488b7b5069a05b5be891",
+  "codex_version": "0.153.4",
+  "native_siblings": [
+    "codex",
+    "codex-code-mode-host"
+  ],
+  "controller_sha256": "0c2249467cb0b1cdb7d0fc67ce931c38f7ff6e084ab7ff65242abceaf14306b5",
+  "runtime_sha256": "b559e174f43e2a33e16d06eba4475ecb28a507cce4129dc490808e8fe1851172",
+  "runtime_command": "L7_RUN_NAME=run5 python3 -B docs/design/evidence/e2e/l7-ledger/controller.py --auth-source <explicit-authorized-source>",
+  "descriptor": "unchanged; tmux only",
+  "unavailable_references": [
+    "designated lane-2 checkout no longer exists; read committed lane-2/run3 controller in this checkout",
+    "Mesh docs/design/ledger-*.md absent at pinned revision; read USAGE.md ledger contract"
+  ],
+  "opus_review": "unavailable: no Opus model in available collaboration inventory; orchestrator review required",
+  "review_round_1_content_verification": {
+    "timing": "Post-run review; original ancestry-only preflight above is retained, not upgraded retroactively.",
+    "command": "python3 -B docs/design/evidence/e2e/l7-ledger/gates.py --check-base",
+    "exit": 1,
+    "file": "src-tauri/src/session_scanner/idle/codex.rs",
+    "fixed_commit": "9617ea6e",
+    "fixed_blob": "3fb33d79d672b8121accccd0598b666361a367e9",
+    "head_blob": "8f665c637b73d7380681a557bfb2426c79e48c56",
+    "working_blob": "8f665c637b73d7380681a557bfb2426c79e48c56",
+    "passed": false,
+    "reviewed_head": "a63562e6c467974bf4ae1379b100f5b6c09f48c0",
+    "pre_fix_blob": "8f665c637b73d7380681a557bfb2426c79e48c56",
+    "tested_base_blob": "8f665c637b73d7380681a557bfb2426c79e48c56",
+    "src_tauri_diff_106f06c7_to_26c06132": "",
+    "daemon_digests": {
+      "run": "177c4f333aeaef73ae672109ee97c731ad50a3e166c244d93fe715ec5f144fd6",
+      "run2": "177c4f333aeaef73ae672109ee97c731ad50a3e166c244d93fe715ec5f144fd6",
+      "run3": "177c4f333aeaef73ae672109ee97c731ad50a3e166c244d93fe715ec5f144fd6",
+      "run4": "177c4f333aeaef73ae672109ee97c731ad50a3e166c244d93fe715ec5f144fd6",
+      "run5": "177c4f333aeaef73ae672109ee97c731ad50a3e166c244d93fe715ec5f144fd6"
+    },
+    "pr176_retest": "NOT RUN",
+    "orchestrator_handoff": "Separate product/release item: 26c06132 reverted the #176 fix. Restore and verify upstream before any sixth trial. No product change in this lane."
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "init": {
+    "ledger_id": "08509663-0fee-42d8-ad57-589a315ce643",
+    "log_epoch": "74ed4773-a034-42da-a1fd-3d84c799b781",
+    "team_incarnation_id": "91beecc54a2a66cbf3e5f0b99efee3bc433e06dff109e07a0dc79603cab6339d"
+  },
+  "task_id": "1",
+  "assignment_id": "15209bbb-06da-4b27-b874-1cb61ae74fe0",
+  "assignment_message_id": "e0ef6999-91f1-40fa-9ba0-117cc16ab4cb",
+  "assignment_source_committed": true,
+  "assignment_transport_stages": [
+    "attempt_started",
+    "submitted"
+  ],
+  "assignment_consumed_by_read": false,
+  "standalone_note_receipt": null,
+  "completion_source_receipt": null,
+  "completion_ledger_receipt": null,
+  "ledger_retry_receipt": null,
+  "boundary_snapshot": null,
+  "task_status": "pending",
+  "unavailable_reason": "Step 2 blocked before sending note instruction; no post-assignment turn or note/RESULT authored; no completion/retry/snapshot invoked."
+}

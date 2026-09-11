@@ -1,0 +1,23 @@
+{
+  "receipt": {
+    "receipts": [
+      {
+        "committed_cut": {
+          "committed_bytes": 1375,
+          "last_sequence": 1,
+          "prefix_digest": "115b8389af0a969c6b5e0d2a3245f6947c4c8334233a941cf808ada984308845"
+        },
+        "entry_id": "0d522cac-9b5f-4c22-92e6-caccbfb009e5",
+        "event_id": "0d522cac-9b5f-4c22-92e6-caccbfb009e5",
+        "head": "0d522cac-9b5f-4c22-92e6-caccbfb009e5",
+        "ledger_id": "2808b8cf-1791-4d10-98ed-70afd38f77ec",
+        "log_epoch": "8c68b8d6-6877-4e4d-85d6-9ff890947001",
+        "request_digest": "d0bf3fef7a55e7e0272b5e21a43bde36c4ce9ab30931a35a9e048653ae8448d9",
+        "sequence": 1
+      }
+    ]
+  },
+  "tool_call_id": "call_ayYdrjydu6BywmNjvcW1VcHu",
+  "timestamp": "2026-09-11T06:12:58.745Z",
+  "row_sha256": "9183bc41997f16682c9c45ab2d91987b5acb275518e6abe00429db9b1de24cb5"
+}

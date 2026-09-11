@@ -1,0 +1,17 @@
+[
+  {
+    "eventId": "f3c9578f-325a-4166-baa5-86d8ada35385",
+    "protocolVersion": 1,
+    "eventType": "task_assigned",
+    "task_id": "1",
+    "assignment_id": "82389a66-5af4-4353-88f5-b5f32af3ebae",
+    "assignee": "alpha",
+    "assigned_by": "lead",
+    "task_status": "pending",
+    "first_step": "Explicitly read/mark the inbox with mesh read --json --mark-read, paging until done; accept and start this assignment with its full assignment ID; reply TASK_READY and await explicit artifact instructions.",
+    "deliverable": "OBSERVATION.md and RESULT.md, each at most 2048 bytes.",
+    "completion_signal": "Complete only when instructed with RESULT.md through --summary-file.",
+    "timestamp": "2026-09-11T02:17:40.386Z",
+    "assignment_context": {}
+  }
+]

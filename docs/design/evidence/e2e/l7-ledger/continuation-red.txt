@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l7-ledger/docs/design/evidence/e2e/l7-ledger/controller_test.py", line 5, in <module>
+    from controller import output_text, objects, assignment_message_id
+ImportError: cannot import name 'assignment_message_id' from 'controller' (/home/mstie/projects/taurhaus-l7-ledger/docs/design/evidence/e2e/l7-ledger/controller.py)

@@ -1,0 +1,108 @@
+[
+  {
+    "call_id": "call_ayYdrjydu6BywmNjvcW1VcHu",
+    "timestamp": "2026-09-11T06:12:58.745Z",
+    "call_code": "const patch = \"*** Begin Patch\\n*** Add File: /tmp/th-l7-o04jhmd4/project/OBSERVATION.md\\n+---\\n+{\\\"ledger\\\": {\\\"adapter_version\\\": 1, \\\"events\\\": [{\\\"event_id\\\": \\\"0d522cac-9b5f-4c22-92e6-caccbfb009e5\\\", \\\"entry_key\\\": {\\\"wave\\\": \\\"l7\\\", \\\"scope\\\": \\\"S7\\\", \\\"kind\\\": \\\"note\\\", \\\"slot\\\": \\\"alpha.observation\\\"}, \\\"references\\\": [{\\\"authority\\\": \\\"scope\\\", \\\"project\\\": \\\"l7-project\\\", \\\"wave\\\": \\\"l7\\\", \\\"scope\\\": \\\"S7\\\", \\\"packet_revision\\\": \\\"frozen-1\\\"}, {\\\"authority\\\": \\\"task\\\", \\\"team_incarnation_id\\\": \\\"e759c0934f384ab4e2efb0f2bc2d02d07ff56f7919490166162e6a267f6f96df\\\", \\\"task_id\\\": \\\"1\\\", \\\"assignment_id\\\": \\\"c2760346-c20e-4728-bc79-f41697b7b0c6\\\"}, {\\\"authority\\\": \\\"artifact\\\", \\\"path\\\": \\\"self\\\", \\\"role\\\": \\\"result_artifact\\\", \\\"assessment\\\": \\\"source_checked\\\"}]}]}}\\n+---\\n+\\n+The scratch-only boundary keeps this observation within the designated test project.\\n*** End Patch\";\ntext(await tools.apply_patch(patch));\nconst r = await tools.exec_command({cmd:\"mesh ledger entry --file OBSERVATION.md --claude-dir \\\"$CLAUDE_DIR\\\" --team l7-ledger --name alpha\",workdir:\"/tmp/th-l7-o04jhmd4/project\",yield_time_ms:10000,max_output_tokens:3000}); text(`exit_code=${r.exit_code}\\nstdout=${r.output}`);\n",
+    "exit_codes": [],
+    "receipts_and_errors": [
+      {
+        "receipts": [
+          {
+            "committed_cut": {
+              "committed_bytes": 1375,
+              "last_sequence": 1,
+              "prefix_digest": "115b8389af0a969c6b5e0d2a3245f6947c4c8334233a941cf808ada984308845"
+            },
+            "entry_id": "0d522cac-9b5f-4c22-92e6-caccbfb009e5",
+            "event_id": "0d522cac-9b5f-4c22-92e6-caccbfb009e5",
+            "head": "0d522cac-9b5f-4c22-92e6-caccbfb009e5",
+            "ledger_id": "2808b8cf-1791-4d10-98ed-70afd38f77ec",
+            "log_epoch": "8c68b8d6-6877-4e4d-85d6-9ff890947001",
+            "request_digest": "d0bf3fef7a55e7e0272b5e21a43bde36c4ce9ab30931a35a9e048653ae8448d9",
+            "sequence": 1
+          }
+        ]
+      }
+    ],
+    "output_sha256": "9bca14ad08eb8e358c306cc201727082f469678db0fbb67a7d0966a361b6c061"
+  },
+  {
+    "call_id": "call_ifFIxIHXdu66frcNZQKWa9io",
+    "timestamp": "2026-09-11T06:13:55.503Z",
+    "call_code": "const r = await tools.exec_command({cmd:\"mesh task complete 1 --assignment c2760346-c20e-4728-bc79-f41697b7b0c6 --summary-file RESULT.md --claude-dir \\\"$CLAUDE_DIR\\\" --team l7-ledger --name alpha\",workdir:\"/tmp/th-l7-o04jhmd4/project\",yield_time_ms:10000,max_output_tokens:4000}); text(`exit_code=${r.exit_code}\\nstdout=${r.output}`);\n",
+    "exit_codes": [],
+    "receipts_and_errors": [
+      {
+        "ledger": {
+          "receipts": [
+            {
+              "committed_cut": {
+                "committed_bytes": 3364,
+                "last_sequence": 2,
+                "prefix_digest": "0a79659768dbacc76121c9d96c88e95450994cdb30389a54894cade54dea4a40"
+              },
+              "entry_id": "2f073251-a7f3-4e8a-ba4f-5abc022d0634",
+              "event_id": "2f073251-a7f3-4e8a-ba4f-5abc022d0634",
+              "head": "2f073251-a7f3-4e8a-ba4f-5abc022d0634",
+              "ledger_id": "2808b8cf-1791-4d10-98ed-70afd38f77ec",
+              "log_epoch": "8c68b8d6-6877-4e4d-85d6-9ff890947001",
+              "request_digest": "f47a843a9348a2b836e1abeccfef16b01e06c61ffe6698ae1edecc8029808cd3",
+              "sequence": 2
+            }
+          ]
+        },
+        "source": {
+          "assignment_id": "c2760346-c20e-4728-bc79-f41697b7b0c6",
+          "committed": true,
+          "task_id": "1"
+        }
+      },
+      {
+        "receipts": [
+          {
+            "committed_cut": {
+              "committed_bytes": 3364,
+              "last_sequence": 2,
+              "prefix_digest": "0a79659768dbacc76121c9d96c88e95450994cdb30389a54894cade54dea4a40"
+            },
+            "entry_id": "2f073251-a7f3-4e8a-ba4f-5abc022d0634",
+            "event_id": "2f073251-a7f3-4e8a-ba4f-5abc022d0634",
+            "head": "2f073251-a7f3-4e8a-ba4f-5abc022d0634",
+            "ledger_id": "2808b8cf-1791-4d10-98ed-70afd38f77ec",
+            "log_epoch": "8c68b8d6-6877-4e4d-85d6-9ff890947001",
+            "request_digest": "f47a843a9348a2b836e1abeccfef16b01e06c61ffe6698ae1edecc8029808cd3",
+            "sequence": 2
+          }
+        ]
+      }
+    ],
+    "output_sha256": "7020b5c6aca90a333c019c9f2b37c196a279c8a989d9f53ff0751789b7c0179a"
+  },
+  {
+    "call_id": "call_RKqcYypTrXUcMYkccUnlWdfN",
+    "timestamp": "2026-09-11T06:14:50.908Z",
+    "call_code": "const r = await tools.exec_command({cmd:\"mesh ledger entry --file RESULT.md --task 1 --assignment c2760346-c20e-4728-bc79-f41697b7b0c6 --submission-event 898d0b18-1f12-4e6b-a481-c8223b26cfcb --claude-dir \\\"$CLAUDE_DIR\\\" --team l7-ledger --name alpha\",workdir:\"/tmp/th-l7-o04jhmd4/project\",yield_time_ms:10000,max_output_tokens:3000}); text(`exit_code=${r.exit_code}\\n${r.output}`);\n",
+    "exit_codes": [],
+    "receipts_and_errors": [
+      {
+        "receipts": [
+          {
+            "committed_cut": {
+              "committed_bytes": 3364,
+              "last_sequence": 2,
+              "prefix_digest": "0a79659768dbacc76121c9d96c88e95450994cdb30389a54894cade54dea4a40"
+            },
+            "entry_id": "2f073251-a7f3-4e8a-ba4f-5abc022d0634",
+            "event_id": "2f073251-a7f3-4e8a-ba4f-5abc022d0634",
+            "head": "2f073251-a7f3-4e8a-ba4f-5abc022d0634",
+            "ledger_id": "2808b8cf-1791-4d10-98ed-70afd38f77ec",
+            "log_epoch": "8c68b8d6-6877-4e4d-85d6-9ff890947001",
+            "request_digest": "f47a843a9348a2b836e1abeccfef16b01e06c61ffe6698ae1edecc8029808cd3",
+            "sequence": 2
+          }
+        ]
+      }
+    ],
+    "output_sha256": "a6552409b9605f1caadde39624b38de9abfc4d176fd5d913f05157138c09df5a"
+  }
+]

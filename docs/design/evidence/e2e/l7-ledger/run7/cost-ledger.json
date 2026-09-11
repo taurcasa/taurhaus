@@ -1,0 +1,107 @@
+{
+  "paid_inputs": 6,
+  "turns": [
+    {
+      "turn_id": "01a08f17-c9d5-7b11-bbc8-3aff71610f41",
+      "usd": 0.00552268,
+      "completed": true,
+      "usage": {
+        "input_tokens": 56801,
+        "cached_input_tokens": 36864,
+        "output_tokens": 665
+      },
+      "conservative_usd": 0.0689592
+    },
+    {
+      "turn_id": "01a08f18-2431-7f83-acaa-f1af50cdede5",
+      "usd": 0.005927,
+      "completed": true,
+      "usage": {
+        "input_tokens": 69739,
+        "cached_input_tokens": 49920,
+        "output_tokens": 804
+      },
+      "conservative_usd": 0.0846516
+    },
+    {
+      "turn_id": "01a08f18-d89d-72b2-9707-49dd28e8ad36",
+      "usd": 0.005151520000000001,
+      "completed": true,
+      "usage": {
+        "input_tokens": 60770,
+        "cached_input_tokens": 45056,
+        "output_tokens": 923
+      },
+      "conservative_usd": 0.07403159999999999
+    },
+    {
+      "turn_id": "01a08f19-b3cf-7e23-b4c1-e07450c0890e",
+      "usd": 0.005257520000000001,
+      "completed": true,
+      "usage": {
+        "input_tokens": 65686,
+        "cached_input_tokens": 48896,
+        "output_tokens": 768
+      },
+      "conservative_usd": 0.0797448
+    },
+    {
+      "turn_id": "01a08f1a-a323-73c0-a969-ac260e3e6698",
+      "usd": 0.0024753600000000002,
+      "completed": true,
+      "usage": {
+        "input_tokens": 52674,
+        "cached_input_tokens": 48128,
+        "output_tokens": 503
+      },
+      "conservative_usd": 0.06381239999999999
+    },
+    {
+      "turn_id": "01a08f17-cbe5-7300-a3c2-1b160cc2a68d",
+      "usd": null,
+      "completed": true,
+      "source": "notify-only"
+    }
+  ],
+  "metering_complete": false,
+  "api_equivalent_usd": 0.02433408,
+  "conservative_usd": 0.37119959999999996,
+  "rates_usd_per_million": {
+    "input": 0.2,
+    "cached_input": 0.02,
+    "output": 1.2
+  },
+  "rate_source": "Inherited integration/messaging packet; estimates, not invoices",
+  "input_reservations": [
+    {
+      "reason": "production initialization/onboarding",
+      "step": 1,
+      "at": 1789107093.370429,
+      "generation": null
+    },
+    {
+      "reason": "task assignment",
+      "step": 1,
+      "at": 1789107115.618256,
+      "generation": 1
+    },
+    {
+      "reason": "step 2 instruction",
+      "step": 2,
+      "at": 1789107164.3759246,
+      "generation": 1
+    },
+    {
+      "reason": "step 3 instruction",
+      "step": 3,
+      "at": 1789107220.0425992,
+      "generation": 1
+    },
+    {
+      "reason": "step 4 instruction",
+      "step": 4,
+      "at": 1789107281.466136,
+      "generation": 1
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "id": "1",
+  "subject": "L7 tiny artifact round trip",
+  "description": "<message-body-redacted>",
+  "status": "in_progress",
+  "owner": "alpha",
+  "metadata": {
+    "accepted_at": "2026-09-11T01:43:32.892Z",
+    "accepted_by": "alpha",
+    "assigned_at": "2026-09-11T01:43:18.899Z",
+    "assigned_by": "lead",
+    "assignment_context": {},
+    "assignment_delivery": {
+      "delivered": true,
+      "message_id": "bd2b6f74-e3a0-48b7-9dba-944fee6e89a1"
+    },
+    "assignment_id": "3f9dd5c7-84d8-4dc5-90b6-a3c13bcd714a",
+    "completion_signal": "Complete only when instructed with RESULT.md through --summary-file.",
+    "deliverable": "OBSERVATION.md and RESULT.md, each at most 2048 bytes.",
+    "first_step": "Read this assignment; accept and start it with its full assignment ID; reply TASK_READY and await explicit artifact instructions.",
+    "review_route": "Lead checks ledger receipts and offline read-back; stop after the requested completion.",
+    "started_at": "2026-09-11T01:43:56.443Z",
+    "started_by": "alpha"
+  }
+}

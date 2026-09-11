@@ -1,0 +1,14 @@
+{
+  "taurhaus_commit": "e12d07395ae4363a79e2f77c8eeaf82b9eeb9904",
+  "main_base": "dabf846f",
+  "ancestry_exit": 0,
+  "completion_flush_tolerance_count": 2,
+  "mesh_commit": "588e4cf3e440e7fadfe548e4f35fc2034e32e34c",
+  "mesh_detached": true,
+  "protocol": 27,
+  "model": "gpt-5.6-luna",
+  "effort": "low",
+  "descriptor": "unchanged; tmux only",
+  "daemon_sha256": "b71a44083b082b775807e500533ab77b9e9fdd9edb4b80caea3e59aef8150706",
+  "mesh_sha256": "1dbaef83b79f10f86ca7f8089eb08e33f76940feb773582e173a3ee46de633cf"
+}

@@ -1,0 +1,33 @@
+╭───────────────────────────────────────╮
+<pane text redacted>
+│                                       │
+<pane text redacted>
+<pane text redacted>
+╰───────────────────────────────────────╯
+
+
+<pane text redacted>
+
+<pane text redacted>
+
+╭───────────────────────────────────────────────────────────────╮
+<pane text redacted>
+<pane text redacted>
+│                                                               │
+<pane text redacted>
+<pane text redacted>
+╰───────────────────────────────────────────────────────────────╯
+
+<pane text redacted>
+╭──────────────────────────────────────────╮
+<pane text redacted>
+│                                          │
+<pane text redacted>
+<pane text redacted>
+<pane text redacted>
+╰──────────────────────────────────────────╯
+
+
+<pane text redacted>
+
+  gpt-5.6-luna default · /tmp/th-l7-cn74xgwx/project

@@ -1,0 +1,10 @@
+{
+  "ledger_initialization": "step1-init-receipt.json",
+  "immutable_assignment": "step1-immutable-assignment.json",
+  "standalone_entry_receipt": "unavailable: step 2 stopped before send",
+  "source_completion_receipt": "unavailable: step 3 not run; source not committed",
+  "ledger_submission_receipt": "unavailable: intake not attempted",
+  "retry_receipt": "unavailable: step 4 not run",
+  "snapshot_receipt": "unavailable: step 5 not run",
+  "failure_teardown": "PASS; cleanup.json"
+}

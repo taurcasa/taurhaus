@@ -1,0 +1,27 @@
+{
+  "raw_controller_outcome": {
+    "step": 1,
+    "outcome": "FAIL",
+    "classification": "harness",
+    "reason": "seat did not accept/start frozen assignment"
+  },
+  "audit_step1": {
+    "outcome": "PASS",
+    "classification": "S-runtime",
+    "assignment_id": "3f9dd5c7-84d8-4dc5-90b6-a3c13bcd714a",
+    "immutable_event_id": "43ddfdce-c0b1-47e1-85f0-9b35063c59d4",
+    "ledger_id": "182cf4d8-2b3f-4503-b3b1-67c4c9f295ea",
+    "command_exits": [
+      0,
+      0,
+      0
+    ]
+  },
+  "continuation_boundary": {
+    "outcome": "FAIL",
+    "classification": "harness",
+    "reason": "Controller additionally required delivery proof before recording step 1. Task accepted/started; canonical message ID was absent from rollout tool-result rows. Full card proof was not exported, so assignment delivery remains unverified in retained evidence."
+  },
+  "audit_steps_2_to_6": "NOT RUN; stopped at the failed continuation boundary",
+  "product_defect_established": false
+}

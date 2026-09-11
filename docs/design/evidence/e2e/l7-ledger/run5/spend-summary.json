@@ -1,0 +1,34 @@
+{
+  "trial": "run5",
+  "fresh_budget": {
+    "inputs": 12,
+    "usd": 0.2,
+    "seconds": 720
+  },
+  "turns": [
+    {
+      "turn_id": "01a08e41-57a6-7410-b76d-60380a8ee2d4",
+      "api_equivalent_usd": 0.00407104,
+      "conservative_usd": 0.0532284,
+      "completed": true,
+      "source": "native rollout"
+    },
+    {
+      "turn_id": "01a08e41-59c9-79c1-a1f0-9d925800219d",
+      "api_equivalent_usd": null,
+      "conservative_usd": null,
+      "completed": true,
+      "source": "notify-only"
+    }
+  ],
+  "observed_identities": 2,
+  "input_reservations": 2,
+  "claude_paid_inputs": 0,
+  "claude_usd": 0,
+  "api_equivalent_known_usd": 0.00407104,
+  "conservative_known_usd": 0.0532284,
+  "actual_total_and_dollar_cap_verified": false,
+  "reason": "One notify-only identity lacks metering; inherited rate estimates are not invoices.",
+  "workflow_spend": "Separately owned by orchestrator; unavailable to lane executor.",
+  "metering_gated_lifecycle": false
+}

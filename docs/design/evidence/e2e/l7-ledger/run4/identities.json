@@ -1,0 +1,606 @@
+[
+  {
+    "pid": 4133847,
+    "start_ticks": "31231330",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-l7-rdua0mg6",
+      "/tmp/th-l7-rdua0mg6",
+      "--chdir",
+      "/tmp/th-l7-rdua0mg6/project",
+      "/bin/bash",
+      "/tmp/th-l7-rdua0mg6/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 4133848,
+    "start_ticks": "31231330",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-l7-rdua0mg6",
+      "/tmp/th-l7-rdua0mg6",
+      "--chdir",
+      "/tmp/th-l7-rdua0mg6/project",
+      "/bin/bash",
+      "/tmp/th-l7-rdua0mg6/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 4133849,
+    "start_ticks": "31231330",
+    "argv": [
+      "/bin/bash",
+      "/tmp/th-l7-rdua0mg6/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 4133850,
+    "start_ticks": "31231331",
+    "argv": [
+      "tmux",
+      "-D",
+      "-f",
+      "/dev/null",
+      ""
+    ]
+  },
+  {
+    "pid": 4133859,
+    "start_ticks": "31231341",
+    "argv": [
+      "/bin/bash",
+      ""
+    ]
+  },
+  {
+    "pid": 4133861,
+    "start_ticks": "31231341",
+    "argv": [
+      "/tmp/th-l7-rdua0mg6/home/.local/bin/taurhaus-daemon",
+      "--port",
+      "45351",
+      "--data-dir",
+      "/tmp/th-l7-rdua0mg6/data",
+      ""
+    ]
+  },
+  {
+    "pid": 4133884,
+    "start_ticks": "31231358",
+    "argv": [
+      "/bin/bash",
+      "-ilc",
+      "codex --version",
+      ""
+    ]
+  },
+  {
+    "pid": 4133972,
+    "start_ticks": "31231382",
+    "argv": [
+      "/bin/bash",
+      "-ic",
+      "cd '/tmp/th-l7-rdua0mg6/project' && CLAUDE_DIR='/tmp/th-l7-rdua0mg6/claude' CLAUDE_CONFIG_DIR='/tmp/th-l7-rdua0mg6/claude' CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions --model 'claude-haiku-4-5' --team-name 'l7-ledger' --agent-name 'lead' --agent-id 'lead@l7-ledger' --agent-type 'orchestrator' -n 'lead'; exec \"$SHELL\"",
+      ""
+    ]
+  },
+  {
+    "pid": 4133975,
+    "start_ticks": "31231382",
+    "argv": [
+      "claude",
+      "--dangerously-skip-permissions",
+      "--model",
+      "claude-haiku-4-5",
+      "--team-name",
+      "l7-ledger",
+      "--agent-name",
+      "lead",
+      "--agent-id",
+      "lead@l7-ledger",
+      "--agent-type",
+      "orchestrator",
+      "-n",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 4133997,
+    "start_ticks": "31231387",
+    "argv": [
+      "/bin/bash",
+      "-ic",
+      "cd '/tmp/th-l7-rdua0mg6/project' && CLAUDE_DIR='/tmp/th-l7-rdua0mg6/claude' CODEX_HOME='/tmp/th-l7-rdua0mg6/codex' codex --yolo --dangerously-bypass-hook-trust -c 'notify=[\"/tmp/th-l7-rdua0mg6/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]' -m 'gpt-5.6-luna' -c 'model_reasoning_effort=\"low\"'; exec \"$SHELL\"",
+      ""
+    ]
+  },
+  {
+    "pid": 4134007,
+    "start_ticks": "31231388",
+    "argv": [
+      "codex",
+      "--yolo",
+      "--dangerously-bypass-hook-trust",
+      "-c",
+      "notify=[\"/tmp/th-l7-rdua0mg6/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]",
+      "-m",
+      "gpt-5.6-luna",
+      "-c",
+      "model_reasoning_effort=\"low\"",
+      ""
+    ]
+  },
+  {
+    "pid": 4134064,
+    "start_ticks": "31231390",
+    "argv": [
+      "/tmp/th-l7-rdua0mg6/home/.local/bin/mesh",
+      "join",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "lead",
+      "--type",
+      "lead",
+      "--model",
+      "claude-haiku-4-5",
+      "--claude-dir",
+      "/tmp/th-l7-rdua0mg6/claude",
+      ""
+    ]
+  },
+  {
+    "pid": 4134103,
+    "start_ticks": "31231393",
+    "argv": [
+      "/tmp/th-l7-rdua0mg6/home/.local/bin/mesh",
+      "team",
+      "delivery",
+      "--owner",
+      "team",
+      "--claude-dir",
+      "/tmp/th-l7-rdua0mg6/claude",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 4134150,
+    "start_ticks": "31231395",
+    "argv": [
+      "/tmp/th-l7-rdua0mg6/home/.local/bin/mesh",
+      "team-daemon",
+      "start",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "lead",
+      "--claude-dir",
+      "/tmp/th-l7-rdua0mg6/claude",
+      ""
+    ]
+  },
+  {
+    "pid": 4134217,
+    "start_ticks": "31231400",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 4134293,
+    "start_ticks": "31231412",
+    "argv": [
+      "/tmp/th-l7-rdua0mg6/home/.local/bin/mesh",
+      "journal",
+      "accept",
+      "--producer",
+      "taurhaus-daemon",
+      "--recipient",
+      "lead",
+      "--text",
+      "[taurhaus] recovery_card\nIdentity: lead on l7-ledger; key={\"card_schema\":1,\"recipient\":[\"ca3250cc08b395479fbcf7899115f0fa7151283d2b3f594beb36f7126a6b2310\",\"ac11a62c-e462-4e5e-91d6-00fbee083203\"],\"context\":[1,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-l7-rdua0mg6/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-l7-rdua0mg6/claude\",\"harness_account_root\":\"/tmp/th-l7-rdua0mg6/claude\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-l7-rdua0mg6/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"37a06e5154de9ef5fdb08ede626ffb29630db236bda6cc9bd2f7868b61a9c25b\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: 83b7654c037d7e40170fc056aeb2a517160e4a9ae1c28443e21ad6cdc07dc825; source=a8d97ad61031cbcac3988f3b68c520a8a5a4cb0a780f3e3a2fe21bf4bef83bf2; audience=unavailable\nProject cwd: /tmp/th-l7-rdua0mg6/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: unavailable; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-11 01:56:16.282336990 UTC\nCurrent task: # \u2014 \nExecution mode: ; Validation expectation: ; Response expectation: ; Adjacent fix policy: ; Override allowed: false; Override reason: none\nFocal files: unavailable\nRole: unavailable\nHOLD: minimal role steering unavailable; owner: team lead.\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.",
+      "--idempotency-key",
+      "taurhaus-daemon:a98ff88bf4aafba40dadce96121d5ca6cd20814bda25d71b7203396e07a8e7dc",
+      "--claude-dir",
+      "/tmp/th-l7-rdua0mg6/claude",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 4134300,
+    "start_ticks": "31231427",
+    "argv": [
+      "/tmp/th-l7-rdua0mg6/home/.local/bin/mesh",
+      "journal",
+      "accept",
+      "--producer",
+      "taurhaus-daemon",
+      "--recipient",
+      "alpha",
+      "--text",
+      "[taurhaus] recovery_card\nIdentity: alpha on l7-ledger; key={\"card_schema\":1,\"recipient\":[\"ca3250cc08b395479fbcf7899115f0fa7151283d2b3f594beb36f7126a6b2310\",\"fd07ce43-25ec-48af-b9d0-a05dfd18a49f\"],\"context\":[1,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-l7-rdua0mg6/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-l7-rdua0mg6/claude\",\"harness_account_root\":\"/tmp/th-l7-rdua0mg6/codex\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-l7-rdua0mg6/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"06c590c16feb55f8926cfb930a7c2274ce0d76ce281855ebfe1d663fb57da20c\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: 42a941d44e6dbbfbae59e9d57baa2754ffc6e16f5db8304c684e6d3efd95cb42; source=682540e4a3f9cfbca660a5add5db7fa379ff474f5fe7c2f18798f74d7e72c755; audience=unavailable\nProject cwd: /tmp/th-l7-rdua0mg6/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: low; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-11 01:56:16.460700025 UTC\nCurrent task: # \u2014 \nExecution mode: ; Validation expectation: ; Response expectation: ; Adjacent fix policy: ; Override allowed: false; Override reason: none\nFocal files: unavailable\nRole: unavailable\nPurpose: Use only the scratch project. On onboarding, explicitly read and mark your inbox with mesh read --json --mark-read --claude-dir \"$CLAUDE_DIR\" --team l7-ledger --name alpha; follow every next_cursor using the same filters and --since until done. Reply READY. For assignments, first explicitly read/mark your inbox with the same mesh read command, paging until done, then run mesh task accept and task start with the frozen full assignment, then reply TASK_READY; do not complete yet. Every Mesh command must name --claude-dir \"$CLAUDE_DIR\" --team l7-ledger --name alpha. Read each new instruction explicitly before acting. Only write OBSERVATION.md and RESULT.md, each at most 2048 bytes, when specifically requested. Ledger entry, task complete --summary-file, and ledger-only retry are permitted only when specifically requested. Use frozen IDs from the instruction; never invent IDs, resend completion, edit any other file, or send unsolicited messages. Do not inspect credentials or any operator directory. Keep tool outputs and replies short.\n\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.",
+      "--idempotency-key",
+      "taurhaus-daemon:fbf2994dcfdfa373885fc3280e6ca9d23b623150fe14d90ddac74fde586e91df",
+      "--claude-dir",
+      "/tmp/th-l7-rdua0mg6/claude",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 4134452,
+    "start_ticks": "31231437",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 4134499,
+    "start_ticks": "31231477",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 4134535,
+    "start_ticks": "31231478",
+    "argv": [
+      "/usr/bin/zsh",
+      "-lc",
+      "if [[ -n \"$ZDOTDIR\" ]]; then\n  rc=\"$ZDOTDIR/.zshrc\"\nelse\n  rc=\"$HOME/.zshrc\"\nfi\n[[ -r \"$rc\" ]] && . \"$rc\"\nprint '# Snapshot file'\nprint '# Unset all aliases to avoid conflicts with functions'\nprint 'unalias -a 2>/dev/null || true'\nprint '# Functions'\nfunctions\nprint ''\nsetopt_count=$(setopt | wc -l | tr -d ' ')\nprint \"# setopts $setopt_count\"\nsetopt | sed 's/^/setopt /'\nprint ''\nalias_count=$(alias -L | wc -l | tr -d ' ')\nprint \"# aliases $alias_count\"\nalias -L\nprint ''\n# Capture exported variables\nexport_lines=$(export -p | awk '\n/^(export|declare -x|typeset -x) / {\n  line=$0\n  name=line\n  sub(/^(export|declare -x|typeset -x) /, \"\", name)\n  if (name ~ /^-[A-Za-z]*r[A-Za-z]* /) {\n    next\n  }\n  if (name ~ /^-[A-Za-z]*T[A-Za-z]* /) {\n    sub(/^-[A-Za-z]*T[A-Za-z]* /, \"\", name)\n    sub(/ [A-Za-z_][A-Za-z0-9_]*=.*/, \"\", name)\n  }\n  sub(/=.*/, \"\", name)\n  if (name ~ /^(PWD|OLDPWD)$/) {\n    next\n  }\n  if (name ~ /^[A-Za-z_][A-Za-z0-9_]*$/) {\n    print line\n  }\n}')\nexport_count=$(printf '%s\\n' \"$export_lines\" | sed '/^$/d' | wc -l | tr -d ' ')\nprint \"# exports $export_count\"\nif [[ -n \"$export_lines\" ]]; then\n  print -r -- \"$export_lines\"\nfi\n",
+      ""
+    ]
+  },
+  {
+    "pid": 4134603,
+    "start_ticks": "31231481",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 4134627,
+    "start_ticks": "31231485",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 4134853,
+    "start_ticks": "31231504",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 4134901,
+    "start_ticks": "31231507",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 4135214,
+    "start_ticks": "31231595",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 4135342,
+    "start_ticks": "31231623",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 4135376,
+    "start_ticks": "31231633",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 4135825,
+    "start_ticks": "31231703",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 4136094,
+    "start_ticks": "31231767",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 4136417,
+    "start_ticks": "31231861",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 4136462,
+    "start_ticks": "31231879",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 4136660,
+    "start_ticks": "31231928",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 4137005,
+    "start_ticks": "31232039",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 4137025,
+    "start_ticks": "31232045",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 4137026,
+    "start_ticks": "31232045",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 4137111,
+    "start_ticks": "31232077",
+    "argv": [
+      "/tmp/th-l7-rdua0mg6/home/.local/bin/codex-code-mode-host",
+      ""
+    ]
+  },
+  {
+    "pid": 4137131,
+    "start_ticks": "31232079",
+    "argv": [
+      "mesh",
+      "read",
+      "--json",
+      "--mark-read",
+      "--claude-dir",
+      "/tmp/th-l7-rdua0mg6/claude",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "alpha",
+      "--unread",
+      ""
+    ]
+  },
+  {
+    "pid": 4137190,
+    "start_ticks": "31232109",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 4138738,
+    "start_ticks": "31232728",
+    "argv": [
+      "/usr/bin/zsh",
+      "-c",
+      "__CODEX_SNAPSHOT_OVERRIDE_SET_0=\"${CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS+x}\"\n__CODEX_SNAPSHOT_OVERRIDE_0=\"${CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS-}\"\n__CODEX_SNAPSHOT_OVERRIDE_SET_1=\"${CODEX_PERMISSION_PROFILE+x}\"\n__CODEX_SNAPSHOT_OVERRIDE_1=\"${CODEX_PERMISSION_PROFILE-}\"\n__CODEX_SNAPSHOT_OVERRIDE_SET_2=\"${CODEX_PLUGIN_METRICS_OUTPUT+x}\"\n__CODEX_SNAPSHOT_OVERRIDE_2=\"${CODEX_PLUGIN_METRICS_OUTPUT-}\"\n__CODEX_SNAPSHOT_OVERRIDE_SET_3=\"${CODEX_SESSION_ID+x}\"\n__CODEX_SNAPSHOT_OVERRIDE_3=\"${CODEX_SESSION_ID-}\"\n__CODEX_SNAPSHOT_OVERRIDE_SET_4=\"${CODEX_THREAD_ID+x}\"\n__CODEX_SNAPSHOT_OVERRIDE_4=\"${CODEX_THREAD_ID-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_0=\"${ALL_PROXY+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_0=\"${ALL_PROXY-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_1=\"${BUNDLE_HTTPS_PROXY+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_1=\"${BUNDLE_HTTPS_PROXY-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_2=\"${BUNDLE_HTTP_PROXY+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_2=\"${BUNDLE_HTTP_PROXY-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_3=\"${BUNDLE_NO_PROXY+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_3=\"${BUNDLE_NO_PROXY-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_4=\"${BUNDLE_SSL_CA_CERT+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_4=\"${BUNDLE_SSL_CA_CERT-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_5=\"${CARGO_HTTP_CAINFO+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_5=\"${CARGO_HTTP_CAINFO-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_6=\"${CODEX_CA_CERTIFICATE+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_6=\"${CODEX_CA_CERTIFICATE-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_7=\"${CODEX_NETWORK_ALLOW_LOCAL_BINDING+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_7=\"${CODEX_NETWORK_ALLOW_LOCAL_BINDING-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_8=\"${CODEX_NETWORK_PROXY_ACTIVE+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_8=\"${CODEX_NETWORK_PROXY_ACTIVE-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_9=\"${CODEX_NETWORK_PROXY_ATTRIBUTION+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_9=\"${CODEX_NETWORK_PROXY_ATTRIBUTION-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_10=\"${CODEX_NETWORK_PROXY_BROKERED_CREDENTIALS+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_10=\"${CODEX_NETWORK_PROXY_BROKERED_CREDENTIALS-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_11=\"${CODEX_NETWORK_PROXY_CREDENTIAL_BROKER_ACTIVE+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_11=\"${CODEX_NETWORK_PROXY_CREDENTIAL_BROKER_ACTIVE-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_12=\"${CURL_CA_BUNDLE+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_12=\"${CURL_CA_BUNDLE-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_13=\"${DOCKER_HTTPS_PROXY+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_13=\"${DOCKER_HTTPS_PROXY-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_14=\"${DOCKER_HTTP_PROXY+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_14=\"${DOCKER_HTTP_PROXY-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_15=\"${ELECTRON_GET_USE_PROXY+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_15=\"${ELECTRON_GET_USE_PROXY-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_16=\"${FTP_PROXY+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_16=\"${FTP_PROXY-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_17=\"${GIT_SSL_CAINFO+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_17=\"${GIT_SSL_CAINFO-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_18=\"${HTTPS_PROXY+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_18=\"${HTTPS_PROXY-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_19=\"${HTTP_PROXY+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_19=\"${HTTP_PROXY-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_20=\"${NODE_EXTRA_CA_CERTS+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_20=\"${NODE_EXTRA_CA_CERTS-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_21=\"${NODE_USE_ENV_PROXY+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_21=\"${NODE_USE_ENV_PROXY-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_22=\"${NO_PROXY+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_22=\"${NO_PROXY-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_23=\"${NPM_CONFIG_CAFILE+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_23=\"${NPM_CONFIG_CAFILE-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_24=\"${NPM_CONFIG_HTTPS_PROXY+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_24=\"${NPM_CONFIG_HTTPS_PROXY-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_25=\"${NPM_CONFIG_HTTP_PROXY+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_25=\"${NPM_CONFIG_HTTP_PROXY-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_26=\"${NPM_CONFIG_NOPROXY+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_26=\"${NPM_CONFIG_NOPROXY-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_27=\"${NPM_CONFIG_PROXY+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_27=\"${NPM_CONFIG_PROXY-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_28=\"${PIP_CERT+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_28=\"${PIP_CERT-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_29=\"${PIP_PROXY+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_29=\"${PIP_PROXY-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_30=\"${REQUESTS_CA_BUNDLE+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_30=\"${REQUESTS_CA_BUNDLE-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_31=\"${SSL_CERT_FILE+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_31=\"${SSL_CERT_FILE-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_32=\"${WSS_PROXY+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_32=\"${WSS_PROXY-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_33=\"${WS_PROXY+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_33=\"${WS_PROXY-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_34=\"${YARN_HTTPS_PROXY+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_34=\"${YARN_HTTPS_PROXY-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_35=\"${YARN_HTTP_PROXY+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_35=\"${YARN_HTTP_PROXY-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_36=\"${YARN_NO_PROXY+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_36=\"${YARN_NO_PROXY-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_37=\"${all_proxy+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_37=\"${all_proxy-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_38=\"${ftp_proxy+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_38=\"${ftp_proxy-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_39=\"${http_proxy+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_39=\"${http_proxy-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_40=\"${https_proxy+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_40=\"${https_proxy-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_41=\"${no_proxy+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_41=\"${no_proxy-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_42=\"${npm_config_cafile+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_42=\"${npm_config_cafile-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_43=\"${npm_config_http_proxy+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_43=\"${npm_config_http_proxy-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_44=\"${npm_config_https_proxy+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_44=\"${npm_config_https_proxy-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_45=\"${npm_config_noproxy+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_45=\"${npm_config_noproxy-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_46=\"${npm_config_proxy+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_46=\"${npm_config_proxy-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_47=\"${ws_proxy+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_47=\"${ws_proxy-}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_48=\"${wss_proxy+x}\"\n__CODEX_SNAPSHOT_PROXY_OVERRIDE_48=\"${wss_proxy-}\"\n__CODEX_SNAPSHOT_PROXY_ENV_SET=\"${CODEX_NETWORK_PROXY_ACTIVE+x}\"\n\nif . '/tmp/th-l7-rdua0mg6/codex/shell_snapshots/01a08e2e-09dc-7082-8269-500ae6d090d3.1789091776992695668.sh' >/dev/null 2>&1; then :; fi\n\nif [ -n \"${__CODEX_SNAPSHOT_OVERRIDE_SET_0}\" ]; then export CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS=\"${__CODEX_SNAPSHOT_OVERRIDE_0}\"; else unset CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS; fi\nif [ -n \"${__CODEX_SNAPSHOT_OVERRIDE_SET_1}\" ]; then export CODEX_PERMISSION_PROFILE=\"${__CODEX_SNAPSHOT_OVERRIDE_1}\"; else unset CODEX_PERMISSION_PROFILE; fi\nif [ -n \"${__CODEX_SNAPSHOT_OVERRIDE_SET_2}\" ]; then export CODEX_PLUGIN_METRICS_OUTPUT=\"${__CODEX_SNAPSHOT_OVERRIDE_2}\"; else unset CODEX_PLUGIN_METRICS_OUTPUT; fi\nif [ -n \"${__CODEX_SNAPSHOT_OVERRIDE_SET_3}\" ]; then export CODEX_SESSION_ID=\"${__CODEX_SNAPSHOT_OVERRIDE_3}\"; else unset CODEX_SESSION_ID; fi\nif [ -n \"${__CODEX_SNAPSHOT_OVERRIDE_SET_4}\" ]; then export CODEX_THREAD_ID=\"${__CODEX_SNAPSHOT_OVERRIDE_4}\"; else unset CODEX_THREAD_ID; fi\nif [ -n \"$__CODEX_SNAPSHOT_PROXY_ENV_SET\" ] || [ -n \"${CODEX_NETWORK_PROXY_ACTIVE+x}\" ]; then\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_0}\" ]; then export ALL_PROXY=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_0}\"; else unset ALL_PROXY; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_1}\" ]; then export BUNDLE_HTTPS_PROXY=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_1}\"; else unset BUNDLE_HTTPS_PROXY; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_2}\" ]; then export BUNDLE_HTTP_PROXY=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_2}\"; else unset BUNDLE_HTTP_PROXY; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_3}\" ]; then export BUNDLE_NO_PROXY=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_3}\"; else unset BUNDLE_NO_PROXY; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_4}\" ]; then export BUNDLE_SSL_CA_CERT=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_4}\"; else unset BUNDLE_SSL_CA_CERT; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_5}\" ]; then export CARGO_HTTP_CAINFO=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_5}\"; else unset CARGO_HTTP_CAINFO; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_6}\" ]; then export CODEX_CA_CERTIFICATE=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_6}\"; else unset CODEX_CA_CERTIFICATE; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_7}\" ]; then export CODEX_NETWORK_ALLOW_LOCAL_BINDING=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_7}\"; else unset CODEX_NETWORK_ALLOW_LOCAL_BINDING; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_8}\" ]; then export CODEX_NETWORK_PROXY_ACTIVE=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_8}\"; else unset CODEX_NETWORK_PROXY_ACTIVE; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_9}\" ]; then export CODEX_NETWORK_PROXY_ATTRIBUTION=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_9}\"; else unset CODEX_NETWORK_PROXY_ATTRIBUTION; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_10}\" ]; then export CODEX_NETWORK_PROXY_BROKERED_CREDENTIALS=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_10}\"; else unset CODEX_NETWORK_PROXY_BROKERED_CREDENTIALS; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_11}\" ]; then export CODEX_NETWORK_PROXY_CREDENTIAL_BROKER_ACTIVE=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_11}\"; else unset CODEX_NETWORK_PROXY_CREDENTIAL_BROKER_ACTIVE; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_12}\" ]; then export CURL_CA_BUNDLE=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_12}\"; else unset CURL_CA_BUNDLE; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_13}\" ]; then export DOCKER_HTTPS_PROXY=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_13}\"; else unset DOCKER_HTTPS_PROXY; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_14}\" ]; then export DOCKER_HTTP_PROXY=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_14}\"; else unset DOCKER_HTTP_PROXY; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_15}\" ]; then export ELECTRON_GET_USE_PROXY=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_15}\"; else unset ELECTRON_GET_USE_PROXY; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_16}\" ]; then export FTP_PROXY=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_16}\"; else unset FTP_PROXY; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_17}\" ]; then export GIT_SSL_CAINFO=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_17}\"; else unset GIT_SSL_CAINFO; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_18}\" ]; then export HTTPS_PROXY=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_18}\"; else unset HTTPS_PROXY; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_19}\" ]; then export HTTP_PROXY=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_19}\"; else unset HTTP_PROXY; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_20}\" ]; then export NODE_EXTRA_CA_CERTS=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_20}\"; else unset NODE_EXTRA_CA_CERTS; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_21}\" ]; then export NODE_USE_ENV_PROXY=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_21}\"; else unset NODE_USE_ENV_PROXY; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_22}\" ]; then export NO_PROXY=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_22}\"; else unset NO_PROXY; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_23}\" ]; then export NPM_CONFIG_CAFILE=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_23}\"; else unset NPM_CONFIG_CAFILE; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_24}\" ]; then export NPM_CONFIG_HTTPS_PROXY=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_24}\"; else unset NPM_CONFIG_HTTPS_PROXY; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_25}\" ]; then export NPM_CONFIG_HTTP_PROXY=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_25}\"; else unset NPM_CONFIG_HTTP_PROXY; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_26}\" ]; then export NPM_CONFIG_NOPROXY=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_26}\"; else unset NPM_CONFIG_NOPROXY; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_27}\" ]; then export NPM_CONFIG_PROXY=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_27}\"; else unset NPM_CONFIG_PROXY; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_28}\" ]; then export PIP_CERT=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_28}\"; else unset PIP_CERT; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_29}\" ]; then export PIP_PROXY=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_29}\"; else unset PIP_PROXY; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_30}\" ]; then export REQUESTS_CA_BUNDLE=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_30}\"; else unset REQUESTS_CA_BUNDLE; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_31}\" ]; then export SSL_CERT_FILE=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_31}\"; else unset SSL_CERT_FILE; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_32}\" ]; then export WSS_PROXY=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_32}\"; else unset WSS_PROXY; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_33}\" ]; then export WS_PROXY=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_33}\"; else unset WS_PROXY; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_34}\" ]; then export YARN_HTTPS_PROXY=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_34}\"; else unset YARN_HTTPS_PROXY; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_35}\" ]; then export YARN_HTTP_PROXY=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_35}\"; else unset YARN_HTTP_PROXY; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_36}\" ]; then export YARN_NO_PROXY=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_36}\"; else unset YARN_NO_PROXY; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_37}\" ]; then export all_proxy=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_37}\"; else unset all_proxy; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_38}\" ]; then export ftp_proxy=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_38}\"; else unset ftp_proxy; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_39}\" ]; then export http_proxy=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_39}\"; else unset http_proxy; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_40}\" ]; then export https_proxy=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_40}\"; else unset https_proxy; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_41}\" ]; then export no_proxy=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_41}\"; else unset no_proxy; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_42}\" ]; then export npm_config_cafile=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_42}\"; else unset npm_config_cafile; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_43}\" ]; then export npm_config_http_proxy=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_43}\"; else unset npm_config_http_proxy; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_44}\" ]; then export npm_config_https_proxy=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_44}\"; else unset npm_config_https_proxy; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_45}\" ]; then export npm_config_noproxy=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_45}\"; else unset npm_config_noproxy; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_46}\" ]; then export npm_config_proxy=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_46}\"; else unset npm_config_proxy; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_47}\" ]; then export ws_proxy=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_47}\"; else unset ws_proxy; fi\nif [ -n \"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_SET_48}\" ]; then export wss_proxy=\"${__CODEX_SNAPSHOT_PROXY_OVERRIDE_48}\"; else unset wss_proxy; fi\nfi\n\nexec '/usr/bin/zsh' -c 'mesh send --claude-dir \"$CLAUDE_DIR\" --team l7-ledger --name alpha --historical lead READY'",
+      ""
+    ]
+  },
+  {
+    "pid": 4139909,
+    "start_ticks": "31233022",
+    "argv": [
+      "/bin/bash",
+      "-c",
+      "/tmp/th-l7-rdua0mg6/home/.local/bin/mesh task create --subject 'L7 tiny artifact round trip' --description 'Demonstrate real seat artifact intake and completion.' --deliverable 'OBSERVATION.md and RESULT.md, each at most 2048 bytes.' --first-step 'Explicitly read/mark the inbox with mesh read --json --mark-read, paging until done; accept and start this assignment with its full assignment ID; reply TASK_READY and await explicit artifact instructions.' --completion-signal 'Complete only when instructed with RESULT.md through --summary-file.' --review-route 'Lead checks ledger receipts and offline read-back; stop after the requested completion.' --claude-dir /tmp/th-l7-rdua0mg6/claude --team l7-ledger --name lead >/tmp/th-l7-rdua0mg6/60ad411c.out 2>&1; echo $? >/tmp/th-l7-rdua0mg6/60ad411c.exit",
+      ""
+    ]
+  },
+  {
+    "pid": 4139911,
+    "start_ticks": "31233023",
+    "argv": [
+      "/tmp/th-l7-rdua0mg6/home/.local/bin/mesh",
+      "task",
+      "create",
+      "--subject",
+      "L7 tiny artifact round trip",
+      "--description",
+      "Demonstrate real seat artifact intake and completion.",
+      "--deliverable",
+      "OBSERVATION.md and RESULT.md, each at most 2048 bytes.",
+      "--first-step",
+      "Explicitly read/mark the inbox with mesh read --json --mark-read, paging until done; accept and start this assignment with its full assignment ID; reply TASK_READY and await explicit artifact instructions.",
+      "--completion-signal",
+      "Complete only when instructed with RESULT.md through --summary-file.",
+      "--review-route",
+      "Lead checks ledger receipts and offline read-back; stop after the requested completion.",
+      "--claude-dir",
+      "/tmp/th-l7-rdua0mg6/claude",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 4140076,
+    "start_ticks": "31233050",
+    "argv": [
+      "/bin/bash",
+      "-c",
+      "/tmp/th-l7-rdua0mg6/home/.local/bin/mesh task assign 1 --owner alpha --json --claude-dir /tmp/th-l7-rdua0mg6/claude --team l7-ledger --name lead >/tmp/th-l7-rdua0mg6/36a22164.out 2>&1; echo $? >/tmp/th-l7-rdua0mg6/36a22164.exit",
+      ""
+    ]
+  },
+  {
+    "pid": 4140080,
+    "start_ticks": "31233050",
+    "argv": [
+      "/tmp/th-l7-rdua0mg6/home/.local/bin/mesh",
+      "task",
+      "assign",
+      "1",
+      "--owner",
+      "alpha",
+      "--json",
+      "--claude-dir",
+      "/tmp/th-l7-rdua0mg6/claude",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 4140105,
+    "start_ticks": "31233074",
+    "argv": [
+      "/bin/bash",
+      "-c",
+      "/tmp/th-l7-rdua0mg6/home/.local/bin/mesh ledger init --wave l7 --authority-file packet.json --repo-root /tmp/th-l7-rdua0mg6/project --claude-dir /tmp/th-l7-rdua0mg6/claude --team l7-ledger --name lead >/tmp/th-l7-rdua0mg6/f9aeab36.out 2>&1; echo $? >/tmp/th-l7-rdua0mg6/f9aeab36.exit",
+      ""
+    ]
+  },
+  {
+    "pid": 4140107,
+    "start_ticks": "31233074",
+    "argv": [
+      "/tmp/th-l7-rdua0mg6/home/.local/bin/mesh",
+      "ledger",
+      "init",
+      "--wave",
+      "l7",
+      "--authority-file",
+      "packet.json",
+      "--repo-root",
+      "/tmp/th-l7-rdua0mg6/project",
+      "--claude-dir",
+      "/tmp/th-l7-rdua0mg6/claude",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "lead",
+      ""
+    ]
+  }
+]

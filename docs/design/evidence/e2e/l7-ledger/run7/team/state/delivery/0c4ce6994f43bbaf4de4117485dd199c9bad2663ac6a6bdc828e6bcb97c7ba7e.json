@@ -1,0 +1,69 @@
+{
+  "obligation": {
+    "message_id": "6fe35db8-6083-4782-a7a8-63e19c0c7d41",
+    "delivery_id": "8f946298-00bd-469f-a888-07b3a4a1bf6f",
+    "recipient": "alpha",
+    "source_generation": "fe53bd46-b8fe-4211-9203-3e6093edf908",
+    "source_position": 2,
+    "body": "<message-body-redacted>"
+  },
+  "attempts": [
+    {
+      "claim": {
+        "obligation": {
+          "message_id": "6fe35db8-6083-4782-a7a8-63e19c0c7d41",
+          "delivery_id": "8f946298-00bd-469f-a888-07b3a4a1bf6f",
+          "recipient": "alpha",
+          "source_generation": "fe53bd46-b8fe-4211-9203-3e6093edf908",
+          "source_position": 2,
+          "body": "<message-body-redacted>"
+        },
+        "attachment": {
+          "launch_root": {
+            "claudeDir": "/tmp/th-l7-o04jhmd4/claude",
+            "rootAuthorityRevision": 0,
+            "teamsDir": "/tmp/th-l7-o04jhmd4/claude/teams",
+            "teamIncarnationId": "e759c0934f384ab4e2efb0f2bc2d02d07ff56f7919490166162e6a267f6f96df"
+          },
+          "attachment_generation": 1,
+          "root": "/tmp/th-l7-o04jhmd4/claude",
+          "team_incarnation": "e759c0934f384ab4e2efb0f2bc2d02d07ff56f7919490166162e6a267f6f96df",
+          "member": "alpha",
+          "session": "$0",
+          "context_generation": "0",
+          "generation": "1",
+          "socket": "/tmp/th-l7-o04jhmd4/tmux/tmux-1000/default",
+          "pane": "%2",
+          "pane_pid": 134,
+          "pane_start": "32763150",
+          "tmux_session": "$0",
+          "harness": "codex"
+        },
+        "epoch": 2,
+        "adapter": "tmux/1",
+        "attempt_id": "00071a5e-3da9-482c-b87b-8abb11e643c3"
+      },
+      "receipts": [
+        {
+          "stage": "accepted",
+          "origin": "legacy_mapping",
+          "evidence": "source obligation",
+          "observed_at": "2026-09-11T06:11:35.842695211+00:00"
+        },
+        {
+          "stage": "attempt_started",
+          "origin": "adapter",
+          "evidence": "durable claim",
+          "observed_at": "2026-09-11T06:11:35.842705602+00:00"
+        },
+        {
+          "stage": "submitted",
+          "origin": "tmux_send_keys",
+          "evidence": "paste left the composer; model uptake unobserved",
+          "observed_at": "2026-09-11T06:11:36.129106419+00:00"
+        }
+      ],
+      "presentation_started": true
+    }
+  ]
+}

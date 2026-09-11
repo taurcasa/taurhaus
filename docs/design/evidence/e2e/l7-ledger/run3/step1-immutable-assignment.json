@@ -1,0 +1,17 @@
+[
+  {
+    "eventId": "43ddfdce-c0b1-47e1-85f0-9b35063c59d4",
+    "protocolVersion": 1,
+    "eventType": "task_assigned",
+    "task_id": "1",
+    "assignment_id": "3f9dd5c7-84d8-4dc5-90b6-a3c13bcd714a",
+    "assignee": "alpha",
+    "assigned_by": "lead",
+    "task_status": "pending",
+    "first_step": "Read this assignment; accept and start it with its full assignment ID; reply TASK_READY and await explicit artifact instructions.",
+    "deliverable": "OBSERVATION.md and RESULT.md, each at most 2048 bytes.",
+    "completion_signal": "Complete only when instructed with RESULT.md through --summary-file.",
+    "timestamp": "2026-09-11T01:43:18.899Z",
+    "assignment_context": {}
+  }
+]

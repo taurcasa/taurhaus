@@ -1,0 +1,45 @@
+{
+  "paid_inputs": 2,
+  "turns": [
+    {
+      "turn_id": "01a08e2e-0f65-7852-a472-899deeebb7d1",
+      "usd": 0.00272748,
+      "completed": true,
+      "usage": {
+        "input_tokens": 43773,
+        "cached_input_tokens": 36864,
+        "output_tokens": 507
+      },
+      "conservative_usd": 0.053136
+    },
+    {
+      "turn_id": "01a08e2e-1175-7d03-9902-46ed51d64976",
+      "usd": null,
+      "completed": true,
+      "source": "notify-only"
+    }
+  ],
+  "metering_complete": false,
+  "api_equivalent_usd": 0.00272748,
+  "conservative_usd": 0.053136,
+  "rates_usd_per_million": {
+    "input": 0.2,
+    "cached_input": 0.02,
+    "output": 1.2
+  },
+  "rate_source": "Inherited integration/messaging packet; estimates, not invoices",
+  "input_reservations": [
+    {
+      "reason": "production initialization/onboarding",
+      "step": 1,
+      "at": 1789091775.7496734,
+      "generation": null
+    },
+    {
+      "reason": "task assignment",
+      "step": 1,
+      "at": 1789091792.7032294,
+      "generation": 1
+    }
+  ]
+}

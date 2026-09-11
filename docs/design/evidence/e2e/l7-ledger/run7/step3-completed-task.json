@@ -1,0 +1,34 @@
+{
+  "id": "1",
+  "subject": "L7 tiny artifact round trip",
+  "description": "<message-body-redacted>",
+  "status": "completed",
+  "owner": "alpha",
+  "metadata": {
+    "accepted_at": "2026-09-11T06:12:37.917Z",
+    "accepted_by": "alpha",
+    "assigned_at": "2026-09-11T06:11:55.626Z",
+    "assigned_by": "lead",
+    "assignment_context": {},
+    "assignment_delivery": {
+      "delivered": true,
+      "message_id": "f82bee23-e636-4a53-86e9-f93a7f28b7e5"
+    },
+    "assignment_id": "c2760346-c20e-4728-bc79-f41697b7b0c6",
+    "completed_at": "2026-09-11T06:13:55.295Z",
+    "completion_signal": "Complete only when instructed with RESULT.md through --summary-file.",
+    "completion_summary": "\nArtifact intake completed within the scratch-only test boundary.\n",
+    "deliverable": "OBSERVATION.md and RESULT.md, each at most 2048 bytes.",
+    "first_step": "Explicitly read/mark the inbox with mesh read --json --mark-read, paging until done; accept and start this assignment with its full assignment ID; reply TASK_READY and await explicit artifact instructions.",
+    "review_route": "Lead checks ledger receipts and offline read-back; stop after the requested completion.",
+    "started_at": "2026-09-11T06:12:38.042Z",
+    "started_by": "alpha",
+    "summary_source": {
+      "digest": "bd3df8087b72564bc5e891c246eeb6edeaa987c03ae46646fc0e494e2e1176bb",
+      "path": "RESULT.md",
+      "retention": {
+        "state": "referenced"
+      }
+    }
+  }
+}

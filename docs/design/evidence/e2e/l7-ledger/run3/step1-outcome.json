@@ -1,0 +1,6 @@
+{
+  "step": 1,
+  "outcome": "FAIL",
+  "classification": "harness",
+  "reason": "seat did not accept/start frozen assignment"
+}

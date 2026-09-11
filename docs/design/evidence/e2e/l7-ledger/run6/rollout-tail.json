@@ -1,0 +1,352 @@
+[
+  {
+    "file": "rollout-2026-09-11T05-13-53-01a08e75-1622-7783-85e2-b138911677ed.jsonl",
+    "complete_rows": 40,
+    "sha256": "13104c6e3eb1f7b6f20d1070c47dd6792aa66a4e356866308da5b176bf6741cd",
+    "bytes": 93126,
+    "captured_at": "2026-09-11T03:16:11.513698+00:00",
+    "tail": [
+      {
+        "timestamp": "2026-09-11T03:13:54.527Z",
+        "type": "session_meta",
+        "payload": {
+          "timestamp": "2026-09-11T03:13:53.189Z",
+          "session_id": "01a08e75-1622-7783-85e2-b138911677ed"
+        },
+        "source_sha256": "59feb78723246cb30eb3d3f2da7d6541a2ff0bf62ec84e50411ee8c6d0398e68"
+      },
+      {
+        "timestamp": "2026-09-11T03:13:54.527Z",
+        "type": "event_msg",
+        "payload": {
+          "type": "task_started",
+          "turn_id": "01a08e75-1b4a-7ad2-8c8c-41b91003634e"
+        },
+        "source_sha256": "6b80b875bcca41425dddd8aa5132d5668457fd33fd7ac33091c58d636326ef74"
+      },
+      {
+        "timestamp": "2026-09-11T03:13:55.198Z",
+        "type": "response_item",
+        "payload": {
+          "type": "message"
+        },
+        "source_sha256": "1d17ed25edd507c5c58795374effb8aa8e7c4a7f057f91f762a998e1a55ea989"
+      },
+      {
+        "timestamp": "2026-09-11T03:13:55.198Z",
+        "type": "response_item",
+        "payload": {
+          "type": "message"
+        },
+        "source_sha256": "9f39cc2a223cd5fbbd1d495afabf4f5816135b7770413825972cdb2e2b8182e8"
+      },
+      {
+        "timestamp": "2026-09-11T03:13:55.201Z",
+        "type": "world_state",
+        "payload": {},
+        "source_sha256": "435edec0f2eba039f52cd2aebb35f3331010cc4f08d45341c3393de7ebe55e62"
+      },
+      {
+        "timestamp": "2026-09-11T03:13:55.203Z",
+        "type": "turn_context",
+        "payload": {
+          "turn_id": "01a08e75-1b4a-7ad2-8c8c-41b91003634e",
+          "model": "gpt-5.6-luna",
+          "effort": "low"
+        },
+        "source_sha256": "e0b7934ef1cace38d3f2ddb9793b1cf71ea7eb2529ba7b803839110f86622b98"
+      },
+      {
+        "timestamp": "2026-09-11T03:13:55.215Z",
+        "type": "response_item",
+        "payload": {
+          "type": "message"
+        },
+        "source_sha256": "0e258002b0163cb5571f674e29ac818934ace4c8b1a431f6067fe4864e659bea"
+      },
+      {
+        "timestamp": "2026-09-11T03:13:55.217Z",
+        "type": "event_msg",
+        "payload": {
+          "type": "item_completed",
+          "turn_id": "01a08e75-1b4a-7ad2-8c8c-41b91003634e"
+        },
+        "source_sha256": "e4fcbd5315c87881868f42151a984eba20ee9f6bd5927f141c3d7252bda016f3"
+      },
+      {
+        "timestamp": "2026-09-11T03:13:57.164Z",
+        "type": "event_msg",
+        "payload": {
+          "type": "item_completed",
+          "turn_id": "01a08e75-1b4a-7ad2-8c8c-41b91003634e"
+        },
+        "source_sha256": "734968d658c30824e257622a2e5e36bf4bddef130f1904de783c8cec059039ce"
+      },
+      {
+        "timestamp": "2026-09-11T03:13:57.166Z",
+        "type": "response_item",
+        "payload": {
+          "type": "reasoning"
+        },
+        "source_sha256": "a0d757f6a0c7013bad37f1de5ad0966d44aaf0e74644a458b669d4ee3cff38bf"
+      },
+      {
+        "timestamp": "2026-09-11T03:13:57.807Z",
+        "type": "event_msg",
+        "payload": {
+          "type": "item_completed",
+          "turn_id": "01a08e75-1b4a-7ad2-8c8c-41b91003634e"
+        },
+        "source_sha256": "8aa1d649ae1d58378245937ee7beb424574a403ff3c6468d69780e82723a6abe"
+      },
+      {
+        "timestamp": "2026-09-11T03:13:57.809Z",
+        "type": "response_item",
+        "payload": {
+          "type": "message"
+        },
+        "source_sha256": "64b483f5fa539e1ca27226bf2d24de54f4700bf705c524576b3b54000b6cedb7"
+      },
+      {
+        "timestamp": "2026-09-11T03:13:59.199Z",
+        "type": "response_item",
+        "payload": {
+          "type": "custom_tool_call",
+          "call_id": "call_NherKSjnJVV1JgryF0R9Vzg1"
+        },
+        "source_sha256": "f2625c0c9b41fd87e4e735efe6925fafbe2d47db7164ed58bb1de2f0d868caa4"
+      },
+      {
+        "timestamp": "2026-09-11T03:13:59.202Z",
+        "type": "token_usage_record",
+        "payload": {
+          "turn_id": "01a08e75-1b4a-7ad2-8c8c-41b91003634e",
+          "session_id": "01a08e75-1622-7783-85e2-b138911677ed"
+        },
+        "source_sha256": "3d0547b870a403ea076ad83316c3b4db3bc49933adb87c52a34cdfb9c1ec54b3"
+      },
+      {
+        "timestamp": "2026-09-11T03:13:59.447Z",
+        "type": "event_msg",
+        "payload": {
+          "type": "item_completed",
+          "turn_id": "01a08e75-1b4a-7ad2-8c8c-41b91003634e"
+        },
+        "source_sha256": "ce5104946a7324e8e7ce20bf3d3bff21566892f2dc7edf4e842bd77440a075dd"
+      },
+      {
+        "timestamp": "2026-09-11T03:13:59.457Z",
+        "type": "response_item",
+        "payload": {
+          "type": "custom_tool_call_output",
+          "call_id": "call_NherKSjnJVV1JgryF0R9Vzg1"
+        },
+        "source_sha256": "9510c9bd60b505c570c40b1b2150cf4518b85ef83b3fdfa9d6c89926f26e30f1"
+      },
+      {
+        "timestamp": "2026-09-11T03:13:59.461Z",
+        "type": "event_msg",
+        "payload": {
+          "type": "token_count"
+        },
+        "source_sha256": "cfe18160249aa7a2b6aea784babd405c20d8800752b9626d3ac75ac12029f08a"
+      },
+      {
+        "timestamp": "2026-09-11T03:13:59.507Z",
+        "type": "response_item",
+        "payload": {
+          "type": "message"
+        },
+        "source_sha256": "57027149dbd42e6d67ed5ca47ff649fe807cc5bdba66d68f9d0d18de32591a35"
+      },
+      {
+        "timestamp": "2026-09-11T03:13:59.509Z",
+        "type": "world_state",
+        "payload": {},
+        "source_sha256": "ef91f4385f9308efc801f4a0783d9c9d4eb1c6290f5a276b04f2a917011fa45e"
+      },
+      {
+        "timestamp": "2026-09-11T03:14:02.010Z",
+        "type": "event_msg",
+        "payload": {
+          "type": "item_completed",
+          "turn_id": "01a08e75-1b4a-7ad2-8c8c-41b91003634e"
+        },
+        "source_sha256": "af1b1cf0ee1f2640c8e3f60f7a824120b96e3e70befa54fec1aa2292537daf8d"
+      },
+      {
+        "timestamp": "2026-09-11T03:14:02.012Z",
+        "type": "response_item",
+        "payload": {
+          "type": "reasoning"
+        },
+        "source_sha256": "cd00e9b4ff91dd8347ac7e0badc2d9dfa115ea8de5b3442f79f432f2228a27ce"
+      },
+      {
+        "timestamp": "2026-09-11T03:14:02.737Z",
+        "type": "event_msg",
+        "payload": {
+          "type": "item_completed",
+          "turn_id": "01a08e75-1b4a-7ad2-8c8c-41b91003634e"
+        },
+        "source_sha256": "b8938ca087f3c59c00047584b24b249d42e701189b1d4a969e5d2276ea6f962b"
+      },
+      {
+        "timestamp": "2026-09-11T03:14:02.740Z",
+        "type": "response_item",
+        "payload": {
+          "type": "message"
+        },
+        "source_sha256": "1d7b54d8a6e93ac581b1c81e0a0400b888f8079080385dc9351387564dd732e1"
+      },
+      {
+        "timestamp": "2026-09-11T03:14:03.733Z",
+        "type": "response_item",
+        "payload": {
+          "type": "custom_tool_call",
+          "call_id": "call_nQtkPOuZeR8O4GUnEW02vjrI"
+        },
+        "source_sha256": "e446dd3639574c81e97ed16fc72abce5b6a3a799a946aef7fe388d5c0289fbdd"
+      },
+      {
+        "timestamp": "2026-09-11T03:14:03.740Z",
+        "type": "token_usage_record",
+        "payload": {
+          "turn_id": "01a08e75-1b4a-7ad2-8c8c-41b91003634e",
+          "session_id": "01a08e75-1622-7783-85e2-b138911677ed"
+        },
+        "source_sha256": "f29a027f2006c0dae9333ddf67764ea668e99ee61541bfcc4bb69bf8f6ea2a1a"
+      },
+      {
+        "timestamp": "2026-09-11T03:14:03.779Z",
+        "type": "event_msg",
+        "payload": {
+          "type": "item_completed",
+          "turn_id": "01a08e75-1b4a-7ad2-8c8c-41b91003634e"
+        },
+        "source_sha256": "f33af2d212ce393d2a797fb7e5f2eb4c8c2e876787aad06722e4e14b298d27f5"
+      },
+      {
+        "timestamp": "2026-09-11T03:14:03.785Z",
+        "type": "response_item",
+        "payload": {
+          "type": "custom_tool_call_output",
+          "call_id": "call_nQtkPOuZeR8O4GUnEW02vjrI"
+        },
+        "source_sha256": "e10540f03aa8425f50043e1d52dea9ef61eabe3a322343ac9dee2c7f3898d8c2"
+      },
+      {
+        "timestamp": "2026-09-11T03:14:03.788Z",
+        "type": "event_msg",
+        "payload": {
+          "type": "token_count"
+        },
+        "source_sha256": "8c10072fb597c1ecb3ecd5b45a2ecbe191d0a219e7540ecd6d6d6a5b48f516a9"
+      },
+      {
+        "timestamp": "2026-09-11T03:14:05.459Z",
+        "type": "event_msg",
+        "payload": {
+          "type": "item_completed",
+          "turn_id": "01a08e75-1b4a-7ad2-8c8c-41b91003634e"
+        },
+        "source_sha256": "97d225e9208851bf26476264198afd740635225a33c25ba7cfa2fdccd3e278dc"
+      },
+      {
+        "timestamp": "2026-09-11T03:14:05.461Z",
+        "type": "response_item",
+        "payload": {
+          "type": "reasoning"
+        },
+        "source_sha256": "c6f453cb9b309fb2257993462dc737e94e37a6a9df990acfa64df5e813ab2e88"
+      },
+      {
+        "timestamp": "2026-09-11T03:14:07.297Z",
+        "type": "response_item",
+        "payload": {
+          "type": "custom_tool_call",
+          "call_id": "call_Qa48iHUyga818h6WzQ6ObMzN"
+        },
+        "source_sha256": "5cfe1d4ab01f82b4e44c1c60210e417c310b7143db4502c29f17d41b7b46f1f8"
+      },
+      {
+        "timestamp": "2026-09-11T03:14:07.313Z",
+        "type": "token_usage_record",
+        "payload": {
+          "turn_id": "01a08e75-1b4a-7ad2-8c8c-41b91003634e",
+          "session_id": "01a08e75-1622-7783-85e2-b138911677ed"
+        },
+        "source_sha256": "d78aa9d02b7d745622a556e82f7f5d199e841f34d7570758b241013db992d5c9"
+      },
+      {
+        "timestamp": "2026-09-11T03:14:07.482Z",
+        "type": "event_msg",
+        "payload": {
+          "type": "item_completed",
+          "turn_id": "01a08e75-1b4a-7ad2-8c8c-41b91003634e"
+        },
+        "source_sha256": "67387116a406cccff31d12461c2eea6f1ad27176acbad1b9fd51bde080670bf8"
+      },
+      {
+        "timestamp": "2026-09-11T03:14:07.489Z",
+        "type": "response_item",
+        "payload": {
+          "type": "custom_tool_call_output",
+          "call_id": "call_Qa48iHUyga818h6WzQ6ObMzN"
+        },
+        "source_sha256": "f3bb0923d11cd6ed91683803fde0debe437b0a884fc4d24cabeb30472119fbb2"
+      },
+      {
+        "timestamp": "2026-09-11T03:14:07.491Z",
+        "type": "event_msg",
+        "payload": {
+          "type": "token_count"
+        },
+        "source_sha256": "91c66cc6de3de13517d5d09d949e90bd3c3947a0e6c6f3ab29eaa2426df4d683"
+      },
+      {
+        "timestamp": "2026-09-11T03:14:08.899Z",
+        "type": "event_msg",
+        "payload": {
+          "type": "item_completed",
+          "turn_id": "01a08e75-1b4a-7ad2-8c8c-41b91003634e"
+        },
+        "source_sha256": "503b50d6005d62e3e4ba077b0ca6b0b6132f6e8935cfaccded9cb25b75693d68"
+      },
+      {
+        "timestamp": "2026-09-11T03:14:08.901Z",
+        "type": "response_item",
+        "payload": {
+          "type": "message"
+        },
+        "source_sha256": "6c6eddbae51224ea5e7bc18308c72b525f6d2ef645977a0418e4174166e08cde"
+      },
+      {
+        "timestamp": "2026-09-11T03:14:08.906Z",
+        "type": "token_usage_record",
+        "payload": {
+          "turn_id": "01a08e75-1b4a-7ad2-8c8c-41b91003634e",
+          "session_id": "01a08e75-1622-7783-85e2-b138911677ed"
+        },
+        "source_sha256": "e3e48789ea2302c2dad830e72e9e36355155715a629ccd9def8f34df921c43a1"
+      },
+      {
+        "timestamp": "2026-09-11T03:14:08.908Z",
+        "type": "event_msg",
+        "payload": {
+          "type": "token_count"
+        },
+        "source_sha256": "e58cfec120a0fdf56788639284b4df008157024d7ea52143b07b83389e73e44e"
+      },
+      {
+        "timestamp": "2026-09-11T03:14:08.915Z",
+        "type": "event_msg",
+        "payload": {
+          "type": "task_complete",
+          "turn_id": "01a08e75-1b4a-7ad2-8c8c-41b91003634e"
+        },
+        "source_sha256": "387269c2c0aca5e21d5fcb76ba553607ebd753ced18eff26605f84b19b9437d3"
+      }
+    ]
+  }
+]

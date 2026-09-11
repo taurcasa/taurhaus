@@ -1,0 +1,9 @@
+{
+  "task_assignment": "unavailable: startup preflight failed before task creation",
+  "ledger_manifest": "unavailable: ledger init not reached",
+  "standalone_entry": "unavailable: no artifact authored",
+  "source_completion": "unavailable: no task complete attempted; no source commitment",
+  "submission_intake": "unavailable: no ledger intake attempted, not a ledger rejection",
+  "retry_receipt": "unavailable: no retry attempted",
+  "offline_snapshot": "unavailable: no snapshot attempted"
+}

@@ -1,0 +1,26 @@
+{
+  "message_id": "d871bc14-999f-4b53-a68e-a7f3a105ca7d",
+  "sequence": 41,
+  "status": "accepted",
+  "projection": "pending",
+  "delivery_targets": [
+    {
+      "delivery_id": "3c37be91-9543-4797-95ad-9941df1fd983",
+      "legacy_acceptance": "unknown",
+      "legacy_id": "2301b2cf-8d1d-4aa4-9ac5-371a4b4f30d5",
+      "member_id": "alpha@l7-ledger",
+      "read_audience": [
+        {
+          "member_id": "2a8f0c32-9a46-4f26-bdcd-dc7c4bcc776a",
+          "name": "lead"
+        },
+        {
+          "member_id": "alpha@l7-ledger",
+          "name": "alpha"
+        }
+      ],
+      "recipient": "alpha",
+      "source_path": "inboxes/alpha.json"
+    }
+  ]
+}

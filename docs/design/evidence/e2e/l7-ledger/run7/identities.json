@@ -1,0 +1,1128 @@
+[
+  {
+    "pid": 2726752,
+    "start_ticks": "32763092",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-l7-o04jhmd4",
+      "/tmp/th-l7-o04jhmd4",
+      "--chdir",
+      "/tmp/th-l7-o04jhmd4/project",
+      "/bin/bash",
+      "/tmp/th-l7-o04jhmd4/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 2726753,
+    "start_ticks": "32763092",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-l7-o04jhmd4",
+      "/tmp/th-l7-o04jhmd4",
+      "--chdir",
+      "/tmp/th-l7-o04jhmd4/project",
+      "/bin/bash",
+      "/tmp/th-l7-o04jhmd4/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 2726754,
+    "start_ticks": "32763092",
+    "argv": [
+      "/bin/bash",
+      "/tmp/th-l7-o04jhmd4/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 2726755,
+    "start_ticks": "32763092",
+    "argv": [
+      "tmux",
+      "-D",
+      "-f",
+      "/dev/null",
+      ""
+    ]
+  },
+  {
+    "pid": 2726761,
+    "start_ticks": "32763103",
+    "argv": [
+      "/bin/bash",
+      ""
+    ]
+  },
+  {
+    "pid": 2726763,
+    "start_ticks": "32763104",
+    "argv": [
+      "/tmp/th-l7-o04jhmd4/home/.local/bin/taurhaus-daemon",
+      "--port",
+      "45591",
+      "--data-dir",
+      "/tmp/th-l7-o04jhmd4/data",
+      ""
+    ]
+  },
+  {
+    "pid": 2726784,
+    "start_ticks": "32763120",
+    "argv": [
+      "/bin/bash",
+      "-ilc",
+      "codex --version",
+      ""
+    ]
+  },
+  {
+    "pid": 2726872,
+    "start_ticks": "32763144",
+    "argv": [
+      "/bin/bash",
+      "-ic",
+      "cd '/tmp/th-l7-o04jhmd4/project' && CLAUDE_DIR='/tmp/th-l7-o04jhmd4/claude' CLAUDE_CONFIG_DIR='/tmp/th-l7-o04jhmd4/claude' CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions --model 'claude-haiku-4-5' --team-name 'l7-ledger' --agent-name 'lead' --agent-id 'lead@l7-ledger' --agent-type 'orchestrator' -n 'lead'; exec \"$SHELL\"",
+      ""
+    ]
+  },
+  {
+    "pid": 2726875,
+    "start_ticks": "32763145",
+    "argv": [
+      "claude",
+      "--dangerously-skip-permissions",
+      "--model",
+      "claude-haiku-4-5",
+      "--team-name",
+      "l7-ledger",
+      "--agent-name",
+      "lead",
+      "--agent-id",
+      "lead@l7-ledger",
+      "--agent-type",
+      "orchestrator",
+      "-n",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 2726891,
+    "start_ticks": "32763150",
+    "argv": [
+      "/bin/bash",
+      ""
+    ]
+  },
+  {
+    "pid": 2726894,
+    "start_ticks": "32763150",
+    "argv": [
+      "codex",
+      "--yolo",
+      "--dangerously-bypass-hook-trust",
+      "-c",
+      "notify=[\"/tmp/th-l7-o04jhmd4/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]",
+      "-m",
+      "gpt-5.6-luna",
+      "-c",
+      "model_reasoning_effort=\"low\"",
+      ""
+    ]
+  },
+  {
+    "pid": 2726940,
+    "start_ticks": "32763152",
+    "argv": [
+      "/tmp/th-l7-o04jhmd4/home/.local/bin/mesh",
+      "join",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "lead",
+      "--type",
+      "lead",
+      "--model",
+      "claude-haiku-4-5",
+      "--claude-dir",
+      "/tmp/th-l7-o04jhmd4/claude",
+      ""
+    ]
+  },
+  {
+    "pid": 2726943,
+    "start_ticks": "32763155",
+    "argv": [
+      "/tmp/th-l7-o04jhmd4/home/.local/bin/mesh",
+      "team",
+      "delivery",
+      "--owner",
+      "team",
+      "--claude-dir",
+      "/tmp/th-l7-o04jhmd4/claude",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 2726953,
+    "start_ticks": "32763157",
+    "argv": [
+      "/tmp/th-l7-o04jhmd4/home/.local/bin/mesh",
+      "team-daemon",
+      "start",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "lead",
+      "--claude-dir",
+      "/tmp/th-l7-o04jhmd4/claude",
+      ""
+    ]
+  },
+  {
+    "pid": 2727021,
+    "start_ticks": "32763174",
+    "argv": [
+      "/tmp/th-l7-o04jhmd4/home/.local/bin/mesh",
+      "journal",
+      "accept",
+      "--producer",
+      "taurhaus-daemon",
+      "--recipient",
+      "lead",
+      "--text",
+      "[taurhaus] recovery_card\nIdentity: lead on l7-ledger; key={\"card_schema\":1,\"recipient\":[\"e759c0934f384ab4e2efb0f2bc2d02d07ff56f7919490166162e6a267f6f96df\",\"1584e2fd-644b-4ce0-8325-5b58e724feea\"],\"context\":[1,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-l7-o04jhmd4/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-l7-o04jhmd4/claude\",\"harness_account_root\":\"/tmp/th-l7-o04jhmd4/claude\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-l7-o04jhmd4/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"37a06e5154de9ef5fdb08ede626ffb29630db236bda6cc9bd2f7868b61a9c25b\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: 6e526b87b3a96e2264ae10246f33b5b84f3e5d81739c0689c7a4487d6cb936c2; source=a8d97ad61031cbcac3988f3b68c520a8a5a4cb0a780f3e3a2fe21bf4bef83bf2; audience=unavailable\nProject cwd: /tmp/th-l7-o04jhmd4/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: unavailable; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-11 06:11:33.902054047 UTC\nCurrent task: # \u2014 \nExecution mode: ; Validation expectation: ; Response expectation: ; Adjacent fix policy: ; Override allowed: false; Override reason: none\nFocal files: unavailable\nRole: unavailable\nHOLD: minimal role steering unavailable; owner: team lead.\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.",
+      "--idempotency-key",
+      "taurhaus-daemon:aee0f588a56a5e9fc9fe6be0b98dffdf9455d0f5c0d57a61c676f6e1a749151b",
+      "--claude-dir",
+      "/tmp/th-l7-o04jhmd4/claude",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 2727156,
+    "start_ticks": "32763189",
+    "argv": [
+      "/tmp/th-l7-o04jhmd4/home/.local/bin/mesh",
+      "journal",
+      "accept",
+      "--producer",
+      "taurhaus-daemon",
+      "--recipient",
+      "alpha",
+      "--text",
+      "[taurhaus] recovery_card\nIdentity: alpha on l7-ledger; key={\"card_schema\":1,\"recipient\":[\"e759c0934f384ab4e2efb0f2bc2d02d07ff56f7919490166162e6a267f6f96df\",\"3cd98126-6124-4b7c-8075-7c550ce97222\"],\"context\":[1,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-l7-o04jhmd4/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-l7-o04jhmd4/claude\",\"harness_account_root\":\"/tmp/th-l7-o04jhmd4/codex\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-l7-o04jhmd4/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"06c590c16feb55f8926cfb930a7c2274ce0d76ce281855ebfe1d663fb57da20c\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: 567d8983fbc6fd203f64f58fdf0a5dab1a6c6a6f5704464a45f32f3b700d9eb6; source=682540e4a3f9cfbca660a5add5db7fa379ff474f5fe7c2f18798f74d7e72c755; audience=unavailable\nProject cwd: /tmp/th-l7-o04jhmd4/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: low; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-11 06:11:34.079592298 UTC\nCurrent task: # \u2014 \nExecution mode: ; Validation expectation: ; Response expectation: ; Adjacent fix policy: ; Override allowed: false; Override reason: none\nFocal files: unavailable\nRole: unavailable\nPurpose: Use only the scratch project. On onboarding, explicitly read and mark your inbox with mesh read --json --mark-read --claude-dir \"$CLAUDE_DIR\" --team l7-ledger --name alpha; follow every next_cursor using the same filters and --since until done. Reply READY. For assignments, first explicitly read/mark your inbox with the same mesh read command, paging until done, then run mesh task accept and task start with the frozen full assignment, then reply TASK_READY; do not complete yet. Every Mesh command must name --claude-dir \"$CLAUDE_DIR\" --team l7-ledger --name alpha. Read each new instruction explicitly before acting. Only write OBSERVATION.md and RESULT.md, each at most 2048 bytes, when specifically requested. Ledger entry, task complete --summary-file, and ledger-only retry are permitted only when specifically requested. Use frozen IDs from the instruction; never invent IDs, resend completion, edit any other file, or send unsolicited messages. Do not inspect credentials or any operator directory. Keep tool outputs and replies short.\n\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.",
+      "--idempotency-key",
+      "taurhaus-daemon:02d4a8a2584e5fbcbb05eb668e3db89338e4ecce1b38d9a2d92b9b8c5e4cd6c1",
+      "--claude-dir",
+      "/tmp/th-l7-o04jhmd4/claude",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 2727216,
+    "start_ticks": "32763196",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2727234,
+    "start_ticks": "32763199",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2727236,
+    "start_ticks": "32763199",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2727237,
+    "start_ticks": "32763199",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2727239,
+    "start_ticks": "32763199",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2727240,
+    "start_ticks": "32763199",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2727243,
+    "start_ticks": "32763199",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2727245,
+    "start_ticks": "32763199",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2727603,
+    "start_ticks": "32763249",
+    "argv": [
+      "/usr/bin/zsh",
+      "-lc",
+      "if [[ -n \"$ZDOTDIR\" ]]; then\n  rc=\"$ZDOTDIR/.zshrc\"\nelse\n  rc=\"$HOME/.zshrc\"\nfi\n[[ -r \"$rc\" ]] && . \"$rc\"\nprint '# Snapshot file'\nprint '# Unset all aliases to avoid conflicts with functions'\nprint 'unalias -a 2>/dev/null || true'\nprint '# Functions'\nfunctions\nprint ''\nsetopt_count=$(setopt | wc -l | tr -d ' ')\nprint \"# setopts $setopt_count\"\nsetopt | sed 's/^/setopt /'\nprint ''\nalias_count=$(alias -L | wc -l | tr -d ' ')\nprint \"# aliases $alias_count\"\nalias -L\nprint ''\n# Capture exported variables\nexport_lines=$(export -p | awk '\n/^(export|declare -x|typeset -x) / {\n  line=$0\n  name=line\n  sub(/^(export|declare -x|typeset -x) /, \"\", name)\n  if (name ~ /^-[A-Za-z]*r[A-Za-z]* /) {\n    next\n  }\n  if (name ~ /^-[A-Za-z]*T[A-Za-z]* /) {\n    sub(/^-[A-Za-z]*T[A-Za-z]* /, \"\", name)\n    sub(/ [A-Za-z_][A-Za-z0-9_]*=.*/, \"\", name)\n  }\n  sub(/=.*/, \"\", name)\n  if (name ~ /^(PWD|OLDPWD)$/) {\n    next\n  }\n  if (name ~ /^[A-Za-z_][A-Za-z0-9_]*$/) {\n    print line\n  }\n}')\nexport_count=$(printf '%s\\n' \"$export_lines\" | sed '/^$/d' | wc -l | tr -d ' ')\nprint \"# exports $export_count\"\nif [[ -n \"$export_lines\" ]]; then\n  print -r -- \"$export_lines\"\nfi\n",
+      ""
+    ]
+  },
+  {
+    "pid": 2727709,
+    "start_ticks": "32763266",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2727741,
+    "start_ticks": "32763277",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2728330,
+    "start_ticks": "32763385",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2728348,
+    "start_ticks": "32763388",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2728505,
+    "start_ticks": "32763430",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2728591,
+    "start_ticks": "32763447",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2728643,
+    "start_ticks": "32763457",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2728729,
+    "start_ticks": "32763496",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2728867,
+    "start_ticks": "32763532",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2728899,
+    "start_ticks": "32763542",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2729085,
+    "start_ticks": "32763600",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2729175,
+    "start_ticks": "32763619",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2729225,
+    "start_ticks": "32763629",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2729323,
+    "start_ticks": "32763676",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2729523,
+    "start_ticks": "32763727",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2729576,
+    "start_ticks": "32763739",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2730014,
+    "start_ticks": "32763884",
+    "argv": [
+      "/tmp/th-l7-o04jhmd4/home/.local/bin/codex-code-mode-host",
+      ""
+    ]
+  },
+  {
+    "pid": 2730034,
+    "start_ticks": "32763886",
+    "argv": [
+      "mesh",
+      "read",
+      "--json",
+      "--mark-read",
+      "--claude-dir",
+      "/tmp/th-l7-o04jhmd4/claude",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "alpha",
+      "--unread",
+      ""
+    ]
+  },
+  {
+    "pid": 2731910,
+    "start_ticks": "32765074",
+    "argv": [
+      "mesh",
+      "send",
+      "lead",
+      "READY. No assignment is currently available; please provide the frozen task identity and required context.",
+      "--claude-dir",
+      "/tmp/th-l7-o04jhmd4/claude",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "alpha",
+      "--summary",
+      "Ready; awaiting assignment context",
+      ""
+    ]
+  },
+  {
+    "pid": 2732223,
+    "start_ticks": "32765276",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2732433,
+    "start_ticks": "32765336",
+    "argv": [
+      "/bin/bash",
+      "-c",
+      "/tmp/th-l7-o04jhmd4/home/.local/bin/mesh task create --subject 'L7 tiny artifact round trip' --description 'Demonstrate real seat artifact intake and completion.' --deliverable 'OBSERVATION.md and RESULT.md, each at most 2048 bytes.' --first-step 'Explicitly read/mark the inbox with mesh read --json --mark-read, paging until done; accept and start this assignment with its full assignment ID; reply TASK_READY and await explicit artifact instructions.' --completion-signal 'Complete only when instructed with RESULT.md through --summary-file.' --review-route 'Lead checks ledger receipts and offline read-back; stop after the requested completion.' --claude-dir /tmp/th-l7-o04jhmd4/claude --team l7-ledger --name lead >/tmp/th-l7-o04jhmd4/f43f6288.out 2>&1; echo $? >/tmp/th-l7-o04jhmd4/f43f6288.exit",
+      ""
+    ]
+  },
+  {
+    "pid": 2732438,
+    "start_ticks": "32765341",
+    "argv": [
+      "/bin/bash",
+      "-c",
+      "/tmp/th-l7-o04jhmd4/home/.local/bin/mesh task assign 1 --owner alpha --json --claude-dir /tmp/th-l7-o04jhmd4/claude --team l7-ledger --name lead >/tmp/th-l7-o04jhmd4/599bdb91.out 2>&1; echo $? >/tmp/th-l7-o04jhmd4/599bdb91.exit",
+      ""
+    ]
+  },
+  {
+    "pid": 2732440,
+    "start_ticks": "32765341",
+    "argv": [
+      "/tmp/th-l7-o04jhmd4/home/.local/bin/mesh",
+      "task",
+      "assign",
+      "1",
+      "--owner",
+      "alpha",
+      "--json",
+      "--claude-dir",
+      "/tmp/th-l7-o04jhmd4/claude",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 2732447,
+    "start_ticks": "32765368",
+    "argv": [
+      "/bin/bash",
+      "-c",
+      "/tmp/th-l7-o04jhmd4/home/.local/bin/mesh ledger init --wave l7 --authority-file packet.json --repo-root /tmp/th-l7-o04jhmd4/project --claude-dir /tmp/th-l7-o04jhmd4/claude --team l7-ledger --name lead >/tmp/th-l7-o04jhmd4/efe5926d.out 2>&1; echo $? >/tmp/th-l7-o04jhmd4/efe5926d.exit",
+      ""
+    ]
+  },
+  {
+    "pid": 2732449,
+    "start_ticks": "32765368",
+    "argv": [
+      "/tmp/th-l7-o04jhmd4/home/.local/bin/mesh",
+      "ledger",
+      "init",
+      "--wave",
+      "l7",
+      "--authority-file",
+      "packet.json",
+      "--repo-root",
+      "/tmp/th-l7-o04jhmd4/project",
+      "--claude-dir",
+      "/tmp/th-l7-o04jhmd4/claude",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 2733300,
+    "start_ticks": "32765691",
+    "argv": [
+      "/bin/sh",
+      "-c",
+      "\n\"$@\" <&0 3>&2 2>/dev/null &\ndelivery_child=$!\ndelivery_parent=$$\n(\n    sleep \"${MESH_TERMINAL_TIMEOUT_SECONDS:?}\" &\n    delivery_timer=$!\n    trap 'kill -TERM \"$delivery_timer\" 2>/dev/null; wait \"$delivery_timer\"; exit' TERM INT HUP\n    wait \"$delivery_timer\"\n    kill -ALRM \"$delivery_parent\" 2>/dev/null\n) </dev/null >/dev/null 2>/dev/null &\ndelivery_watchdog=$!\ntrap 'kill -TERM \"$delivery_child\" \"$delivery_watchdog\" 2>/dev/null; wait \"$delivery_child\"; wait \"$delivery_watchdog\"; exit 124' TERM INT HUP ALRM\nwait \"$delivery_child\"\ndelivery_result=$?\nkill -TERM \"$delivery_watchdog\" 2>/dev/null\nwait \"$delivery_watchdog\"\nexit \"$delivery_result\"\n",
+      "mesh-terminal-client",
+      "tmux",
+      "-N",
+      "-S",
+      "/tmp/th-l7-o04jhmd4/tmux/tmux-1000/default",
+      "capture-pane",
+      "-p",
+      "-J",
+      "-t",
+      "%2",
+      ""
+    ]
+  },
+  {
+    "pid": 2734250,
+    "start_ticks": "32766207",
+    "argv": [
+      "mesh",
+      "read",
+      "--json",
+      "--mark-read",
+      "--claude-dir",
+      "/tmp/th-l7-o04jhmd4/claude",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "alpha",
+      ""
+    ]
+  },
+  {
+    "pid": 2740187,
+    "start_ticks": "32769570",
+    "argv": [
+      "mesh",
+      "task",
+      "accept",
+      "1",
+      "--assignment",
+      "c2760346-c20e-4728-bc79-f41697b7b0c6",
+      "--claude-dir",
+      "/tmp/th-l7-o04jhmd4/claude",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "alpha",
+      ""
+    ]
+  },
+  {
+    "pid": 2740226,
+    "start_ticks": "32769582",
+    "argv": [
+      "mesh",
+      "task",
+      "start",
+      "1",
+      "--assignment",
+      "c2760346-c20e-4728-bc79-f41697b7b0c6",
+      "--claude-dir",
+      "/tmp/th-l7-o04jhmd4/claude",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "alpha",
+      ""
+    ]
+  },
+  {
+    "pid": 2740690,
+    "start_ticks": "32769949",
+    "argv": [
+      "mesh",
+      "send",
+      "lead",
+      "TASK_READY",
+      "--claude-dir",
+      "/tmp/th-l7-o04jhmd4/claude",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "alpha",
+      "--summary",
+      "Task #1 started; awaiting explicit artifact instructions.",
+      ""
+    ]
+  },
+  {
+    "pid": 2741254,
+    "start_ticks": "32770180",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2741293,
+    "start_ticks": "32770217",
+    "argv": [
+      "/bin/bash",
+      "-c",
+      "/tmp/th-l7-o04jhmd4/home/.local/bin/mesh send alpha 'ACTION REQUIRED: Explicitly read/mark this instruction. Write OBSERVATION.md (<=2048 bytes) with leading --- newline, this JSON object as valid YAML front matter, newline --- newline, then a short standalone observation about the scratch-only test boundary, not completion prose: {\"ledger\": {\"adapter_version\": 1, \"events\": [{\"event_id\": \"0d522cac-9b5f-4c22-92e6-caccbfb009e5\", \"entry_key\": {\"wave\": \"l7\", \"scope\": \"S7\", \"kind\": \"note\", \"slot\": \"alpha.observation\"}, \"references\": [{\"authority\": \"scope\", \"project\": \"l7-project\", \"wave\": \"l7\", \"scope\": \"S7\", \"packet_revision\": \"frozen-1\"}, {\"authority\": \"task\", \"team_incarnation_id\": \"e759c0934f384ab4e2efb0f2bc2d02d07ff56f7919490166162e6a267f6f96df\", \"task_id\": \"1\", \"assignment_id\": \"c2760346-c20e-4728-bc79-f41697b7b0c6\"}, {\"authority\": \"artifact\", \"path\": \"self\", \"role\": \"result_artifact\", \"assessment\": \"source_checked\"}]}]}}. Execute mesh ledger entry --file OBSERVATION.md --claude-dir \"$CLAUDE_DIR\" --team l7-ledger --name alpha. Print command exit_code and stdout receipt; reply NOTE_DONE. Do not complete the task.' --summary 'L7 step 2' --claude-dir /tmp/th-l7-o04jhmd4/claude --team l7-ledger --name lead >/tmp/th-l7-o04jhmd4/d1f5c1b4.out 2>&1; echo $? >/tmp/th-l7-o04jhmd4/d1f5c1b4.exit",
+      ""
+    ]
+  },
+  {
+    "pid": 2741295,
+    "start_ticks": "32770217",
+    "argv": [
+      "/tmp/th-l7-o04jhmd4/home/.local/bin/mesh",
+      "send",
+      "alpha",
+      "ACTION REQUIRED: Explicitly read/mark this instruction. Write OBSERVATION.md (<=2048 bytes) with leading --- newline, this JSON object as valid YAML front matter, newline --- newline, then a short standalone observation about the scratch-only test boundary, not completion prose: {\"ledger\": {\"adapter_version\": 1, \"events\": [{\"event_id\": \"0d522cac-9b5f-4c22-92e6-caccbfb009e5\", \"entry_key\": {\"wave\": \"l7\", \"scope\": \"S7\", \"kind\": \"note\", \"slot\": \"alpha.observation\"}, \"references\": [{\"authority\": \"scope\", \"project\": \"l7-project\", \"wave\": \"l7\", \"scope\": \"S7\", \"packet_revision\": \"frozen-1\"}, {\"authority\": \"task\", \"team_incarnation_id\": \"e759c0934f384ab4e2efb0f2bc2d02d07ff56f7919490166162e6a267f6f96df\", \"task_id\": \"1\", \"assignment_id\": \"c2760346-c20e-4728-bc79-f41697b7b0c6\"}, {\"authority\": \"artifact\", \"path\": \"self\", \"role\": \"result_artifact\", \"assessment\": \"source_checked\"}]}]}}. Execute mesh ledger entry --file OBSERVATION.md --claude-dir \"$CLAUDE_DIR\" --team l7-ledger --name alpha. Print command exit_code and stdout receipt; reply NOTE_DONE. Do not complete the task.",
+      "--summary",
+      "L7 step 2",
+      "--claude-dir",
+      "/tmp/th-l7-o04jhmd4/claude",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 2741721,
+    "start_ticks": "32770681",
+    "argv": [
+      "mesh",
+      "read",
+      "--json",
+      "--mark-read",
+      "--claude-dir",
+      "/tmp/th-l7-o04jhmd4/claude",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "alpha",
+      "--unread",
+      ""
+    ]
+  },
+  {
+    "pid": 2745739,
+    "start_ticks": "32771645",
+    "argv": [
+      "mesh",
+      "ledger",
+      "entry",
+      "--file",
+      "OBSERVATION.md",
+      "--claude-dir",
+      "/tmp/th-l7-o04jhmd4/claude",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "alpha",
+      ""
+    ]
+  },
+  {
+    "pid": 2753162,
+    "start_ticks": "32775068",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2754342,
+    "start_ticks": "32775474",
+    "argv": [
+      "mesh",
+      "send",
+      "lead",
+      "NOTE_DONE",
+      "--summary",
+      "L7 step 2 observation recorded",
+      "--claude-dir",
+      "/tmp/th-l7-o04jhmd4/claude",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "alpha",
+      "--task",
+      "1",
+      "--assignment",
+      "c2760346-c20e-4728-bc79-f41697b7b0c6",
+      ""
+    ]
+  },
+  {
+    "pid": 2754343,
+    "start_ticks": "32775476",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2755070,
+    "start_ticks": "32775748",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 2755171,
+    "start_ticks": "32775783",
+    "argv": [
+      "/bin/bash",
+      "-c",
+      "/tmp/th-l7-o04jhmd4/home/.local/bin/mesh send alpha 'ACTION REQUIRED: Explicitly read/mark. Write a different RESULT.md (<=2048 bytes), leading --- newline, this JSON object as YAML, newline --- newline, then a brief RESULT paragraph stating artifact intake completed; do not repeat the separate observation: {\"ledger\": {\"adapter_version\": 1, \"events\": [{\"event_id\": \"2f073251-a7f3-4e8a-ba4f-5abc022d0634\", \"entry_key\": {\"kind\": \"note\", \"slot\": \"alpha.result\"}, \"references\": [{\"authority\": \"artifact\", \"path\": \"self\", \"role\": \"result_artifact\", \"assessment\": \"source_checked\"}]}]}}. Execute exactly once: mesh task complete 1 --assignment c2760346-c20e-4728-bc79-f41697b7b0c6 --summary-file RESULT.md --claude-dir \"$CLAUDE_DIR\" --team l7-ledger --name alpha. Print command exit_code and stdout source and ledger receipts; reply RESULT_DONE. Never repeat completion even on error.' --summary 'L7 step 3' --claude-dir /tmp/th-l7-o04jhmd4/claude --team l7-ledger --name lead >/tmp/th-l7-o04jhmd4/96eaac78.out 2>&1; echo $? >/tmp/th-l7-o04jhmd4/96eaac78.exit",
+      ""
+    ]
+  },
+  {
+    "pid": 2755173,
+    "start_ticks": "32775784",
+    "argv": [
+      "/tmp/th-l7-o04jhmd4/home/.local/bin/mesh",
+      "send",
+      "alpha",
+      "ACTION REQUIRED: Explicitly read/mark. Write a different RESULT.md (<=2048 bytes), leading --- newline, this JSON object as YAML, newline --- newline, then a brief RESULT paragraph stating artifact intake completed; do not repeat the separate observation: {\"ledger\": {\"adapter_version\": 1, \"events\": [{\"event_id\": \"2f073251-a7f3-4e8a-ba4f-5abc022d0634\", \"entry_key\": {\"kind\": \"note\", \"slot\": \"alpha.result\"}, \"references\": [{\"authority\": \"artifact\", \"path\": \"self\", \"role\": \"result_artifact\", \"assessment\": \"source_checked\"}]}]}}. Execute exactly once: mesh task complete 1 --assignment c2760346-c20e-4728-bc79-f41697b7b0c6 --summary-file RESULT.md --claude-dir \"$CLAUDE_DIR\" --team l7-ledger --name alpha. Print command exit_code and stdout source and ledger receipts; reply RESULT_DONE. Never repeat completion even on error.",
+      "--summary",
+      "L7 step 3",
+      "--claude-dir",
+      "/tmp/th-l7-o04jhmd4/claude",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 2755382,
+    "start_ticks": "32775924",
+    "argv": [
+      "/bin/sh",
+      "-c",
+      "\n\"$@\" <&0 3>&2 2>/dev/null &\ndelivery_child=$!\ndelivery_parent=$$\n(\n    sleep \"${MESH_TERMINAL_TIMEOUT_SECONDS:?}\" &\n    delivery_timer=$!\n    trap 'kill -TERM \"$delivery_timer\" 2>/dev/null; wait \"$delivery_timer\"; exit' TERM INT HUP\n    wait \"$delivery_timer\"\n    kill -ALRM \"$delivery_parent\" 2>/dev/null\n) </dev/null >/dev/null 2>/dev/null &\ndelivery_watchdog=$!\ntrap 'kill -TERM \"$delivery_child\" \"$delivery_watchdog\" 2>/dev/null; wait \"$delivery_child\"; wait \"$delivery_watchdog\"; exit 124' TERM INT HUP ALRM\nwait \"$delivery_child\"\ndelivery_result=$?\nkill -TERM \"$delivery_watchdog\" 2>/dev/null\nwait \"$delivery_watchdog\"\nexit \"$delivery_result\"\n",
+      "mesh-terminal-client",
+      "tmux",
+      "-N",
+      "-S",
+      "/tmp/th-l7-o04jhmd4/tmux/tmux-1000/default",
+      "send-keys",
+      "-t",
+      "%2",
+      "Enter",
+      ""
+    ]
+  },
+  {
+    "pid": 2756163,
+    "start_ticks": "32776313",
+    "argv": [
+      "mesh",
+      "read",
+      "--json",
+      "--mark-read",
+      "--claude-dir",
+      "/tmp/th-l7-o04jhmd4/claude",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "alpha",
+      "--unread",
+      ""
+    ]
+  },
+  {
+    "pid": 2758038,
+    "start_ticks": "32777308",
+    "argv": [
+      "mesh",
+      "task",
+      "complete",
+      "1",
+      "--assignment",
+      "c2760346-c20e-4728-bc79-f41697b7b0c6",
+      "--summary-file",
+      "RESULT.md",
+      "--claude-dir",
+      "/tmp/th-l7-o04jhmd4/claude",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "alpha",
+      ""
+    ]
+  },
+  {
+    "pid": 2759361,
+    "start_ticks": "32777654",
+    "argv": [
+      "mesh",
+      "send",
+      "lead",
+      "RESULT_DONE",
+      "--summary",
+      "L7 step 3 completed",
+      "--claude-dir",
+      "/tmp/th-l7-o04jhmd4/claude",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "alpha",
+      "--task",
+      "1",
+      "--assignment",
+      "c2760346-c20e-4728-bc79-f41697b7b0c6",
+      ""
+    ]
+  },
+  {
+    "pid": 2767799,
+    "start_ticks": "32781926",
+    "argv": [
+      "/bin/bash",
+      "-c",
+      "/tmp/th-l7-o04jhmd4/home/.local/bin/mesh send alpha 'ACTION REQUIRED: Explicitly read/mark. Retry ONLY this ledger identity once: mesh ledger entry --file RESULT.md --task 1 --assignment c2760346-c20e-4728-bc79-f41697b7b0c6 --submission-event 898d0b18-1f12-4e6b-a481-c8223b26cfcb --claude-dir \"$CLAUDE_DIR\" --team l7-ledger --name alpha. Do not edit files or call task complete. Print command exit_code and stdout receipt and reply RETRY_DONE.' --summary 'L7 step 4' --claude-dir /tmp/th-l7-o04jhmd4/claude --team l7-ledger --name lead >/tmp/th-l7-o04jhmd4/bec3ba93.out 2>&1; echo $? >/tmp/th-l7-o04jhmd4/bec3ba93.exit",
+      ""
+    ]
+  },
+  {
+    "pid": 2767801,
+    "start_ticks": "32781926",
+    "argv": [
+      "/tmp/th-l7-o04jhmd4/home/.local/bin/mesh",
+      "send",
+      "alpha",
+      "ACTION REQUIRED: Explicitly read/mark. Retry ONLY this ledger identity once: mesh ledger entry --file RESULT.md --task 1 --assignment c2760346-c20e-4728-bc79-f41697b7b0c6 --submission-event 898d0b18-1f12-4e6b-a481-c8223b26cfcb --claude-dir \"$CLAUDE_DIR\" --team l7-ledger --name alpha. Do not edit files or call task complete. Print command exit_code and stdout receipt and reply RETRY_DONE.",
+      "--summary",
+      "L7 step 4",
+      "--claude-dir",
+      "/tmp/th-l7-o04jhmd4/claude",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 2767904,
+    "start_ticks": "32782062",
+    "argv": [
+      "/bin/sh",
+      "-c",
+      "\n\"$@\" <&0 3>&2 2>/dev/null &\ndelivery_child=$!\ndelivery_parent=$$\n(\n    sleep \"${MESH_TERMINAL_TIMEOUT_SECONDS:?}\" &\n    delivery_timer=$!\n    trap 'kill -TERM \"$delivery_timer\" 2>/dev/null; wait \"$delivery_timer\"; exit' TERM INT HUP\n    wait \"$delivery_timer\"\n    kill -ALRM \"$delivery_parent\" 2>/dev/null\n) </dev/null >/dev/null 2>/dev/null &\ndelivery_watchdog=$!\ntrap 'kill -TERM \"$delivery_child\" \"$delivery_watchdog\" 2>/dev/null; wait \"$delivery_child\"; wait \"$delivery_watchdog\"; exit 124' TERM INT HUP ALRM\nwait \"$delivery_child\"\ndelivery_result=$?\nkill -TERM \"$delivery_watchdog\" 2>/dev/null\nwait \"$delivery_watchdog\"\nexit \"$delivery_result\"\n",
+      "mesh-terminal-client",
+      "tmux",
+      "-N",
+      "-S",
+      "/tmp/th-l7-o04jhmd4/tmux/tmux-1000/default",
+      "capture-pane",
+      "-p",
+      "-J",
+      "-t",
+      "%2",
+      ""
+    ]
+  },
+  {
+    "pid": 2768434,
+    "start_ticks": "32782407",
+    "argv": [
+      "mesh",
+      "read",
+      "--json",
+      "--mark-read",
+      "--claude-dir",
+      "/tmp/th-l7-o04jhmd4/claude",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "alpha",
+      "--unread",
+      ""
+    ]
+  },
+  {
+    "pid": 2769471,
+    "start_ticks": "32783268",
+    "argv": [
+      "mesh",
+      "send",
+      "lead",
+      "RETRY_DONE",
+      "--summary",
+      "L7 step 4 ledger identity retry completed",
+      "--claude-dir",
+      "/tmp/th-l7-o04jhmd4/claude",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "alpha",
+      "--task",
+      "1",
+      "--assignment",
+      "c2760346-c20e-4728-bc79-f41697b7b0c6",
+      ""
+    ]
+  },
+  {
+    "pid": 2770434,
+    "start_ticks": "32783549",
+    "argv": [
+      "/tmp/th-l7-o04jhmd4/home/.local/bin/taurhaus-daemon",
+      "--terminal-child",
+      "1789107307650",
+      "tmux",
+      "-S",
+      "/tmp/th-l7-o04jhmd4/tmux/tmux-1000/default",
+      "kill-pane",
+      "-t",
+      "%2",
+      ""
+    ]
+  },
+  {
+    "pid": 2770437,
+    "start_ticks": "32783549",
+    "argv": [
+      "tmux",
+      "-S",
+      "/tmp/th-l7-o04jhmd4/tmux/tmux-1000/default",
+      "kill-pane",
+      "-t",
+      "%2",
+      ""
+    ]
+  },
+  {
+    "pid": 2773484,
+    "start_ticks": "32784635",
+    "argv": [
+      "/bin/bash",
+      "-c",
+      "/tmp/th-l7-o04jhmd4/home/.local/bin/mesh ledger snapshot --wave l7 --boundary close-1 --output-dir /tmp/th-l7-o04jhmd4/exports/boundary --claude-dir /tmp/th-l7-o04jhmd4/claude --team l7-ledger --name lead >/tmp/th-l7-o04jhmd4/212b7b80.out 2>&1; echo $? >/tmp/th-l7-o04jhmd4/212b7b80.exit",
+      ""
+    ]
+  },
+  {
+    "pid": 2773486,
+    "start_ticks": "32784635",
+    "argv": [
+      "/tmp/th-l7-o04jhmd4/home/.local/bin/mesh",
+      "ledger",
+      "snapshot",
+      "--wave",
+      "l7",
+      "--boundary",
+      "close-1",
+      "--output-dir",
+      "/tmp/th-l7-o04jhmd4/exports/boundary",
+      "--claude-dir",
+      "/tmp/th-l7-o04jhmd4/claude",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "lead",
+      ""
+    ]
+  }
+]

@@ -1,0 +1,54 @@
+{
+  "boundary": "close-1",
+  "cut_id": "db95d23b1a398be04a7d550c2564c148ac569372eef456dd40797d4a01d58990",
+  "gaps": [
+    {
+      "cause": "retention",
+      "detail": "Only the supplied snapshots and journal window are available; later task populations and full-wave outcomes are unknown.",
+      "fact": "later task/history retention",
+      "label": "I"
+    },
+    {
+      "cause": "retention",
+      "detail": "Absent from the supplied snapshots. Absence does not establish that no nudges occurred.",
+      "fact": "idle_monitor_records",
+      "label": "I"
+    },
+    {
+      "cause": "schema",
+      "detail": "Task mutations carry changed-field names only, not values; earlier snapshots cannot be reconstructed.",
+      "fact": "historical metadata values",
+      "label": "I"
+    },
+    {
+      "cause": "schema",
+      "detail": "Ruling ref does not type candidate versus report; same-task literal joins are evidence associations, not scope acceptance. No cross-task review link is inferred.",
+      "fact": "candidate/review/completion links",
+      "label": "I"
+    },
+    {
+      "cause": "schema",
+      "detail": "Completed does not establish remaining: none, scope fulfillment, or an authored deferral/revisit condition.",
+      "fact": "remaining and scope disposition",
+      "label": "I"
+    },
+    {
+      "cause": "schema",
+      "detail": "Budget prose is retained verbatim; budget_raised, when present, does not fully type the old/new ceilings or counting semantics.",
+      "fact": "budget old/new ceilings and counting basis",
+      "label": "I"
+    },
+    {
+      "cause": "schema",
+      "detail": "No typed wave decision or causal judgment is reconstructed from timestamps.",
+      "fact": "wave governance and causal explanations",
+      "label": "I"
+    },
+    {
+      "cause": "schema",
+      "detail": "Legacy config/session identity and exact snapshot digests do not establish a team incarnation or atomic capture interval.",
+      "fact": "team incarnation and snapshot capture interval",
+      "label": "I"
+    }
+  ]
+}

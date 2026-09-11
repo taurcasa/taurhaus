@@ -1,0 +1,115 @@
+"""Offline controller checks: temporary data only, no CLI or credentials."""
+import unittest
+import json
+from support import delivered, ready, receipt_retry, clean, daemon_rows
+from controller import output_text, objects, assignment_message_id
+
+
+class EvidenceRules(unittest.TestCase):
+    # // Regression: 0915c1fd charged earlier authorized trials against the operator's fresh run budget.
+    def test_fresh_run_admission_retains_historical_spend(self):
+        from pathlib import Path
+        import tempfile
+        import time
+        from unittest.mock import Mock, patch
+        from runtime import Trial
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            (base / 'run-old').mkdir()
+            (base / 'run-old/cost-ledger.json').write_text(json.dumps({'paid_inputs': 12, 'api_equivalent_usd': .2, 'turns': []}))
+            trial = Trial.__new__(Trial)
+            trial.out = base / 'run-new'
+            trial.started = time.monotonic()
+            trial.reservations = []
+            trial.sessions = lambda: []
+            trial.notify = lambda: []
+            trial.save = Mock()
+            with patch('runtime.BASE', base):
+                value = trial.budget(next_input=True)
+                self.assertEqual(value['prior_run_inputs'], 12)
+                self.assertEqual(value['prior_known_usd'], .2)
+                trial.reservations = [{}] * 12
+                with self.assertRaisesRegex(AssertionError, 'input cap'):
+                    trial.budget(next_input=True)
+
+    # // Regression: 030980a7 required a canonical ID even when the submitted card itself was in a tool result.
+    def test_delivery_accepts_exact_card_in_wrapped_tool_result(self):
+        body = 'ACTION REQUIRED: fixture assignment\nAssignment: unique-fixture-id'
+        accepted = {'event_type': 'message_accepted', 'payload': {'message_id': 'canonical', 'body': body}}
+        transport = {'payload': {'message_id': 'canonical', 'recipient': 'alpha', 'stage': 'submitted'}}
+        result = {'payload': {'type': 'custom_tool_call_output', 'output': json.dumps({'output': body, 'exit_code': 0})}}
+        self.assertTrue(delivered([accepted, transport], 'canonical', [result]))
+        self.assertFalse(delivered([accepted], 'canonical', [result]))
+        self.assertFalse(delivered([accepted, transport], 'canonical', [{'payload': {'type': 'message', 'content': body}}]))
+        self.assertFalse(delivered([accepted, transport], 'canonical', [{'payload': {'type': 'custom_tool_call_output', 'output': 'unique-fixture-id'}}]))
+
+    # // Regression: 030980a7 discarded a complete final JSON record without a trailing newline.
+    def test_daemon_retains_complete_final_record_without_newline(self):
+        self.assertEqual(daemon_rows('{"event":"shutdown"}'), [{'event': 'shutdown'}])
+
+    # // Regression: 030980a7 confused task assign's legacy delivery id with the canonical message id.
+    def test_assignment_maps_legacy_delivery_to_canonical_message(self):
+        rows = [{'event_type': 'message_accepted', 'payload': {'message_id': 'canonical', 'delivery_targets': [{'recipient': 'alpha', 'legacy_id': 'legacy'}]}}]
+        self.assertEqual(assignment_message_id(rows, 'legacy'), 'canonical')
+
+    # // Regression: 66df97a5 matched only legacy_id; canonical task assign returns delivery_id.
+    def test_assignment_maps_current_delivery_id(self):
+        rows = [{'event_type': 'message_accepted', 'payload': {'message_id': 'canonical', 'delivery_targets': [{'recipient': 'alpha', 'delivery_id': 'delivery', 'legacy_id': 'legacy'}]}}]
+        self.assertEqual(assignment_message_id(rows, 'delivery'), 'canonical')
+
+    # // Regression: 104e480f decoded text blocks but not stdout nested in exec_command's JSON result.
+    def test_wrapped_stdout_receipt_is_decoded(self):
+        receipt = {'receipts': [{'event_id': 'e'}]}
+        self.assertIn(receipt, objects(json.dumps({'exit_code': 0, 'output': json.dumps(receipt)})))
+
+    # // Regression: 030980a7 redacted the home component of an allowed scratch binary path.
+    def test_scratch_home_path_is_preserved(self):
+        self.assertEqual(clean('/tmp/lane/home/.local/bin/mesh'), '/tmp/lane/home/.local/bin/mesh')
+
+    # // Regression: 030980a7 required transport recipient on Mesh read receipts, whose actor is reader_name.
+    def test_live_read_receipt_schema_uses_reader_name(self):
+        rows = [{'payload': {'message_id': 'onboard', 'recipient': 'alpha', 'stage': 'submitted'}},
+                {'payload': {'message_id': 'onboard', 'reader_name': 'alpha', 'reader': 'alpha@l7-ledger', 'kind': 'consumed_by_read'}}]
+        self.assertTrue(ready(rows, 'onboard', True))
+        self.assertTrue(delivered(rows, 'onboard', []))
+        rows[-1]['payload']['reader_name'] = 'lead'
+        self.assertFalse(ready(rows, 'onboard', True))
+        self.assertFalse(delivered(rows, 'onboard', []))
+
+    def test_native_tool_result_blocks_preserve_receipt_json(self):
+        blocks = [{'type': 'input_text', 'text': 'Script completed\n'},
+                  {'type': 'input_text', 'text': '{\n"receipts": [{"event_id": "e"}]\n}'}]
+        self.assertIn({'receipts': [{'event_id': 'e'}]}, objects(output_text(blocks)))
+
+    def test_first_send_requires_onboarding_transport_read_and_idle(self):
+        rows = [{'payload': {'message_id': 'onboard', 'recipient': 'alpha', 'stage': 'submitted'}}]
+        self.assertFalse(ready(rows, 'onboard', True))
+        rows.append({'payload': {'message_id': 'onboard', 'recipient': 'alpha', 'kind': 'consumed_by_read'}})
+        self.assertTrue(ready(rows, 'onboard', True))
+        self.assertFalse(ready(rows, 'onboard', False))
+
+    def test_delivery_requires_read_or_transport_and_tool_result(self):
+        rows = [{'payload': {'message_id': 'm', 'recipient': 'alpha', 'stage': 'submitted'}}]
+        self.assertFalse(delivered(rows, 'm', []))
+        self.assertFalse(delivered(rows, 'm', [{'payload': {'type': 'message', 'content': 'm'}}]))
+        self.assertTrue(delivered(rows, 'm', [{'payload': {'type': 'function_call_output', 'output': 'm'}}]))
+        rows.append({'payload': {'message_id': 'm', 'recipient': 'alpha', 'kind': 'consumed_by_read'}})
+        self.assertTrue(delivered(rows, 'm', []))
+
+    def test_retry_requires_identical_receipt_and_no_source_replay(self):
+        receipt = {'event_id': 'event', 'root_id': 'root', 'sequence': 1, 'request_digest': 'digest'}
+        self.assertTrue(receipt_retry(receipt, dict(receipt), 1, 1))
+        self.assertFalse(receipt_retry(receipt, {**receipt, 'sequence': 2}, 1, 1))
+        self.assertFalse(receipt_retry(receipt, receipt, 1, 2))
+
+    def test_public_evidence_drops_private_fields_and_message_bodies(self):
+        value = {'memberControlToken': 'private', 'body': 'mail', 'message': 'mail', 'access_token': 'private', 'event_id': 'e'}
+        self.assertEqual(clean(value), {'body': '<message-body-redacted>', 'message': '<message-body-redacted>', 'event_id': 'e'})
+
+    # // Regression: 030980a7 matched member_control_token but missed Mesh's CONTROL_TOKEN argv spelling.
+    def test_control_token_is_redacted_inside_shell_argv(self):
+        self.assertNotIn('fixture-secret', clean('env MESH_CONTROL_TOKEN=fixture-secret mesh'))
+
+
+if __name__ == '__main__':
+    unittest.main()

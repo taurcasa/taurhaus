@@ -1,0 +1,10 @@
+{
+  "eventId": "898d0b18-1f12-4e6b-a481-c8223b26cfcb",
+  "protocolVersion": 1,
+  "eventType": "task_completed",
+  "task_id": "1",
+  "assignment_id": "c2760346-c20e-4728-bc79-f41697b7b0c6",
+  "actor": "alpha",
+  "summary": "<message-body-redacted>",
+  "timestamp": "2026-09-11T06:13:55.295Z"
+}

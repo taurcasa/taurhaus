@@ -1,0 +1,12 @@
+{
+  "member": "lead",
+  "root": "/tmp/th-l7-3migwapg/claude",
+  "incarnation": "91beecc54a2a66cbf3e5f0b99efee3bc433e06dff109e07a0dc79603cab6339d",
+  "epoch": 2,
+  "heartbeat": "2026-09-11T03:16:10.151996276+00:00",
+  "pending_since": null,
+  "error": null,
+  "last_defer_reason": null,
+  "failures": 0,
+  "completed": 2
+}

@@ -1,0 +1,46 @@
+{
+  "verdict": "FAIL at step 2; workflow incomplete",
+  "classification": "mesh product delivery boundary; deeper cause unproved",
+  "raw_controller_classification": "mesh",
+  "taurhaus_none_regression_observed": false,
+  "tolerance_content_verified": true,
+  "distinct_daemon_digest_verified": true,
+  "final_activity_source": "notify",
+  "post_assignment_turn_observed": false,
+  "step2_instruction_sent": false,
+  "steps": [
+    {
+      "step": 1,
+      "outcome": "PASS",
+      "classification": "S-runtime",
+      "at": 1789096450.2110984
+    },
+    {
+      "step": 2,
+      "outcome": "FAIL",
+      "classification": "mesh",
+      "reason": "previous delivery has not settled; no send allowed"
+    },
+    {
+      "step": 3,
+      "outcome": "NOT RUN",
+      "reason": "blocked by step 2"
+    },
+    {
+      "step": 4,
+      "outcome": "NOT RUN",
+      "reason": "blocked by step 2"
+    },
+    {
+      "step": 5,
+      "outcome": "NOT RUN",
+      "reason": "blocked by step 2"
+    },
+    {
+      "step": 6,
+      "outcome": "NOT RUN",
+      "reason": "blocked by step 2"
+    }
+  ],
+  "review": "Independent Opus evidence lens remains with orchestrator; unavailable in this executor."
+}

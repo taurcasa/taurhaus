@@ -1,0 +1,32 @@
+{
+  "epoch_transitions": [],
+  "ledger_id": "08509663-0fee-42d8-ad57-589a315ce643",
+  "log_epoch": "74ed4773-a034-42da-a1fd-3d84c799b781",
+  "packet": {
+    "packet_revision": "frozen-1",
+    "project": "l7-project",
+    "repo_id": "l7-repo",
+    "scopes": [
+      {
+        "assignment_id": "15209bbb-06da-4b27-b874-1cb61ae74fe0",
+        "owner": "alpha",
+        "scope": "S7",
+        "task_id": "1"
+      }
+    ],
+    "wave": "l7"
+  },
+  "packet_digest": "42e04b1795132b91890441eb731b713010df0ebf42d3e6de36d0e7f043726ee5",
+  "policy_digest": "4149bc3ab0634bb6e5f359ce168243f8d9ca82405d1c3820bf701d82c70f7ae0",
+  "repo_root": "/tmp/th-l7-3migwapg/project",
+  "schema_version": 1,
+  "segments": [
+    {
+      "committed_bytes": 0,
+      "id": "000001",
+      "last_sequence": 0,
+      "prefix_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "team_incarnation_id": "91beecc54a2a66cbf3e5f0b99efee3bc433e06dff109e07a0dc79603cab6339d"
+}

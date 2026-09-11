@@ -1,0 +1,13 @@
+F.....
+======================================================================
+FAIL: test_control_token_is_redacted_inside_shell_argv (__main__.EvidenceRules.test_control_token_is_redacted_inside_shell_argv)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l7-ledger/docs/design/evidence/e2e/l7-ledger/controller_test.py", line 39, in test_control_token_is_redacted_inside_shell_argv
+    self.assertNotIn('fixture-secret', clean('env MESH_CONTROL_TOKEN=fixture-secret mesh'))
+AssertionError: 'fixture-secret' unexpectedly found in 'env MESH_CONTROL_TOKEN=fixture-secret mesh'
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.001s
+
+FAILED (failures=1)

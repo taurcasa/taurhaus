@@ -1,0 +1,6 @@
+{
+  "step": 1,
+  "outcome": "FAIL",
+  "classification": "taurhaus",
+  "reason": "onboarding requires submitted + consumed_by_read and fresh idle"
+}

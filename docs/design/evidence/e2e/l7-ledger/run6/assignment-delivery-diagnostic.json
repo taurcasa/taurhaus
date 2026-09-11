@@ -1,0 +1,12 @@
+{
+  "assignment_message_id": "e0ef6999-91f1-40fa-9ba0-117cc16ab4cb",
+  "delivery_proof": null,
+  "observed_at": 1789096510.8843217,
+  "native_started_turn_ids": [
+    "01a08e75-1b4a-7ad2-8c8c-41b91003634e"
+  ],
+  "native_completed_turn_ids": [
+    "01a08e75-1b4a-7ad2-8c8c-41b91003634e"
+  ],
+  "post_assignment_note_sent": false
+}

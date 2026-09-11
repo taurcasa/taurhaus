@@ -1,0 +1,661 @@
+{
+  "audience_notice": "",
+  "cut_id": "9de94a8e7df068092803c90ef2aef0a7b398874266d98969b95a208c653e7662",
+  "entries": [
+    {
+      "head": {
+        "author": {
+          "actor_id": "alpha",
+          "authority_ref": "1be24833281e322c4c0c3574ee83fc25b71f7ffe6f470a3889fcb8b21b6ffc25",
+          "member_incarnation_id": "alpha@l7-ledger"
+        },
+        "committed_at": "2026-09-11T06:12:58.672597555+00:00",
+        "entry_id": "0d522cac-9b5f-4c22-92e6-caccbfb009e5",
+        "entry_key": {
+          "kind": "note",
+          "scope": "S7",
+          "slot": "alpha.observation",
+          "wave": "l7"
+        },
+        "event_id": "0d522cac-9b5f-4c22-92e6-caccbfb009e5",
+        "ledger_id": "2808b8cf-1791-4d10-98ed-70afd38f77ec",
+        "log_epoch": "8c68b8d6-6877-4e4d-85d6-9ff890947001",
+        "operation": "entry",
+        "payload": {
+          "body": "\nThe scratch-only boundary keeps this observation within the designated test project.\n"
+        },
+        "references": [
+          {
+            "assessment": "source_checked",
+            "authority": "artifact",
+            "digest": "9c6d766a30a7e13df739fe22dd294895927d0ef37d7b47d23038035c78b222fa",
+            "path": "OBSERVATION.md",
+            "repo_id": "l7-repo",
+            "retention": {
+              "retain_until": "l7",
+              "state": "referenced"
+            },
+            "role": "result_artifact"
+          },
+          {
+            "assignment_id": "c2760346-c20e-4728-bc79-f41697b7b0c6",
+            "authority": "task",
+            "task_id": "1",
+            "team_incarnation_id": "e759c0934f384ab4e2efb0f2bc2d02d07ff56f7919490166162e6a267f6f96df"
+          },
+          {
+            "authority": "scope",
+            "packet_revision": "frozen-1",
+            "project": "l7-project",
+            "scope": "S7",
+            "wave": "l7"
+          }
+        ],
+        "request_digest": "d0bf3fef7a55e7e0272b5e21a43bde36c4ce9ab30931a35a9e048653ae8448d9",
+        "schema_version": 1,
+        "sequence": 1,
+        "team_incarnation_id": "e759c0934f384ab4e2efb0f2bc2d02d07ff56f7919490166162e6a267f6f96df"
+      },
+      "history": [
+        {
+          "author": {
+            "actor_id": "alpha",
+            "authority_ref": "1be24833281e322c4c0c3574ee83fc25b71f7ffe6f470a3889fcb8b21b6ffc25",
+            "member_incarnation_id": "alpha@l7-ledger"
+          },
+          "committed_at": "2026-09-11T06:12:58.672597555+00:00",
+          "entry_id": "0d522cac-9b5f-4c22-92e6-caccbfb009e5",
+          "entry_key": {
+            "kind": "note",
+            "scope": "S7",
+            "slot": "alpha.observation",
+            "wave": "l7"
+          },
+          "event_id": "0d522cac-9b5f-4c22-92e6-caccbfb009e5",
+          "ledger_id": "2808b8cf-1791-4d10-98ed-70afd38f77ec",
+          "log_epoch": "8c68b8d6-6877-4e4d-85d6-9ff890947001",
+          "operation": "entry",
+          "payload": {
+            "body": "\nThe scratch-only boundary keeps this observation within the designated test project.\n"
+          },
+          "references": [
+            {
+              "assessment": "source_checked",
+              "authority": "artifact",
+              "digest": "9c6d766a30a7e13df739fe22dd294895927d0ef37d7b47d23038035c78b222fa",
+              "path": "OBSERVATION.md",
+              "repo_id": "l7-repo",
+              "retention": {
+                "retain_until": "l7",
+                "state": "referenced"
+              },
+              "role": "result_artifact"
+            },
+            {
+              "assignment_id": "c2760346-c20e-4728-bc79-f41697b7b0c6",
+              "authority": "task",
+              "task_id": "1",
+              "team_incarnation_id": "e759c0934f384ab4e2efb0f2bc2d02d07ff56f7919490166162e6a267f6f96df"
+            },
+            {
+              "authority": "scope",
+              "packet_revision": "frozen-1",
+              "project": "l7-project",
+              "scope": "S7",
+              "wave": "l7"
+            }
+          ],
+          "request_digest": "d0bf3fef7a55e7e0272b5e21a43bde36c4ce9ab30931a35a9e048653ae8448d9",
+          "schema_version": 1,
+          "sequence": 1,
+          "team_incarnation_id": "e759c0934f384ab4e2efb0f2bc2d02d07ff56f7919490166162e6a267f6f96df"
+        }
+      ],
+      "original_author": {
+        "actor_id": "alpha",
+        "authority_ref": "1be24833281e322c4c0c3574ee83fc25b71f7ffe6f470a3889fcb8b21b6ffc25",
+        "member_incarnation_id": "alpha@l7-ledger"
+      },
+      "withdrawn": false
+    }
+  ],
+  "manifest": {
+    "committed_bytes": 1375,
+    "consistency": "vector_cut",
+    "epoch_transitions": [],
+    "gaps": [
+      {
+        "cause": "retention",
+        "detail": "Only the supplied snapshots and journal window are available; later task populations and full-wave outcomes are unknown.",
+        "fact": "later task/history retention",
+        "label": "I"
+      },
+      {
+        "cause": "retention",
+        "detail": "Absent from the supplied snapshots. Absence does not establish that no nudges occurred.",
+        "fact": "idle_monitor_records",
+        "label": "I"
+      },
+      {
+        "cause": "schema",
+        "detail": "Task mutations carry changed-field names only, not values; earlier snapshots cannot be reconstructed.",
+        "fact": "historical metadata values",
+        "label": "I"
+      },
+      {
+        "cause": "schema",
+        "detail": "Ruling ref does not type candidate versus report; same-task literal joins are evidence associations, not scope acceptance. No cross-task review link is inferred.",
+        "fact": "candidate/review/completion links",
+        "label": "I"
+      },
+      {
+        "cause": "schema",
+        "detail": "Completed does not establish remaining: none, scope fulfillment, or an authored deferral/revisit condition.",
+        "fact": "remaining and scope disposition",
+        "label": "I"
+      },
+      {
+        "cause": "schema",
+        "detail": "Budget prose is retained verbatim; budget_raised, when present, does not fully type the old/new ceilings or counting semantics.",
+        "fact": "budget old/new ceilings and counting basis",
+        "label": "I"
+      },
+      {
+        "cause": "schema",
+        "detail": "No typed wave decision or causal judgment is reconstructed from timestamps.",
+        "fact": "wave governance and causal explanations",
+        "label": "I"
+      },
+      {
+        "cause": "schema",
+        "detail": "Legacy config/session identity and exact snapshot digests do not establish a team incarnation or atomic capture interval.",
+        "fact": "team incarnation and snapshot capture interval",
+        "label": "I"
+      }
+    ],
+    "last_sequence": 1,
+    "ledger_id": "2808b8cf-1791-4d10-98ed-70afd38f77ec",
+    "log_epoch": "8c68b8d6-6877-4e4d-85d6-9ff890947001",
+    "packet_digest": "45590c58d06a4d2175567e30b45874db35e79c02c56eb79e1ed8740b1583b84f",
+    "policy_digest": "1be24833281e322c4c0c3574ee83fc25b71f7ffe6f470a3889fcb8b21b6ffc25",
+    "prefix_digest": "115b8389af0a969c6b5e0d2a3245f6947c4c8334233a941cf808ada984308845",
+    "renderer_version": "ledger-boundary/1",
+    "snapshot_coverage": "current pull snapshots",
+    "source_cut": {
+      "consistency": "vector_cut",
+      "cut_id": "e5aa95f6e004f69ae8167b970b7b49d8278bcde218afd713807c0538cce53311",
+      "files": [
+        {
+          "bytes": 3388,
+          "consumed": true,
+          "path": "config.json",
+          "rows": null,
+          "sha256": "2f76d45e8e47016f1281d512526e62bd9876edc09bc996264ed5c321ff7345d1"
+        },
+        {
+          "bytes": 2466,
+          "consumed": true,
+          "path": "state/protocol_index.jsonl",
+          "rows": 3,
+          "sha256": "ec0fd6fa6e5c7cd8dd69356534b01ea8b8fc0d734cae49cec2d7d3582713dcd4"
+        },
+        {
+          "bytes": 629,
+          "consumed": true,
+          "path": "state/task_mutations.jsonl",
+          "rows": 6,
+          "sha256": "64bb529b67c29f61d940362d675520c9f41209ea5da2fc26e9c0770d38e5b9a6"
+        },
+        {
+          "bytes": 5223,
+          "consumed": true,
+          "path": "state/workflow_events.jsonl",
+          "rows": 17,
+          "sha256": "3f5d438af096f39d6a3994bf454332d7be1d517145b0865e571f8381ac7c2398"
+        },
+        {
+          "bytes": 1145,
+          "consumed": true,
+          "path": "tasks/1.json",
+          "rows": null,
+          "sha256": "102c7f82a1db30f99ccbb29d8cc01ac50d5ba61fa9a1567f8f9f52180ce8f9bc"
+        }
+      ],
+      "journal_window": {
+        "end": "2026-09-11T06:13:36.955Z",
+        "start": "2026-09-11T06:11:41.117Z"
+      },
+      "layout_version": "0",
+      "reader_version": "0.2.29+588e4cf3e440e7fadfe548e4f35fc2034e32e34c"
+    }
+  },
+  "reconciliation_required": [],
+  "sources": {
+    "census": {
+      "accepted_cores": [],
+      "budget_raised_field_rulings": 0,
+      "budget_related_rulings": [],
+      "evidence": "S: measured retained bundle bytes; unknown is not zero",
+      "gaps": [
+        {
+          "cause": "retention",
+          "detail": "Only the supplied snapshots and journal window are available; later task populations and full-wave outcomes are unknown.",
+          "fact": "later task/history retention",
+          "label": "I"
+        },
+        {
+          "cause": "retention",
+          "detail": "Absent from the supplied snapshots. Absence does not establish that no nudges occurred.",
+          "fact": "idle_monitor_records",
+          "label": "I"
+        },
+        {
+          "cause": "schema",
+          "detail": "Task mutations carry changed-field names only, not values; earlier snapshots cannot be reconstructed.",
+          "fact": "historical metadata values",
+          "label": "I"
+        },
+        {
+          "cause": "schema",
+          "detail": "Ruling ref does not type candidate versus report; same-task literal joins are evidence associations, not scope acceptance. No cross-task review link is inferred.",
+          "fact": "candidate/review/completion links",
+          "label": "I"
+        },
+        {
+          "cause": "schema",
+          "detail": "Completed does not establish remaining: none, scope fulfillment, or an authored deferral/revisit condition.",
+          "fact": "remaining and scope disposition",
+          "label": "I"
+        },
+        {
+          "cause": "schema",
+          "detail": "Budget prose is retained verbatim; budget_raised, when present, does not fully type the old/new ceilings or counting semantics.",
+          "fact": "budget old/new ceilings and counting basis",
+          "label": "I"
+        },
+        {
+          "cause": "schema",
+          "detail": "No typed wave decision or causal judgment is reconstructed from timestamps.",
+          "fact": "wave governance and causal explanations",
+          "label": "I"
+        },
+        {
+          "cause": "schema",
+          "detail": "Legacy config/session identity and exact snapshot digests do not establish a team incarnation or atomic capture interval.",
+          "fact": "team incarnation and snapshot capture interval",
+          "label": "I"
+        }
+      ],
+      "idle_monitor_records": 0,
+      "journal_rows": {
+        "protocol_index": 3,
+        "task_mutations": 6,
+        "workflow_events": 17
+      },
+      "negative_cases": [],
+      "source_conflicts": 0,
+      "status_agreements": 1,
+      "task_rulings": 0,
+      "task_snapshots": 1,
+      "workflow_event_types": {
+        "assignment_accepted": 1,
+        "assignment_started": 1,
+        "message_read": 4,
+        "message_sent": 5,
+        "task_assigned": 1,
+        "task_created": 1,
+        "task_state_updated": 4
+      }
+    },
+    "coverage": {
+      "known_gaps": [
+        {
+          "cause": "retention",
+          "detail": "Only the supplied snapshots and journal window are available; later task populations and full-wave outcomes are unknown.",
+          "fact": "later task/history retention",
+          "label": "I"
+        },
+        {
+          "cause": "retention",
+          "detail": "Absent from the supplied snapshots. Absence does not establish that no nudges occurred.",
+          "fact": "idle_monitor_records",
+          "label": "I"
+        },
+        {
+          "cause": "schema",
+          "detail": "Task mutations carry changed-field names only, not values; earlier snapshots cannot be reconstructed.",
+          "fact": "historical metadata values",
+          "label": "I"
+        },
+        {
+          "cause": "schema",
+          "detail": "Ruling ref does not type candidate versus report; same-task literal joins are evidence associations, not scope acceptance. No cross-task review link is inferred.",
+          "fact": "candidate/review/completion links",
+          "label": "I"
+        },
+        {
+          "cause": "schema",
+          "detail": "Completed does not establish remaining: none, scope fulfillment, or an authored deferral/revisit condition.",
+          "fact": "remaining and scope disposition",
+          "label": "I"
+        },
+        {
+          "cause": "schema",
+          "detail": "Budget prose is retained verbatim; budget_raised, when present, does not fully type the old/new ceilings or counting semantics.",
+          "fact": "budget old/new ceilings and counting basis",
+          "label": "I"
+        },
+        {
+          "cause": "schema",
+          "detail": "No typed wave decision or causal judgment is reconstructed from timestamps.",
+          "fact": "wave governance and causal explanations",
+          "label": "I"
+        },
+        {
+          "cause": "schema",
+          "detail": "Legacy config/session identity and exact snapshot digests do not establish a team incarnation or atomic capture interval.",
+          "fact": "team incarnation and snapshot capture interval",
+          "label": "I"
+        }
+      ],
+      "snapshot_capture_interval": "unavailable",
+      "sources_present": [
+        "config.json",
+        "state/protocol_index.jsonl",
+        "state/task_mutations.jsonl",
+        "state/workflow_events.jsonl",
+        "tasks/1.json"
+      ],
+      "task_numbers_retained": [
+        "1"
+      ],
+      "wave": "unavailable"
+    },
+    "manifest": {
+      "consistency": "vector_cut",
+      "cut_id": "e5aa95f6e004f69ae8167b970b7b49d8278bcde218afd713807c0538cce53311",
+      "files": [
+        {
+          "bytes": 3388,
+          "consumed": true,
+          "path": "config.json",
+          "rows": null,
+          "sha256": "2f76d45e8e47016f1281d512526e62bd9876edc09bc996264ed5c321ff7345d1"
+        },
+        {
+          "bytes": 2466,
+          "consumed": true,
+          "path": "state/protocol_index.jsonl",
+          "rows": 3,
+          "sha256": "ec0fd6fa6e5c7cd8dd69356534b01ea8b8fc0d734cae49cec2d7d3582713dcd4"
+        },
+        {
+          "bytes": 629,
+          "consumed": true,
+          "path": "state/task_mutations.jsonl",
+          "rows": 6,
+          "sha256": "64bb529b67c29f61d940362d675520c9f41209ea5da2fc26e9c0770d38e5b9a6"
+        },
+        {
+          "bytes": 5223,
+          "consumed": true,
+          "path": "state/workflow_events.jsonl",
+          "rows": 17,
+          "sha256": "3f5d438af096f39d6a3994bf454332d7be1d517145b0865e571f8381ac7c2398"
+        },
+        {
+          "bytes": 1145,
+          "consumed": true,
+          "path": "tasks/1.json",
+          "rows": null,
+          "sha256": "102c7f82a1db30f99ccbb29d8cc01ac50d5ba61fa9a1567f8f9f52180ce8f9bc"
+        }
+      ],
+      "journal_window": {
+        "end": "2026-09-11T06:13:36.955Z",
+        "start": "2026-09-11T06:11:41.117Z"
+      },
+      "layout_version": "0",
+      "reader_version": "0.2.29+588e4cf3e440e7fadfe548e4f35fc2034e32e34c"
+    },
+    "projection_schema": "ledger-reader/0",
+    "protocol_records": [
+      {
+        "record": {
+          "actionRequired": true,
+          "completionSignal": "Complete only when instructed with RESULT.md through --summary-file.",
+          "deliverable": "OBSERVATION.md and RESULT.md, each at most 2048 bytes.",
+          "firstStep": "Explicitly read/mark the inbox with mesh read --json --mark-read, paging until done; accept and start this assignment with its full assignment ID; reply TASK_READY and await explicit artifact instructions.",
+          "intent": "assign",
+          "messageId": "f82bee23-e636-4a53-86e9-f93a7f28b7e5",
+          "messageType": "workflow",
+          "mutationActor": "lead",
+          "mutationTimestamp": "2026-09-11T06:11:55.626Z",
+          "noResponseNeeded": false,
+          "precedence": "task > message > defaults",
+          "protocolVersion": 1,
+          "recipient": "alpha",
+          "recordId": "workflow:1:assign:a3326ce5-7d27-4a28-a97b-f273051ddda6",
+          "sender": "lead",
+          "taskId": "1",
+          "taskOwner": "alpha",
+          "taskStatus": "pending",
+          "timestamp": "2026-09-11T06:11:55.626Z"
+        },
+        "source": {
+          "file": "state/protocol_index.jsonl",
+          "identity": "workflow:1:assign:a3326ce5-7d27-4a28-a97b-f273051ddda6",
+          "line": 1
+        }
+      },
+      {
+        "record": {
+          "actionRequired": false,
+          "completionSignal": "Complete only when instructed with RESULT.md through --summary-file.",
+          "deliverable": "OBSERVATION.md and RESULT.md, each at most 2048 bytes.",
+          "firstStep": "Explicitly read/mark the inbox with mesh read --json --mark-read, paging until done; accept and start this assignment with its full assignment ID; reply TASK_READY and await explicit artifact instructions.",
+          "intent": "accept",
+          "messageType": "workflow",
+          "mutationActor": "alpha",
+          "mutationTimestamp": "2026-09-11T06:12:37.917Z",
+          "noResponseNeeded": true,
+          "precedence": "task > message > defaults",
+          "protocolVersion": 1,
+          "recipient": "alpha",
+          "recordId": "workflow:1:accept:684f544c-5426-498a-a336-fb13059cbbfb",
+          "sender": "alpha",
+          "taskId": "1",
+          "taskOwner": "alpha",
+          "taskStatus": "pending",
+          "timestamp": "2026-09-11T06:12:37.917Z"
+        },
+        "source": {
+          "file": "state/protocol_index.jsonl",
+          "identity": "workflow:1:accept:684f544c-5426-498a-a336-fb13059cbbfb",
+          "line": 2
+        }
+      },
+      {
+        "record": {
+          "actionRequired": false,
+          "completionSignal": "Complete only when instructed with RESULT.md through --summary-file.",
+          "deliverable": "OBSERVATION.md and RESULT.md, each at most 2048 bytes.",
+          "firstStep": "Explicitly read/mark the inbox with mesh read --json --mark-read, paging until done; accept and start this assignment with its full assignment ID; reply TASK_READY and await explicit artifact instructions.",
+          "intent": "start",
+          "messageType": "workflow",
+          "mutationActor": "alpha",
+          "mutationTimestamp": "2026-09-11T06:12:38.042Z",
+          "noResponseNeeded": true,
+          "precedence": "task > message > defaults",
+          "protocolVersion": 1,
+          "recipient": "alpha",
+          "recordId": "workflow:1:start:4a6ebdf6-4cf5-45b4-8580-12acdf1bb469",
+          "sender": "alpha",
+          "taskId": "1",
+          "taskOwner": "alpha",
+          "taskStatus": "in_progress",
+          "timestamp": "2026-09-11T06:12:38.042Z"
+        },
+        "source": {
+          "file": "state/protocol_index.jsonl",
+          "identity": "workflow:1:start:4a6ebdf6-4cf5-45b4-8580-12acdf1bb469",
+          "line": 3
+        }
+      }
+    ],
+    "task_mutations": [
+      {
+        "record": {
+          "actor": "lead",
+          "changedFields": [
+            "subject",
+            "status",
+            "description"
+          ],
+          "taskId": "1",
+          "timestamp": "2026-09-11T06:11:55.583Z"
+        },
+        "source": {
+          "file": "state/task_mutations.jsonl",
+          "identity": "row:1",
+          "line": 1
+        }
+      },
+      {
+        "record": {
+          "actor": "lead",
+          "changedFields": [
+            "metadata"
+          ],
+          "taskId": "1",
+          "timestamp": "2026-09-11T06:11:55.590Z"
+        },
+        "source": {
+          "file": "state/task_mutations.jsonl",
+          "identity": "row:2",
+          "line": 2
+        }
+      },
+      {
+        "record": {
+          "actor": "lead",
+          "changedFields": [
+            "owner",
+            "metadata"
+          ],
+          "taskId": "1",
+          "timestamp": "2026-09-11T06:11:55.631Z"
+        },
+        "source": {
+          "file": "state/task_mutations.jsonl",
+          "identity": "row:3",
+          "line": 3
+        }
+      },
+      {
+        "record": {
+          "actor": "lead",
+          "changedFields": [
+            "metadata"
+          ],
+          "taskId": "1",
+          "timestamp": "2026-09-11T06:11:55.709Z"
+        },
+        "source": {
+          "file": "state/task_mutations.jsonl",
+          "identity": "row:4",
+          "line": 4
+        }
+      },
+      {
+        "record": {
+          "actor": "alpha",
+          "changedFields": [
+            "metadata"
+          ],
+          "taskId": "1",
+          "timestamp": "2026-09-11T06:12:37.921Z"
+        },
+        "source": {
+          "file": "state/task_mutations.jsonl",
+          "identity": "row:5",
+          "line": 5
+        }
+      },
+      {
+        "record": {
+          "actor": "alpha",
+          "changedFields": [
+            "status",
+            "metadata"
+          ],
+          "taskId": "1",
+          "timestamp": "2026-09-11T06:12:38.046Z"
+        },
+        "source": {
+          "file": "state/task_mutations.jsonl",
+          "identity": "row:6",
+          "line": 6
+        }
+      }
+    ],
+    "tasks": [
+      {
+        "assignments": [
+          {
+            "assigned_by": "lead",
+            "assignee": "alpha",
+            "assignment_context": {},
+            "assignment_id": "c2760346-c20e-4728-bc79-f41697b7b0c6",
+            "at": "2026-09-11T06:11:55.626Z",
+            "completion_signal": "Complete only when instructed with RESULT.md through --summary-file.",
+            "deliverable": "OBSERVATION.md and RESULT.md, each at most 2048 bytes.",
+            "eventType": "task_assigned",
+            "event_id": "97e92261-2785-4903-98c4-5ce820de239b",
+            "first_step": "Explicitly read/mark the inbox with mesh read --json --mark-read, paging until done; accept and start this assignment with its full assignment ID; reply TASK_READY and await explicit artifact instructions.",
+            "source": {
+              "file": "state/workflow_events.jsonl",
+              "identity": "97e92261-2785-4903-98c4-5ce820de239b",
+              "line": 5
+            },
+            "task_id": "1",
+            "task_status": "pending"
+          }
+        ],
+        "blocks": [],
+        "completions": [],
+        "contract": {
+          "completion_signal": "Complete only when instructed with RESULT.md through --summary-file.",
+          "deliverable": "OBSERVATION.md and RESULT.md, each at most 2048 bytes.",
+          "first_step": "Explicitly read/mark the inbox with mesh read --json --mark-read, paging until done; accept and start this assignment with its full assignment ID; reply TASK_READY and await explicit artifact instructions."
+        },
+        "id": "1",
+        "idle_monitor_records": null,
+        "last_workflow_status": "in_progress",
+        "owner_at_snapshot": "alpha",
+        "progress_reports": [],
+        "review_requests": [],
+        "rulings": [],
+        "snapshot_source": {
+          "file": "tasks/1.json",
+          "identity": "1",
+          "line": 1
+        },
+        "snapshot_status": "in_progress",
+        "status_agrees": true,
+        "subject": "L7 tiny artifact round trip",
+        "supersessions": []
+      }
+    ],
+    "team": {
+      "created_at": 1789107093560,
+      "incarnation": "unavailable",
+      "lead_session_id": "6efbf9df-12c5-46e6-8990-013ff8801b4e",
+      "name": "l7-ledger",
+      "source": {
+        "file": "config.json",
+        "line": 1
+      }
+    }
+  }
+}

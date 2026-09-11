@@ -1,0 +1,53 @@
+{
+  "author": {
+    "actor_id": "alpha",
+    "authority_ref": "1be24833281e322c4c0c3574ee83fc25b71f7ffe6f470a3889fcb8b21b6ffc25",
+    "member_incarnation_id": "alpha@l7-ledger"
+  },
+  "committed_at": "2026-09-11T06:12:58.672597555+00:00",
+  "entry_id": "0d522cac-9b5f-4c22-92e6-caccbfb009e5",
+  "entry_key": {
+    "kind": "note",
+    "scope": "S7",
+    "slot": "alpha.observation",
+    "wave": "l7"
+  },
+  "event_id": "0d522cac-9b5f-4c22-92e6-caccbfb009e5",
+  "ledger_id": "2808b8cf-1791-4d10-98ed-70afd38f77ec",
+  "log_epoch": "8c68b8d6-6877-4e4d-85d6-9ff890947001",
+  "operation": "entry",
+  "payload": {
+    "body": "\nThe scratch-only boundary keeps this observation within the designated test project.\n"
+  },
+  "references": [
+    {
+      "assessment": "source_checked",
+      "authority": "artifact",
+      "digest": "9c6d766a30a7e13df739fe22dd294895927d0ef37d7b47d23038035c78b222fa",
+      "path": "OBSERVATION.md",
+      "repo_id": "l7-repo",
+      "retention": {
+        "retain_until": "l7",
+        "state": "referenced"
+      },
+      "role": "result_artifact"
+    },
+    {
+      "assignment_id": "c2760346-c20e-4728-bc79-f41697b7b0c6",
+      "authority": "task",
+      "task_id": "1",
+      "team_incarnation_id": "e759c0934f384ab4e2efb0f2bc2d02d07ff56f7919490166162e6a267f6f96df"
+    },
+    {
+      "authority": "scope",
+      "packet_revision": "frozen-1",
+      "project": "l7-project",
+      "scope": "S7",
+      "wave": "l7"
+    }
+  ],
+  "request_digest": "d0bf3fef7a55e7e0272b5e21a43bde36c4ce9ab30931a35a9e048653ae8448d9",
+  "schema_version": 1,
+  "sequence": 1,
+  "team_incarnation_id": "e759c0934f384ab4e2efb0f2bc2d02d07ff56f7919490166162e6a267f6f96df"
+}

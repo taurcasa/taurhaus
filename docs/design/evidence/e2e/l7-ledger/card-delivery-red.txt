@@ -1,0 +1,13 @@
+....F........
+======================================================================
+FAIL: test_delivery_accepts_exact_card_in_wrapped_tool_result (controller_test.EvidenceRules.test_delivery_accepts_exact_card_in_wrapped_tool_result)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l7-ledger/docs/design/evidence/e2e/l7-ledger/controller_test.py", line 15, in test_delivery_accepts_exact_card_in_wrapped_tool_result
+    self.assertTrue(delivered([accepted, transport], 'canonical', [result]))
+AssertionError: False is not true
+
+----------------------------------------------------------------------
+Ran 13 tests in 0.001s
+
+FAILED (failures=1)

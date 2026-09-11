@@ -1,0 +1,6 @@
+{
+  "step": 2,
+  "outcome": "FAIL",
+  "classification": "mesh",
+  "reason": "previous delivery has not settled; no send allowed"
+}

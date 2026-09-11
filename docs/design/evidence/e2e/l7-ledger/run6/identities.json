@@ -1,0 +1,818 @@
+[
+  {
+    "pid": 1066848,
+    "start_ticks": "31696792",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-l7-3migwapg",
+      "/tmp/th-l7-3migwapg",
+      "--chdir",
+      "/tmp/th-l7-3migwapg/project",
+      "/bin/bash",
+      "/tmp/th-l7-3migwapg/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 1066849,
+    "start_ticks": "31696792",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-l7-3migwapg",
+      "/tmp/th-l7-3migwapg",
+      "--chdir",
+      "/tmp/th-l7-3migwapg/project",
+      "/bin/bash",
+      "/tmp/th-l7-3migwapg/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 1066850,
+    "start_ticks": "31696792",
+    "argv": [
+      "/bin/bash",
+      "/tmp/th-l7-3migwapg/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 1066851,
+    "start_ticks": "31696793",
+    "argv": [
+      "tmux",
+      "-D",
+      "-f",
+      "/dev/null",
+      ""
+    ]
+  },
+  {
+    "pid": 1066918,
+    "start_ticks": "31696804",
+    "argv": [
+      "/bin/bash",
+      ""
+    ]
+  },
+  {
+    "pid": 1066920,
+    "start_ticks": "31696805",
+    "argv": [
+      "/tmp/th-l7-3migwapg/home/.local/bin/taurhaus-daemon",
+      "--port",
+      "46727",
+      "--data-dir",
+      "/tmp/th-l7-3migwapg/data",
+      ""
+    ]
+  },
+  {
+    "pid": 1066957,
+    "start_ticks": "31696822",
+    "argv": [
+      "/bin/bash",
+      "-ilc",
+      "codex --version",
+      ""
+    ]
+  },
+  {
+    "pid": 1067117,
+    "start_ticks": "31696851",
+    "argv": [
+      "/tmp/th-l7-3migwapg/home/.local/bin/mesh",
+      "team",
+      "create",
+      "--messaging-canonical",
+      "--isolated",
+      "--retention-policy",
+      "/tmp/th-l7-3migwapg/claude/teams/.canonical-policy-e8740100-cc56-410b-b244-3c381fc0180e.json",
+      "--claude-dir",
+      "/tmp/th-l7-3migwapg/claude",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 1067224,
+    "start_ticks": "31696957",
+    "argv": [
+      "/bin/bash",
+      "-ic",
+      "cd '/tmp/th-l7-3migwapg/project' && CLAUDE_DIR='/tmp/th-l7-3migwapg/claude' CLAUDE_CONFIG_DIR='/tmp/th-l7-3migwapg/claude' CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions --model 'claude-haiku-4-5' --team-name 'l7-ledger' --agent-name 'lead' --agent-id 'lead@l7-ledger' --agent-type 'orchestrator' -n 'lead'; exec \"$SHELL\"",
+      ""
+    ]
+  },
+  {
+    "pid": 1067227,
+    "start_ticks": "31696957",
+    "argv": [
+      "claude",
+      "--dangerously-skip-permissions",
+      "--model",
+      "claude-haiku-4-5",
+      "--team-name",
+      "l7-ledger",
+      "--agent-name",
+      "lead",
+      "--agent-id",
+      "lead@l7-ledger",
+      "--agent-type",
+      "orchestrator",
+      "-n",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 1067240,
+    "start_ticks": "31696960",
+    "argv": [
+      "/init",
+      "/mnt/c/Windows/System32/reg.exe",
+      "/mnt/c/Windows/System32/reg.exe",
+      "query",
+      "HKCU\\SOFTWARE\\Policies\\ClaudeCode",
+      "/v",
+      "Settings",
+      ""
+    ]
+  },
+  {
+    "pid": 1067243,
+    "start_ticks": "31696961",
+    "argv": [
+      "/tmp/th-l7-3migwapg/home/.local/bin/taurhaus-daemon",
+      "--terminal-child",
+      "1789096441767",
+      "tmux",
+      "-S",
+      "/tmp/th-l7-3migwapg/tmux/tmux-1000/default",
+      "has-session",
+      "-t",
+      "taurhaus",
+      ""
+    ]
+  },
+  {
+    "pid": 1067252,
+    "start_ticks": "31696964",
+    "argv": [
+      "/bin/bash",
+      "-ic",
+      "cd '/tmp/th-l7-3migwapg/project' && CLAUDE_DIR='/tmp/th-l7-3migwapg/claude' CODEX_HOME='/tmp/th-l7-3migwapg/codex' codex --yolo --dangerously-bypass-hook-trust -c 'notify=[\"/tmp/th-l7-3migwapg/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]' -m 'gpt-5.6-luna' -c 'model_reasoning_effort=\"low\"'; exec \"$SHELL\"",
+      ""
+    ]
+  },
+  {
+    "pid": 1067263,
+    "start_ticks": "31696965",
+    "argv": [
+      "codex",
+      "--yolo",
+      "--dangerously-bypass-hook-trust",
+      "-c",
+      "notify=[\"/tmp/th-l7-3migwapg/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]",
+      "-m",
+      "gpt-5.6-luna",
+      "-c",
+      "model_reasoning_effort=\"low\"",
+      ""
+    ]
+  },
+  {
+    "pid": 1067317,
+    "start_ticks": "31696968",
+    "argv": [
+      "/tmp/th-l7-3migwapg/home/.local/bin/mesh",
+      "join",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "lead",
+      "--type",
+      "lead",
+      "--model",
+      "claude-haiku-4-5",
+      "--claude-dir",
+      "/tmp/th-l7-3migwapg/claude",
+      ""
+    ]
+  },
+  {
+    "pid": 1067324,
+    "start_ticks": "31696972",
+    "argv": [
+      "/tmp/th-l7-3migwapg/home/.local/bin/mesh",
+      "join",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "alpha",
+      "--type",
+      "general-purpose",
+      "--model",
+      "gpt-5.6-luna",
+      "--claude-dir",
+      "/tmp/th-l7-3migwapg/claude",
+      ""
+    ]
+  },
+  {
+    "pid": 1067333,
+    "start_ticks": "31696976",
+    "argv": [
+      "/tmp/th-l7-3migwapg/home/.local/bin/mesh",
+      "team",
+      "delivery",
+      "--owner",
+      "team",
+      "--claude-dir",
+      "/tmp/th-l7-3migwapg/claude",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 1067396,
+    "start_ticks": "31696982",
+    "argv": [
+      "/tmp/th-l7-3migwapg/home/.local/bin/mesh",
+      "team-daemon",
+      "start",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "lead",
+      "--claude-dir",
+      "/tmp/th-l7-3migwapg/claude",
+      ""
+    ]
+  },
+  {
+    "pid": 1067602,
+    "start_ticks": "31697004",
+    "argv": [
+      "/tmp/th-l7-3migwapg/home/.local/bin/mesh",
+      "journal",
+      "accept",
+      "--producer",
+      "taurhaus-daemon",
+      "--recipient",
+      "lead",
+      "--text",
+      "[taurhaus] recovery_card\nIdentity: lead on l7-ledger; key={\"card_schema\":1,\"recipient\":[\"91beecc54a2a66cbf3e5f0b99efee3bc433e06dff109e07a0dc79603cab6339d\",\"a8eba715-4ebd-41b0-b8f5-250423db1a08\"],\"context\":[1,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-l7-3migwapg/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-l7-3migwapg/claude\",\"harness_account_root\":\"/tmp/th-l7-3migwapg/claude\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-l7-3migwapg/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"37a06e5154de9ef5fdb08ede626ffb29630db236bda6cc9bd2f7868b61a9c25b\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: 530fc3f03de861ec59bd138ad1a69416cf85300921ca8de318207b59344bb7a6; source=a8d97ad61031cbcac3988f3b68c520a8a5a4cb0a780f3e3a2fe21bf4bef83bf2; audience=unavailable\nProject cwd: /tmp/th-l7-3migwapg/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: unavailable; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-11 03:13:52.173302069 UTC\nCurrent task: # \u2014 \nExecution mode: ; Validation expectation: ; Response expectation: ; Adjacent fix policy: ; Override allowed: false; Override reason: none\nFocal files: unavailable\nRole: unavailable\nHOLD: minimal role steering unavailable; owner: team lead.\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.",
+      "--idempotency-key",
+      "taurhaus-daemon:8a713a61930d03d250c5a4484a5e0030ea12ebab2e72a0007e690a4368786a73",
+      "--claude-dir",
+      "/tmp/th-l7-3migwapg/claude",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 1067672,
+    "start_ticks": "31697037",
+    "argv": [
+      "/tmp/th-l7-3migwapg/home/.local/bin/mesh",
+      "journal",
+      "accept",
+      "--producer",
+      "taurhaus-daemon",
+      "--recipient",
+      "alpha",
+      "--text",
+      "[taurhaus] recovery_card\nIdentity: alpha on l7-ledger; key={\"card_schema\":1,\"recipient\":[\"91beecc54a2a66cbf3e5f0b99efee3bc433e06dff109e07a0dc79603cab6339d\",\"2a27d78a-b0ed-47e8-bad6-9f5eb049da1a\"],\"context\":[1,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-l7-3migwapg/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-l7-3migwapg/claude\",\"harness_account_root\":\"/tmp/th-l7-3migwapg/codex\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-l7-3migwapg/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"06c590c16feb55f8926cfb930a7c2274ce0d76ce281855ebfe1d663fb57da20c\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: 348a7a8e2314890462e70486a307af6ec704ca696e1917764dcb8334188d2c93; source=682540e4a3f9cfbca660a5add5db7fa379ff474f5fe7c2f18798f74d7e72c755; audience=unavailable\nProject cwd: /tmp/th-l7-3migwapg/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: low; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-11 03:13:52.538162965 UTC\nCurrent task: # \u2014 \nExecution mode: ; Validation expectation: ; Response expectation: ; Adjacent fix policy: ; Override allowed: false; Override reason: none\nFocal files: unavailable\nRole: unavailable\nPurpose: Use only the scratch project. On onboarding, explicitly read and mark your inbox with mesh read --json --mark-read --claude-dir \"$CLAUDE_DIR\" --team l7-ledger --name alpha; follow every next_cursor using the same filters and --since until done. Reply READY. For assignments, first explicitly read/mark your inbox with the same mesh read command, paging until done, then run mesh task accept and task start with the frozen full assignment, then reply TASK_READY; do not complete yet. Every Mesh command must name --claude-dir \"$CLAUDE_DIR\" --team l7-ledger --name alpha. Read each new instruction explicitly before acting. Only write OBSERVATION.md and RESULT.md, each at most 2048 bytes, when specifically requested. Ledger entry, task complete --summary-file, and ledger-only retry are permitted only when specifically requested. Use frozen IDs from the instruction; never invent IDs, resend completion, edit any other file, or send unsolicited messages. Do not inspect credentials or any operator directory. Keep tool outputs and replies short.\n\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.",
+      "--idempotency-key",
+      "taurhaus-daemon:862cf2f768b18e835b283e55c9aaecb3259ac5f71ef9425a83e7b4f47aeeb8c2",
+      "--claude-dir",
+      "/tmp/th-l7-3migwapg/claude",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 1067715,
+    "start_ticks": "31697056",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1067856,
+    "start_ticks": "31697065",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1067928,
+    "start_ticks": "31697098",
+    "argv": [
+      "/usr/bin/zsh",
+      "-lc",
+      "if [[ -n \"$ZDOTDIR\" ]]; then\n  rc=\"$ZDOTDIR/.zshrc\"\nelse\n  rc=\"$HOME/.zshrc\"\nfi\n[[ -r \"$rc\" ]] && . \"$rc\"\nprint '# Snapshot file'\nprint '# Unset all aliases to avoid conflicts with functions'\nprint 'unalias -a 2>/dev/null || true'\nprint '# Functions'\nfunctions\nprint ''\nsetopt_count=$(setopt | wc -l | tr -d ' ')\nprint \"# setopts $setopt_count\"\nsetopt | sed 's/^/setopt /'\nprint ''\nalias_count=$(alias -L | wc -l | tr -d ' ')\nprint \"# aliases $alias_count\"\nalias -L\nprint ''\n# Capture exported variables\nexport_lines=$(export -p | awk '\n/^(export|declare -x|typeset -x) / {\n  line=$0\n  name=line\n  sub(/^(export|declare -x|typeset -x) /, \"\", name)\n  if (name ~ /^-[A-Za-z]*r[A-Za-z]* /) {\n    next\n  }\n  if (name ~ /^-[A-Za-z]*T[A-Za-z]* /) {\n    sub(/^-[A-Za-z]*T[A-Za-z]* /, \"\", name)\n    sub(/ [A-Za-z_][A-Za-z0-9_]*=.*/, \"\", name)\n  }\n  sub(/=.*/, \"\", name)\n  if (name ~ /^(PWD|OLDPWD)$/) {\n    next\n  }\n  if (name ~ /^[A-Za-z_][A-Za-z0-9_]*$/) {\n    print line\n  }\n}')\nexport_count=$(printf '%s\\n' \"$export_lines\" | sed '/^$/d' | wc -l | tr -d ' ')\nprint \"# exports $export_count\"\nif [[ -n \"$export_lines\" ]]; then\n  print -r -- \"$export_lines\"\nfi\n",
+      ""
+    ]
+  },
+  {
+    "pid": 1068018,
+    "start_ticks": "31697104",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1068068,
+    "start_ticks": "31697122",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1068643,
+    "start_ticks": "31697199",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1068708,
+    "start_ticks": "31697223",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1068852,
+    "start_ticks": "31697241",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1068998,
+    "start_ticks": "31697260",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1069000,
+    "start_ticks": "31697260",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1069087,
+    "start_ticks": "31697268",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1069614,
+    "start_ticks": "31697315",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1069651,
+    "start_ticks": "31697322",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1069683,
+    "start_ticks": "31697331",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1070020,
+    "start_ticks": "31697375",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1070040,
+    "start_ticks": "31697382",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1070042,
+    "start_ticks": "31697382",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1070240,
+    "start_ticks": "31697438",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1070256,
+    "start_ticks": "31697441",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1070288,
+    "start_ticks": "31697446",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1070593,
+    "start_ticks": "31697494",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1071064,
+    "start_ticks": "31697521",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1071091,
+    "start_ticks": "31697528",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1071273,
+    "start_ticks": "31697571",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1071275,
+    "start_ticks": "31697571",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1071492,
+    "start_ticks": "31697588",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1071692,
+    "start_ticks": "31697665",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1071774,
+    "start_ticks": "31697687",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1071793,
+    "start_ticks": "31697703",
+    "argv": [
+      "/tmp/th-l7-3migwapg/home/.local/bin/codex-code-mode-host",
+      ""
+    ]
+  },
+  {
+    "pid": 1071813,
+    "start_ticks": "31697706",
+    "argv": [
+      "mesh",
+      "read",
+      "--json",
+      "--mark-read",
+      "--claude-dir",
+      "/tmp/th-l7-3migwapg/claude",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "alpha",
+      "--unread",
+      ""
+    ]
+  },
+  {
+    "pid": 1071832,
+    "start_ticks": "31697730",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1071866,
+    "start_ticks": "31697749",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1072730,
+    "start_ticks": "31698510",
+    "argv": [
+      "mesh",
+      "send",
+      "lead",
+      "READY \u2014 current assignment is unassigned and missing identity, release, and required context; please provide the frozen assignment/context.",
+      "--summary",
+      "Onboarding ready; context needed",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "alpha",
+      "--claude-dir",
+      "/tmp/th-l7-3migwapg/claude",
+      ""
+    ]
+  },
+  {
+    "pid": 1073250,
+    "start_ticks": "31698723",
+    "argv": [
+      "/bin/bash",
+      "-c",
+      "/tmp/th-l7-3migwapg/home/.local/bin/mesh task create --subject 'L7 tiny artifact round trip' --description 'Demonstrate real seat artifact intake and completion.' --deliverable 'OBSERVATION.md and RESULT.md, each at most 2048 bytes.' --first-step 'Explicitly read/mark the inbox with mesh read --json --mark-read, paging until done; accept and start this assignment with its full assignment ID; reply TASK_READY and await explicit artifact instructions.' --completion-signal 'Complete only when instructed with RESULT.md through --summary-file.' --review-route 'Lead checks ledger receipts and offline read-back; stop after the requested completion.' --claude-dir /tmp/th-l7-3migwapg/claude --team l7-ledger --name lead >/tmp/th-l7-3migwapg/87dfad04.out 2>&1; echo $? >/tmp/th-l7-3migwapg/87dfad04.exit",
+      ""
+    ]
+  },
+  {
+    "pid": 1073252,
+    "start_ticks": "31698723",
+    "argv": [
+      "/tmp/th-l7-3migwapg/home/.local/bin/mesh",
+      "task",
+      "create",
+      "--subject",
+      "L7 tiny artifact round trip",
+      "--description",
+      "Demonstrate real seat artifact intake and completion.",
+      "--deliverable",
+      "OBSERVATION.md and RESULT.md, each at most 2048 bytes.",
+      "--first-step",
+      "Explicitly read/mark the inbox with mesh read --json --mark-read, paging until done; accept and start this assignment with its full assignment ID; reply TASK_READY and await explicit artifact instructions.",
+      "--completion-signal",
+      "Complete only when instructed with RESULT.md through --summary-file.",
+      "--review-route",
+      "Lead checks ledger receipts and offline read-back; stop after the requested completion.",
+      "--claude-dir",
+      "/tmp/th-l7-3migwapg/claude",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 1073257,
+    "start_ticks": "31698751",
+    "argv": [
+      "/bin/bash",
+      "-c",
+      "/tmp/th-l7-3migwapg/home/.local/bin/mesh task assign 1 --owner alpha --json --claude-dir /tmp/th-l7-3migwapg/claude --team l7-ledger --name lead >/tmp/th-l7-3migwapg/fb074997.out 2>&1; echo $? >/tmp/th-l7-3migwapg/fb074997.exit",
+      ""
+    ]
+  },
+  {
+    "pid": 1073259,
+    "start_ticks": "31698751",
+    "argv": [
+      "/tmp/th-l7-3migwapg/home/.local/bin/mesh",
+      "task",
+      "assign",
+      "1",
+      "--owner",
+      "alpha",
+      "--json",
+      "--claude-dir",
+      "/tmp/th-l7-3migwapg/claude",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 1073267,
+    "start_ticks": "31698773",
+    "argv": [
+      "/bin/bash",
+      "-c",
+      "/tmp/th-l7-3migwapg/home/.local/bin/mesh ledger init --wave l7 --authority-file packet.json --repo-root /tmp/th-l7-3migwapg/project --claude-dir /tmp/th-l7-3migwapg/claude --team l7-ledger --name lead >/tmp/th-l7-3migwapg/49c86d1f.out 2>&1; echo $? >/tmp/th-l7-3migwapg/49c86d1f.exit",
+      ""
+    ]
+  },
+  {
+    "pid": 1073270,
+    "start_ticks": "31698773",
+    "argv": [
+      "/tmp/th-l7-3migwapg/home/.local/bin/mesh",
+      "ledger",
+      "init",
+      "--wave",
+      "l7",
+      "--authority-file",
+      "packet.json",
+      "--repo-root",
+      "/tmp/th-l7-3migwapg/project",
+      "--claude-dir",
+      "/tmp/th-l7-3migwapg/claude",
+      "--team",
+      "l7-ledger",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 1074600,
+    "start_ticks": "31699306",
+    "argv": [
+      ""
+    ]
+  },
+  {
+    "pid": 1082477,
+    "start_ticks": "31702456",
+    "argv": [
+      "tmux",
+      "-S",
+      "/tmp/th-l7-3migwapg/tmux/tmux-1000/default",
+      "list-panes",
+      "-a",
+      "-F",
+      "#{pane_id} #{pane_tty} #{window_index} #{window_name} #{session_name}",
+      ""
+    ]
+  },
+  {
+    "pid": 1095130,
+    "start_ticks": "31707706",
+    "argv": [
+      "tmux",
+      "-S",
+      "/tmp/th-l7-3migwapg/tmux/tmux-1000/default",
+      "list-clients",
+      "-F",
+      "#{client_flags}\t#{session_name}\t#{window_index}\t#{pane_id}\t#{client_activity}",
+      ""
+    ]
+  }
+]
