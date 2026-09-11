@@ -39,10 +39,23 @@ const reservations = []
 const rpcRows = []
 const activity = []
 
+function sanitize(value) {
+  if (Array.isArray(value)) return value.map(sanitize)
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, field]) => [key,
+    /^(auth|authorization|access.?token|refresh.?token|id.?token|auth.?token|controlAuthTokenHash|credential|secret|password|account_observations)$/i.test(key) ? '[redacted]' : sanitize(field)]))
+  if (typeof value !== 'string') return value
+  if (/^[\[{]/.test(value.trim())) {
+    try { return JSON.stringify(sanitize(JSON.parse(value))) } catch { /* plain text or JSONL */ }
+  }
+  return value.replace(/\b[0-9a-f]{96,}(?:\.[0-9a-f]{64})?\b/gi, '[signed cursor redacted]')
+    .replace(/Bearer\s+[^\s"']+/gi, 'Bearer [redacted]')
+}
 function save(name, value) {
   mkdirSync(evidence, { recursive: true })
-  writeFileSync(join(evidence, name), typeof value === 'string' ? value : `${JSON.stringify(value, null, 2)}\n`)
+  const clean = sanitize(value)
+  writeFileSync(join(evidence, name), typeof clean === 'string' ? clean : `${JSON.stringify(clean, null, 2)}\n`)
 }
+
 function rows(path) {
   if (!existsSync(path)) return []
   // Only complete JSONL records; never a partial tail.
@@ -160,7 +173,7 @@ async function observeIpc() {
 async function snapshot(step) {
   await browser.saveScreenshot(join(evidence, `step-${step}.png`))
   save(`step-${step}-ipc.json`, await browser.execute(() => window.__l3 ?? null))
-  if (existsSync(join(data, 'taurhaus.log.jsonl'))) save('daemon.jsonl', rows(join(data, 'taurhaus.log.jsonl')).map(row => JSON.stringify(row)).join('\n') + '\n')
+  if (existsSync(join(data, 'taurhaus.log.jsonl'))) save('daemon.jsonl', rows(join(data, 'taurhaus.log.jsonl')).map(row => JSON.stringify(sanitize(row))).join('\n') + '\n')
   if (existsSync(join(claudeDir, 'teams', team, 'config.json'))) {
     save(`step-${step}-config.json`, JSON.parse(readFileSync(join(claudeDir, 'teams', team, 'config.json'), 'utf8')))
     for (const member of ['alpha', 'beta']) {
@@ -195,6 +208,7 @@ describe('canonical builder and hosted conversation (paid)', function () {
   this.timeout(900_000)
   before(async function () {
     started = Date.now()
+    try {
     assertTmuxIsolation(process.env, root)
     assert.equal(process.env.E2E_CODEX_SOURCE_HOME, '/home/mstie/.codex-account-b', 'harness: explicit auth source required')
     for (const path of [process.env.HOME, data, codexHome, claudeDir, project]) assert(path?.startsWith(`${root}/`), 'harness: non-private root')
@@ -229,6 +243,13 @@ describe('canonical builder and hosted conversation (paid)', function () {
       template.capabilities = []
       await ipc('templates_upsert_role', { request: { template } })
     }
+    } catch (error) {
+      failed = true
+      results[0] = { step: 1, outcome: 'FAIL', classification: 'harness', reason: `Setup: ${String(error.message ?? error)}` }
+      mkdirSync(evidence, { recursive: true })
+      report()
+      throw error
+    }
   })
 
   after(async function () {
@@ -252,6 +273,12 @@ describe('canonical builder and hosted conversation (paid)', function () {
     assert.match(execFileSync('codex', ['--version'], { encoding: 'utf8', timeout: 5000 }), /\b0\.153\.4\b/)
     const ping = await rpc('ping')
     assert.equal(ping.protocol_version, 27, 'taurhaus: private daemon protocol')
+    const owned = findRunTokenProcessRecords(process.env.TAURHAUS_E2E_RUN_TOKEN)
+    save('boot-processes.json', owned.map(record => {
+      let executable = null
+      try { executable = execFileSync('readlink', [`/proc/${record.pid}/exe`], { encoding: 'utf8', timeout: 5000 }).trim() } catch { /* process exited */ }
+      return { ...record, executable }
+    }))
     save('boot.json', { binary, sha256: createHash('sha256').update(readFileSync(binary)).digest('hex'), ping, mesh: version, lock })
     await clickTestId('tab-mesh')
     await poll(async () => await $('[data-testid="mesh-builder-shell"]').isExisting(), 'harness: builder did not appear')
@@ -261,6 +288,9 @@ describe('canonical builder and hosted conversation (paid)', function () {
     assert(observed.gates.some(g => g.disabled && g.at <= capability.acceptedAt), 'harness: unresolved Initialize disabled state was not observed')
     assert.equal(capability.result.canonical_messaging_supported, true, 'mesh: canonical capability unavailable')
     assert.equal(capability.result.hosted_delivery_supported, true, 'mesh: hosted capability unavailable')
+    for (const contract of [capability.result.installed_contract, capability.result.bundled_contract]) {
+      for (const key of Object.keys(lock)) assert.equal(contract?.[key], lock[key], `mesh: app-reported contract mismatch: ${key}`)
+    }
     assert.equal(await $('[aria-labelledby="mesh-canonical-label"]').isSelected(), true, 'taurhaus: canonical is not selected')
   }))
 
@@ -295,6 +325,8 @@ describe('canonical builder and hosted conversation (paid)', function () {
       transcript = await hostedTranscript()
       return transcript.thread?.status?.type === 'idle' && transcript.thread.turns.some(t => t.items?.some(i => i.type === 'agentMessage'))
     }, 'taurhaus: beta startup transcript did not settle')
+    const panel = await browser.execute(() => window.__l3.ipc.findLast(r => r.command === 'coordination_hosted' && r.args.memberName === 'beta' && r.args.operation === 'transcript' && r.result))
+    assert.equal(panel?.result?.thread?.id, transcript.thread.id, 'taurhaus: panel reads another thread')
     const record = runtime()
     assert.equal(transcript.thread.id, record.session_id, 'taurhaus: wrong hosted thread')
     const text = await $('[aria-label="Hosted transcript"]').getText()
@@ -385,7 +417,7 @@ async function prepareBuilder() {
     tmux(['set-environment', '-t', 'taurhaus', key, value])
   }
   const pane = tmux(['new-window', '-d', '-P', '-F', '#{pane_id}', '-t', 'taurhaus', '-c', project, 'codex -m gpt-5.6-luna -c model_reasoning_effort="low" -a never']).trim()
-  await poll(async () => /context left|for shortcuts|gpt-5.6-luna/.test(tmux(['capture-pane', '-p', '-t', pane])), 'harness: scratch Codex composer unavailable')
+  await poll(async () => /context left|for shortcuts/.test(tmux(['capture-pane', '-p', '-t', pane])), 'harness: scratch Codex composer unavailable')
   save('warmup-pane.txt', tmux(['capture-pane', '-p', '-t', pane]))
   tmux(['send-keys', '-t', pane, 'C-c'])
   await poll(async () => !tmux(['list-panes', '-a', '-F', '#{pane_id}']).split('\n').includes(pane), 'harness: warmup did not quit')
