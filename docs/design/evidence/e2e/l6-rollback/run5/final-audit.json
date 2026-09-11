@@ -1,0 +1,16 @@
+{
+  "evidence_audit": "PASS",
+  "lane_verdict": "INCOMPLETE: operational route completed; literal single-read criterion not met; independent Opus review unavailable",
+  "controller_exit": 0,
+  "gate_exits": {
+    "just check-quick": 0,
+    "just lint": 0,
+    "just test-contracts": 0
+  },
+  "offline_tests": 10,
+  "cleanup": "PASS",
+  "raw_outcomes_byte_exact": true,
+  "retained_files": 95,
+  "aliases": 11,
+  "daemon_jsonl_rows": 192
+}

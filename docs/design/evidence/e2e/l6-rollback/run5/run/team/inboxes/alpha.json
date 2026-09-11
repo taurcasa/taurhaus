@@ -14,7 +14,9 @@
     "text": "ACTION REQUIRED: Read this message explicitly, then reply exactly A-4dc8234c.",
     "timestamp": "2026-09-11T05:16:11.556Z",
     "read": true,
-    "summary": "A"
+    "summary": "A",
+    "ackedAt": "2026-09-11T05:17:02.478Z",
+    "ackedBy": "alpha"
   },
   {
     "message_id": "e9757d59-c1a6-40c5-9fe1-bfc4b41c93bc",
@@ -23,7 +25,9 @@
     "text": "ACTION REQUIRED: Read this message explicitly, then reply exactly B-d872fac9.",
     "timestamp": "2026-09-11T05:16:21.098Z",
     "read": true,
-    "summary": "B"
+    "summary": "B",
+    "ackedAt": "2026-09-11T05:17:02.770Z",
+    "ackedBy": "alpha"
   },
   {
     "id": "1e0864c1-b64b-422c-be1d-6545981c5e49",
@@ -31,6 +35,8 @@
     "text": "ACTION REQUIRED: Read this message explicitly, then reply exactly C-18c750f5.",
     "timestamp": "2026-09-11T05:16:54.093Z",
     "read": true,
-    "summary": "C"
+    "summary": "C",
+    "ackedAt": "2026-09-11T05:17:02.848Z",
+    "ackedBy": "alpha"
   }
 ]

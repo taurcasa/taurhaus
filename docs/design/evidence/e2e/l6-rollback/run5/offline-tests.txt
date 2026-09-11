@@ -1,0 +1,15 @@
+test_consumed_only_still_is_a_delivery (adjudicate_test.AccountingContract.test_consumed_only_still_is_a_delivery) ... ok
+test_repeated_reads_are_retained_separately_from_one_submission (adjudicate_test.AccountingContract.test_repeated_reads_are_retained_separately_from_one_submission) ... ok
+test_actual_A_delivery_path_needs_no_submission (delivery_test.DeliveryContract.test_actual_A_delivery_path_needs_no_submission) ... ok
+test_actual_legacy_delivery_accepts_explicit_seat_read_without_paste (delivery_test.DeliveryContract.test_actual_legacy_delivery_accepts_explicit_seat_read_without_paste) ... ok
+test_executed_startup_guard_accepts_alpha_read_alone (delivery_test.DeliveryContract.test_executed_startup_guard_accepts_alpha_read_alone) ... ok
+test_executed_startup_guard_accepts_submitted_tool_alternative (delivery_test.DeliveryContract.test_executed_startup_guard_accepts_submitted_tool_alternative) ... ok
+test_wrong_reader_does_not_satisfy_startup (delivery_test.DeliveryContract.test_wrong_reader_does_not_satisfy_startup) ... ok
+test_attached_executor_matches_namespace_pid_pane_and_rc (rules_test.Run4Contract.test_attached_executor_matches_namespace_pid_pane_and_rc) ... ok
+test_downgrade_is_the_atomic_ownership_boundary (rules_test.Run4Contract.test_downgrade_is_the_atomic_ownership_boundary) ... ok
+test_same_owner_clears_marker_without_new_epoch_or_request (rules_test.Run4Contract.test_same_owner_clears_marker_without_new_epoch_or_request) ... ok
+
+----------------------------------------------------------------------
+Ran 10 tests in 0.001s
+
+OK

@@ -50,7 +50,7 @@ def main():
       'executor_observation':{'first_transition_complete_sample':complete,'first_executor_sample':first_executor,'same_owner_begin':begin,'same_owner_end':end,'attached_after_handoff':read('step4-executor-before.json')},
       'daemon_jsonl_rows':len(daemon),'observer_errors':[r for r in events if 'observer_error' in r['kind']]}
     result['startup_delivery']=startup_delivery(journal,native)
-    result['alpha_journal_traffic']=[{'accepted':r,'receipts':[v for v in journal if v.get('payload',{}).get('message_id')==r['payload']['message_id'] and v.get('event_type')!='message_accepted'} for r in journal if r.get('event_type')=='message_accepted' and r.get('payload',{}).get('author',{}).get('name')=='alpha']
+    result['alpha_journal_traffic']=[{'accepted':r,'receipts':[v for v in journal if v.get('payload',{}).get('message_id')==r['payload']['message_id'] and v.get('event_type')!='message_accepted']} for r in journal if r.get('event_type')=='message_accepted' and r.get('payload',{}).get('author',{}).get('name')=='alpha']
     result['raw_outcome_hashes']={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in RUN.glob('*outcome.json')}
     (BASE/'analysis.json').write_text(json.dumps(result,indent=2)+'\n')
     print(json.dumps({'steps':result['steps'],'controller':result['controller'],'cleanup':result['cleanup'],'inputs':result['metering']['paid_inputs'],'usd':result['metering']['api_equivalent_usd'],'messages':{k:{key:v[key] for key in ('total_submissions','canonical_submissions','legacy_submissions') if key in v} for k,v in messages.items()}}))

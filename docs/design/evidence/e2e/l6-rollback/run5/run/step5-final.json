@@ -199,7 +199,7 @@
   },
   "activity": {
     "version": 1,
-    "observed_at": "2026-09-11T05:16:34.406105776+00:00",
+    "observed_at": "2026-09-11T05:17:01.905767094+00:00",
     "stall_recent_activity": false,
     "stall_no_output": true,
     "stall_no_active_process": false,
@@ -207,8 +207,12 @@
     "recent_io": false,
     "pane_alive": true,
     "pane_foreign": false,
-    "last_output_age_secs": 10,
-    "activity_confidence": "likely_working"
+    "last_output_age_secs": 0,
+    "activity_confidence": "idle",
+    "confidence": "high",
+    "last_observed_at": "2026-09-11T05:17:01.903420419+00:00",
+    "source": "notify",
+    "state": "idle"
   },
   "config": {
     "name": "l6-rollback-run5",
@@ -227,8 +231,8 @@
         "tmuxPaneId": "%1",
         "backendType": "external",
         "isActive": true,
-        "lastActivityAt": "2026-09-11T05:16:21.190Z",
-        "lastActivityReason": "message_sent",
+        "lastActivityAt": "2026-09-11T05:17:02.218Z",
+        "lastActivityReason": "read_messages",
         "cli_tool": "claude",
         "controlAuthTokenHash": "2f6ff8c9c9141ede",
         "instructions": null,
@@ -246,8 +250,8 @@
         "tmuxPaneId": "%2",
         "backendType": "external",
         "isActive": true,
-        "lastActivityAt": "2026-09-11T05:16:18.778Z",
-        "lastActivityReason": "read_messages",
+        "lastActivityAt": "2026-09-11T05:17:02.909Z",
+        "lastActivityReason": "ack_status_queried",
         "cli_tool": "codex",
         "controlAuthTokenHash": "cac7f48de2dcd69a",
         "instructions": "For every inbox notification including onboarding, explicitly run mesh read --json --unread --mark-read --claude-dir \"$CLAUDE_DIR\" --team l6-rollback-run5 --name alpha; follow returned --since cursors with the same filters until done. Reply briefly. When a message assigns you a task, run exactly the mesh lifecycle commands the message names, in order, then reply with the task id and the word done. Never modify files. For ACTION REQUIRED marker messages, read your inbox with mesh read --json --mark-read --claude-dir \"$CLAUDE_DIR\" --team l6-rollback-run5 --name alpha and reply exactly with the requested marker. Follow every returned cursor until done. Do not send other messages.\n",
@@ -1143,6 +1147,182 @@
       "timestamp": "2026-09-11T05:16:21.098Z",
       "action_required": true,
       "no_response_needed": false
+    },
+    {
+      "eventId": "2448012d-7528-4502-855a-95fe735d4bc3",
+      "protocolVersion": 1,
+      "eventType": "message_delivery_recorded",
+      "message_id": "386f2d46-2826-48bc-9358-a43ebdee573e",
+      "source": "inbox",
+      "channel": "tmux",
+      "target": "%2",
+      "outcome": "tmux_injected",
+      "timestamp": "2026-09-11T05:16:36.422Z"
+    },
+    {
+      "eventId": "63875d0d-4384-44f9-b576-140a26732b97",
+      "protocolVersion": 1,
+      "eventType": "message_read",
+      "message_id": "386f2d46-2826-48bc-9358-a43ebdee573e",
+      "reader": "alpha",
+      "timestamp": "2026-09-11T05:16:49.972Z"
+    },
+    {
+      "eventId": "371c7e9e-8749-4850-bbc5-8940c0e193c1",
+      "protocolVersion": 1,
+      "eventType": "message_read",
+      "message_id": "ff74e55d-e7c8-4c31-b0ec-2bc9de7dd6a3",
+      "reader": "alpha",
+      "timestamp": "2026-09-11T05:16:52.602Z"
+    },
+    {
+      "eventId": "b34a869b-ad14-4279-86ea-8e596a532423",
+      "protocolVersion": 1,
+      "eventType": "message_read",
+      "message_id": "868fcd4b-2097-4738-aaf6-7b6f77e5bb36",
+      "reader": "alpha",
+      "timestamp": "2026-09-11T05:16:52.602Z"
+    },
+    {
+      "eventId": "45f2810d-86bb-4f42-879b-0bd88e63b54e",
+      "protocolVersion": 1,
+      "eventType": "message_read",
+      "message_id": "386f2d46-2826-48bc-9358-a43ebdee573e",
+      "reader": "alpha",
+      "timestamp": "2026-09-11T05:16:52.602Z"
+    },
+    {
+      "eventId": "d700578e-1487-49ec-b7e5-a1ed9d349880",
+      "protocolVersion": 1,
+      "eventType": "message_sent",
+      "expectation": {
+        "expectation": "action",
+        "wake_eligible": true,
+        "provenance": "prefix",
+        "policy_revision": 1
+      },
+      "message_id": "1e0864c1-b64b-422c-be1d-6545981c5e49",
+      "sender": "lead",
+      "recipient": "alpha",
+      "kind": "direct_action",
+      "timestamp": "2026-09-11T05:16:54.093Z",
+      "action_required": true,
+      "no_response_needed": false
+    },
+    {
+      "eventId": "d77606d6-395e-4546-a2b8-b91bd15942bd",
+      "protocolVersion": 1,
+      "eventType": "message_delivery_recorded",
+      "message_id": "1e0864c1-b64b-422c-be1d-6545981c5e49",
+      "source": "inbox",
+      "channel": "tmux",
+      "target": "%2",
+      "outcome": "tmux_injected",
+      "timestamp": "2026-09-11T05:16:54.432Z"
+    },
+    {
+      "eventId": "30c1fd24-7631-42fc-aa43-15a647c17a61",
+      "protocolVersion": 1,
+      "eventType": "message_read",
+      "message_id": "1e0864c1-b64b-422c-be1d-6545981c5e49",
+      "reader": "alpha",
+      "timestamp": "2026-09-11T05:16:57.351Z"
+    },
+    {
+      "eventId": "5a30c1c5-12d9-488a-956a-74c02fafaddb",
+      "protocolVersion": 1,
+      "eventType": "message_read",
+      "message_id": "ff74e55d-e7c8-4c31-b0ec-2bc9de7dd6a3",
+      "reader": "alpha",
+      "timestamp": "2026-09-11T05:16:59.911Z"
+    },
+    {
+      "eventId": "5d49d7a9-182e-4a90-9b47-7b7486c325e3",
+      "protocolVersion": 1,
+      "eventType": "message_read",
+      "message_id": "868fcd4b-2097-4738-aaf6-7b6f77e5bb36",
+      "reader": "alpha",
+      "timestamp": "2026-09-11T05:16:59.911Z"
+    },
+    {
+      "eventId": "98bed146-24d2-418c-9c3a-e7bb06fa0f88",
+      "protocolVersion": 1,
+      "eventType": "message_read",
+      "message_id": "386f2d46-2826-48bc-9358-a43ebdee573e",
+      "reader": "alpha",
+      "timestamp": "2026-09-11T05:16:59.911Z"
+    },
+    {
+      "eventId": "c04f36f3-93a7-40c8-a654-8207ccd43864",
+      "protocolVersion": 1,
+      "eventType": "message_read",
+      "message_id": "1e0864c1-b64b-422c-be1d-6545981c5e49",
+      "reader": "alpha",
+      "timestamp": "2026-09-11T05:16:59.911Z"
+    },
+    {
+      "eventId": "20cade1f-8720-403b-966b-d295c860b172",
+      "protocolVersion": 1,
+      "eventType": "message_read",
+      "message_id": "ff74e55d-e7c8-4c31-b0ec-2bc9de7dd6a3",
+      "reader": "alpha",
+      "timestamp": "2026-09-11T05:17:02.159Z"
+    },
+    {
+      "eventId": "2bc6e2c3-191e-4b97-b57e-d385a646842c",
+      "protocolVersion": 1,
+      "eventType": "message_read",
+      "message_id": "868fcd4b-2097-4738-aaf6-7b6f77e5bb36",
+      "reader": "alpha",
+      "timestamp": "2026-09-11T05:17:02.159Z"
+    },
+    {
+      "eventId": "fa94e5fd-6159-4105-b26f-eedd3539f451",
+      "protocolVersion": 1,
+      "eventType": "message_read",
+      "message_id": "386f2d46-2826-48bc-9358-a43ebdee573e",
+      "reader": "alpha",
+      "timestamp": "2026-09-11T05:17:02.159Z"
+    },
+    {
+      "eventId": "04b5e173-4258-46b7-91c9-f44bc0d3b26f",
+      "protocolVersion": 1,
+      "eventType": "message_read",
+      "message_id": "1e0864c1-b64b-422c-be1d-6545981c5e49",
+      "reader": "alpha",
+      "timestamp": "2026-09-11T05:17:02.159Z"
+    },
+    {
+      "eventId": "6fd9e738-15b5-4b35-96ba-6a49bec82208",
+      "protocolVersion": 1,
+      "eventType": "message_read",
+      "message_id": "8bf14298-d2e8-492a-8c19-6ef5723e437a",
+      "reader": "lead",
+      "timestamp": "2026-09-11T05:17:02.211Z"
+    },
+    {
+      "eventId": "4fab5be3-20d4-4fc9-a70e-8c3aae10f306",
+      "protocolVersion": 1,
+      "eventType": "message_acknowledged",
+      "message_id": "868fcd4b-2097-4738-aaf6-7b6f77e5bb36",
+      "acked_by": "alpha",
+      "timestamp": "2026-09-11T05:17:02.478Z"
+    },
+    {
+      "eventId": "5d0f0360-dcbb-4af6-ac32-6ac9441a41e0",
+      "protocolVersion": 1,
+      "eventType": "message_acknowledged",
+      "message_id": "386f2d46-2826-48bc-9358-a43ebdee573e",
+      "acked_by": "alpha",
+      "timestamp": "2026-09-11T05:17:02.770Z"
+    },
+    {
+      "eventId": "74dc18d3-ac4b-401a-b657-1fd99901ee67",
+      "protocolVersion": 1,
+      "eventType": "message_acknowledged",
+      "message_id": "1e0864c1-b64b-422c-be1d-6545981c5e49",
+      "acked_by": "alpha",
+      "timestamp": "2026-09-11T05:17:02.848Z"
     }
   ],
   "handoff": null,
@@ -1179,11 +1359,5 @@
       "stage": "pending"
     }
   ],
-  "owner-stopped": {
-    "epoch": 2,
-    "reason": "operator",
-    "schema": 1,
-    "stopped_at": "2026-09-11T05:16:22.820559609+00:00",
-    "stopped_by": "lead"
-  }
+  "owner-stopped": null
 }

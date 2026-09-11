@@ -1,4 +1,4 @@
-# L6 rollback — run5 IN PROGRESS (step 4 PASS)
+# L6 rollback — run5 INCOMPLETE (rollback completed; repeated reads; Opus unavailable)
 
 ## Run3 result (2026-09-11)
 
@@ -952,3 +952,167 @@ Run5 step 2: PASS (S-runtime); see run5/run/step2-outcome.json.
 Run5 step 3: PASS (S-runtime); see run5/run/step3-outcome.json.
 
 Run5 step 4: PASS (S-runtime); see run5/run/step4-outcome.json.
+
+
+## Run5 result (2026-09-11)
+
+**The complete operational escape route ran, but the binding lane is INCOMPLETE.**
+The raw controller reports PASS for (a)–(e), exits **0** after **65.03 s**,
+and is retained unchanged. The separate [adjudication](l6-rollback/run5/adjudication.json)
+qualifies step (d): B received **one legacy submission and one assistant reply**, but
+alpha explicitly read it twice during that reply turn. The inherited instructions
+asked for both an unread notification read and an unfiltered marker read. The
+controller checked transport cardinality but omitted a strict single-read check,
+so it continued to C and final reconciliation. This is a **harness instruction/guard
+limitation**, not evidence of a Mesh duplicate submission or failed rollback.
+No second paid execution or product change was made.
+
+An independent Opus evidence lens is unavailable from this session's callable model
+and tool surface. No reviewer was launched and no cross-family review is claimed.
+Consequently this packet makes **no full workflow PASS or release claim**.
+[Raw outcomes and hashes](l6-rollback/run5/analysis.json),
+[exact executed controller](l6-rollback/run5/controller.py),
+[provenance](l6-rollback/run5/provenance.json).
+
+| Run5 ordered item | Raw result | Adjudicated outcome and classification |
+| --- | --- | --- |
+| (a) Initialize; A; B pending; lead stops owner | PASS | **PASS, S-runtime.** Canonical initialize completed, composer and attributed idle verified, A delivered/read/replied. B accepted while active, no receipt or begun ambiguous transport, scheduler opportunity recorded. Stop exit 0, owner exited, durable lead marker and daemon's named skip retained. |
+| (b) Downgrade with B pending | PASS | **PASS, S-runtime.** Format command exit 0, no refusal/retry. Config commits `messaging_format: 0`, `delivery_owner: members`, verified `delivery_rollback_sha256`; authority `transition: complete`. Both digest reports verified, canonical history retained unchanged, B pending/unread under its original logical id. |
+| (c) Members same-owner handoff | PASS | **PASS, S-runtime.** Exit 0; stop marker present immediately before and absent immediately afterward. Owner and rollback digest unchanged. Epoch 3 remains 3; no new handoff request. |
+| (d) RC executor; B once; fresh C and reply | PASS | **PARTIAL, harness.** No executor attached after (c); controller started one guarded lane RC executor. B and C each have exactly one legacy submission and one reply. B has two seat-read rows before its reply, so the literal one-read criterion is not met. No duplicate executor or transport replay was observed. |
+| (e) Explicit read/ack; reconcile; export; teardown | PASS | **PASS operations, S-runtime; overall lane remains incomplete.** A/B/C read and ack status verified, lead inbox reconciled, canonical journal retained, complete daemon JSONL exported, scratch processes and credentials removed. This ran after the missed step-(d) cardinality condition. |
+
+The command results and boundary snapshots are under [run5/run](l6-rollback/run5/run/):
+`step1-owner-stop.json`, `step1-pending-boundary.json`, `step2-command.json`,
+`step2-verified-format.json`, `step3-command.json`, `step3-verified-ownership.json`,
+`step4-B-legacy-delivery.json`, `step4-C-legacy-delivery.json`, and
+`step5-dispositions.json`. The dated audit amendment's original six-step order is
+superseded here by the fourth/fifth-run rulings' five items. The documented Mesh
+boundary is format **0**, never the superseded run2 format-1 predicate.
+
+### Run5 owner and executor observations
+
+The lead's marker records stop at **05:16:22.820559609Z**, epoch **2**.
+The private daemon logged `coordination.team_daemon.skipped` with
+`owner_stopped_by_operator` at **05:16:34.939Z**. Through the handoff window,
+**25** census samples show no owner restart;
+maximum adjacent sample gap is **0.570 s**.
+The complete sanitized daemon stream has **192 JSONL rows**, including
+shutdown. No filtering to self-heal events, no observer errors, no lock edits,
+process freeze or synthetic activity. [Daemon stream](l6-rollback/run5/run/taurhaus.log.jsonl),
+[census](l6-rollback/run5/run/owner-census.jsonl).
+
+Unlike run3's product observation, this run found **no attached executor after (c)**.
+The controller's sanctioned start is recorded **0.209 s after
+verified `transition: complete`**, and **0.113 s after (c) returned**.
+The first census shows the lane's RC digest, `--pane %2`, team `l6-rollback-run5`,
+member `alpha`, and host PID **2188929**; maximum concurrent alpha executors = **1**.
+The direct Mesh start did not populate Taurhaus's `daemon_pid`; its actual argv,
+namespace PID, start ticks, executable digest and owned process ancestry are
+retained rather than asserting an unobserved runtime attachment.
+The manual start log and census establish the starter, not an inference that
+Taurhaus self-healed it. [Executor observation](l6-rollback/run5/adjudication.json).
+
+### Run5 identity and read accounting
+
+| Marker | Original logical id | Legacy delivery/projection id | Transport submissions over entire run | Assistant replies |
+| --- | --- | --- | --- | --- |
+| A: `A-4dc8234c` | `803ed1c2-8d4b-4c4d-af31-91b6ddd90c64` | `868fcd4b-2097-4738-aaf6-7b6f77e5bb36` | 1 canonical + 0 legacy | 1 |
+| B: `B-d872fac9` | `e9757d59-c1a6-40c5-9fe1-bfc4b41c93bc` | `386f2d46-2826-48bc-9358-a43ebdee573e` | 0 canonical + 1 legacy | 1 |
+| C: `C-18c750f5` | `1e0864c1-b64b-422c-be1d-6545981c5e49` | `1e0864c1-b64b-422c-be1d-6545981c5e49` | 0 canonical + 1 legacy | 1 |
+
+B's rollback disposition is `pending`, `read: false`. Its legacy submission is
+at **05:16:36.422Z**. Alpha reads B at **05:16:49.972Z**, then rereads the now-read
+projection at **05:16:52.602Z** in the same native turn before replying. B appears
+again in alpha's unfiltered C read (**05:16:59.911Z**) and the controller's explicit
+final reconciliation (**05:17:02.159Z**): **four retained B read rows**, not one.
+The first B tool-result shows `read: false`; later ones show `read: true`.
+These are explicit rereads, not four executor deliveries. The audit retains the
+full rows and does not silently collapse them. A has one canonical read receipt
+plus five workflow read records (including its mirrored initial read); C has three
+workflow reads. Each has one assistant reply and acknowledged final state.
+All three logical identities remain traceable across the measured boundaries;
+C originates in legacy format and therefore has no canonical acceptance row.
+
+There were **zero alpha-origin journal messages to the lead** this run. Both lead
+and alpha explicit final reads are exported. A prior run's unsolicited task request
+is history, not a run5 failure or a run5 message. Startup and later delivery guards
+use `consumed_by_read` from alpha alone, or `submitted` plus tool-result exposure.
+Read-only delivery remains valid even when no paste receipt exists; the offline
+regressions verify that alternative. Acceptance, transport, explicit reads,
+assistant replies and acknowledgment remain separate facts.
+
+### Run5 candidate, isolation and spend
+
+Checkout stayed on `feat/e2e-l6-rollback`, product source identical to
+`ac2bc513cb26825548ac3c969261bc4560e7e0aa`; ancestry check exited 0.
+Mesh HEAD = `release/overhaul-rc` = `3015cb0fda5328d1f8c793b528275e6205683208`.
+Both binary digests match run4; product source/RC did not change, so no rebuild.
+Protocol **27**, real Codex **0.153.4**, **gpt-5.6-luna / low**,
+one tmux alpha and one login-only Claude lead. Descriptor unchanged; no hosted seat.
+The daemon binary SHA-256 is `137b86daaf9ae968ee69eb9aa9a76fdf67e2ff33c8cce261150513e67a5f67c1`;
+Mesh is `c8a92d0e8ea3a8c8fdf94da25e0e0b5f5e947c30fddc0aee7cdbd81aa801a3dc`.
+Both Codex native siblings were copied and hashed in the runtime event stream.
+
+Scratch root `/tmp/th-l6-_rc3jb84`, private port **47581**, private tmux/PID
+namespace, operator homes hidden from children, inherited TMUX absent. Only the
+explicitly authorized `auth.json` was copied into empty scratch CODEX_HOME at 0600;
+no credential bytes or fingerprint exported. Both credentials and scratch root
+were removed. Teardown reports **zero survivors**, closed listener, removed auth
+and removed root. [Cleanup](l6-rollback/run5/run/cleanup.json).
+
+**Five Codex input reservations/transport inputs**, including onboarding, A,
+ordinary work, B and C; **four native model turn IDs**, attachment generation **1**
+throughout. B was handled within the ordinary-work turn; it still counts as its own
+input. One notify-only bookkeeping identity is retained separately, not called a
+free model turn. No Claude model turns. No retry input or compaction.
+
+| Native turn id | Work | API-equivalent metered USD |
+| --- | --- | --- |
+| `01a08ee4-ee54-7cf0-90c2-305c0141ca64` | Onboarding | $0.00176996 |
+| `01a08ee5-13a3-7f62-b796-2939770db8f6` | A | $0.00227112 |
+| `01a08ee5-33c9-7081-b0ef-2708deaa311e` | Ordinary response + B handled in the same native turn | $0.00440664 |
+| `01a08ee5-b721-7ae3-a162-fa8cab5d4c8c` | C | $0.00218364 |
+| **Total** | **5/10 input units; 4 completed metered turns** | **$0.01063136 / $0.20 cap** |
+
+Rates inherited from the approved trial packet are $0.20 input / $0.02 cached input /
+$1.20 output per million tokens. These are API-equivalent estimates, not an invoice.
+The alternative cache-ignoring all-tokens-at-output-price diagnostic is
+**$0.2344848**; it is not the binding metered total.
+Every usage delta and turn is retained in [cost-ledger.json](l6-rollback/run5/run/cost-ledger.json).
+Metering never blocked a lifecycle operation. Implementer usage is not exposed by
+this tool surface; Opus spend is zero launched calls (review unavailable), not a
+claim that workflow usage was metered with the seat.
+
+### Run5 verification and deviations
+
+Test-first evidence: the inherited executable guard failed startup read-only,
+canonical A reply/delivery and legacy read-only delivery cases; the alternate
+startup tool-result test also exposed the missing argument. After the run5-only
+controller change, **5 delivery tests + 3 inherited boundary/executor tests pass**.
+Two offline accounting tests additionally distinguish repeated reads from a
+transport replay and preserve consumed-only delivery. [Initial red](l6-rollback/run5/red.txt),
+[green](l6-rollback/run5/green.txt), [accounting checks](l6-rollback/run5/adjudication-green.txt).
+No `src-tauri/` diff; Rust unit execution is not triggered by the Rust-diff rule.
+
+| Exact post-teardown gate | Exit |
+| --- | --- |
+| `just check-quick` | **0** |
+| `just lint` | **0** |
+| `just test-contracts` | **0** |
+
+[Gate results and bounded logs](l6-rollback/run5/checks-result.json).
+Machine-wide Cargo admission used the required pgrep predicate, 30-second polls
+only if at least three Cargo processes were present, a 30-minute deadline and
+checkout-local target with one build job. Gates started only after teardown.
+No installation, release, product fix, descriptor edit, Mesh commit, branch switch,
+load/stress test or plan-ledger change.
+
+Deviations: the specified L2 worktree is absent, so its versioned run3 controller
+and evidence were read here; the complete stage2b brief is absent, so its addendum,
+journal-stage3 analysis, USAGE and authoritative transition/ownership code were
+read. The inherited double-read instruction and missing cardinality guard are
+reported above; the controller reached C and (e) before offline adjudication caught
+that omission. Opus review is unavailable. Raw outcome files remain byte-exact;
+all qualification lives in separate analysis/adjudication sidecars. The runtime
+route completion does not erase these limits or overwrite runs 1–4.
