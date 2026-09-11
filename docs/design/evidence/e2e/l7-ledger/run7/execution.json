@@ -1,0 +1,8 @@
+{
+  "command": "L7_RUN_NAME=run7 python3 -B docs/design/evidence/e2e/l7-ledger/controller.py --auth-source <explicit-authorized-source>",
+  "driver": "run7_driver.py --auth-source <explicit-authorized-source>",
+  "controller_exit": 1,
+  "passive_capture": "notify/rollout identities and bounded redacted pane geometry every 0.5 seconds",
+  "capture_error_classes": [],
+  "reruns": 0
+}

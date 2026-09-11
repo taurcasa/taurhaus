@@ -1,8 +1,126 @@
-# Run7 — IN PROGRESS
+# UNAVAILABLE — Run7: steps 1–4 PASS; offline renderer launch stops step 5
 
-Fresh seventh trial on Taurhaus `dabf846f` ancestry and Mesh `588e4cf`.
-The committed six-step controller will run once; run7 raw evidence is retained
-under `l7-ledger/run7/`. No product changes or harness tests.
+The single run7 trial exercised the fixed assignment delivery, real seat-authored
+note and RESULT intake, and an unchanged ledger-only retry. **Step 5 stopped;
+step 6 was NOT RUN.** The snapshot exists, but independent offline read-back
+remains unverified. No product change or paid rerun was made.
+
+| Step 1 — task, assignment, ledger initialization | Outcome | Classification / evidence |
+| --- | --- | --- |
+| One bounded task and exact frozen assignment | **PASS** | **S-runtime**, committed `7d3cc43e`. [Assignment](l7-ledger/run7/step1-assignment-receipt.json), [immutable source](l7-ledger/run7/step1-immutable-assignment.json), [packet](l7-ledger/run7/step1-packet.json), [manifest](l7-ledger/run7/step1-manifest.json), [init receipt](l7-ledger/run7/step1-init-receipt.json). |
+
+| Step 2 — standalone observation and live render | Outcome | Classification / evidence |
+| --- | --- | --- |
+| Alpha-authored 698-byte note; attributed event and matching live render | **PASS** | **S-runtime**, committed `ea3d2742`. [Artifact bytes/digest](l7-ledger/run7/step2-artifact.json), [seat receipt](l7-ledger/run7/step2-seat-receipt.json), [live render](l7-ledger/run7/step2-live-render.json). |
+
+The run7 assignment criterion **passed**: message
+`1f10effc-ebf7-424d-beba-8fc13c86c0f0` has journal sequence 13 `submitted`
+with `paste left the composer; resubmitted_enter_once; model uptake unobserved`,
+then sequence 14 `consumed_by_read` by alpha. Assignment turn
+`01a08f18-2431-7f83-acaa-f1af50cdede5` started at **06:11:59.163Z**, completed
+at **06:12:44.021Z**, and reached **notify-sourced fresh idle at 06:12:44.262Z**
+before the next instruction reservation at **06:12:44.375Z**.
+[Journal receipts](l7-ledger/run7/team/state/messaging-v2/segments/000001.jsonl),
+[daemon JSONL](l7-ledger/run7/taurhaus.log.jsonl),
+[turn records](l7-ledger/run7/native-turn-meter.json),
+[notify records](l7-ledger/run7/notify-records.jsonl),
+[pane capture index](l7-ledger/run7/pane-captures.jsonl).
+
+| Step 3 — RESULT completion and separate receipts | Outcome | Classification / evidence |
+| --- | --- | --- |
+| Alpha-authored 348-byte RESULT; one completed task and lead delivery | **PASS** | **S-runtime**, committed `71ae33d9`. [Artifact bytes/digest](l7-ledger/run7/step3-artifact.json), [completed task](l7-ledger/run7/step3-completed-task.json), [source/ledger receipt table](l7-ledger/run7/step3-receipt-table.json), [lead completion delivery](l7-ledger/run7/step3-completion-delivery.json). Header stripped from human summary; lead receipt is native mailbox enqueue, not a paid Claude response. |
+
+| Step 4 — one ledger-only retry | Outcome | Classification / evidence |
+| --- | --- | --- |
+| Original receipt returned; two declarations and one completion remain | **PASS** | **S-runtime**, committed `06a5ecb3`. [Original/retry receipts and unchanged counts](l7-ledger/run7/step4-retry.json). No lifecycle replay or second completion notice. |
+
+| Step 5 — frozen snapshot and offline read-back | Outcome | Classification / evidence |
+| --- | --- | --- |
+| Managed stop and snapshot succeeded; first offline render exited 1 | **FAIL / incomplete** | **Harness launch boundary**; raw controller classification is the inherited `mesh` default. [Stop](l7-ledger/run7/step5-stop.json), [snapshot receipt](l7-ledger/run7/step5-snapshot-receipt.json), [retained bundle](l7-ledger/run7/bundle/cut.json), [raw outcome](l7-ledger/run7/step5-outcome.json). |
+
+The controller stopped on its first offline `bwrap … /offline/mesh ledger render
+--input-bundle /offline/bundle --view current --format markdown` invocation,
+**exit 1**, output digest `8e7b887757653310048daa6cd47677937e8bac30db98f854f7666b75a9f73653`.
+The [executed controller](l7-ledger/run7/controller-at-execution.py) copies the
+offline executable with `shutil.copyfile` under umask 0077 and never restores
+execute permission; a non-executable copy is the evident harness cause, inferred
+from that source because the failing stderr was retained only as a digest.
+This does not establish a Mesh renderer defect. Snapshot cut
+`db95d23b1a398be04a7d550c2564c148ac569372eef456dd40797d4a01d58990` and its raw
+bundle remain available; neither offline view is claimed verified. The trial
+was stopped, exported and torn down without a fix or self-initiated rerun;
+the orchestrator adjudicates this boundary. [Commands/exits](l7-ledger/run7/events.jsonl).
+
+| Step 6 — final ordered reconciliation and teardown | Outcome | Classification / evidence |
+| --- | --- | --- |
+| Ordered workflow blocked by step 5 | **NOT RUN** | **Harness-blocked**. Mandatory failure export and teardown nevertheless **passed**: [cleanup](l7-ledger/run7/cleanup.json), [controller exit](l7-ledger/run7/controller-exit.json). Source commitment and successful ledger intake are separately retained in the step-3 receipt table. |
+
+Every run7 spend is below; rates are inherited API-equivalent estimates, not
+invoices. Five controller input reservations, five completed rollout turns and
+one additional notify-only identity were retained, with one attachment generation.
+The Claude lead remained login-only with zero paid inputs. Runtime was
+**218.000 seconds**, within 12 minutes; observed identities/reservations remained
+below 12 inputs. Known spend is **USD 0.02433408**; the conservative known subtotal
+is **USD 0.37119960**. The extra unmetered identity leaves total spend and the
+USD 0.20 cap **unverified**, and the conservative estimate exceeds that cap.
+No metering or authorization question gated an operation. Trials 1–6 were history.
+[Full cost ledger and reservations](l7-ledger/run7/cost-ledger.json).
+
+| Run7 turn identity | API-equivalent USD | Conservative USD |
+| --- | --- | --- |
+| `01a08f17-c9d5-7b11-bbc8-3aff71610f41` — onboarding | 0.00552268 | 0.06895920 |
+| `01a08f18-2431-7f83-acaa-f1af50cdede5` — assignment | 0.00592700 | 0.08465160 |
+| `01a08f18-d89d-72b2-9707-49dd28e8ad36` — observation | 0.00515152 | 0.07403160 |
+| `01a08f19-b3cf-7e23-b4c1-e07450c0890e` — completion | 0.00525752 | 0.07974480 |
+| `01a08f1a-a323-73c0-a969-ac260e3e6698` — ledger-only retry | 0.00247536 | 0.06381240 |
+| `01a08f17-cbe5-7300-a3c2-1b160cc2a68d` — notify-only | Unavailable | Unavailable |
+| Claude lead — login-only | 0 | 0 |
+
+Taurhaus built from `e12d0739` with verified `dabf846f` ancestry and two
+`COMPLETION_FLUSH_TOLERANCE` occurrences; SHA-256
+`b71a44083b082b775807e500533ab77b9e9fdd9edb4b80caea3e59aef8150706`.
+Mesh stayed detached at `588e4cf3e440e7fadfe548e4f35fc2034e32e34c`, rebuilt
+to SHA-256 `1dbaef83b79f10f86ca7f8089eb08e33f76940feb773582e173a3ee46de633cf`.
+Both builds exited **0**, with checkout-local targets and one Cargo worker after
+admission polling. Runtime verified protocol **27**, native Codex **0.153.4**,
+`gpt-5.6-luna` / low / tmux. Both native siblings were copied, descriptor unchanged.
+[Preflight](l7-ledger/run7/preflight.json), [builds](l7-ledger/run7/builds.json),
+[startup](l7-ledger/run7/startup-ready.json).
+
+The controller ran unchanged once, using production canonical initialization,
+scratch-only roots, private tmux/PID namespace and a probed private daemon port.
+Only the explicitly authorized authentication file was copied at mode 0600.
+Teardown preceded all gates: zero owned survivors, port closed, authentication
+copy deleted and scratch root removed. **All 474 daemon physical lines are
+retained as 474 sanitized JSONL rows**. Message bodies are redacted in the journal
+export and panes; the snapshot is Mesh's derived ledger bundle.
+[Daemon log manifest](l7-ledger/run7/daemon-log-manifest.json),
+[cleanup](l7-ledger/run7/cleanup.json),
+[driver](l7-ledger/run7_driver.py), [execution](l7-ledger/run7/execution.json),
+[controller](l7-ledger/run7/controller-at-execution.py),
+[runtime](l7-ledger/run7/runtime-at-execution.py),
+[support](l7-ledger/run7/support-at-execution.py).
+
+Post-teardown gates: **`just check-quick`: 0; `just lint`: 0;
+`just test-contracts`: 0**. Check-quick executed 2,521 frontend tests.
+[Exact commands, exit codes and log tails](l7-ledger/run7/checks-result.json).
+No `src-tauri/` diff; `just test-rust-unit` is not required.
+No new tests, offline red/green transcripts, audit scripts or
+harness regression suite were added or run, following the slim-evidence ruling.
+The additional `git show --format= --check HEAD` inspection exited **2** for
+trailing blank lines in the two raw snapshot views and two final pane captures;
+those evidence bytes were preserved unchanged.
+
+Other deviations/limits: the referenced lane-2 checkout is absent, so its committed
+run3 controller and evidence in this checkout were read; Mesh's referenced
+`docs/design/ledger-*.md` files are absent, so its `USAGE.md` ledger contracts
+were used. The independent Opus lens is unavailable in this executor and remains
+an orchestrator review requirement. The seat-tool proof extractor retained
+receipts and stdout digests, but its numeric `exit_codes` arrays are empty;
+those seat command exit numbers are not independently available in this packet.
+Incomplete metering, missing review and
+unverified offline read-back prevent overall PASS. No plan-ledger edits,
+installation, release, product repair, fault injection or load testing occurred.
 
 ---
 

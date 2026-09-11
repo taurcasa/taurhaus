@@ -1,0 +1,6 @@
+{
+  "step": 5,
+  "outcome": "FAIL",
+  "classification": "mesh",
+  "reason": "command exit 1; see command result digest"
+}
