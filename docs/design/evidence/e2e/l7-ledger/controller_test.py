@@ -35,6 +35,10 @@ class EvidenceRules(unittest.TestCase):
         value = {'memberControlToken': 'private', 'body': 'mail', 'message': 'mail', 'access_token': 'private', 'event_id': 'e'}
         self.assertEqual(clean(value), {'body': '<message-body-redacted>', 'message': '<message-body-redacted>', 'event_id': 'e'})
 
+    # // Regression: 030980a7 matched member_control_token but missed Mesh's CONTROL_TOKEN argv spelling.
+    def test_control_token_is_redacted_inside_shell_argv(self):
+        self.assertNotIn('fixture-secret', clean('env MESH_CONTROL_TOKEN=fixture-secret mesh'))
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -15,7 +15,7 @@ def clean(value):
         return [clean(v) for v in value]
     if isinstance(value, str):
         value = re.sub(r'/home/[^/\s]+/(?!projects/(?:taurhaus-l7-ledger|mesh-l7)(?:/|\b))[^\s"\']*', '<operator-path-redacted>', value)
-        value = re.sub(r'(?i)(?:member[_-]?control[_-]?token|access[_-]?token|refresh[_-]?token)[=: ]+[^\s,}]+', '<secret-redacted>', value)
+        value = re.sub(r'(?i)(?:(?:member[_-]?)?control[_-]?token|access[_-]?token|refresh[_-]?token)[=: ]+[^\s,}]+', '<secret-redacted>', value)
         return value
     return value
 

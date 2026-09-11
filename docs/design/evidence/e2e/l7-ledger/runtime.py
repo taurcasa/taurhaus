@@ -316,8 +316,12 @@ class Trial:
                 try:child.wait(timeout=10)
                 except subprocess.TimeoutExpired:os.killpg(child.pid,signal.SIGTERM);child.wait(timeout=10)
         survivors=self.identities()
+        log_manifest=[]
         for path in (self.root/'data').glob('taurhaus.log*.jsonl'):
-            self.save(path.name,retained_daemon_rows(complete_rows(path.read_text())))
+            data=path.read_bytes();rows=complete_rows(data.decode())
+            self.save(path.name,retained_daemon_rows(rows))
+            log_manifest.append({'file':path.name,'source_sha256':hashlib.sha256(data).hexdigest(),'physical_lines':len(data.splitlines()),'retained_rows':len(rows),'all_rows_retained':len(data.splitlines())==len(rows)})
+        self.save('daemon-log-manifest.json',log_manifest)
         raw=self.root/'daemon.log'
         if raw.exists():self.save('daemon-stderr.json',{'sha256':hashlib.sha256(raw.read_bytes()).hexdigest(),'bytes':raw.stat().st_size})
         with socket.socket() as probe:

@@ -3,7 +3,10 @@ import json, os, subprocess, time
 from pathlib import Path
 OUT=Path(__file__).resolve().parent
 ROOT=OUT.parents[4]
-rows=[]
+rows=json.loads((OUT/'builds.json').read_text()) if (OUT/'builds.json').exists() else []
+preflight=subprocess.run(['just','ensure-tauri-resources'],cwd=ROOT)
+rows.append({'command':'just ensure-tauri-resources','exit':preflight.returncode})
+if preflight.returncode:raise SystemExit(preflight.returncode)
 for cwd, command, target in [(ROOT,['just','build-daemon'],ROOT/'src-tauri/target'),(ROOT.parent/'mesh-l7',['cargo','build','--bin','mesh'],ROOT.parent/'mesh-l7/target')]:
     deadline=time.monotonic()+1800
     while True:
