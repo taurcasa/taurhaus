@@ -18,7 +18,6 @@ import { assertTmuxIsolation } from '../helpers/laneTmux.js'
 import { createLaneCleanup, findRunTokenProcessRecords, killOwnedProcessRecord } from '../helpers/laneCleanup.js'
 import { trustProject } from '../helpers/codexScratchHome.js'
 import { rolloutPaths } from '../helpers/codexRollout.js'
-import { DEFAULT_CANONICAL_POLICY } from '../../src/lib/components/meshTabUtils.js'
 
 const checkout = resolve(import.meta.dirname, '../..')
 const data = process.env.TAURHAUS_DATA_DIR || ''
@@ -306,7 +305,7 @@ describe('canonical builder and hosted conversation (paid)', function () {
       return Boolean(calls[0].result)
     }, 'taurhaus: initialize did not finish', 240_000)
     const call = await browser.execute(() => window.__l3.ipc.find(r => r.command === 'coordination_initialize_team'))
-    assert.deepEqual(call.args.request.messaging, { mode: 'canonical', retentionPolicy: DEFAULT_CANONICAL_POLICY })
+    assert.deepEqual(call.args.request.messaging, { mode: 'canonical', retentionPolicy: canonicalPolicy() })
     assert.equal(call.args.request.agents.find(a => a.name === 'alpha').delivery, 'tmux')
     assert.equal(call.args.request.agents.find(a => a.name === 'beta').delivery, 'app_server')
     assert.equal(call.result.failedStep, null, 'taurhaus: initialize report refused')
@@ -411,7 +410,7 @@ async function prepareBuilder() {
   budget(1, 'throwaway first-use TUI start; no submitted prompt')
   tmux(['new-session', '-d', '-s', 'taurhaus', '-c', project])
   cleanup.owe('private tmux server', () => { spawnSync('tmux', ['kill-server'], { env: process.env, timeout: 5000 }) })
-  for (const [key, value] of Object.entries({ HOME: process.env.HOME, CODEX_HOME: codexHome, CLAUDE_DIR: claudeDir, CLAUDE_CONFIG_DIR: claudeDir, TAURHAUS_CLAUDE_DIR: claudeDir, TAURHAUS_DATA_DIR: data, GROK_HOME: process.env.GROK_HOME, GEMINI_CLI_HOME: join(root, 'gemini'), TAURHAUS_AGY_DIR: process.env.TAURHAUS_AGY_DIR })) {
+  for (const [key, value] of Object.entries({ HOME: process.env.HOME, CODEX_HOME: codexHome, CLAUDE_DIR: claudeDir, CLAUDE_CONFIG_DIR: claudeDir, TAURHAUS_CLAUDE_DIR: claudeDir, TAURHAUS_DATA_DIR: data, GROK_HOME: process.env.GROK_HOME, GEMINI_CLI_HOME: join(root, '.gemini'), TAURHAUS_AGY_DIR: process.env.TAURHAUS_AGY_DIR })) {
     tmux(['set-environment', '-g', key, value])
     tmux(['set-environment', '-t', 'taurhaus', key, value])
   }
@@ -529,4 +528,14 @@ function exportJournal() {
     }
   }
   save('receipts.json', { alpha: runtime('alpha').recovery, beta: runtime('beta').recovery })
+}
+
+function canonicalPolicy() {
+  // Regression: f2b5eab16 imported meshTabUtils into WDIO's uncompiled Node
+  // runner, reaching toolRegistryState.svelte.js and failing on $state before
+  // any native case loaded. Read the same JSON literal the Rust contract uses.
+  const source = readFileSync(join(checkout, 'src/lib/components/meshTabUtils.js'), 'utf8')
+  const match = source.match(/export const DEFAULT_CANONICAL_POLICY = Object\.freeze\((\{[\s\S]*?\})\)/)
+  assert(match, 'harness: canonical JSON policy literal unavailable')
+  return JSON.parse(match[1])
 }
