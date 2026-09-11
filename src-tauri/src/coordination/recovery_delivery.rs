@@ -176,9 +176,13 @@ fn prepare_inner(
                     .map(|m| m.name.as_str())
                     .collect::<Vec<_>>()
                     .join(", ");
-                format!("You are the lead of {team}; members: {names}")
+                if names.is_empty() {
+                    format!("You are the lead of {team}; no other members yet")
+                } else {
+                    format!("You are the lead of {team}; members: {names}")
+                }
             } else {
-                format!("New team {team}: no assignment yet. Lead: {}. Wait for the lead's first message (mesh read) or your assignment card.", lead.name)
+                format!("{} on {team}: no assignment yet. Lead: {}. Wait for the lead's first message (mesh read) or your assignment card.", member.name, lead.name)
             });
         }
     }
@@ -723,7 +727,7 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(card.receipt.card_key.context, (1, 0));
-        assert!(card.text.starts_with("New team team: no assignment yet. Lead: captain. Wait for the lead's first message (mesh read) or your assignment card."), "{}", card.text);
+        assert!(card.text.starts_with("seat on team: no assignment yet. Lead: captain. Wait for the lead's first message (mesh read) or your assignment card."), "{}", card.text);
         assert!(!card.text.contains("unavailable"), "{}", card.text);
         for absent in [
             "stage=",
@@ -737,6 +741,67 @@ mod tests {
             assert!(!card.text.contains(absent), "{absent}: {}", card.text);
         }
         assert!(card.text.contains("Follow the project instructions."));
+    }
+
+    #[test]
+    fn creation_card_preserves_effort_and_work_contract() {
+        // Regression: 7156d13de dropped populated effort facts and the work contract.
+        let (_temp, root, registry) = creation_fixture();
+        MemberRuntimeStore::update(&root, "team", "seat", |runtime| {
+            runtime.applied_effort = Some("high".into());
+        })
+        .unwrap();
+        let card = prepare(&registry, &root, "team", "seat", "inbox")
+            .unwrap()
+            .unwrap();
+        assert!(
+            card.text
+                .contains("effective effort: high; hold: none recorded"),
+            "{}",
+            card.text
+        );
+        assert!(card
+            .text
+            .contains(crate::coordination::recovery_card::FIRST_ACTION));
+        assert!(card.text.contains("Corrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch."));
+        assert!(!card.text.contains("unavailable"));
+    }
+
+    #[test]
+    fn creation_card_new_seat_does_not_claim_the_team_is_new() {
+        // Regression: 7156d13de mistook a seat's first attachment for a new team.
+        let (_temp, root, registry) = creation_fixture();
+        MemberRuntimeStore::update(&root, "team", "captain", |runtime| {
+            runtime.attachment_generation = 7;
+        })
+        .unwrap();
+        let card = prepare(&registry, &root, "team", "seat", "inbox")
+            .unwrap()
+            .unwrap();
+        assert!(
+            card.text
+                .starts_with("seat on team: no assignment yet. Lead: captain."),
+            "{}",
+            card.text
+        );
+    }
+
+    #[test]
+    fn creation_card_lead_only_team_has_no_dangling_roster() {
+        // Regression: 7156d13de printed an empty members suffix for lead-only teams.
+        let (_temp, root, registry) = creation_fixture();
+        let mut config = TeamConfigStore::load(&root, "team").unwrap();
+        config.members.retain(|member| member.name == "captain");
+        TeamConfigStore::save(&root, "team", &config).unwrap();
+        let card = prepare(&registry, &root, "team", "captain", "inbox")
+            .unwrap()
+            .unwrap();
+        assert!(
+            card.text
+                .starts_with("You are the lead of team; no other members yet"),
+            "{}",
+            card.text
+        );
     }
 
     #[test]

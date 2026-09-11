@@ -519,6 +519,21 @@ impl RecoveryCard {
                 format!("Project cwd: {}", self.project_path),
                 self.steering.clone(),
             ];
+            let effort = [
+                ("Requested effort", &self.requested_effort),
+                ("effective effort", &self.effective_effort),
+                ("hold", &self.effort_hold),
+            ]
+            .into_iter()
+            .filter(|(_, value)| !value.is_empty())
+            .map(|(label, value)| format!("{label}: {value}"))
+            .collect::<Vec<_>>()
+            .join("; ");
+            if !effort.is_empty() {
+                lines.push(effort);
+            }
+            lines.push(FIRST_ACTION.into());
+            lines.push("Corrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.".into());
             if !self.lease_context.is_empty() {
                 lines.push(self.lease_context.clone());
             }

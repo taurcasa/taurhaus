@@ -3282,7 +3282,7 @@ fn initialize_pipeline_claude_template_agent_receives_role_context_message() {
             assert_eq!(payload.member_name, "researcher");
             // Regression: 3ca169ed4 used recovery wording for an unassigned new seat.
             assert_eq!(payload.message.lines().next().unwrap(),
-                "New team architecture-final: no assignment yet. Lead: team-lead. Wait for the lead's first message (mesh read) or your assignment card.");
+                "researcher on architecture-final: no assignment yet. Lead: team-lead. Wait for the lead's first message (mesh read) or your assignment card.");
             assert!(payload
                 .message
                 .contains("Role: adversarial-reviewer-claude"));
