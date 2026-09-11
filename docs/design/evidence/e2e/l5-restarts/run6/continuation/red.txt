@@ -1,0 +1,21 @@
+....FF...........................
+======================================================================
+FAIL: test_started_message_card_is_host_exposure (hosted_test.HostedStartup.test_started_message_card_is_host_exposure)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/run6/continuation/hosted_test.py", line 33, in test_started_message_card_is_host_exposure
+    self.assertTrue(host_card_seen(events, a['session_id'], body))
+AssertionError: False is not true
+
+======================================================================
+FAIL: test_started_user_card_with_completed_turn_satisfies_startup (hosted_test.HostedStartup.test_started_user_card_with_completed_turn_satisfies_startup)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l5-restarts/docs/design/evidence/e2e/l5-restarts/run6/continuation/hosted_test.py", line 22, in test_started_user_card_with_completed_turn_satisfies_startup
+    self.assertTrue(send_ready([], 'beta', a, onboarding=True, transport='app_server',
+AssertionError: False is not true
+
+----------------------------------------------------------------------
+Ran 33 tests in 0.043s
+
+FAILED (failures=2)
