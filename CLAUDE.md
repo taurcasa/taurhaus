@@ -215,8 +215,8 @@ Agent/team workflow rule:
 
 | Recipe | What it does |
 |--------|-------------|
-| `just build-windows` | Syncs to `C:\taurhaus_build` by default (override with `TAURHAUS_WINDOWS_BUILD_DIR`), then runs the measured native Windows NSIS build via a PowerShell wrapper. |
-| `just build-windows-sccache` | Same as `just build-windows`, but enables Windows-side `sccache` auto-detection for the native build. |
+| `just build-windows` | Syncs to `C:\taurhaus_build` by default (override with `TAURHAUS_WINDOWS_BUILD_DIR`), then runs the measured native Windows NSIS build via a PowerShell wrapper. Windows-side `sccache` is used when installed (`TAURHAUS_WINDOWS_USE_SCCACHE=0` opts out). |
+| `just build-windows-sccache` | Same as `just build-windows` with `sccache` forced on; kept for scripts that spell it out. |
 | `just install-windows` | Runs the latest Windows NSIS installer silently, verifies the installed exe hash against the built payload, then installs and restarts the matching WSL daemon (`_install-daemon-from-build`). `build-windows` no longer touches the live daemon — a daemon newer than the installed app is rejected on every reconnect. |
 | `just build-macos` | Syncs via rsync to Mac Mini, builds `.app` + `.dmg` natively via SSH. |
 | `just build-macos-universal` | Universal macOS binary (arm64 + x86_64) on remote Mac. |

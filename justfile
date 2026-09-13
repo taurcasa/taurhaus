@@ -353,7 +353,7 @@ test-rust-fast: ensure-tauri-resources
 # Executed contracts: measured 36.52s incremental (33.11s build), 52.69s repeat
 # with shared-target contention/rebuild; warm execution ~4.6s, cold build unmeasured.
 test-contracts: ensure-tauri-resources
-    cd src-tauri && cargo test --test cli_renderers --test module_boundary_assertions --test harness_conformance -- --test-threads=1
+    cd src-tauri && cargo test --no-fail-fast --test cli_renderers --test module_boundary_assertions --test harness_conformance -- --test-threads=1
 
 # Linux operator lane: requires lock-matching Mesh, Python 3, and cc.
 test-mesh-contracts: ensure-tauri-resources
@@ -369,12 +369,12 @@ test-canonical-mesh-contract: ensure-tauri-resources
 test-rust-unit: ensure-tauri-resources
     @echo "NOT RUN: Canonical Mesh contract; run just test-canonical-mesh-contract with MESH_CONTRACT_BIN."
     @echo "NOT RUN: Mesh binary contracts; run just test-mesh-contracts with locked Mesh, Python 3, and cc."
-    cd src-tauri && heavy_test_filters="{{heavy_rust_test_filters}}"; skip_args=""; for test_filter in $heavy_test_filters; do skip_args="$skip_args --skip $test_filter"; done; cargo test --lib --bins -- --test-threads=1 $skip_args
+    cd src-tauri && heavy_test_filters="{{heavy_rust_test_filters}}"; skip_args=""; for test_filter in $heavy_test_filters; do skip_args="$skip_args --skip $test_filter"; done; cargo test --no-fail-fast --lib --bins -- --test-threads=1 $skip_args
 
 # Rust integration/system lane. Test binaries and genuinely shared heavy suites
 # stay serialized; listener-owning daemon server/client fixtures run in parallel.
 test-rust-integration: ensure-tauri-resources
-    cd src-tauri && cargo test {{integration_test_args}} -- --test-threads=1
+    cd src-tauri && cargo test --no-fail-fast {{integration_test_args}} -- --test-threads=1
     cd src-tauri && for test_filter in {{heavy_rust_test_filters}}; do echo "▸ $test_filter"; case "$test_filter" in daemon::server::tests::|provider::daemon_client::tests::) cargo test --lib "$test_filter" || exit ;; *) cargo test --lib "$test_filter" -- --test-threads=1 || exit ;; esac; done
 
 # Bisect default Rust unit-test lane by module groups with checkpoints
@@ -885,11 +885,12 @@ _bundle-daemon-from-build:
     cp "$cargo_target_dir/release/taurhaus-daemon" src-tauri/resources/taurhaus-daemon
     echo "✓ Daemon binary bundled"
 
-# Build Windows NSIS installer (syncs first, builds natively on Windows)
+# Build Windows NSIS installer (syncs first, builds natively on Windows). Uses
+# Windows-side sccache when it is installed; TAURHAUS_WINDOWS_USE_SCCACHE=0 opts out.
 build-windows:
     ./scripts/build-windows.sh "{{project}}" "{{win_dir}}"
 
-# Build Windows NSIS installer with optional sccache integration.
+# Same build with sccache forced on (kept for scripts that spell it out).
 build-windows-sccache:
     TAURHAUS_WINDOWS_USE_SCCACHE=1 ./scripts/build-windows.sh "{{project}}" "{{win_dir}}"
 
