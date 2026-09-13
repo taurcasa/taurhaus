@@ -275,6 +275,13 @@ function laneProblem(result, label) {
 const REVIEW_CONTRACT =
   'VERDICT CONTRACT: return `fix_required` only when you filed at least one blocker or major — a fix_required carrying nothing above a minor is malformed and is rejected, not read as an approval. Minors and nits are welcome under `approve`: they ride along to the fixer as trivia and come back in the ledger. If a minor is worth blocking the change on, raise it to a major and say why.'
 
+// The reviewer's brief, stated to every reviewer, judge and claim verifier. The suites are not the
+// reviewer's job: the implementer ran the gates on this tree and CI re-runs them on the pull request,
+// so a review that re-runs them adds minutes, not evidence. The calibration is what keeps a fix round
+// from being spent on style — a major has to come with the input that fails.
+const REVIEW_BRIEF =
+  'REVIEW BRIEF: read-only, and do not run test suites, builds or lints — the implementer ran the gates on this tree and CI re-runs them on the pull request; run at most one focused test, only to confirm a defect you already suspect. Read the diff once and each touched file once; aim for under 25 tool calls. CALIBRATION: blocker = data loss, a security hole, or something that cannot ship; major = a defect a user or operator would actually hit, a regression, or a test that passes without the change — name the concrete input, call path or sequence that fails; minor = real but harmless today (duplication, an unclear message, an edge case nobody reaches); nit = style. Approve unless you can name the failing input. One finding per root cause, ordered by severity.'
+
 function contractBreach(review) {
   if (!review || review.verdict !== 'fix_required' || !Array.isArray(review.findings)) return false
   return review.findings.filter((f) => f && (f.severity === 'blocker' || f.severity === 'major')).length === 0
@@ -366,6 +373,84 @@ function trivialFrom(findings) {
   return findings.filter((f) => f && f.severity !== 'blocker' && f.severity !== 'major')
 }
 
+// The implementing lane's own gate run is evidence, not a claim to re-run: it reports every catalog
+// command with its pass/fail (`gate_commands`) and the tree it ran on (`head`). Shaped like a gate
+// report so gateProblem() judges it by the same catalog rules; the gate agent runs only when it falls
+// short. The gate of record is CI on the pull request, which re-runs the suites independently anyway.
+function laneGateEvidence(lane, source) {
+  const commands = lane && Array.isArray(lane.gate_commands) ? lane.gate_commands.filter(Boolean) : []
+  return {
+    status: commands.length > 0 && commands.every((c) => c.status === 'pass') ? 'pass' : 'fail',
+    source: source,
+    head: lane && lane.head ? String(lane.head) : '',
+    changed_paths: normalizedChangedPaths(lane && lane.files_changed),
+    commands: commands,
+    failures: [],
+    diff_stat: '',
+    commits: lane && Array.isArray(lane.commits) ? lane.commits : [],
+    error: '',
+  }
+}
+
+// A review finding is judged before it can cost a fix round. The judge is a skeptic working read-only
+// on one finding: it confirms only when it can state the failing input itself, downgrades a real but
+// harmless observation to a minor, and refutes what the code does not do.
+const JUDGE_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['status', 'error', 'model_used', 'verdict', 'reason'],
+  properties: {
+    status: { type: 'string', enum: ['ok', 'unavailable'], description: "'ok' only for a judgement you reached; 'unavailable' when this lane could not run" },
+    error: { type: 'string', description: 'why the lane is unavailable' },
+    model_used: { type: 'string', description: 'the model that actually ran this lane' },
+    verdict: {
+      type: 'string',
+      enum: ['confirmed', 'minor', 'refuted'],
+      description: 'confirmed: the defect is real at the filed severity and you named the failing input; minor: real but below the major bar; refuted: the code does not have the defect or the scenario is unreachable',
+    },
+    reason: { type: 'string', description: 'file:line evidence for the verdict — the failing input, the bar it misses, or the line that disproves the finding' },
+  },
+}
+
+function judgeTask(finding, ctx) {
+  return [
+    RULES.readOnly,
+    'You are the skeptic for ONE review finding on ' +
+      ctx.title +
+      '. Checkout: ' +
+      ctx.root +
+      (ctx.branch ? ', branch ' + ctx.branch : '') +
+      '; the change under review is `' +
+      ctx.diff +
+      '`. The finding (JSON): ' +
+      JSON.stringify(finding) +
+      '.',
+    'Try to refute it, with file:line evidence read from the code rather than from the finding: (1) does the cited code do what the finding says; (2) is the scenario reachable — name the input, call path or sequence, or show why none exists; (3) does an existing test, guard or caller already cover it; (4) is the severity honest by the calibration below. Do not run test suites or builds; one focused test at most.',
+    REVIEW_BRIEF,
+    "Return verdict='confirmed' only when you can state the concrete failing input yourself; 'minor' when the observation is real but misses the major bar (say which bar); 'refuted' when the code does not have the defect or the scenario is unreachable (quote the line that proves it). " +
+      RULES.honest,
+  ].join('\n')
+}
+
+// An unavailable judge never drops a finding: what nobody could judge stands as filed.
+function judgeVerdicts(findings, verdicts, label) {
+  const out = { confirmed: [], minor: [], refuted: [] }
+  findings.forEach((finding, index) => {
+    const verdict = verdicts[index]
+    const problem = laneProblem(verdict, label + ' #' + (index + 1))
+    if (problem || !verdict.verdict) {
+      log('The judge could not rule on "' + finding.title + '" — it stands as filed: ' + (problem || 'no verdict returned'))
+      out.confirmed.push({ ...finding, judged: 'unavailable' })
+      return
+    }
+    const judged = { ...finding, judged: verdict.verdict + ': ' + verdict.reason }
+    if (verdict.verdict === 'confirmed') out.confirmed.push(judged)
+    else if (verdict.verdict === 'minor') out.minor.push({ ...judged, severity: 'minor' })
+    else out.refuted.push(judged)
+  })
+  return out
+}
+
 function trailers(family) {
   const author =
     family === 'codex'
@@ -390,7 +475,7 @@ const RULES = {
   gates:
     'GATES (exact commands; run from the checkout root):\n' +
     GATES.map((command) => '- ' + command).join('\n') +
-    '\nRUST DIFF RULE: if your diff touches `src-tauri/`, also run `just test-rust-unit` — `just check-quick` compiles the Rust tests but does not execute them.',
+    '\nRUST DIFF RULE: if your diff touches `src-tauri/`, also run `just test-rust-unit` — `just check-quick` compiles the Rust tests but does not execute them.\nRun the full catalog once, when the work is complete (and once more after a fix round) — not after every item; while iterating, run only the focused tests for the module you touched.',
   gateNotes: GATE_NOTES ? 'GATE NOTES (operational instructions, not commands):\n' + GATE_NOTES : '',
   gateResult: (base) =>
     'As your first step, run `git diff --name-only ' +
@@ -401,7 +486,7 @@ const RULES = {
     REQUIRED_GATES.join(', ') +
     '. Before running a `just <recipe>` gate, use `just --summary` to confirm its recipe exists; do not list that discovery query as a gate command, and report the declared gate as fail with `unknown recipe` when absent. A required command reported `skipped` fails the run, so run it or report it `fail` with the reason it could not run. Set `status` = pass only when every command passed. A gate command that did not apply is left off the list and explained in the summary — never report it `skipped` or report a command you did not run as `pass`. `failures` and `error` stay empty under a passing status; pass next to either one is a contradiction and fails the run.',
   safety:
-    'SAFETY: tests never read or write the real ~/.claude*, ~/.codex, ~/.gemini or ~/.grok and never invoke a real CLI; no load or stress runs; kill anything you start (trap/finally) and never kill a process you did not start; never print tokens or secrets.',
+    'SAFETY: tests never read or write the real ~/.claude*, ~/.codex, ~/.gemini or ~/.grok and never invoke a real CLI; no load or stress runs; kill anything you start (trap/finally) and never kill a process you did not start; never print tokens or secrets. Run gate commands exactly as written — never wrapped in an isolation script, a sandboxed HOME or a copy of the target directory; a test you write isolates itself with tempdirs.',
   readOnly:
     'READ-ONLY: change no file in any repository and run no git write command; write only under ' +
     SCRATCH +
@@ -409,9 +494,11 @@ const RULES = {
   scope:
     'SCOPE RULE: judge against the spec\'s minimum deliverable and its "not building" list — missing scaffolding (tests or docs for tooling, dry-run niceties, extra configurability) is at most a minor, and majors are reserved for defects a user would hit.',
   evidence:
-    'Do NOT modify any file. Report only findings you verified with file:line evidence; severity blocker/major/minor/nit. ' + REVIEW_CONTRACT,
+    'Do NOT modify any file. Report only findings you verified with file:line evidence; severity blocker/major/minor/nit. ' + REVIEW_BRIEF + ' ' + REVIEW_CONTRACT,
   honest:
     "HONESTY: set status='ok' only for work you actually did and saw succeed. If your lane could not run, return status='unavailable' with the error — never an invented result, an approval you did not reach, or a gate you did not watch pass. The caller fails the run closed on an unavailable lane, and that is the correct outcome.",
+  gateReport:
+    "GATE REPORT: after your final commit, run the full gate catalog once on that tree (Rust diff rule included) and report every catalog command you ran with its pass/fail in `gate_commands`, and `git rev-parse HEAD` in `head`. A report that covers the catalog is reused as the run's gate — nobody re-runs it — so list only commands you ran on the final tree and watched finish, exactly as written; CI re-runs the suites on the pull request.",
 }
 
 const STAGE_BLOCKED_SCHEMA = {
@@ -764,7 +851,7 @@ const COMMON = [RULES.checkout, RULES.spec, RULES.gates, RULES.tdd, RULES.commit
 const IMPL_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['status', 'error', 'model_used', 'summary', 'commits', 'files_changed', 'tests_added', 'red_observed', 'gate', 'deviations'],
+  required: ['status', 'error', 'model_used', 'summary', 'commits', 'files_changed', 'tests_added', 'red_observed', 'gate', 'gate_commands', 'head', 'deviations'],
   properties: {
     status: { type: 'string', enum: ['ok', 'unavailable'], description: "'ok' only for work you did and saw succeed; 'unavailable' when this lane could not run" },
     error: { type: 'string', description: 'why the lane is unavailable: the exit code and the last log lines' },
@@ -775,7 +862,22 @@ const IMPL_SCHEMA = {
     files_changed: { type: 'array', items: { type: 'string' }, description: 'repo-relative paths, exactly as git reports them' },
     tests_added: { type: 'array', items: { type: 'string' } },
     red_observed: { type: 'string', description: 'which tests failed before the fix and how' },
-    gate: { type: 'string', description: 'the gate commands run and their outcome' },
+    gate: { type: 'string', description: 'the gate commands run and their outcome, in prose' },
+    gate_commands: {
+      type: 'array',
+      description: "every gate catalog command you ran on the final tree, in order, with its pass/fail; a report that covers the catalog is reused as the run's gate, so list only commands you ran on that tree and watched finish",
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['command', 'status', 'detail'],
+        properties: {
+          command: { type: 'string', description: 'the exact command line' },
+          status: { type: 'string', enum: ['pass', 'fail', 'skipped'] },
+          detail: { type: 'string', description: 'the failure, or why it was skipped; empty on pass' },
+        },
+      },
+    },
+    head: { type: 'string', description: '`git rev-parse HEAD` after your last commit' },
     deviations: { type: 'array', items: { type: 'string' }, description: 'findings skipped as wrong, with the reason' },
   },
 }
@@ -838,38 +940,37 @@ const GATE_SCHEMA = {
 }
 
 const reviewers = new Set()
-function reviewPrompt(round, prior) {
+function reviewPrompt(round, prior, since) {
+  // Every review here is a re-review scoped to the fix: it verifies the handed-over findings and reads
+  // the commits made since the last reviewed tree, or the whole branch diff when that tree is unknown.
   return [
     RULES.scope,
     'You are an independent code reviewer from a different model family than the author. Checkout: ' +
       ROOT +
       (BRANCH ? ', branch ' + BRANCH : '') +
-      '; review ONLY the changes in `' +
-      DIFF +
-      '` (run it — if ' +
-      BASE +
-      ' is missing use origin/' +
-      BASE +
-      '; read the surrounding code as needed; you may run the test lanes). Context: the change implements ' +
+      '. Context: the change implements ' +
       TITLE +
       (SPEC && SPEC !== TITLE ? ', specified in ' + SPEC + ' — read it first' : '') +
       '.',
-    'Lens: conformance and correctness — does the change implement the spec item completely; are the tests genuinely red-before/green-after (inspect them, run them); edge cases and backward compatibility; anything missing or out of scope. Does the change re-derive a rule another layer owns (frontend vs backend, app vs daemon), or add a view that bypasses the existing authority? Name the authority and cite the duplicate.',
     'This is re-review round ' +
       round +
-      '. Prior findings (JSON): ' +
-      prior +
-      '. First verify each prior finding is resolved, with file:line evidence, then look for regressions introduced by the fix.',
+      ', scoped to the fix: review ONLY `' +
+      (since ? 'git diff ' + since + '..HEAD' : DIFF) +
+      '`' +
+      (since ? ' (the commits since the tree you reviewed)' : ' (run it — if ' + BASE + ' is missing use origin/' + BASE + ')') +
+      ' — first verify each prior finding is resolved, with file:line evidence, then look for regressions in that diff; do not re-review the rest of the branch. Prior findings (JSON): ' +
+      prior,
+    'Lens: conformance and correctness — does the change implement the spec item completely; are the tests genuinely red-before/green-after (inspect them); edge cases and backward compatibility; anything missing or out of scope. Does the change re-derive a rule another layer owns (frontend vs backend, app vs daemon), or add a view that bypasses the existing authority? Name the authority and cite the duplicate.',
     RULES.evidence,
   ].join('\n')
 }
 
 // `note` is the one contract re-request: a lane that came back malformed is re-run with the contract
 // restated, under its own label and its own scratch tag so the run tree shows both attempts.
-function reviewAgent(round, prior, note) {
+function reviewAgent(round, prior, since, note) {
   const again = note ? '-recontract' : ''
   const label = 'review:' + REVIEW_FAMILY + '-r' + round + again
-  const task = reviewPrompt(round, prior) + (note ? '\n' + note : '')
+  const task = reviewPrompt(round, prior, since) + (note ? '\n' + note : '')
   if (REVIEW_FAMILY === 'opus') {
     return agent(
       task + "\nSet reviewer='opus conformance', status='ok' and model_used='" + MODELS.opus + "'. " + RULES.honest,
@@ -888,13 +989,14 @@ function reviewAgent(round, prior, note) {
   )
 }
 
-function reviewLane(round, prior, label) {
-  return reviewOnce((note) => reviewAgent(round, prior, note), label)
+function reviewLane(round, prior, label, since) {
+  return reviewOnce((note) => reviewAgent(round, prior, since, note), label)
 }
 
 function fixAgent(findings, trivial, round) {
   const task = [
     COMMON,
+    RULES.gateReport,
     '',
     'You are the fixer for ' +
       TITLE +
@@ -904,14 +1006,14 @@ function fixAgent(findings, trivial, round) {
     JSON.stringify(findings, null, 1),
     'Take the minors and nits too where they are trivial: ' + JSON.stringify(trivial, null, 1),
     'Keep the change minimal and local to the files named — no new features, no architecture reshaping, no wire changes.' + (A.fixNotes ? ' ' + A.fixNotes : ''),
-    'Re-run the gates.',
+    'Run the gate catalog once when done.',
     trailers(IMPLEMENTER),
   ].join('\n')
   if (IMPLEMENTER === 'codex') {
     return agent(
       codexWrapper({
         tag: TAG + '-fix-r' + round,
-        task: task + '\nWhen done print a final JSON object with keys summary, commits, files_changed, tests_added, red_observed, gate, deviations.',
+        task: task + '\nWhen done print a final JSON object with keys summary, commits (`git log --oneline ' + BASE + '..HEAD`), files_changed, tests_added, red_observed, gate, gate_commands (one {command, status, detail} per catalog command you ran on the final tree), head (`git rev-parse HEAD`), deviations.',
         schema: IMPL_SCHEMA,
         timeout: 3000,
         resume: true,
@@ -925,6 +1027,66 @@ function fixAgent(findings, trivial, round) {
   )
 }
 
+const JUDGE_CONTEXT = { title: TITLE, root: ROOT, branch: BRANCH, diff: DIFF }
+const refuted = []
+
+// One read-only skeptic per blocker or major, in parallel, before any of them can open a fix round.
+function judge(findings, round, groupPhase) {
+  const label = 'the judge (round ' + round + ')'
+  return parallel(
+    findings.map((finding, index) => () =>
+      agent(
+        judgeTask(finding, JUDGE_CONTEXT) + "\nSet status='ok' and model_used='" + MODELS.opus + "'.",
+        call({ label: 'judge:' + TAG + '-r' + round + '-' + (index + 1), phase: groupPhase, schema: JUDGE_SCHEMA })
+      )
+    )
+  ).then((verdicts) => judgeVerdicts(findings, verdicts, label))
+}
+
+// Refuted findings are recorded and dropped, downgraded ones ride along as minors, and only confirmed
+// ones reach the fixer.
+async function triage(findings, round, groupPhase) {
+  const actionable = actionableFrom(findings)
+  const trivial = trivialFrom(findings)
+  if (actionable.length === 0) return { confirmed: [], trivial: trivial }
+  const judged = await judge(actionable, round, groupPhase)
+  refuted.push(...judged.refuted)
+  log('Judge r' + round + ': ' + judged.confirmed.length + ' confirmed, ' + judged.minor.length + ' downgraded to minor, ' + judged.refuted.length + ' refuted')
+  return { confirmed: judged.confirmed, trivial: trivial.concat(judged.minor) }
+}
+
+// The gate of record is CI on the pull request. Locally the last lane's own green run is reused when
+// it covers the catalog (Rust-diff rule included); the gate agent runs only when the report falls
+// short, and a red gate still fails the run.
+async function finalGate(lanes, source) {
+  const evidence = laneGateEvidence(lanes[lanes.length - 1], source)
+  const shortfall = gateProblem(evidence, laneChangedPaths(lanes))
+  if (!shortfall) {
+    log('Gate: the ' + source + "'s green run covers the catalog (" + evidence.commands.length + ' commands on ' + (evidence.head || 'an unreported head') + ') — not re-run; CI re-runs the suites on the pull request')
+    return evidence
+  }
+  log('Gate agent runs — the ' + source + "'s own report falls short: " + shortfall)
+  phase('Gate')
+  const gate = await agent(
+    [
+      COMMON,
+      RULES.gateNotes,
+      '',
+      'Final gate for ' +
+        TITLE +
+        ': run the exact gates above, applying the Rust-diff rule below. No stress or load runs. Do not modify code unless a gate fails for a trivial reason (formatting, an unused import); if you must, commit it.',
+      trailers(IMPLEMENTER),
+      RULES.gateResult(BASE) + ' ' + RULES.honest,
+    ]
+      .filter(Boolean)
+      .join('\n'),
+    call({ label: 'gate:' + TAG, phase: 'Gate', schema: GATE_SCHEMA })
+  )
+  const gateFailure = gateProblem(gate, laneChangedPaths(lanes))
+  if (gateFailure) fail(gateFailure)
+  return { ...gate, source: 'gate agent' }
+}
+
 phase('Fix')
 let round = START_ROUND
 // Everything handed to this workflow is already an open finding another run could not close, so
@@ -934,6 +1096,7 @@ let actionable = OPEN.filter((f) => f.severity !== 'nit')
 let trivial = OPEN.filter((f) => f.severity === 'nit')
 const allFindings = OPEN.slice()
 const fixes = []
+let reviewedHead = ''
 log('Starting at round ' + round + ' with ' + actionable.length + ' actionable findings and ' + trivial.length + ' nits (max ' + MAX_ROUNDS + ' rounds)')
 if (actionable.length === 0) log('Nothing to fix: every finding handed over is a nit — running the gate only')
 while (actionable.length > 0 && fixes.length < MAX_ROUNDS) {
@@ -944,40 +1107,27 @@ while (actionable.length > 0 && fixes.length < MAX_ROUNDS) {
   const prior = JSON.stringify(actionable)
   round += 1
   const label = 'the ' + REVIEW_FAMILY + ' re-review (round ' + round + ')'
-  const review = await reviewLane(round, prior, label)
+  const review = await reviewLane(round, prior, label, reviewedHead)
+  reviewedHead = fixed.head || ''
   // The re-review is the whole point of an extra round: an unavailable or malformed one fails the run.
   const problem = reviewProblem(review, label)
   if (problem) fail(problem)
   reviewers.add((review.reviewer || REVIEW_FAMILY) + (review.model_used ? ' [' + review.model_used + ']' : ''))
   const found = review.findings.map((f) => ({ ...f, reviewer: review.reviewer, round: round }))
   allFindings.push(...found)
+  log('Re-review r' + round + ' (fix diff only): ' + found.length + ' findings, ' + actionableFrom(found).length + ' to judge')
   // The handover contract above is wider than a review's: everything another run left open, nits
-  // aside, is fixed here. A finding this run's own re-review files follows the review contract.
-  actionable = actionableFrom(found)
-  trivial = trivialFrom(found)
-  log('Re-review r' + round + ': ' + found.length + ' findings, ' + actionable.length + ' actionable')
+  // aside, is fixed here. A finding this run's own re-review files follows the review contract and is
+  // judged before it can cost another round.
+  const triaged = await triage(found, round, 'Fix')
+  actionable = triaged.confirmed
+  trivial = triaged.trivial
 }
 if (actionable.length > 0) {
-  log('Still ' + actionable.length + ' actionable findings after ' + fixes.length + ' rounds — escalate rather than looping again')
+  log('Still ' + actionable.length + ' confirmed findings after ' + fixes.length + ' rounds — escalate rather than looping again')
 }
 
-phase('Gate')
-const gate = await agent(
-  [
-    COMMON,
-    RULES.gateNotes,
-    '',
-    'Final gate for ' +
-      TITLE +
-      ': run the exact gates above, applying the Rust-diff rule below. No stress or load runs. Do not modify code unless a gate fails for a trivial reason (formatting, an unused import); if you must, commit it.',
-    trailers(IMPLEMENTER),
-    RULES.gateResult(BASE) + ' ' + RULES.honest,
-  ].filter(Boolean).join('\n'),
-  call({ label: 'gate:' + TAG, phase: 'Gate', schema: GATE_SCHEMA })
-)
-// A failing gate fails the run: a completed ledger must never sit on top of a red test lane.
-const gateFailure = gateProblem(gate, laneChangedPaths(fixes))
-if (gateFailure) fail(gateFailure)
+const gate = await finalGate(fixes, 'fixer')
 
 const remaining = actionable.concat(trivial)
 const outcome = actionableFrom(remaining).length > 0 ? 'followup_required' : 'complete'
@@ -996,7 +1146,9 @@ return {
     rounds: round,
     majors: allFindings.filter((f) => f.severity === 'blocker' || f.severity === 'major').length,
     findings: allFindings,
-    // What this run could not close: the hard findings it ran out of rounds for, plus the trivia
+    // What the judge refuted, with its reason: filed by a reviewer, never fixed, on the record.
+    refuted: refuted,
+    // What this run could not close: the confirmed findings it ran out of rounds for, plus the trivia
     // nobody picked up. Both come straight back as `findings` for another fix-round.
     remaining: remaining,
   },
