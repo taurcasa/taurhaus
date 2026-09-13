@@ -253,8 +253,14 @@ impl HostProcess {
         let timeout_seconds = guard.remaining().map_err(|e| e.to_string())?.as_secs_f64();
         #[cfg(test)]
         let mut command = tests::fixture_command(launch);
+        // The daemon's own PATH is not the pane's: resolve the executable the way a
+        // pane would before spawning it (dogfood finding 7, 2026-09-13).
         #[cfg(not(test))]
-        let mut command = Command::new(&launch.program);
+        let program =
+            taurhaus_lib::session_scanner::launch_base::resolve_executable(&launch.program)
+                .map_err(|error| format!("hosted launch: {error}"))?;
+        #[cfg(not(test))]
+        let mut command = Command::new(&program);
         let child = command
             .args(&launch.arguments)
             .args(["--listen", &format!("unix://{}", socket.display())])
@@ -265,7 +271,12 @@ impl HostProcess {
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
             .spawn()
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| {
+                format!(
+                    "hosted launch failed to start {}: {e}",
+                    launch.program.display()
+                )
+            })?;
         let mut host = Self {
             child,
             stderr: None,
