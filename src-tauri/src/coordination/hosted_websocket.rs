@@ -162,7 +162,7 @@ impl WebSocket {
                 n => n as u64,
             };
             if length > RECEIVE_FRAME_LIMIT as u64 {
-                return Err("host frame exceeds 64 MiB".into());
+                return Err(format!("host frame exceeds 64 MiB ({length} bytes)"));
             }
             if (size == 126 && length < 126)
                 || (size == 127 && length <= 65535)
@@ -171,7 +171,10 @@ impl WebSocket {
                 return Err("invalid WebSocket frame length".into());
             }
             if opcode < 8 && message.len() + length as usize > RECEIVE_FRAME_LIMIT {
-                return Err("host message exceeds 64 MiB".into());
+                return Err(format!(
+                    "host message exceeds 64 MiB ({} bytes)",
+                    message.len() + length as usize
+                ));
             }
             // Check both bounds before allocating or reading a declared payload.
             let mut payload = vec![0; length as usize];

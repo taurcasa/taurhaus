@@ -375,7 +375,15 @@ impl HostProcess {
             Some(_) => return Err("empty resume identity".into()),
             None => ("thread/start", json!({"cwd":cwd, "ephemeral":false})),
         };
-        let result = rpc.call(method, params, guard).map_err(String::from)?;
+        let result = rpc
+            .call(method, params, guard)
+            .map_err(|error| {
+                let error = String::from(error);
+                match resume {
+                    Some(id) => format!("thread/resume {id}: {error}"),
+                    None => error,
+                }
+            })?;
         host.thread_id = result["thread"]["id"]
             .as_str()
             .filter(|s| !s.is_empty())
@@ -1556,6 +1564,8 @@ def client(connection):
                             settings = json.load(open(marker)); os.unlink(marker)
                             emit({'method':'thread/settings/updated', 'params':{'threadId':thread['id'], 'threadSettings':settings}})
                         if method == 'thread/resume':
+                            if os.path.exists(os.path.join(root, 'oversize-resume')):
+                                stream.write(b'\x81\x7f'+struct.pack('!Q',64*1024*1024+1)); stream.flush(); return
                             history_bytes = int(os.environ.get('FAKE_RESUME_HISTORY_BYTES', '0'))
                             if history_bytes:
                                 result['thread']['turns'] = [{'id':'history', 'status':'completed', 'items':[{'id':'history-item', 'type':'agentMessage', 'text':'x'*history_bytes}]}]
