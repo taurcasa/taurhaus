@@ -6,6 +6,8 @@ use std::io::{BufReader, Read, Write};
 use std::os::unix::net::UnixStream;
 
 pub(super) const FRAME_LIMIT: usize = 65_536;
+// Resume replies can contain multi-megabyte histories; outbound input stays small.
+pub(super) const RECEIVE_FRAME_LIMIT: usize = 64 * 1024 * 1024;
 pub(super) struct WebSocket(BufReader<UnixStream>);
 impl WebSocket {
     pub fn connect(stream: UnixStream, guard: &HostOperationLock) -> Result<Self, String> {
@@ -159,8 +161,8 @@ impl WebSocket {
                 }
                 n => n as u64,
             };
-            if length > FRAME_LIMIT as u64 {
-                return Err("host frame exceeds 64 KiB".into());
+            if length > RECEIVE_FRAME_LIMIT as u64 {
+                return Err("host frame exceeds 64 MiB".into());
             }
             if (size == 126 && length < 126)
                 || (size == 127 && length <= 65535)
@@ -168,8 +170,15 @@ impl WebSocket {
             {
                 return Err("invalid WebSocket frame length".into());
             }
+            if opcode < 8 && message.len() + length as usize > RECEIVE_FRAME_LIMIT {
+                return Err("host message exceeds 64 MiB".into());
+            }
+            // Check both bounds before allocating or reading a declared payload.
             let mut payload = vec![0; length as usize];
-            self.read_exact(&mut payload, guard)?;
+            for chunk in payload.chunks_mut(64 * 1024) {
+                guard.remaining().map_err(|e| e.to_string())?;
+                self.read_exact(chunk, guard)?;
+            }
             match opcode {
                 8 => {
                     if payload.len() == 1 {
@@ -194,9 +203,6 @@ impl WebSocket {
                 1 if !fragmented => fragmented = true,
                 0 if fragmented => (),
                 _ => return Err("unexpected WebSocket opcode/continuation".into()),
-            }
-            if message.len() + payload.len() > FRAME_LIMIT {
-                return Err("host message exceeds 64 KiB".into());
             }
             message.extend(payload);
             if fin {

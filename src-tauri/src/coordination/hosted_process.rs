@@ -1556,6 +1556,9 @@ def client(connection):
                             settings = json.load(open(marker)); os.unlink(marker)
                             emit({'method':'thread/settings/updated', 'params':{'threadId':thread['id'], 'threadSettings':settings}})
                         if method == 'thread/resume':
+                            history_bytes = int(os.environ.get('FAKE_RESUME_HISTORY_BYTES', '0'))
+                            if history_bytes:
+                                result['thread']['turns'] = [{'id':'history', 'status':'completed', 'items':[{'id':'history-item', 'type':'agentMessage', 'text':'x'*history_bytes}]}]
                             if os.path.exists(os.path.join(root, 'changed-instructions')): result['instructionSources'] = []
                             if os.path.exists(os.path.join(root, 'reject-repair')): error = {'code':-32600,'message':'repair refused'}
                             with open(os.path.join(root, 'reassert.json'), 'w') as output: json.dump(params, output)
@@ -2136,6 +2139,36 @@ with socket.socket(socket.AF_UNIX) as listener:
         let state = host.transcript(&guard).unwrap();
         assert_eq!(state["thread"]["turns"], json!([]));
         assert!(!host.rpc.as_ref().unwrap().policy_dirty);
+    }
+
+    #[test]
+    fn resume_with_real_history_single_frame() {
+        resume_with_real_history("single");
+    }
+
+    #[test]
+    fn resume_with_real_history_fragmented() {
+        resume_with_real_history("fragment_ping");
+    }
+
+    fn resume_with_real_history(wire: &str) {
+        // Regression: 9d3589355 (finding 11, 2026-09-13) capped replayed
+        // thread/resume history at 64 KiB, preventing worked seats from resuming.
+        let tmp = tempfile::tempdir().unwrap();
+        let mut launch = fixture(tmp.path());
+        let guard = HostOperationLock::acquire_for_launch(tmp.path(), "team", "seat").unwrap();
+        let host = spawn(&launch, tmp.path(), None, &guard).unwrap();
+        drop(host);
+        launch.environment.insert("FAKE_WIRE".into(), wire.into());
+        launch.environment.insert(
+            "FAKE_RESUME_HISTORY_BYTES".into(),
+            (5 * 1024 * 1024).to_string(),
+        );
+        let resumed = spawn(&launch, tmp.path(), Some("owned-thread"), &guard).unwrap();
+        assert_eq!(resumed.thread_id, "owned-thread");
+        let pid = resumed.child.id();
+        drop(resumed);
+        assert!(taurhaus_lib::platform::process_start_ticks(pid).is_none());
     }
 
     #[test]
