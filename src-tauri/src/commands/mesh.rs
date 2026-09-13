@@ -374,8 +374,13 @@ fn hosted_delivery_supported(
 ) -> bool {
     use crate::session_scanner::launch::HostedDescriptor;
     let paired = HostedDescriptor::codex();
+    // Both floors must hold: taurhaus's own verified minimum and the minimum Mesh
+    // compiled into its enabled descriptor (its `build` is a floor, never a pin).
+    let Some(installed) = codex else {
+        return false;
+    };
     canonical_messaging_supported(version)
-        && codex == Some(paired.build.as_str())
+        && HostedDescriptor::build_satisfies(installed, &paired.build)
         && capabilities["native_descriptors"]
             .as_array()
             .is_some_and(|descriptors| {
@@ -383,7 +388,9 @@ fn hosted_delivery_supported(
                     d["enabled"] == true
                         && d["adapter"] == "app_server"
                         && d["harness"] == "codex"
-                        && d["build"] == paired.build
+                        && d["build"].as_str().is_some_and(|minimum| {
+                            HostedDescriptor::build_satisfies(installed, minimum)
+                        })
                         && d["host"] == HostedDescriptor::HOST
                         && d["configuration"] == HostedDescriptor::CONFIGURATION
                         && d["trust"] == HostedDescriptor::TRUST
@@ -412,11 +419,17 @@ fn with_hosted_delivery(
             _ if !canonical_messaging_supported(&contract.version) => {
                 "Native delivery requires Mesh 0.3.0 or newer".into()
             }
-            Some(installed) if installed != verified => {
-                format!("installed Codex {installed} is not the verified {verified}")
+            Some(installed)
+                if !crate::session_scanner::launch::HostedDescriptor::build_satisfies(
+                    installed, &verified,
+                ) =>
+            {
+                format!("installed Codex {installed} is older than the verified minimum {verified}")
             }
-            None => format!("installed Codex version is unavailable; verified build is {verified}"),
-            _ => "Mesh has no enabled descriptor for the verified Codex build".into(),
+            None => {
+                format!("installed Codex version is unavailable; verified minimum is {verified}")
+            }
+            _ => "Mesh has no enabled descriptor admitting the installed Codex build".into(),
         })
     };
     status

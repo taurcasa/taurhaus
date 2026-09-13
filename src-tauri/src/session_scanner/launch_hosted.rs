@@ -5,9 +5,11 @@ use crate::session_scanner::cli_tool::CliTool;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-/// Runtime evidence pins the remote-resume primitive to this build. The generated
-/// home and amendment-required strict flag are software-tested integration changes.
-/// A build bump needs a fresh HTTP Upgrade + initialize probe before this allowlist changes.
+/// Runtime evidence verified the remote-resume primitive on `build`, which is the
+/// MINIMUM admitted Codex build: harness version gates are floors, never exact
+/// pins (operator ruling 2026-09-13 — harnesses ship too fast for pins). A newer
+/// build is admitted; the live HTTP Upgrade + initialize handshake still refuses a
+/// changed transport at launch, and an older or unparseable build is refused.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HostedDescriptor {
@@ -24,7 +26,32 @@ impl HostedDescriptor {
         Self {
             build: "0.153.4".into(),
             transport: "unix-websocket".into(),
-            attached_tui: "verified on 0.153.4".into(),
+            attached_tui: "verified on 0.153.4 (minimum)".into(),
+        }
+    }
+
+    /// `installed` satisfies the floor when both are dotted numeric versions and
+    /// `installed >= minimum`. Empty, placeholder or pre-release strings never do.
+    pub fn build_satisfies(installed: &str, minimum: &str) -> bool {
+        fn parse(version: &str) -> Option<Vec<u64>> {
+            let parts: Vec<u64> = version
+                .split('.')
+                .map(|part| {
+                    (!part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()))
+                        .then(|| part.parse().ok())
+                        .flatten()
+                })
+                .collect::<Option<_>>()?;
+            (!parts.is_empty()).then_some(parts)
+        }
+        match (parse(installed), parse(minimum)) {
+            (Some(mut installed), Some(mut minimum)) => {
+                let width = installed.len().max(minimum.len());
+                installed.resize(width, 0);
+                minimum.resize(width, 0);
+                installed >= minimum
+            }
+            _ => false,
         }
     }
 }
@@ -311,5 +338,32 @@ mod tests {
             r#"-c approval_policy="never" -c sandbox_mode="danger-full-access" app-server"#
         );
         assert!(HostedLaunch::from_rendered(&command, tmp.path(), Some("another-id")).is_err());
+    }
+}
+
+#[cfg(test)]
+mod floor_tests {
+    use super::HostedDescriptor;
+
+    // Regression: dogfood finding 6 (2026-09-13) — the verified Codex build is a floor.
+    #[test]
+    fn build_satisfies_is_a_floor_over_dotted_numeric_versions() {
+        for (installed, minimum, expected) in [
+            ("0.153.4", "0.153.4", true),
+            ("0.154.0", "0.153.4", true),
+            ("0.153.5", "0.153.4", true),
+            ("1.0", "0.153.4", true),
+            ("0.153.3", "0.153.4", false),
+            ("0.154.0-alpha.1", "0.153.4", false),
+            ("", "0.153.4", false),
+            ("wrong-build", "0.153.4", false),
+            ("0.154.0", "*", false),
+        ] {
+            assert_eq!(
+                HostedDescriptor::build_satisfies(installed, minimum),
+                expected,
+                "{installed} vs {minimum}"
+            );
+        }
     }
 }

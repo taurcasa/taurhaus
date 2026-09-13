@@ -347,8 +347,16 @@ impl HostProcess {
             .filter(|s| !s.is_empty())
             .ok_or("unsupported app-server handshake")?
             .into();
-        if host.build != taurhaus_lib::session_scanner::launch::HostedDescriptor::codex().build {
-            return Err("unsupported app-server build; native input refused".into());
+        let minimum = taurhaus_lib::session_scanner::launch::HostedDescriptor::codex().build;
+        if !taurhaus_lib::session_scanner::launch::HostedDescriptor::build_satisfies(
+            &host.build,
+            &minimum,
+        ) {
+            return Err(format!(
+                "app-server build {} is older than the verified minimum {minimum}; native input refused",
+                host.build
+            )
+            .into());
         }
         rpc.write(&json!({"method":"initialized"}), guard)?;
         let (method, params) = match resume {
