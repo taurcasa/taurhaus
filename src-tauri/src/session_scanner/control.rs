@@ -442,8 +442,12 @@ fn pane_exists_checked(pane: &str) -> Result<bool, String> {
         return Ok(!String::from_utf8_lossy(&output.stdout).trim().is_empty());
     }
     let error = String::from_utf8_lossy(&output.stderr);
+    // Regression: CI 2026-09-13 (lock PR #196) — a private tmux server whose last
+    // pane was just killed can exit while the probe runs; tmux then reports
+    // "server exited unexpectedly", which means no pane exists, not a probe failure.
     if error.contains("can't find pane:")
         || error.contains("no server running")
+        || error.contains("server exited unexpectedly")
         || error.contains("No such file or directory")
         || error.trim() == "no sessions"
     {
