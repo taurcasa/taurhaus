@@ -3280,7 +3280,9 @@ fn initialize_pipeline_claude_template_agent_receives_role_context_message() {
     match &delivered[1] {
         DeliveryRequest::OperatorNotice(payload) => {
             assert_eq!(payload.member_name, "researcher");
-            assert!(payload.message.contains("[taurhaus] recovery_card"));
+            // Regression: 3ca169ed4 used recovery wording for an unassigned new seat.
+            assert_eq!(payload.message.lines().next().unwrap(),
+                "researcher on architecture-final: no assignment yet. Lead: team-lead. Wait for the lead's first message (mesh read) or your assignment card.");
             assert!(payload
                 .message
                 .contains("Role: adversarial-reviewer-claude"));
@@ -3289,7 +3291,7 @@ fn initialize_pipeline_claude_template_agent_receives_role_context_message() {
                 .message
                 .contains("HOLD: minimal role steering unavailable"));
             assert!(payload.message.contains("Investigate"));
-            assert!(!payload.message.contains("mesh read --unread"));
+            assert!(payload.message.contains("mesh read --unread"));
         }
         other => panic!("unexpected delivery payload for agent: {other:?}"),
     }
@@ -5001,6 +5003,8 @@ fn resume_pipeline_claude_member_with_role_context_sends_role_context_message() 
 
     let mut member_runtime =
         MemberRuntimeStore::load(tmp.path(), "architecture-final", "researcher").expect("runtime");
+    // A resume fixture must include the original attachment before relaunching.
+    member_runtime.attachment_generation = 1;
     member_runtime.pane_id = Some("%10".to_string());
     member_runtime.health = HealthState::SessionDead;
     MemberRuntimeStore::save(
@@ -10164,4 +10168,107 @@ fn hosted_add_requires_target_team_canonical_messaging() {
         assert!(runtime.calls().is_empty());
         assert_eq!(TeamConfigStore::load(tmp.path(), "team").unwrap(), config);
     }
+}
+
+#[test]
+fn initialize_pipeline_seeds_each_project_standard() {
+    // Regression: d662df09e roles referenced the standard without seeding projects.
+    let tmp = TempDir::new().unwrap();
+    let lead_project = tmp.path().join("lead-project");
+    let agent_project = tmp.path().join("agent-project");
+    let bare_project = tmp.path().join("bare-project");
+    fs::create_dir_all(lead_project.join("docs")).unwrap();
+    fs::create_dir_all(agent_project.join("docs")).unwrap();
+    fs::create_dir_all(&bare_project).unwrap();
+    let mut orchestrator = new_orchestrator(
+        &tmp,
+        Arc::new(FakeBackend::default()),
+        Arc::new(RecordingCoordinationRuntime::default()),
+    );
+    let report = orchestrator
+        .initialize_team(&InitializeTeamRequest {
+            messaging: None,
+            team_name: "standard-seed".into(),
+            team_description: None,
+            lead_mode: LeadMode::LaunchNew,
+            lead: setup_config(
+                "lead",
+                "codex",
+                "gpt-6-astra",
+                lead_project.to_str().unwrap(),
+            ),
+            agents: vec![
+                setup_config(
+                    "worker",
+                    "codex",
+                    "gpt-6-astra",
+                    agent_project.to_str().unwrap(),
+                ),
+                setup_config(
+                    "peer",
+                    "codex",
+                    "gpt-6-astra",
+                    bare_project.to_str().unwrap(),
+                ),
+            ],
+        })
+        .unwrap();
+    assert_eq!(report.failed_step, None, "{report:?}");
+    for project in [lead_project, agent_project] {
+        assert_eq!(
+            fs::read_to_string(project.join("docs/team-delivery-standard.md")).unwrap(),
+            include_str!("../../../../docs/team-delivery-standard.md")
+        );
+    }
+    assert!(!bare_project.join("docs").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn initialize_standard_write_failure_does_not_abort_roster() {
+    // Regression: 2b4b628a0 propagated an optional documentation write as add_lead failure.
+    use std::os::unix::fs::PermissionsExt;
+    let _guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+    let tmp = TempDir::new().unwrap();
+    let project = tmp.path().join("project");
+    let docs = project.join("docs");
+    fs::create_dir_all(&docs).unwrap();
+    let log_path = tmp.path().join("events.jsonl");
+    let sink = taurhaus_lib::logging::LogFileState::new(log_path.clone()).unwrap();
+    taurhaus_lib::logging::install_global_sink(&sink);
+    let mut orchestrator = new_orchestrator(
+        &tmp,
+        Arc::new(FakeBackend::default()),
+        Arc::new(RecordingCoordinationRuntime::default()),
+    );
+    fs::set_permissions(&docs, fs::Permissions::from_mode(0o555)).unwrap();
+    let result = orchestrator.initialize_team(&InitializeTeamRequest {
+        messaging: None,
+        team_name: "standard-failure".into(),
+        team_description: None,
+        lead_mode: LeadMode::LaunchNew,
+        lead: setup_config("lead", "codex", "gpt-6-astra", project.to_str().unwrap()),
+        agents: vec![],
+    });
+    fs::set_permissions(&docs, fs::Permissions::from_mode(0o755)).unwrap();
+    let report = result.unwrap();
+    assert_eq!(report.failed_step, None, "{report:?}");
+    assert!(MemberRuntimeStore::load(tmp.path(), "standard-failure", "lead").is_ok());
+    sink.flush_for_test().unwrap();
+    let rows: Vec<serde_json::Value> = fs::read_to_string(log_path)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    let failures: Vec<_> = rows
+        .iter()
+        .filter(|row| {
+            row["event"] == "coordination.project.standard_skipped"
+                && row["reason"] == "write_failed"
+        })
+        .collect();
+    assert_eq!(failures.len(), 1);
+    assert_eq!(failures[0]["level"], "WARN");
+    assert_eq!(failures[0]["team"], "standard-failure");
+    assert_eq!(failures[0]["member"], "lead");
 }

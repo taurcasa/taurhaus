@@ -2098,10 +2098,16 @@ fn reonboard_succeeds_for_existing_member() {
         }),
         Arc::new(|| Arc::new(RecordingCoordinationRuntime::default())),
     );
+    // Use a bridged lead so its creation card is captured by the backend recorder;
+    // a Claude lead receives launch context instead of an operator-notice delivery.
+    let mut request = sample_preflight_request();
+    request.lead.cli_tool = "codex".into();
+    request.lead.model = "gpt-6-astra".into();
+    request.lead.role_id = Some("codex-architect".into());
     initialize_team_pipeline_test_fixture(
         &state,
         None,
-        sample_preflight_request(),
+        request,
         &crate::models::CliCommandSettings::default(),
         DEFAULT_TMUX_LAYOUT,
         None,
@@ -2126,13 +2132,23 @@ fn reonboard_succeeds_for_existing_member() {
     assert!(result.delivered);
     let requests = fake.delivered_requests();
     assert_eq!(requests.len(), deliveries_before);
-    let DeliveryRequest::OperatorNotice(delivery) = requests.last().expect("reonboard delivery")
-    else {
-        panic!("expected operator notice")
-    };
-    // The bounded card replaces the catalog guarded after efcd7d2; unchanged
-    // unforced recovery returns the prior delivery without replaying it.
-    crate::coordination::recovery_card::assert_control_golden(&delivery.message);
+    let delivery = requests
+        .iter()
+        .find_map(|request| match request {
+            DeliveryRequest::OperatorNotice(delivery) if delivery.member_name == "team-lead" => {
+                Some(delivery)
+            }
+            _ => None,
+        })
+        .expect("lead creation delivery");
+    // Regression: 7156d13de checked the last agent's delivery instead of the reonboarded lead.
+    assert_eq!(delivery.member_name, "team-lead");
+    // Regression: 3ca169ed4 gave newly created members a recovery card. Unforced
+    // reonboarding must retain the creation card without replaying it.
+    assert_eq!(
+        delivery.message.lines().next().unwrap(),
+        "You are the lead of architecture-final; members: frontend-dev, reviewer"
+    );
 }
 
 #[test]

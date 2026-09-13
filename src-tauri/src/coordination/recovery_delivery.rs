@@ -152,7 +152,40 @@ fn prepare_inner(
         &effective_effort,
         &runtime.effort_resume_failure,
     ));
+    let compaction_state =
+        crate::coordination::stores::MemberCompactionStore::load(root, team, member_name)?;
     let mut card = RecoveryCard::compile(team, member, snapshot.as_ref(), key.clone(), facts);
+    if runtime.context() == (1, 0)
+        && !compaction
+        && runtime.recovery.admitted_boundary.is_none()
+        && compaction_state.is_none()
+        && card.assignment.task_id.is_empty()
+        && card.assignment.assignment_token.is_empty()
+        && card.assignment.objective.is_empty()
+    {
+        if let Some(lead) = config
+            .members
+            .iter()
+            .find(|m| m.role == crate::coordination::domain::MemberRole::Lead)
+        {
+            card.creation_headline = Some(if member.name == lead.name {
+                let names = config
+                    .members
+                    .iter()
+                    .filter(|m| m.name != lead.name)
+                    .map(|m| m.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                if names.is_empty() {
+                    format!("You are the lead of {team}; no other members yet")
+                } else {
+                    format!("You are the lead of {team}; members: {names}")
+                }
+            } else {
+                format!("{} on {team}: no assignment yet. Lead: {}. Wait for the lead's first message (mesh read) or your assignment card.", member.name, lead.name)
+            });
+        }
+    }
     card.effective_effort = effective_effort;
     card.effort_hold = runtime
         .effort_resume_failure
@@ -188,8 +221,7 @@ fn prepare_inner(
         card_schema: CARD_SCHEMA,
         card_key: key.clone(),
         content_revision: card.content_revision.clone(),
-        pending: crate::coordination::stores::MemberCompactionStore::load(root, team, member_name)?
-            .is_some_and(|s| s.pending),
+        pending: compaction_state.is_some_and(|s| s.pending),
     });
     OperationalContextSnapshotStore::save_locked(&guard, root, &descriptor_snapshot)?;
     let canonical = crate::coordination::journal::canonical(root, team)?;
@@ -667,6 +699,168 @@ mod tests {
         .unwrap();
         let registry = TeamRootRegistry::new(root.clone());
         (temp, root, registry)
+    }
+
+    fn creation_fixture() -> (tempfile::TempDir, std::path::PathBuf, TeamRootRegistry) {
+        let (temp, root, registry) = fixture();
+        let mut config = TeamConfigStore::load(&root, "team").unwrap();
+        config.members[0].role_id = Some("implementer".into());
+        config.members[0].instructions = Some("Follow the project instructions.".into());
+        let mut lead = config.members[0].clone();
+        lead.name = "captain".into();
+        lead.role = crate::coordination::domain::MemberRole::Lead;
+        config.members.push(lead);
+        TeamConfigStore::save(&root, "team", &config).unwrap();
+        let runtime = MemberRuntimeStore::load(&root, "team", "seat").unwrap();
+        MemberRuntimeStore::save(&root, "team", "captain", &runtime).unwrap();
+        for name in ["seat", "captain"] {
+            reserve_activation(&root, "team", name, "activation").unwrap();
+        }
+        (temp, root, registry)
+    }
+
+    #[test]
+    fn creation_card_names_lead_and_omits_unpopulated_facts() {
+        // Regression: 3ca169ed4 used recovery wording and absent task facts for new teams.
+        let (_temp, root, registry) = creation_fixture();
+        let card = prepare(&registry, &root, "team", "seat", "inbox")
+            .unwrap()
+            .unwrap();
+        assert_eq!(card.receipt.card_key.context, (1, 0));
+        assert!(card.text.starts_with("seat on team: no assignment yet. Lead: captain. Wait for the lead's first message (mesh read) or your assignment card."), "{}", card.text);
+        assert!(!card.text.contains("unavailable"), "{}", card.text);
+        for absent in [
+            "stage=",
+            "Review route:",
+            "Candidate:",
+            "Rubric:",
+            "Restart cursor:",
+            "Evidence/handoff retention:",
+            "Current task:",
+        ] {
+            assert!(!card.text.contains(absent), "{absent}: {}", card.text);
+        }
+        assert!(card.text.contains("Follow the project instructions."));
+    }
+
+    #[test]
+    fn creation_card_preserves_effort_and_work_contract() {
+        // Regression: 7156d13de dropped populated effort facts and the work contract.
+        let (_temp, root, registry) = creation_fixture();
+        MemberRuntimeStore::update(&root, "team", "seat", |runtime| {
+            runtime.applied_effort = Some("high".into());
+        })
+        .unwrap();
+        let card = prepare(&registry, &root, "team", "seat", "inbox")
+            .unwrap()
+            .unwrap();
+        assert!(
+            card.text
+                .contains("effective effort: high; hold: none recorded"),
+            "{}",
+            card.text
+        );
+        assert!(card
+            .text
+            .contains(crate::coordination::recovery_card::FIRST_ACTION));
+        assert!(card.text.contains("Corrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch."));
+        assert!(!card.text.contains("unavailable"));
+    }
+
+    #[test]
+    fn creation_card_new_seat_does_not_claim_the_team_is_new() {
+        // Regression: 7156d13de mistook a seat's first attachment for a new team.
+        let (_temp, root, registry) = creation_fixture();
+        MemberRuntimeStore::update(&root, "team", "captain", |runtime| {
+            runtime.attachment_generation = 7;
+        })
+        .unwrap();
+        let card = prepare(&registry, &root, "team", "seat", "inbox")
+            .unwrap()
+            .unwrap();
+        assert!(
+            card.text
+                .starts_with("seat on team: no assignment yet. Lead: captain."),
+            "{}",
+            card.text
+        );
+    }
+
+    #[test]
+    fn creation_card_lead_only_team_has_no_dangling_roster() {
+        // Regression: 7156d13de printed an empty members suffix for lead-only teams.
+        let (_temp, root, registry) = creation_fixture();
+        let mut config = TeamConfigStore::load(&root, "team").unwrap();
+        config.members.retain(|member| member.name == "captain");
+        TeamConfigStore::save(&root, "team", &config).unwrap();
+        let card = prepare(&registry, &root, "team", "captain", "inbox")
+            .unwrap()
+            .unwrap();
+        assert!(
+            card.text
+                .starts_with("You are the lead of team; no other members yet"),
+            "{}",
+            card.text
+        );
+    }
+
+    #[test]
+    fn creation_card_identifies_the_lead_and_members() {
+        // Regression: 3ca169ed4 addressed a new lead as a teammate awaiting the lead.
+        let (_temp, root, registry) = creation_fixture();
+        let card = prepare(&registry, &root, "team", "captain", "inbox")
+            .unwrap()
+            .unwrap();
+        assert!(
+            card.text
+                .starts_with("You are the lead of team; members: seat"),
+            "{}",
+            card.text
+        );
+        assert!(!card.text.contains("Wait for the lead"));
+        assert!(!card.text.contains("unavailable"));
+    }
+
+    #[test]
+    fn creation_card_does_not_replace_recovery_context() {
+        // Regression: 3ca169ed4 recovery output must remain intact outside first creation.
+        for scenario in ["task", "attachment", "context", "boundary", "compaction"] {
+            let (_temp, root, registry) = creation_fixture();
+            if scenario == "task" {
+                let snapshot = assigned_snapshot(
+                    &root,
+                    json!({"assignment_id":"a1", "first_step":"Run the review"}),
+                    "in_progress",
+                );
+                OperationalContextSnapshotStore::save(&root, &snapshot).unwrap();
+            }
+            MemberRuntimeStore::update(&root, "team", "seat", |runtime| match scenario {
+                "attachment" => runtime.attachment_generation = 2,
+                "context" => runtime.context_generation = 1,
+                "boundary" => runtime.recovery.admitted_boundary = Some("prior-boundary".into()),
+                _ => {}
+            })
+            .unwrap();
+            let card = if scenario == "compaction" {
+                prepare_compaction(&registry, &root, "team", "seat", "hook_stdout")
+            } else {
+                prepare(&registry, &root, "team", "seat", "inbox")
+            }
+            .unwrap()
+            .unwrap();
+            assert!(
+                card.text.starts_with("[taurhaus] recovery_card"),
+                "{scenario}: {}",
+                card.text
+            );
+            assert!(card.text.contains("Review route: unavailable"));
+            assert!(card.text.contains("Evidence/handoff retention: unavailable; references do not prove archival preservation."));
+            if scenario == "task" {
+                assert!(card.text.ends_with("Next action: Run the review"));
+            } else {
+                crate::coordination::recovery_card::assert_control_golden(&card.text);
+            }
+        }
     }
 
     fn append(root: &std::path::Path, prepared: &PreparedCard) {
