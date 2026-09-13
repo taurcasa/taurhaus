@@ -476,7 +476,7 @@ const RULES = {
   gates:
     'GATES (exact commands; run from the checkout root):\n' +
     GATES.map((command) => '- ' + command).join('\n') +
-    '\nRUST DIFF RULE: if your diff touches `src-tauri/`, also run `just test-rust-unit` — `just check-quick` compiles the Rust tests but does not execute them.\nRun the full catalog once, when the work is complete (and once more after a fix round) — not after every item; while iterating, run only the focused tests for the module you touched.',
+    '\nRUST DIFF RULE: if your diff touches `src-tauri/`, also run `just test-rust-unit` — `just check-quick` compiles the Rust tests but does not execute them.\nRun the full catalog once, when the work is complete (and once more after a fix round) — not after every item; while iterating, run only the focused tests for the module you touched.\nCARGO HYGIENE: one cargo command at a time in this checkout — never two concurrently, never in the background; if cargo prints `Blocking waiting for file lock`, wait — another lane shares the target; never copy test binaries, switch the target directory or wrap the command to get around it.',
   gateNotes: GATE_NOTES ? 'GATE NOTES (operational instructions, not commands):\n' + GATE_NOTES : '',
   gateResult: (base) =>
     'As your first step, run `git diff --name-only ' +
@@ -817,11 +817,11 @@ function codexWrapper(o) {
           resumeCmd +
           '`. Substitute the session id you read in this step; use `--last` instead ONLY if the log names no id, and say so under deviations — `--last` resumes the newest session on the machine, which may be another run in this checkout rather than yours. `codex exec resume` does not accept -C, so the runner\'s `cd` into the checkout is what places it. Before each new turn, make sure the previous one is gone (' +
           killRun +
-          '). Report every turn and its exit code under deviations, and verify the gate claims yourself (`cd src-tauri && cargo check --all-targets`) before returning.'
+          '). Report every turn and its exit code under deviations.'
         : ''),
     '5) Return the result as your structured output' +
       (o.reviewer ? ", with reviewer='" + o.reviewer + "'" : '') +
-      ", and model_used set to the model named in the log (or 'unknown'). " +
+      ", and model_used set to the model named in the log (or 'unknown'). You are the courier, not a second gate: never re-run Codex's gates, tests, lints or builds — its report and the log tail are the evidence, the procedure validates them against the catalog, and CI re-runs the suites on the pull request. Reporting what Codex reported, verbatim, is the honest result; a second run is minutes spent on nothing. " +
       RULES.honest +
       ' Concretely: a non-zero EXIT, a missing or empty output file, output that does not match the schema, or the step-3 deadline is a failure — ' +
       killRun +

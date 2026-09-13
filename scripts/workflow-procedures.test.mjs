@@ -1537,6 +1537,14 @@ describe('workflow procedures — the lean lane', () => {
       expect(judge.opts.schema.properties.verdict.enum).toEqual(['confirmed', 'minor', 'refuted'])
     })
 
+    it(`${script} tells the Codex courier to report the gate run, never to re-run it`, async () => {
+      const { calls } = await run(script, argsFor(script, { implementer: 'codex' }))
+      const courier = calls.find((call) => call.label.startsWith('impl:'))
+      expect(courier.prompt).toContain('never re-run Codex')
+      expect(courier.prompt).not.toContain('cargo check --all-targets')
+      expect(courier.prompt).toContain('CARGO HYGIENE')
+    })
+
     it(`${script} asks the implementer for a structured gate report and a head`, async () => {
       const { calls } = await run(script, argsFor(script))
       const implementer = calls.find((call) => call.label.startsWith('impl:'))

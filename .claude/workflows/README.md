@@ -138,8 +138,11 @@ a completed ledger with no findings reads as an approval:
   covers the catalog — Rust-diff rule included — with every command `pass`, it is reused as the run's
   `gate` (`source: 'implementer'` or `'fixer'`) and nothing is re-run. The gate agent runs only when
   the report falls short (a missing required command, a `fail` or `skipped`, a Rust diff without an
-  executed Rust test lane, no report at all), and then the rules below apply to it. The merge waits
-  for the three CI checks, which re-run the suites independently.
+  executed Rust test lane, no report at all), and then the rules below apply to it. The Claude
+  courier around a Codex run reports that run's `gate_commands` verbatim and never re-runs them; an
+  implementing lane runs one cargo command at a time and waits on a contested target lock instead of
+  copying binaries or switching target directories. The merge waits for the CI checks, which re-run
+  the suites independently.
 - **A red gate fails the run.** The gate returns one entry per command with its pass/fail; any command
   that did not pass, a `status` other than `pass`, or a gate that ran nothing aborts. So does a gate
   that contradicts itself — `status: 'pass'` arriving with a non-empty `failures` or `error`.
