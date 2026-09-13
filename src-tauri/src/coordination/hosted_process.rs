@@ -371,11 +371,21 @@ impl HostProcess {
         }
         rpc.write(&json!({"method":"initialized"}), guard)?;
         let (method, params) = match resume {
-            Some(id) if !id.is_empty() => ("thread/resume", json!({"threadId":id, "cwd":cwd})),
+            // Codex 0.154.0 can return metadata/live state without replaying history.
+            Some(id) if !id.is_empty() => (
+                "thread/resume",
+                json!({"threadId":id, "cwd":cwd, "excludeTurns":true}),
+            ),
             Some(_) => return Err("empty resume identity".into()),
             None => ("thread/start", json!({"cwd":cwd, "ephemeral":false})),
         };
-        let result = rpc.call(method, params, guard).map_err(String::from)?;
+        let result = rpc.call(method, params, guard).map_err(|error| {
+            let error = String::from(error);
+            match resume {
+                Some(id) => format!("thread/resume {id}: {error}"),
+                None => error,
+            }
+        })?;
         host.thread_id = result["thread"]["id"]
             .as_str()
             .filter(|s| !s.is_empty())
@@ -443,7 +453,7 @@ impl HostProcess {
         }
         let settings = json!({"model":model, "effort":effort,
             "approvalPolicy":result["approvalPolicy"], "sandboxPolicy":result["sandbox"]});
-        let resume = json!({"threadId":host.thread_id, "cwd":cwd, "model":model,
+        let resume = json!({"threadId":host.thread_id, "cwd":cwd, "model":model, "excludeTurns":true,
             "approvalPolicy":approval, "sandbox":sandbox,
             "config":host.attach_config});
         // Only the attached view suppresses its own project-document discovery.
@@ -1475,7 +1485,7 @@ def client(connection):
                 if wire == 'close':
                     frame(8, struct.pack('!H',1000)); assert receive() == (8, struct.pack('!H',1000)); return
                 if wire == 'oversize':
-                    stream.write(b'\x81\x7f'+struct.pack('!Q',65537)); stream.flush(); return
+                    stream.write(b'\x81\x7f'+struct.pack('!Q',64*1024*1024+1)); stream.flush(); return
             assert 'jsonrpc' not in request
             if 'id' not in request: continue
             if 'method' not in request:
@@ -1556,6 +1566,12 @@ def client(connection):
                             settings = json.load(open(marker)); os.unlink(marker)
                             emit({'method':'thread/settings/updated', 'params':{'threadId':thread['id'], 'threadSettings':settings}})
                         if method == 'thread/resume':
+                            if os.path.exists(os.path.join(root, 'oversize-resume')):
+                                stream.write(b'\x81\x7f'+struct.pack('!Q',64*1024*1024+1)); stream.flush(); return
+                            history_bytes = int(os.environ.get('FAKE_RESUME_HISTORY_BYTES', '0'))
+                            # Deliberately replay despite excludeTurns to exercise the receive defence.
+                            if history_bytes:
+                                result['thread']['turns'] = [{'id':'history', 'status':'completed', 'items':[{'id':'history-item', 'type':'agentMessage', 'text':'x'*history_bytes}]}]
                             if os.path.exists(os.path.join(root, 'changed-instructions')): result['instructionSources'] = []
                             if os.path.exists(os.path.join(root, 'reject-repair')): error = {'code':-32600,'message':'repair refused'}
                             with open(os.path.join(root, 'reassert.json'), 'w') as output: json.dump(params, output)
@@ -2136,6 +2152,64 @@ with socket.socket(socket.AF_UNIX) as listener:
         let state = host.transcript(&guard).unwrap();
         assert_eq!(state["thread"]["turns"], json!([]));
         assert!(!host.rpc.as_ref().unwrap().policy_dirty);
+    }
+
+    #[test]
+    fn resume_omits_history_on_launch_reconnect_and_repair() {
+        // Regression: 9d3589355 (finding 11, 2026-09-13) requested full
+        // history even though Codex 0.154.0 supports excludeTurns.
+        let tmp = tempfile::tempdir().unwrap();
+        let launch = fixture(tmp.path());
+        let guard = HostOperationLock::acquire_for_launch(tmp.path(), "team", "seat").unwrap();
+        drop(spawn(&launch, tmp.path(), None, &guard).unwrap());
+        let mut host = spawn(&launch, tmp.path(), Some("owned-thread"), &guard).unwrap();
+        host.rpc.as_mut().unwrap().socket = None;
+        host.transcript(&guard).unwrap();
+        std::fs::write(tmp.path().join("drift.json"), "{}").unwrap();
+        host.transcript(&guard).unwrap();
+        let requests = std::fs::read_to_string(tmp.path().join("requests.jsonl")).unwrap();
+        let resumes: Vec<Value> = requests
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .filter(|request| request["method"] == "thread/resume")
+            .collect();
+        assert_eq!(resumes.len(), 3, "launch, reconnect, and policy repair");
+        for request in resumes {
+            assert_eq!(request["params"]["threadId"], "owned-thread");
+            assert_eq!(request["params"]["excludeTurns"], true);
+        }
+    }
+
+    #[test]
+    fn resume_with_real_history_single_frame() {
+        // Regression: 9d3589355 (finding 11, 2026-09-13): history exceeded the send cap.
+        resume_with_real_history("single");
+    }
+
+    #[test]
+    fn resume_with_real_history_fragmented() {
+        // Regression: 9d3589355 (finding 11, 2026-09-13): fragmented history was capped too.
+        resume_with_real_history("fragment_ping");
+    }
+
+    fn resume_with_real_history(wire: &str) {
+        // Regression: 9d3589355 (finding 11, 2026-09-13) capped replayed
+        // thread/resume history at 64 KiB, preventing worked seats from resuming.
+        let tmp = tempfile::tempdir().unwrap();
+        let mut launch = fixture(tmp.path());
+        let guard = HostOperationLock::acquire_for_launch(tmp.path(), "team", "seat").unwrap();
+        let host = spawn(&launch, tmp.path(), None, &guard).unwrap();
+        drop(host);
+        launch.environment.insert("FAKE_WIRE".into(), wire.into());
+        launch.environment.insert(
+            "FAKE_RESUME_HISTORY_BYTES".into(),
+            (5 * 1024 * 1024).to_string(),
+        );
+        let resumed = spawn(&launch, tmp.path(), Some("owned-thread"), &guard).unwrap();
+        assert_eq!(resumed.thread_id, "owned-thread");
+        let pid = resumed.child.id();
+        drop(resumed);
+        assert!(taurhaus_lib::platform::process_start_ticks(pid).is_none());
     }
 
     #[test]

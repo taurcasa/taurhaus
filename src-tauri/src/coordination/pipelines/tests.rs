@@ -8771,6 +8771,61 @@ fn reinitialize_resets_attachment_without_rewinding_generation() {
 
 #[cfg(target_os = "linux")]
 #[test]
+fn hosted_resume_frame_refusal_is_a_retryable_launch_conflict() {
+    // Regression: 9d3589355 (finding 11, 2026-09-13) refused history at
+    // 64 KiB without identifying the resumed thread or declared frame size.
+    let tmp = TempDir::new().unwrap();
+    let registry = crate::coordination::hosted::tests::seat(tmp.path());
+    let launch = crate::coordination::hosted_process::tests::fixture(tmp.path());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime);
+    orchestrator
+        .hosted
+        .launch(&registry, "team", "seat", &launch)
+        .unwrap();
+    orchestrator.hosted.stop(&registry, "team", "seat").unwrap();
+    let before = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
+    let mut commands = CliCommandSettings::default();
+    commands.codex.fresh = format!(
+        "CODEX_HOME='{}' '{}' --sandbox read-only --ask-for-approval never",
+        tmp.path().display(),
+        launch.program.display()
+    );
+    commands.codex.resume = format!("{} resume {{session_id}}", commands.codex.fresh);
+    commands.codex_bypass_hook_trust = false;
+    commands
+        .account_selector_dirs
+        .insert("CODEX_HOME".into(), tmp.path().into());
+    fs::write(tmp.path().join("oversize-resume"), "").unwrap();
+    let report = orchestrator
+        .resume_member_with_cli_commands_and_layout(
+            &ResumeMemberRequest {
+                team_name: "team".into(),
+                member_name: "seat".into(),
+                reasoning_effort_override: None,
+            },
+            &commands,
+            "new_window",
+        )
+        .unwrap();
+    assert_eq!(report.failed_step.as_deref(), Some("launch_host"));
+    assert!(report.retryable);
+    assert!(!report.resumed);
+    for text in [
+        "Conflict:",
+        "owned-thread",
+        "67108865 bytes",
+        "host frame exceeds 64 MiB",
+    ] {
+        assert!(report.message.contains(text), "missing {text}: {report:?}");
+    }
+    let after = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
+    assert_eq!(after.session_id, before.session_id);
+    assert_eq!(after.app_server, before.app_server);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
 fn hosted_member_liveness_effort_and_attached_pane_restart_preserve_thread() {
     let tmp = TempDir::new().unwrap();
     let registry = crate::coordination::hosted::tests::seat(tmp.path());

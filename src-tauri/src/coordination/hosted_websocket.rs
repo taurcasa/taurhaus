@@ -6,6 +6,8 @@ use std::io::{BufReader, Read, Write};
 use std::os::unix::net::UnixStream;
 
 pub(super) const FRAME_LIMIT: usize = 65_536;
+// Resume replies can contain multi-megabyte histories; outbound input stays small.
+pub(super) const RECEIVE_FRAME_LIMIT: usize = 64 * 1024 * 1024;
 pub(super) struct WebSocket(BufReader<UnixStream>);
 impl WebSocket {
     pub fn connect(stream: UnixStream, guard: &HostOperationLock) -> Result<Self, String> {
@@ -159,8 +161,8 @@ impl WebSocket {
                 }
                 n => n as u64,
             };
-            if length > FRAME_LIMIT as u64 {
-                return Err("host frame exceeds 64 KiB".into());
+            if length > RECEIVE_FRAME_LIMIT as u64 {
+                return Err(format!("host frame exceeds 64 MiB ({length} bytes)"));
             }
             if (size == 126 && length < 126)
                 || (size == 127 && length <= 65535)
@@ -168,8 +170,18 @@ impl WebSocket {
             {
                 return Err("invalid WebSocket frame length".into());
             }
+            if opcode < 8 && message.len() + length as usize > RECEIVE_FRAME_LIMIT {
+                return Err(format!(
+                    "host message exceeds 64 MiB ({} bytes)",
+                    message.len() + length as usize
+                ));
+            }
+            // Check both bounds before allocating or reading a declared payload.
             let mut payload = vec![0; length as usize];
-            self.read_exact(&mut payload, guard)?;
+            for chunk in payload.chunks_mut(64 * 1024) {
+                guard.remaining().map_err(|e| e.to_string())?;
+                self.read_exact(chunk, guard)?;
+            }
             match opcode {
                 8 => {
                     if payload.len() == 1 {
@@ -194,9 +206,6 @@ impl WebSocket {
                 1 if !fragmented => fragmented = true,
                 0 if fragmented => (),
                 _ => return Err("unexpected WebSocket opcode/continuation".into()),
-            }
-            if message.len() + payload.len() > FRAME_LIMIT {
-                return Err("host message exceeds 64 KiB".into());
             }
             message.extend(payload);
             if fin {
@@ -268,6 +277,84 @@ fn sha1(input: &[u8]) -> [u8; 20] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn receive_limit_rejects_declared_size_before_payload_read() {
+        // Regression: 9d3589355 (finding 11, 2026-09-13) used the send cap
+        // for history; the new receive cap must still reject hostile declarations.
+        for length in [64 * 1024 * 1024 + 1, u64::MAX] {
+            let tmp = tempfile::tempdir().unwrap();
+            let guard =
+                HostOperationLock::acquire_for_activity(tmp.path(), "team", "seat").unwrap();
+            let (client, mut server) = UnixStream::pair().unwrap();
+            server.write_all(&[0x81, 127]).unwrap();
+            server.write_all(&length.to_be_bytes()).unwrap();
+            // No payload and no EOF: a read before the bound check would time out.
+            let mut socket = WebSocket(BufReader::new(client));
+            assert_eq!(
+                socket.read(&guard).unwrap_err(),
+                format!("host frame exceeds 64 MiB ({length} bytes)")
+            );
+        }
+    }
+
+    #[test]
+    fn receive_limit_bounds_fragmented_total_before_payload_read() {
+        // Regression: 9d3589355 (finding 11, 2026-09-13) also capped the
+        // assembled history at 64 KiB; per-frame checks alone cannot bound it.
+        let tmp = tempfile::tempdir().unwrap();
+        let guard = HostOperationLock::acquire_for_activity(tmp.path(), "team", "seat").unwrap();
+        let (client, mut server) = UnixStream::pair().unwrap();
+        server.write_all(&[0x01, 1, b'x', 0x80, 127]).unwrap();
+        server
+            .write_all(&(64 * 1024 * 1024_u64).to_be_bytes())
+            .unwrap();
+        let mut socket = WebSocket(BufReader::new(client));
+        assert_eq!(
+            socket.read(&guard).unwrap_err(),
+            "host message exceeds 64 MiB (67108865 bytes)"
+        );
+    }
+
+    #[test]
+    fn receive_limit_stalled_large_payload_obeys_deadline() {
+        // Regression: 9d3589355 (finding 11, 2026-09-13) rejected real
+        // history at its header; accepting it must preserve the operation deadline.
+        let tmp = tempfile::tempdir().unwrap();
+        let guard = HostOperationLock::acquire_for_activity(tmp.path(), "team", "seat").unwrap();
+        let (client, mut server) = UnixStream::pair().unwrap();
+        server.write_all(&[0x81, 127]).unwrap();
+        server
+            .write_all(&(5 * 1024 * 1024_u64).to_be_bytes())
+            .unwrap();
+        server.write_all(b"partial").unwrap();
+        let mut socket = WebSocket(BufReader::new(client));
+        let started = std::time::Instant::now();
+        assert_eq!(
+            socket.read(&guard).unwrap_err(),
+            "host read failed; outcome may be unknown"
+        );
+        assert!(started.elapsed() < std::time::Duration::from_secs(2));
+    }
+
+    #[test]
+    fn send_limit_still_refuses_over_64_kib() {
+        // Regression: 9d3589355 (finding 11, 2026-09-13) shared both caps;
+        // enlarging receives must not enlarge the client send allowance.
+        let tmp = tempfile::tempdir().unwrap();
+        let guard = HostOperationLock::acquire_for_activity(tmp.path(), "team", "seat").unwrap();
+        let (client, mut server) = UnixStream::pair().unwrap();
+        let mut socket = WebSocket(BufReader::new(client));
+        assert_eq!(
+            socket.send(1, &vec![b'x'; 65_537], &guard).unwrap_err(),
+            "host frame exceeds 64 KiB"
+        );
+        server.set_nonblocking(true).unwrap();
+        assert_eq!(
+            server.read(&mut [0]).unwrap_err().kind(),
+            std::io::ErrorKind::WouldBlock
+        );
+    }
 
     #[test]
     fn close_error_survives_failed_echo() {
