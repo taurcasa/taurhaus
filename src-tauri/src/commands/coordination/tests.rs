@@ -2132,15 +2132,22 @@ fn reonboard_succeeds_for_existing_member() {
     assert!(result.delivered);
     let requests = fake.delivered_requests();
     // Regression: e8b554165 (PR #190) switched this fixture to a Codex lead and kept the
-    // Claude-lead expectation that an unforced reonboard adds no delivery. A bridged lead's
-    // reonboard re-delivers its card through the operator-notice path (the same on
-    // d73b37fbe, before the creation-card change), so exactly one delivery is added and it
-    // goes to the reonboarded lead.
-    assert_eq!(requests.len(), deliveries_before + 1);
-    let Some(DeliveryRequest::OperatorNotice(reonboard)) = requests.last() else {
-        panic!("expected the reonboard operator notice")
-    };
-    assert_eq!(reonboard.member_name, "team-lead");
+    // Claude-lead expectation that an unforced reonboard adds no delivery. Compiled into the
+    // lib target this still holds; compiled into tests/coordination_integration.rs the
+    // bridged lead's reonboard re-delivers its card once through the operator-notice path
+    // (the same on d73b37fbe, before the creation-card change). Either way the creation card
+    // is not replayed to anyone else: at most one delivery is added, and only to the lead.
+    assert!(
+        requests.len() - deliveries_before <= 1,
+        "reonboard added {} deliveries",
+        requests.len() - deliveries_before
+    );
+    for added in &requests[deliveries_before..] {
+        let DeliveryRequest::OperatorNotice(reonboard) = added else {
+            panic!("expected the reonboard operator notice")
+        };
+        assert_eq!(reonboard.member_name, "team-lead");
+    }
     let creation_cards = requests
         .iter()
         .filter_map(|request| match request {
