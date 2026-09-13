@@ -122,6 +122,8 @@ Usage is a second provider slice attached to each detected account as an in-memo
 
 ## App and daemon move together
 
+At app bootstrap, the daemon runs with the user's interactive-shell PATH so daemon-spawned harness binaries resolve like a pane's. The launcher probes `tmux default-shell`, else `$SHELL`, else `/bin/sh`, with `-ilc`; a failed or timed-out probe falls back to the login PATH. `daemon.launch.path_resolved` records only the shell, source and entry count. Daemon installs preserve the running process's PATH on restart.
+
 The daemon (WSL2 on Windows, native elsewhere) owns process inventory, session identity, activity, tmux focus and the JSONL log sink. Native harness hook processes call the same taurhaus compaction bridge on every platform; hosted Codex also uses completed compaction notifications on the daemon-owned connection. The app and daemon speak a versioned JSON-line protocol; **the app validates the exact protocol version on every connect path** (startup, health, inline reconnects, the focus bridge's own socket) and refuses a mismatched daemon rather than half-working. Consequences:
 
 - New methods and fields are additive (`#[serde(default)]`) and do not bump the version; a changed contract does.
