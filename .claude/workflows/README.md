@@ -39,9 +39,9 @@ lands in the session's task output and the run tree under `<session>/subagents/w
 
 | Script | Shape | Use it for |
 |---|---|---|
-| `feature-pr.js` | implement → two-lens cross-family review → fix ↔ conformance re-review (≤3 rounds) → gate | a feature-sized PR |
-| `small-change.js` | implement → one cross-family lens → ≤1 fix round → gate | a small PR: a bug fix, a script, a contained refactor |
-| `fix-round.js` | fix ↔ conformance re-review (`startRound`…, ≤`maxRounds`) → gate | a run that stopped short with findings still open |
+| `feature-pr.js` | implement → two-lens cross-family review → judge → fix ↔ scoped conformance re-review (≤3 rounds) → gate | a feature-sized PR |
+| `small-change.js` | implement → one cross-family lens → judge → ≤1 fix round → scoped re-review → gate | a small PR: a bug fix, a script, a contained refactor |
+| `fix-round.js` | fix ↔ scoped conformance re-review → judge (`startRound`…, ≤`maxRounds`) → gate | a run that stopped short with findings still open |
 | `research-sweep.js` | N independent researchers in parallel, read-only, one report each | a question that needs inventories or spikes before a plan |
 | `docs-sweep.js` | sweep the doc groups → cross-family claim verification (≤3 rounds) → gate | documentation drift after a release or a subsystem change |
 
@@ -94,14 +94,15 @@ ledger row can be filled from the run instead of by hand:
   outcome: 'complete' | 'followup_required',
   // Present only for followup_required:
   followup: { name: 'fix-round', args: { worktree, branch, base, spec, title, findings: remaining, startRound: rounds + 1 } },
-  ledger: { title, size, implementer, models, effort, reviewers, rounds, majors, findings, remaining },
+  ledger: { title, size, implementer, models, effort, reviewers, rounds, majors, findings, refuted, remaining },
   commits: [...],
-  gate: { status: 'pass', changed_paths: [...], commands: [{command, status, detail}], diff_stat, commits },
+  gate: { status: 'pass', source: 'implementer' | 'fixer' | 'gate agent', head, changed_paths: [...], commands: [{command, status, detail}], diff_stat, commits },
 }
 ```
 
-`remaining` is what the loop could not close — the blockers and majors it ran out of rounds for, plus
-the minors and nits nobody picked up. `outcome` is `followup_required` whenever those remaining
+`remaining` is what the loop could not close — the confirmed blockers and majors it ran out of rounds
+for, plus the minors and nits nobody picked up. `refuted` is what the judge threw out, each with its
+reason, so a reviewer's rejected finding stays on the record without having cost a round. `outcome` is `followup_required` whenever those remaining
 findings include a blocker or major; otherwise it is `complete`, and the return has no `followup`.
 A `followup` names the next call and carries the run's own context, so it can be run as handed
 back: `{name: 'fix-round', args: {worktree, branch, base, spec, title, findings: remaining,
@@ -124,6 +125,24 @@ a completed ledger with no findings reads as an approval:
   **once** with the contract restated (its own label and scratch tag, `…-recontract`), and a second
   malformed review fails the run — no gate, no ledger. Minors and nits are welcome under `approve`:
   they ride along to the fixer as trivia and come back in `remaining`.
+- **A finding is judged before it costs a round.** Every blocker or major a review files goes to a
+  read-only skeptic (`judge:<tag>-r<n>-<i>`, one per finding, in parallel) that tries to refute it
+  from the code: `confirmed` only with the concrete failing input named, `minor` when it is real but
+  misses the major bar, `refuted` when the code does not have the defect. Only confirmed findings
+  reach the fixer; downgraded ones ride along as trivia; refuted ones land in the ledger's `refuted`.
+  An unavailable judge never drops a finding — it stands as filed. Reviewers and judges are briefed
+  not to run suites, builds or lints (one focused test at most) and to approve unless they can name
+  the failing input; a re-review after a fix reads only `git diff <reviewed head>..HEAD`.
+- **The gate of record is CI on the pull request.** Locally, the implementing lane reports every
+  catalog command it ran on its final tree (`gate_commands`) and that tree (`head`); when the report
+  covers the catalog — Rust-diff rule included — with every command `pass`, it is reused as the run's
+  `gate` (`source: 'implementer'` or `'fixer'`) and nothing is re-run. The gate agent runs only when
+  the report falls short (a missing required command, a `fail` or `skipped`, a Rust diff without an
+  executed Rust test lane, no report at all), and then the rules below apply to it. The Claude
+  courier around a Codex run reports that run's `gate_commands` verbatim and never re-runs them; an
+  implementing lane runs one cargo command at a time and waits on a contested target lock instead of
+  copying binaries or switching target directories. The merge waits for the CI checks, which re-run
+  the suites independently.
 - **A red gate fails the run.** The gate returns one entry per command with its pass/fail; any command
   that did not pass, a `status` other than `pass`, or a gate that ran nothing aborts. So does a gate
   that contradicts itself — `status: 'pass'` arriving with a non-empty `failures` or `error`.

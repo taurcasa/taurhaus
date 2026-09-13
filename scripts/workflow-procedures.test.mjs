@@ -35,10 +35,15 @@ const OK_WORK = {
   tests_added: ['src/thing.test.js'],
   red_observed: 'the new test failed before the change',
   gate: 'check-quick green',
+  // The default lane reports no structured gate run, so every procedure falls back to the gate agent
+  // the way the older tests expect; the lean-lane tests hand in a report that covers the catalog.
+  gate_commands: [],
+  head: 'abc1234',
   deviations: [],
 }
 const OK_SWEEP = { status: 'ok', summary: 'swept', commits: ['abc1234 docs: sweep'], files_changed: ['README.md'], table_path: '/tmp/t.md', unresolved: [] }
 const OK_REVIEW = { status: 'ok', reviewer: 'codex', verdict: 'approve', findings: [] }
+const OK_JUDGE = { status: 'ok', model_used: 'opus', verdict: 'confirmed', reason: 'the failing input is a.js:1 with an empty list' }
 const OK_GATE = {
   status: 'pass',
   changed_paths: ['src/thing.js'],
@@ -54,18 +59,19 @@ const OK_GATE = {
 function kindOf(label) {
   if (label.startsWith('review:') || label.startsWith('verify:')) return 'review'
   if (label.startsWith('gate:')) return 'gate'
+  if (label.startsWith('judge:')) return 'judge'
   if (label.startsWith('research:')) return 'research'
   if (label.startsWith('sweep:')) return 'sweep'
   return 'work'
 }
 
-const DEFAULTS = { work: OK_WORK, sweep: OK_SWEEP, review: OK_REVIEW, gate: OK_GATE, research: { status: 'ok', summary: 's', report_path: '/tmp/r.md', key_facts: [], unverified: [] } }
+const DEFAULTS = { work: OK_WORK, sweep: OK_SWEEP, review: OK_REVIEW, gate: OK_GATE, judge: OK_JUDGE, research: { status: 'ok', summary: 's', report_path: '/tmp/r.md', key_facts: [], unverified: [] } }
 
 // Runs a workflow script against stubs; `plan` maps a call kind to a value or a (call, state) => value.
 async function run(name, workflowArgs, plan = {}) {
   const calls = []
   const logs = []
-  const state = { counts: { work: 0, sweep: 0, review: 0, gate: 0, research: 0 } }
+  const state = { counts: { work: 0, sweep: 0, review: 0, gate: 0, judge: 0, research: 0 } }
   const agent = async (prompt, opts = {}) => {
     const call = { prompt, opts, label: opts.label || '', phase: opts.phase || '' }
     calls.push(call)
@@ -1402,5 +1408,179 @@ describe('research-sweep', () => {
     )
     expect(result.failed.map((f) => f.label)).toContain('one')
     expect(logs.join('\n')).toMatch(/unavailable|no result/i)
+  })
+})
+
+describe('workflow procedures — the lean lane', () => {
+  const GATED = {
+    ...OK_WORK,
+    gate_commands: [
+      { command: 'just check-quick', status: 'pass', detail: '' },
+      { command: 'just lint', status: 'pass', detail: '' },
+    ],
+    head: 'feedbeef',
+  }
+  const major = (title) => ({ title, severity: 'major', file: 'src/thing.js:10', evidence: 'e', fix: 'f' })
+  const fixRequired = (...findings) => ({ ...OK_REVIEW, verdict: 'fix_required', findings })
+  const firstReview = (call) => call.label.includes('-r1') && !call.label.includes('operational')
+  // The first review lane returns the given verdict; every later lane approves.
+  const reviewPlan = (verdict) => (call) => (firstReview(call) ? verdict : OK_REVIEW)
+
+  for (const script of ['feature-pr.js', 'small-change.js']) {
+    it(`${script} reuses the implementer's green run as the gate instead of re-running it`, async () => {
+      const { result, calls, logs } = await run(script, argsFor(script), { work: GATED })
+      expect(calls.some((call) => call.label.startsWith('gate:'))).toBe(false)
+      expect(result.gate.status).toBe('pass')
+      expect(result.gate.source).toBe('implementer')
+      expect(result.gate.head).toBe('feedbeef')
+      expect(result.gate.commands.map((command) => command.command)).toEqual(['just check-quick', 'just lint'])
+      expect(logs.some((line) => /CI re-runs the suites/.test(line))).toBe(true)
+    })
+
+    it(`${script} runs the gate agent when the implementer's report misses a required command`, async () => {
+      const { result, calls } = await run(script, argsFor(script), { work: { ...GATED, gate_commands: GATED.gate_commands.slice(0, 1) } })
+      expect(calls.some((call) => call.label.startsWith('gate:'))).toBe(true)
+      expect(result.gate.source).toBe('gate agent')
+    })
+
+    it(`${script} never reuses a report that carries a failure or a skip`, async () => {
+      for (const status of ['fail', 'skipped']) {
+        const { calls } = await run(script, argsFor(script), {
+          work: { ...GATED, gate_commands: [GATED.gate_commands[0], { command: 'just lint', status, detail: 'clippy' }] },
+        })
+        expect(calls.some((call) => call.label.startsWith('gate:'))).toBe(true)
+      }
+    })
+
+    it(`${script} does not reuse a Rust report without an executed Rust test lane`, async () => {
+      const rustPath = 'src-tauri/src/commands/coordination.rs'
+      const { calls } = await run(script, argsFor(script), {
+        work: { ...GATED, files_changed: [rustPath] },
+        gate: { ...OK_GATE, changed_paths: [rustPath], commands: OK_GATE.commands.concat([{ command: 'just test-rust-unit', status: 'pass' }]) },
+      })
+      expect(calls.some((call) => call.label.startsWith('gate:'))).toBe(true)
+
+      const { result, calls: reused } = await run(script, argsFor(script), {
+        work: { ...GATED, files_changed: [rustPath], gate_commands: GATED.gate_commands.concat([{ command: 'just test-rust-unit', status: 'pass', detail: '' }]) },
+      })
+      expect(reused.some((call) => call.label.startsWith('gate:'))).toBe(false)
+      expect(result.gate.source).toBe('implementer')
+    })
+
+    it(`${script} judges every blocker and major before a fix round, and refuted ones open none`, async () => {
+      const { result, calls, state } = await run(script, argsFor(script), {
+        work: GATED,
+        review: reviewPlan(fixRequired(major('ghost one'), major('ghost two'))),
+        judge: { ...OK_JUDGE, verdict: 'refuted', reason: 'src/thing.js:10 guards the empty list already' },
+      })
+      expect(state.counts.judge).toBe(2)
+      expect(calls.some((call) => call.label.startsWith('fix:'))).toBe(false)
+      expect(calls.filter((call) => kindOf(call.label) === 'review')).toHaveLength(script === 'feature-pr.js' ? 2 : 1)
+      expect(result.outcome).toBe('complete')
+      expect(result.ledger.refuted.map((finding) => finding.title)).toEqual(['ghost one', 'ghost two'])
+      expect(result.ledger.refuted[0].judged).toMatch(/^refuted: src\/thing\.js:10/)
+      expect(result.ledger.remaining).toEqual([])
+      expect(result.ledger.majors).toBe(2)
+    })
+
+    it(`${script} sends only the confirmed finding to the fixer and re-reviews the fix diff`, async () => {
+      const { result, calls } = await run(script, argsFor(script), {
+        work: GATED,
+        review: reviewPlan(fixRequired(major('real'), major('ghost'))),
+        judge: (call) => (call.prompt.includes('"title":"real"') ? OK_JUDGE : { ...OK_JUDGE, verdict: 'refuted', reason: 'unreachable' }),
+      })
+      const fix = calls.find((call) => call.label.startsWith('fix:'))
+      expect(fix.prompt).toContain('"real"')
+      expect(fix.prompt).not.toContain('"ghost"')
+      expect(fix.prompt).toContain('GATE REPORT')
+      const rereview = calls.filter((call) => kindOf(call.label) === 'review').at(-1)
+      expect(rereview.prompt).toContain('scoped to the fix')
+      expect(rereview.prompt).toContain('git diff feedbeef..HEAD')
+      expect(rereview.prompt).not.toContain('git diff main...HEAD')
+      expect(result.gate.source).toBe('fixer')
+      expect(result.ledger.refuted.map((finding) => finding.title)).toEqual(['ghost'])
+      expect(result.ledger.rounds).toBe(2)
+    })
+
+    it(`${script} keeps a finding when its judge is unavailable`, async () => {
+      const { calls, logs } = await run(script, argsFor(script), {
+        work: GATED,
+        review: reviewPlan(fixRequired(major('unjudged'))),
+        judge: { status: 'unavailable', error: 'rate limited' },
+      })
+      expect(calls.some((call) => call.label.startsWith('fix:'))).toBe(true)
+      expect(logs.some((line) => /stands as filed/.test(line))).toBe(true)
+    })
+
+    it(`${script} lets the judge downgrade a major to trivia instead of a fix round`, async () => {
+      const { result, calls } = await run(script, argsFor(script), {
+        work: GATED,
+        review: reviewPlan(fixRequired(major('harmless'))),
+        judge: { ...OK_JUDGE, verdict: 'minor', reason: 'real, but no caller reaches it today' },
+      })
+      expect(calls.some((call) => call.label.startsWith('fix:'))).toBe(false)
+      expect(result.outcome).toBe('complete')
+      expect(result.ledger.remaining).toHaveLength(1)
+      expect(result.ledger.remaining[0].severity).toBe('minor')
+      expect(result.ledger.remaining[0].judged).toMatch(/^minor: /)
+    })
+
+    it(`${script} briefs reviewers and judges to read, not to re-run the suites`, async () => {
+      const { calls } = await run(script, argsFor(script), { review: reviewPlan(fixRequired(major('m'))) })
+      const review = calls.find((call) => kindOf(call.label) === 'review')
+      expect(review.prompt).toContain('do not run test suites, builds or lints')
+      expect(review.prompt).toContain('CALIBRATION')
+      expect(review.prompt).not.toContain('you may run the test lanes')
+      const judge = calls.find((call) => kindOf(call.label) === 'judge')
+      expect(judge.prompt).toContain('READ-ONLY')
+      expect(judge.prompt).toContain('CALIBRATION')
+      expect(judge.opts.schema.properties.verdict.enum).toEqual(['confirmed', 'minor', 'refuted'])
+    })
+
+    it(`${script} tells the Codex courier to report the gate run, never to re-run it`, async () => {
+      const { calls } = await run(script, argsFor(script, { implementer: 'codex' }))
+      const courier = calls.find((call) => call.label.startsWith('impl:'))
+      expect(courier.prompt).toContain('never re-run Codex')
+      expect(courier.prompt).not.toContain('cargo check --all-targets')
+      expect(courier.prompt).toContain('CARGO HYGIENE')
+    })
+
+    it(`${script} asks the implementer for a structured gate report and a head`, async () => {
+      const { calls } = await run(script, argsFor(script))
+      const implementer = calls.find((call) => call.label.startsWith('impl:'))
+      expect(implementer.prompt).toContain('GATE REPORT')
+      expect(implementer.prompt).toContain('gate_commands')
+      expect(implementer.opts.schema.required).toEqual(expect.arrayContaining(['gate_commands', 'head']))
+      expect(implementer.prompt).toContain('never wrapped in an isolation script')
+    })
+  }
+
+  it('fix-round judges what its re-review files and reuses the fixer\'s green run', async () => {
+    const { result, calls, state } = await run(
+      'fix-round.js',
+      argsFor('fix-round.js', { maxRounds: 2 }),
+      {
+        work: GATED,
+        review: (call, state) => (state.counts.review === 1 ? fixRequired(major('ghost')) : OK_REVIEW),
+        judge: { ...OK_JUDGE, verdict: 'refuted', reason: 'src/thing.js:10 already handles it' },
+      }
+    )
+    expect(state.counts.judge).toBe(1)
+    expect(calls.filter((call) => call.label.startsWith('fix:'))).toHaveLength(1)
+    expect(calls.some((call) => call.label.startsWith('gate:'))).toBe(false)
+    expect(result.gate.source).toBe('fixer')
+    expect(result.outcome).toBe('complete')
+    expect(result.ledger.refuted.map((finding) => finding.title)).toEqual(['ghost'])
+  })
+
+  it('fix-round scopes its second re-review to the commits since the first fix', async () => {
+    const { calls } = await run('fix-round.js', argsFor('fix-round.js', { maxRounds: 2 }), {
+      work: GATED,
+      review: (call, state) => (state.counts.review === 1 ? fixRequired(major('still open')) : OK_REVIEW),
+    })
+    const reviews = calls.filter((call) => kindOf(call.label) === 'review')
+    expect(reviews).toHaveLength(2)
+    expect(reviews[0].prompt).toContain('git diff main...HEAD')
+    expect(reviews[1].prompt).toContain('git diff feedbeef..HEAD')
   })
 })
