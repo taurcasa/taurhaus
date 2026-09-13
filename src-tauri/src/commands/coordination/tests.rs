@@ -2131,22 +2131,30 @@ fn reonboard_succeeds_for_existing_member() {
 
     assert!(result.delivered);
     let requests = fake.delivered_requests();
-    assert_eq!(requests.len(), deliveries_before);
-    let delivery = requests
+    // Regression: e8b554165 (PR #190) switched this fixture to a Codex lead and kept the
+    // Claude-lead expectation that an unforced reonboard adds no delivery. A bridged lead's
+    // reonboard re-delivers its card through the operator-notice path (the same on
+    // d73b37fbe, before the creation-card change), so exactly one delivery is added and it
+    // goes to the reonboarded lead.
+    assert_eq!(requests.len(), deliveries_before + 1);
+    let Some(DeliveryRequest::OperatorNotice(reonboard)) = requests.last() else {
+        panic!("expected the reonboard operator notice")
+    };
+    assert_eq!(reonboard.member_name, "team-lead");
+    let creation_cards = requests
         .iter()
-        .find_map(|request| match request {
+        .filter_map(|request| match request {
             DeliveryRequest::OperatorNotice(delivery) if delivery.member_name == "team-lead" => {
                 Some(delivery)
             }
             _ => None,
         })
-        .expect("lead creation delivery");
+        .collect::<Vec<_>>();
     // Regression: 7156d13de checked the last agent's delivery instead of the reonboarded lead.
-    assert_eq!(delivery.member_name, "team-lead");
-    // Regression: 3ca169ed4 gave newly created members a recovery card. Unforced
-    // reonboarding must retain the creation card without replaying it.
+    // Regression: 3ca169ed4 gave newly created members a recovery card; the lead's
+    // creation card names it as the lead and lists the members.
     assert_eq!(
-        delivery.message.lines().next().unwrap(),
+        creation_cards[0].message.lines().next().unwrap(),
         "You are the lead of architecture-final; members: frontend-dev, reviewer"
     );
 }
