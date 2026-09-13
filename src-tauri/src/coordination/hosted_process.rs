@@ -1485,7 +1485,7 @@ def client(connection):
                 if wire == 'close':
                     frame(8, struct.pack('!H',1000)); assert receive() == (8, struct.pack('!H',1000)); return
                 if wire == 'oversize':
-                    stream.write(b'\x81\x7f'+struct.pack('!Q',65537)); stream.flush(); return
+                    stream.write(b'\x81\x7f'+struct.pack('!Q',64*1024*1024+1)); stream.flush(); return
             assert 'jsonrpc' not in request
             if 'id' not in request: continue
             if 'method' not in request:
@@ -2182,11 +2182,13 @@ with socket.socket(socket.AF_UNIX) as listener:
 
     #[test]
     fn resume_with_real_history_single_frame() {
+        // Regression: 9d3589355 (finding 11, 2026-09-13): history exceeded the send cap.
         resume_with_real_history("single");
     }
 
     #[test]
     fn resume_with_real_history_fragmented() {
+        // Regression: 9d3589355 (finding 11, 2026-09-13): fragmented history was capped too.
         resume_with_real_history("fragment_ping");
     }
 
