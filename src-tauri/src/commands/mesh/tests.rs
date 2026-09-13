@@ -71,14 +71,40 @@ fn hosted_descriptor() -> serde_json::Value {
 #[test]
 fn hosted_capability_requires_mesh_floor_and_enabled_matching_codex_descriptor() {
     let descriptor = hosted_descriptor();
+    // Regression: dogfood finding 6 (2026-09-13) — Codex 0.154.0 fell back to typed-pane
+    // delivery because the verified build was compared with `==`; it is a floor.
     for mesh in ["0.2.29", "0.3.0", "unknown"] {
-        for codex in [Some("0.153.4"), Some("0.153.5"), None] {
+        for codex in [
+            Some("0.153.4"),
+            Some("0.153.5"),
+            Some("0.154.0"),
+            Some("0.153.3"),
+            Some("0.154.0-alpha.1"),
+            Some("wrong-build"),
+            None,
+        ] {
             assert_eq!(
                 hosted_delivery_supported(mesh, codex, &descriptor),
-                mesh == "0.3.0" && codex == Some("0.153.4")
+                mesh == "0.3.0"
+                    && matches!(codex, Some("0.153.4") | Some("0.153.5") | Some("0.154.0")),
+                "mesh {mesh} codex {codex:?}"
             );
         }
     }
+    let mut older_minimum = descriptor.clone();
+    older_minimum["native_descriptors"][0]["build"] = serde_json::json!("0.150.0");
+    assert!(hosted_delivery_supported(
+        "0.3.0",
+        Some("0.153.4"),
+        &older_minimum
+    ));
+    let mut newer_minimum = descriptor.clone();
+    newer_minimum["native_descriptors"][0]["build"] = serde_json::json!("0.160.0");
+    assert!(!hosted_delivery_supported(
+        "0.3.0",
+        Some("0.154.0"),
+        &newer_minimum
+    ));
     for field in [
         "enabled",
         "host",
@@ -136,11 +162,20 @@ fn hosted_status_uses_same_contract_fallback_and_camel_case_wire() {
 }
 
 // Regression: 2fcf7d65 trusted the probed build even when the daemon handshake rejects it.
+// The daemon handshake (hosted_process.rs) admits any build at or above taurhaus's own
+// verified minimum, so a Mesh descriptor and CLI that agree on a build BELOW that minimum
+// must still be refused here; agreeing on a newer build is admitted (finding 6, 2026-09-13).
 #[test]
-fn hosted_capability_rejects_cli_and_mesh_matching_an_unpaired_build() {
+fn hosted_capability_rejects_cli_and_mesh_matching_a_build_below_the_verified_minimum() {
     let mut capabilities = hosted_descriptor();
-    capabilities["native_descriptors"][0]["build"] = serde_json::json!("0.153.5");
+    capabilities["native_descriptors"][0]["build"] = serde_json::json!("0.150.0");
     assert!(!hosted_delivery_supported(
+        "0.3.0",
+        Some("0.150.0"),
+        &capabilities
+    ));
+    capabilities["native_descriptors"][0]["build"] = serde_json::json!("0.153.5");
+    assert!(hosted_delivery_supported(
         "0.3.0",
         Some("0.153.5"),
         &capabilities
@@ -159,23 +194,24 @@ fn hosted_status_explains_build_mismatch_and_other_admission_failures() {
     for (version, codex, caps, expected) in [
         (
             "0.3.0",
-            Some("0.154.0"),
+            Some("0.153.3"),
             hosted_descriptor(),
-            Some("installed Codex 0.154.0 is not the verified 0.153.4"),
+            Some("installed Codex 0.153.3 is older than the verified minimum 0.153.4"),
         ),
         (
             "0.3.0",
             None,
             hosted_descriptor(),
-            Some("installed Codex version is unavailable; verified build is 0.153.4"),
+            Some("installed Codex version is unavailable; verified minimum is 0.153.4"),
         ),
         (
             "0.3.0",
             Some("0.153.4"),
             serde_json::Value::Null,
-            Some("Mesh has no enabled descriptor for the verified Codex build"),
+            Some("Mesh has no enabled descriptor admitting the installed Codex build"),
         ),
         ("0.3.0", Some("0.153.4"), hosted_descriptor(), None),
+        ("0.3.0", Some("0.154.0"), hosted_descriptor(), None),
         (
             "0.2.29",
             Some("0.154.0"),
