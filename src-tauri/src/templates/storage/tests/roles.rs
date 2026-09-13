@@ -207,7 +207,7 @@ fn bundled_roles_use_canonical_model_and_reasoning_effort() {
         .collect::<Vec<_>>();
     paths.sort();
 
-    assert_eq!(paths.len(), 24, "bundled role count changed");
+    assert_eq!(paths.len(), 31, "bundled role count changed");
 
     let mut high_effort_roles = Vec::new();
     for path in paths {
@@ -239,7 +239,7 @@ fn bundled_roles_use_canonical_model_and_reasoning_effort() {
         }
     }
 
-    assert_eq!(high_effort_roles.len(), 18);
+    assert_eq!(high_effort_roles.len(), 25);
     assert!(high_effort_roles
         .iter()
         .any(|role| role == "v3-architect-codex"));
@@ -697,6 +697,13 @@ fn previous_release_builtins_reconcile_before_catalog_reads_and_export() {
         "v4-developer-claude",
         "v4-developer-codex",
         "v4-developer-grok",
+        "zq-adversarial-reviewer",
+        "zq-architect",
+        "zq-campaign-lead",
+        "zq-engine-developer",
+        "zq-field-researcher",
+        "zq-training-engineer",
+        "zq-validation-steward",
     ]
     .into_iter()
     .collect::<std::collections::BTreeSet<_>>();
@@ -863,6 +870,13 @@ fn v0_8_3_seeded_presets_reconcile_to_the_canonical_catalog() {
             "v4-developer-claude",
             "v4-developer-codex",
             "v4-developer-grok",
+            "zq-adversarial-reviewer",
+            "zq-architect",
+            "zq-campaign-lead",
+            "zq-engine-developer",
+            "zq-field-researcher",
+            "zq-training-engineer",
+            "zq-validation-steward",
         ]
         .into_iter()
         .collect()
@@ -882,6 +896,7 @@ fn v0_8_3_seeded_presets_reconcile_to_the_canonical_catalog() {
             "research-team",
             "security-audit",
             "taurhaus-core",
+            "zigqueen-team",
         ]
         .into_iter()
         .collect()

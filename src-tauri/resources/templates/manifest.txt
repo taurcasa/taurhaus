@@ -11,6 +11,7 @@ presets/research-eval.yaml
 presets/research-team.yaml
 presets/security-audit.yaml
 presets/taurhaus-core.yaml
+presets/zigqueen-team.yaml
 roles/adversarial-reviewer-claude.yaml
 roles/antigravity-orchestrator.yaml
 roles/astra-architect.yaml
@@ -35,3 +36,10 @@ roles/v4-developer-agy.yaml
 roles/v4-developer-claude.yaml
 roles/v4-developer-codex.yaml
 roles/v4-developer-grok.yaml
+roles/zq-adversarial-reviewer.yaml
+roles/zq-architect.yaml
+roles/zq-campaign-lead.yaml
+roles/zq-engine-developer.yaml
+roles/zq-field-researcher.yaml
+roles/zq-training-engineer.yaml
+roles/zq-validation-steward.yaml

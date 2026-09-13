@@ -516,6 +516,10 @@ fn export_agent_definitions_cli_writes_generated_claude_agents_only() {
         "judge-fable".to_string(),
         "v3-lead-claude".to_string(),
         "v4-developer-claude".to_string(),
+        "zq-adversarial-reviewer".to_string(),
+        "zq-architect".to_string(),
+        "zq-campaign-lead".to_string(),
+        "zq-field-researcher".to_string(),
     ];
     assert_eq!(
         written, expected,

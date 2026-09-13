@@ -1,0 +1,40 @@
+schema:
+  kind: team_preset
+  version: 1
+
+preset_id: zigqueen-team
+name: zigqueen Team
+description: "The dedicated zigqueen strength campaign: a Fable lead owns the ledger and promotion, a Fable architect writes one-page frozen designs, Astra engine and training developers deliver frozen candidates, an Astra steward is the only seat that runs and audits matches on oldrig, who-small and MAIN, and a Fable adversarial reviewer guards scope and originality. Add zq-field-researcher for one bounded question at a time."
+version: "1.0.0"
+lead_role_id: zq-campaign-lead
+
+agent_slots:
+  - role_id: zq-architect
+    count: 1
+    project_binding: lead_project
+    overrides:
+      name_pattern: architect
+  - role_id: zq-engine-developer
+    count: 1
+    project_binding: lead_project
+    overrides:
+      name_pattern: engine-dev
+  - role_id: zq-training-engineer
+    count: 1
+    project_binding: lead_project
+    overrides:
+      name_pattern: training-eng
+  - role_id: zq-validation-steward
+    count: 1
+    project_binding: lead_project
+    overrides:
+      name_pattern: steward
+  - role_id: zq-adversarial-reviewer
+    count: 1
+    project_binding: lead_project
+    overrides:
+      name_pattern: adversarial
+
+defaults:
+  team_name_pattern: "{project}-team"
+  tmux_layout: tiled

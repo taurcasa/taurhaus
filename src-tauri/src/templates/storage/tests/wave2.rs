@@ -477,7 +477,7 @@ runtime_compact_summary:
 
 #[test]
 fn wave2_catalog_recognizes_every_superseded_shipped_file() {
-    assert_eq!(BUILTIN_CATALOG_REVISION, 8);
+    assert_eq!(BUILTIN_CATALOG_REVISION, 9);
     for expected in [
         (
             "roles/astra-asset-generator.yaml",
@@ -576,7 +576,7 @@ fn wave2_catalog_upgrades_seeded_bytes_preserves_edits_and_stays_current_on_muta
             .iter()
             .any(|preset| preset.preset_id == "product-build-w2"));
         assert_eq!(fs::read_to_string(&user_path).unwrap(), edited);
-        assert_eq!(store.load_state().unwrap().builtin_catalog_revision, 8);
+        assert_eq!(store.load_state().unwrap().builtin_catalog_revision, 9);
         store.ensure_repo_for_mutation().unwrap();
         assert_eq!(
             fs::read_to_string(&heavy_path).unwrap(),
