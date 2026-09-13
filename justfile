@@ -603,8 +603,7 @@ update-mesh-lock version protocol_version="1" schema_version="1" git_commit="":
 
 # Install daemon to ~/.local/bin/ (WSL)
 # Automatically stops a running daemon before install and restarts it after.
-install-daemon: build-daemon
-    just _install-daemon-from-build
+install-daemon: build-daemon _install-daemon-from-build
 
 _install-daemon-from-build:
     #!/usr/bin/env bash
@@ -622,7 +621,7 @@ _install-daemon-from-build:
     RESTART_DATA_DIR="${TAURHAUS_DATA_DIR:-$HOME/.local/share/com.taurhaus.dev}"
     RESTART_PORT=17233
 
-    # Check if daemon is currently running. Capture its TAURHAUS_*/RUST_LOG env
+    # Check if daemon is currently running. Capture its TAURHAUS_*/RUST_LOG/PATH env
     # and CLI args first so the restart retains the same data/path authority.
     OLD_PID="$(pgrep -x "$DAEMON_BIN" | head -1 || true)"
     if [ -n "$OLD_PID" ]; then
@@ -630,7 +629,7 @@ _install-daemon-from-build:
             while IFS= read -r -d '' kv; do
                 case "$kv" in
                     TAURHAUS_DATA_DIR=*) RESTART_DATA_DIR="${kv#*=}" ;;
-                    TAURHAUS_*=*|RUST_LOG=*) PRESERVED_ENV+=("$kv") ;;
+                    TAURHAUS_*=*|RUST_LOG=*|PATH=*) PRESERVED_ENV+=("$kv") ;;
                 esac
             done < "/proc/$OLD_PID/environ"
         fi
@@ -707,9 +706,9 @@ _install-daemon-from-build:
     if [ "$WAS_RUNNING" = true ]; then
         echo "▸ Restarting daemon…"
         if [ "${#PRESERVED_ENV[@]}" -gt 0 ]; then
-            echo "  env: ${PRESERVED_ENV[*]}"
+            echo "  env: ${#PRESERVED_ENV[@]} variables preserved (values omitted)"
         else
-            echo "  env: (none preserved — previous daemon had no TAURHAUS_* env)"
+            echo "  env: (none preserved — previous daemon had no matching env)"
         fi
         [ "${#PRESERVED_ARGS[@]}" -gt 0 ] && echo "  args: ${PRESERVED_ARGS[*]}"
         # The daemon's own stderr is the diagnosis when a start fails — never
@@ -751,7 +750,7 @@ _install-daemon-from-build:
             echo "⚠ Daemon did not come up after 15 attempts. Daemon log tail:"
             tail -15 "$RESTART_LOG" 2>/dev/null | sed 's/^/    /'
             echo "  Start it manually:"
-            echo "    ${PRESERVED_ENV[*]:-} $INSTALL_DIR/$DAEMON_BIN ${PRESERVED_ARGS[*]:-}"
+            echo "    env <preserved environment> $INSTALL_DIR/$DAEMON_BIN ${PRESERVED_ARGS[*]:-}"
             exit 1
         fi
     fi
