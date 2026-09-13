@@ -738,10 +738,23 @@ fn find_on_path(name: &str, path: Option<&std::ffi::OsStr>) -> Option<PathBuf> {
 }
 
 fn is_executable_file(candidate: &Path) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::metadata(candidate)
-        .map(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
-        .unwrap_or(false)
+    let Ok(meta) = std::fs::metadata(candidate) else {
+        return false;
+    };
+    if !meta.is_file() {
+        return false;
+    }
+    // The executable bit exists only on Unix; the hosted host is spawned by the WSL
+    // daemon, but this crate also compiles into the Windows app (build 2026-09-13).
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        meta.permissions().mode() & 0o111 != 0
+    }
+    #[cfg(not(unix))]
+    {
+        true
+    }
 }
 
 /// Ask the pane's interactive shell where a validated command name lives.
@@ -1551,6 +1564,7 @@ mod tests {
 
     // Regression: dogfood finding 7 (2026-09-13) — the daemon's login PATH lacked
     // nvm's bin, so the hosted Codex host spawned a bare `codex` and got ENOENT.
+    #[cfg(unix)]
     #[test]
     fn resolve_executable_takes_paths_searches_path_and_names_the_miss() {
         use std::os::unix::fs::PermissionsExt;
