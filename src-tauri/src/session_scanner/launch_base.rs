@@ -701,6 +701,73 @@ pub(crate) fn install_alias_override(aliases: &[(&str, &str)]) -> AliasOverrideG
     AliasOverrideGuard { _lock: lock }
 }
 
+/// Where a hosted executable lives, resolved the way a pane would resolve it.
+///
+/// The daemon is started through a plain login shell whose PATH can miss what
+/// the user's interactive shell adds (nvm, volta, brew shellenv); a tmux seat
+/// never notices because the pane shell resolves the command, but the hosted
+/// Codex host is spawned by the daemon itself (dogfood finding 7, 2026-09-13:
+/// `codex` under nvm → ENOENT surfaced as "Conflict"). Order: a program with a
+/// directory component is taken as given; then the daemon's own PATH; then the
+/// pane shell's `command -v`. A miss names the executable and both sources.
+pub fn resolve_executable(program: &Path) -> Result<PathBuf, String> {
+    if program.components().count() > 1 {
+        return Ok(program.to_path_buf());
+    }
+    let Some(name) = program.to_str().filter(|name| !name.is_empty()) else {
+        return Err("hosted launch has no executable to resolve".into());
+    };
+    if let Some(found) = find_on_path(name, std::env::var_os("PATH").as_deref()) {
+        return Ok(found);
+    }
+    if let Some(found) = shell_command_path(name) {
+        return Ok(found);
+    }
+    Err(format!(
+        "cannot find `{name}` on the daemon's PATH or through the pane shell ({}); \
+         put it on PATH or use an absolute path in the base command",
+        pane_shell()
+    ))
+}
+
+fn find_on_path(name: &str, path: Option<&std::ffi::OsStr>) -> Option<PathBuf> {
+    std::env::split_paths(path?)
+        .filter(|dir| !dir.as_os_str().is_empty())
+        .map(|dir| dir.join(name))
+        .find(|candidate| is_executable_file(candidate))
+}
+
+fn is_executable_file(candidate: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::metadata(candidate)
+        .map(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
+        .unwrap_or(false)
+}
+
+/// Ask the pane's interactive shell where a validated command name lives.
+#[cfg(not(test))]
+fn shell_command_path(name: &str) -> Option<PathBuf> {
+    if !is_alias_name(name) {
+        return None;
+    }
+    let script = format!("command -v -- {name}");
+    let output =
+        super::process::run_with_timeout_within(&pane_shell(), &["-ic", &script], PROBE_TIMEOUT)?;
+    let found = output
+        .lines()
+        .rev()
+        .find(|line| line.starts_with('/'))?
+        .trim();
+    let found = PathBuf::from(found);
+    is_executable_file(&found).then_some(found)
+}
+
+/// A unit test never starts an interactive shell.
+#[cfg(test)]
+fn shell_command_path(_name: &str) -> Option<PathBuf> {
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1480,5 +1547,50 @@ mod tests {
             "an exhausted budget is fail-soft: the base is exactly as configured"
         );
         assert!(resolved.expansions.is_empty());
+    }
+
+    // Regression: dogfood finding 7 (2026-09-13) — the daemon's login PATH lacked
+    // nvm's bin, so the hosted Codex host spawned a bare `codex` and got ENOENT.
+    #[test]
+    fn resolve_executable_takes_paths_searches_path_and_names_the_miss() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let tool = dir.path().join("fake-codex");
+        std::fs::write(&tool, "#!/bin/sh\nexit 0\n").unwrap();
+        std::fs::set_permissions(&tool, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::write(dir.path().join("not-exec"), "x").unwrap();
+
+        assert_eq!(
+            resolve_executable(Path::new("/usr/bin/env")).unwrap(),
+            PathBuf::from("/usr/bin/env")
+        );
+        assert_eq!(
+            resolve_executable(Path::new("./relative/codex")).unwrap(),
+            PathBuf::from("./relative/codex")
+        );
+        let path = std::env::join_paths([Path::new("/nonexistent-dir"), dir.path()]).unwrap();
+        assert_eq!(
+            find_on_path("fake-codex", Some(path.as_os_str())),
+            Some(tool.clone())
+        );
+        assert_eq!(find_on_path("not-exec", Some(path.as_os_str())), None);
+        assert_eq!(find_on_path("fake-codex", None), None);
+
+        let _env = crate::test_support::acquire_env_test_guard();
+        let previous = std::env::var_os("PATH");
+        std::env::set_var("PATH", &path);
+        let resolved = resolve_executable(Path::new("fake-codex"));
+        let missing = resolve_executable(Path::new("codex-that-is-not-installed"));
+        match previous {
+            Some(value) => std::env::set_var("PATH", value),
+            None => std::env::remove_var("PATH"),
+        }
+        assert_eq!(resolved.unwrap(), tool);
+        let error = missing.unwrap_err();
+        assert!(error.contains("`codex-that-is-not-installed`"), "{error}");
+        assert!(
+            error.contains("daemon's PATH") && error.contains("pane shell"),
+            "{error}"
+        );
     }
 }
