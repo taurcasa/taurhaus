@@ -1074,6 +1074,7 @@ mod tests {
     #[test]
     fn initialize_standard_non_utf8_project_does_not_panic() {
         // Regression: 2b4b628a0 used json!(Path), which panics for non-UTF-8 paths.
+        let _guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         use std::os::unix::ffi::OsStringExt;
         let temp = tempfile::tempdir().unwrap();
         let project = temp
