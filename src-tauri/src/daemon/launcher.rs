@@ -601,7 +601,7 @@ fn try_start_daemon_native(
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
-    for (key, value) in daemon_launch_env(log_path, true) {
+    for (key, value) in daemon_launch_env_with_path(log_path, true, "native") {
         cmd.env(key, value);
     }
     let child = cmd.spawn();
@@ -676,7 +676,7 @@ fn try_start_daemon_wsl(
 
     let mut cmd = wsl_command();
     cmd.arg("-d").arg(distro).arg("--");
-    let launch_env = daemon_launch_env(log_path, false);
+    let launch_env = daemon_launch_env_with_path(log_path, false, distro);
     if !launch_env.is_empty() {
         cmd.arg("env");
         for (key, value) in &launch_env {
@@ -995,6 +995,104 @@ fn fallback_launch_log_path() -> PathBuf {
 fn try_connect(port: u16) -> Option<DaemonProvider> {
     let addr = format!("127.0.0.1:{port}");
     DaemonProvider::connect(&addr).ok()
+}
+
+/// Probe in the daemon's OS/distro, never the Windows app's environment.
+fn daemon_launch_env_with_path(
+    log_path: &Path,
+    native: bool,
+    distro: &str,
+) -> Vec<(&'static str, String)> {
+    let (shell, login, interactive) = probe_daemon_path(distro, native);
+    let mut env = daemon_launch_env(log_path, native);
+    apply_daemon_path(&mut env, &shell, login.as_deref(), interactive.as_deref());
+    env
+}
+
+fn apply_daemon_path(
+    env: &mut Vec<(&'static str, String)>,
+    shell: &str,
+    login: Option<&str>,
+    interactive: Option<&str>,
+) {
+    let interactive = interactive.filter(|path| !path.is_empty() && !path.contains('\0'));
+    let path = interactive.or(login);
+    if let Some(path) = path {
+        env.push(("PATH", path.to_string()));
+    }
+    crate::commands::logging::emit_global(
+        "info",
+        "bootstrap",
+        "daemon.launch.path_resolved",
+        None,
+        serde_json::json!({
+            "shell": shell,
+            "source": if interactive.is_some() { "interactive" } else { "login_fallback" },
+            "entries": path.filter(|path| !path.is_empty()).map_or(0, |path| path.split(':').count()),
+        }).as_object().unwrap().clone(),
+    );
+}
+
+#[cfg(not(test))]
+fn probe_daemon_path(distro: &str, native: bool) -> (String, Option<String>, Option<String>) {
+    probe_daemon_path_with(distro, native, |command| {
+        crate::session_scanner::process::run_command_with_timeout_within(
+            command,
+            Duration::from_secs(5),
+            "daemon PATH probe",
+        )
+    })
+}
+
+// Unit tests must not source the operator's rc files or query their tmux.
+#[cfg(test)]
+fn probe_daemon_path(_distro: &str, _native: bool) -> (String, Option<String>, Option<String>) {
+    ("/bin/sh".to_string(), None, None)
+}
+
+fn probe_daemon_path_with(
+    distro: &str,
+    native: bool,
+    mut run: impl FnMut(&mut std::process::Command) -> Option<String>,
+) -> (String, Option<String>, Option<String>) {
+    let mut command = if native {
+        std::process::Command::new("sh")
+    } else {
+        wsl_command()
+    };
+    let script = concat!(
+        "shell=$(tmux show-options -gv default-shell 2>/dev/null); ",
+        "printf '\\0%s\\0%s' \"${shell:-${SHELL:-/bin/sh}}\" \"$PATH\""
+    );
+    if native {
+        command.args(["-lc", script]);
+    } else {
+        command.args(wsl_shell_args(distro, "-lc", script));
+    }
+    let login = run(&mut command).unwrap_or_default();
+    let mut parts = login.rsplitn(3, '\0');
+    let login_path = parts.next().unwrap_or_default();
+    let shell = parts.next().unwrap_or("/bin/sh");
+    let login_path = if parts.next().is_some() {
+        Some(login_path.to_string())
+    } else if native {
+        std::env::var("PATH").ok()
+    } else {
+        None
+    };
+    let mut command = if native {
+        std::process::Command::new(shell)
+    } else {
+        wsl_command()
+    };
+    if !native {
+        command.args(["-d", distro, "-e", shell]);
+    }
+    // A NUL boundary discards rc-file greetings without trimming PATH entries.
+    command.args(["-ilc", "printf '\\0'; printf %s \"$PATH\""]);
+    let interactive = run(&mut command)
+        .and_then(|output| output.rsplit_once('\0').map(|(_, path)| path.to_string()));
+    (shell.to_string(), login_path, interactive)
 }
 
 #[cfg(test)]
@@ -1791,5 +1889,147 @@ time.sleep(3600)
             dir.path()
                 .join(crate::commands::logging::JSONL_LOG_FILE_NAME)
         );
+    }
+}
+
+#[cfg(test)]
+mod path_tests {
+    use super::*;
+
+    // Regression: 228d84d9d inherited only the login PATH (finding 7).
+    // Log the resolution source without disclosing the user's PATH entries.
+    #[test]
+    fn path_resolution_emits_source_and_count_without_path_values() {
+        let _guard = crate::test_support::acquire_global_log_test_guard();
+        let dir = tempfile::tempdir().unwrap();
+        let log = dir.path().join("events.jsonl");
+        let sink = crate::commands::logging::LogFileState::new(log.clone()).unwrap();
+        crate::commands::logging::install_global_sink(&sink);
+        for probed in [Some("/private/nvm/bin:/usr/bin"), None] {
+            apply_daemon_path(
+                &mut Vec::new(),
+                "/bin/zsh",
+                Some("/private/login/bin"),
+                probed,
+            );
+        }
+        sink.flush_for_test().unwrap();
+        let text = std::fs::read_to_string(log).unwrap();
+        let events: Vec<Value> = text
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .filter(|event: &Value| event["event"] == "daemon.launch.path_resolved")
+            .collect();
+        assert_eq!(events.len(), 2);
+        for (event, source, entries) in [
+            (&events[0], "interactive", 2),
+            (&events[1], "login_fallback", 1),
+        ] {
+            assert_eq!(event["source"], source);
+            assert_eq!(event["shell"], "/bin/zsh");
+            assert_eq!(event["entries"], entries);
+            assert!(event.get("PATH").is_none());
+            assert!(event.get("path").is_none());
+        }
+        assert!(!text.contains("/private/"));
+        assert!(!text.contains("/usr/bin"));
+    }
+
+    #[test]
+    fn path_probe_uses_the_daemon_distro_and_interactive_login_shell_once() {
+        for native in [true, false] {
+            for answer in [
+                Some("greeting\n\0/fixture/node bin:/usr/bin"),
+                None,
+                Some("\0"),
+            ] {
+                let mut calls = Vec::new();
+                let (shell, login, interactive) =
+                    probe_daemon_path_with("Fixture-Distro", native, |command| {
+                        calls.push((
+                            command.get_program().to_string_lossy().to_string(),
+                            command
+                                .get_args()
+                                .map(|arg| arg.to_string_lossy().to_string())
+                                .collect::<Vec<_>>(),
+                        ));
+                        if calls.len() == 1 {
+                            Some("login greeting\n\0/bin/zsh\0/usr/bin:/bin".to_string())
+                        } else {
+                            answer.map(str::to_string)
+                        }
+                    });
+                assert_eq!(
+                    calls.len(),
+                    2,
+                    "one discovery and one interactive probe per start"
+                );
+                assert_eq!(shell, "/bin/zsh");
+                assert_eq!(login.as_deref(), Some("/usr/bin:/bin"));
+                let (program, args) = &calls[1];
+                let expected = if native {
+                    vec!["-ilc", "printf '\\0'; printf %s \"$PATH\""]
+                } else {
+                    vec![
+                        "-d",
+                        "Fixture-Distro",
+                        "-e",
+                        "/bin/zsh",
+                        "-ilc",
+                        "printf '\\0'; printf %s \"$PATH\"",
+                    ]
+                };
+                assert_eq!(program, if native { "/bin/zsh" } else { "wsl" });
+                assert_eq!(*args, expected);
+                assert!(calls[0]
+                    .1
+                    .last()
+                    .unwrap()
+                    .contains("${shell:-${SHELL:-/bin/sh}}"));
+                let mut env = Vec::new();
+                apply_daemon_path(&mut env, &shell, login.as_deref(), interactive.as_deref());
+                assert_eq!(
+                    env[0].1,
+                    if answer == Some("greeting\n\0/fixture/node bin:/usr/bin") {
+                        "/fixture/node bin:/usr/bin"
+                    } else {
+                        "/usr/bin:/bin"
+                    }
+                );
+            }
+        }
+    }
+
+    // Regression: 228d84d9d launched WSL directly without the pane's interactive
+    // PATH; dogfood finding 7 (2026-09-13) exposed hosted Codex ENOENT with nvm.
+    #[test]
+    fn launch_environment_uses_interactive_path_or_login_fallback() {
+        for native in [true, false] {
+            for probed in [Some("/fixture/nvm/bin:/fixture/local/bin:/usr/bin"), None] {
+                let mut env = Vec::new();
+                apply_daemon_path(&mut env, "/bin/zsh", Some("/usr/bin:/bin"), probed);
+                let mut command = std::process::Command::new("never-executed");
+                if native {
+                    command.envs(env.iter().cloned());
+                    assert_eq!(
+                        command
+                            .get_envs()
+                            .find(|(key, _)| *key == "PATH")
+                            .and_then(|(_, value)| value)
+                            .unwrap_or_default(),
+                        probed.unwrap_or("/usr/bin:/bin")
+                    );
+                } else {
+                    command.arg("env");
+                    for (key, value) in env {
+                        command.arg(format!("{key}={value}"));
+                    }
+                    assert_eq!(
+                        command.get_args().nth(1).unwrap(),
+                        format!("PATH={}", probed.unwrap_or("/usr/bin:/bin")).as_str()
+                    );
+                }
+            }
+        }
     }
 }

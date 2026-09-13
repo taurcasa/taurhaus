@@ -689,8 +689,17 @@ pub(super) fn run_with_timeout_within(
 ) -> Option<String> {
     let mut command = Command::new(cmd);
     apply_background_command_settings(&mut command);
+    command.args(args);
+    run_command_with_timeout_within(&mut command, timeout, cmd)
+}
+
+/// Bounded, concurrently drained output for callers with platform-specific argv.
+pub(crate) fn run_command_with_timeout_within(
+    command: &mut Command,
+    timeout: Duration,
+    description: &str,
+) -> Option<String> {
     let mut child = command
-        .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -701,7 +710,7 @@ pub(super) fn run_with_timeout_within(
         kill_and_reap(&mut child);
         return None;
     };
-    wait_for_output(cmd, child, stdout, timeout)
+    wait_for_output(description, child, stdout, timeout)
 }
 
 /// Drain `stdout` on a separate thread while `child` runs, then reap the
