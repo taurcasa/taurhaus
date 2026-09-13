@@ -3,7 +3,8 @@ set -euo pipefail
 
 PROJECT_ROOT="${1:?usage: build-windows.sh <project-root> <windows-build-dir>}"
 WINDOWS_BUILD_DIR="${2:?usage: build-windows.sh <project-root> <windows-build-dir>}"
-USE_SCCACHE="${TAURHAUS_WINDOWS_USE_SCCACHE:-0}"
+# sccache is autodetected on the Windows side and only warns when absent; set 0 to opt out.
+USE_SCCACHE="${TAURHAUS_WINDOWS_USE_SCCACHE:-1}"
 
 cd "$PROJECT_ROOT"
 
