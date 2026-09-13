@@ -1294,7 +1294,7 @@ mod tests {
         assert_eq!(descriptor["appServer"]["transport"], "unix-websocket");
         assert_eq!(
             descriptor["appServer"]["attachedTui"],
-            "verified on 0.153.4"
+            "verified on 0.153.4 (minimum)"
         );
     }
 
