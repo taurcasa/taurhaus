@@ -1297,6 +1297,13 @@ mod tests {
             "v4-developer-grok",
             "judge-astra",
             "judge-fable",
+            "zq-campaign-lead",
+            "zq-architect",
+            "zq-engine-developer",
+            "zq-training-engineer",
+            "zq-validation-steward",
+            "zq-adversarial-reviewer",
+            "zq-field-researcher",
         ]
         .into_iter()
         .collect::<std::collections::BTreeSet<_>>();
@@ -2077,8 +2084,8 @@ mod tests {
         );
         assert_eq!(
             presets.len(),
-            12,
-            "expected exactly twelve built-in team presets"
+            13,
+            "expected exactly thirteen built-in team presets"
         );
         assert!(
             presets.iter().any(|preset| preset.preset_id == "pair"),

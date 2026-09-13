@@ -409,12 +409,13 @@ For isolated test runs, the app data root can be overridden with `TAURHAUS_DATA_
 
 Current built-ins ship from `src-tauri/resources/templates/`:
 
-- **Roles (24)**:
+- **Roles (31)**:
   - orchestration: `v3-lead-claude` (Fable 5.1), `codex-orchestrator` (GPT-5.6 Sol), and `antigravity-orchestrator` (the Antigravity/agy alternative)
   - implementation: `v4-developer-claude`, `v4-developer-codex`, `v4-developer-agy`, `v4-developer-grok`, `quick-dev-codex`, `frontend-design-skill-developer`, and the diff-budgeted `astra-heavy-implementer`
   - generation: `astra-asset-generator` (on-demand Astra imagery — and 3D assets where the host machine provides the `$blender-agent` skill — in the approved house style, regeneration records on file, minimal uptime)
   - architecture, review, and decision support: `v3-architect-codex`, `fable-altitude-reviewer`, `adversarial-reviewer-claude`, `claude-product-checker`, `claude-design-lead`, `claude-researcher`, `docs-verifier-codex`, `codex-qa`, `astra-architect`, `astra-crossfile-reviewer`, `astra-security-auditor`, `judge-astra`, and `judge-fable`
-- **Presets (12)**:
+  - zigqueen campaign (project-specific, Elo within the originality rules; operating detail in the zigqueen repository's `docs/TEAM.md`): `zq-campaign-lead` (Fable), `zq-architect` (Fable, one-page frozen designs), `zq-engine-developer` and `zq-training-engineer` (Astra, frozen candidates), `zq-validation-steward` (Astra, the only seat that runs and audits matches on oldrig, who-small and MAIN), `zq-adversarial-reviewer` (Fable, five findings, scope and originality), and `zq-field-researcher` (Claude, one bounded idea-level note at a time)
+- **Presets (13)**:
   - `pair` — `v3-lead-claude` plus `quick-dev-codex`
   - `dev-team` — `v3-lead-claude` plus two `v4-developer-codex`
   - `full-team` — `v3-lead-claude` plus `v3-architect-codex` and two `v4-developer-codex`
@@ -427,6 +428,7 @@ Current built-ins ship from `src-tauri/resources/templates/`:
   - `research-eval` — Fable synthesis, Sol and Grok research lanes, and the isolated `judge-fable` / `judge-astra` pair
   - `batch-processing` — Sol medium coordinator, three Luna workers, and a Fable medium sample reviewer
   - `design-ui` — Fable creative direction, a Fable incumbent and Astra challenger implementation bake-off, and opposite-family visual judges
+  - `zigqueen-team` — the dedicated zigqueen strength campaign: `zq-campaign-lead` plus `zq-architect`, `zq-engine-developer`, `zq-training-engineer`, `zq-validation-steward` and `zq-adversarial-reviewer`; add `zq-field-researcher` for one bounded question at a time
 
 Every preset names its lead explicitly and references only canonical role ids.
 The original five presets inherit model and effort from their roles; the seven

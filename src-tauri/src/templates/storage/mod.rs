@@ -40,7 +40,7 @@ const DEFAULT_DEBOUNCE_WINDOW_SECS: i64 = 30;
 const FALLBACK_LOCK_RETRY_DELAY_MS: u64 = 20;
 const FALLBACK_LOCK_RETRY_ATTEMPTS: usize = 250;
 const TEMP_FILE_RANDOM_RETRY_ATTEMPTS: usize = 16;
-const BUILTIN_CATALOG_REVISION: u32 = 8;
+const BUILTIN_CATALOG_REVISION: u32 = 9;
 const PACKAGED_TEMPLATE_MANIFEST: &str = include_str!("../../../resources/templates/manifest.txt");
 
 const GITIGNORE_CONTENTS: &str = "_meta/state.json\n*.tmp*\n*.displaced\n.lock\n.lock.fallback\n";
@@ -63,6 +63,8 @@ const GITIGNORE_CONTENTS: &str = "_meta/state.json\n*.tmp*\n*.displaced\n.lock\n
 // so no fingerprint block exists for it; the recorded supersession below moves
 // stores directly from revision 1 bytes to the current revision.
 const PREVIOUS_BUNDLED_TEMPLATE_HASHES: &[(&str, &str)] = &[
+    // Revision 9: the seven zigqueen team roles and the zigqueen-team preset
+    // are additions; no shipped bytes were superseded, so no fingerprints.
     // Revision 8: the asset seat's machine-conditional 3D annex supersedes the
     // revision-7 imagery-only role text.
     (
